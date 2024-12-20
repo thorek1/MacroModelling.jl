@@ -1,6 +1,7 @@
 # TODO: fix return types and implement early returns on errors
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 lyapunov_algorithm::Symbol = :doubling, 
                                 verbose::Bool = false)::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
@@ -11,7 +12,11 @@ function calculate_covariance(parameters::Vector{R},
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                            T = 𝓂.timings, 
+                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution, 
+                                                            verbose = verbose)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -35,6 +40,7 @@ function calculate_mean(parameters::Vector{T},
                         𝓂::ℳ; 
                         verbose::Bool = false, 
                         algorithm = :pruned_second_order, 
+                        quadratic_matrix_equation_algorithm::Symbol = :schur,
                         sylvester_algorithm::Symbol = :doubling, 
                         tol::Float64 = 1e-12)::Tuple{Vector{T}, 
                         # Matrix{T}, Matrix{T}, AbstractSparseMatrix{T}, AbstractSparseMatrix{T}, 
@@ -50,7 +56,11 @@ function calculate_mean(parameters::Vector{T},
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution, verbose = verbose)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                        T = 𝓂.timings, 
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution, 
+                                                        verbose = verbose)
     
     if !solved 
         return SS_and_pars[1:𝓂.timings.nVars], false
@@ -134,17 +144,18 @@ function calculate_second_order_moments(parameters::Vector{R},
                                         𝓂::ℳ;
                                         covariance::Bool = true,
                                         verbose::Bool = false, 
+                                        quadratic_matrix_equation_algorithm::Symbol = :schur,
                                         sylvester_algorithm::Symbol = :doubling,
                                         lyapunov_algorithm::Symbol = :doubling,
                                         tol::AbstractFloat = eps()) where R <: Real
-    calculate_second_order_moments(
-        parameters, 
-        𝓂,
-        Val(covariance);
-        verbose = verbose, 
-        sylvester_algorithm = sylvester_algorithm,
-        lyapunov_algorithm = lyapunov_algorithm,
-        tol = tol)
+    calculate_second_order_moments(parameters, 
+                                    𝓂,
+                                    Val(covariance);
+                                    verbose = verbose, 
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                    sylvester_algorithm = sylvester_algorithm,
+                                    lyapunov_algorithm = lyapunov_algorithm,
+                                    tol = tol)
 end
 
 function calculate_second_order_moments(
@@ -152,11 +163,15 @@ function calculate_second_order_moments(
     𝓂::ℳ,
     ::Val{false}; # covariance; 
     verbose::Bool = false, 
+    quadratic_matrix_equation_algorithm::Symbol = :schur,
     sylvester_algorithm::Symbol = :doubling,
     lyapunov_algorithm::Symbol = :doubling,
     tol::AbstractFloat = eps())::Tuple{Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}, Bool} where R <: Real
 
-    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, 
+                                                            verbose = verbose, 
+                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                            lyapunov_algorithm = lyapunov_algorithm)
 
     nᵉ = 𝓂.timings.nExo
 
@@ -268,11 +283,15 @@ function calculate_second_order_moments(
     𝓂::ℳ,
     ::Val{true}; # covariance
     verbose::Bool = false, 
+    quadratic_matrix_equation_algorithm::Symbol = :schur,
     sylvester_algorithm::Symbol = :doubling,
     lyapunov_algorithm::Symbol = :doubling,
     tol::AbstractFloat = eps())::Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}, Bool} where R <: Real
 
-    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, 
+                                                            verbose = verbose, 
+                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                            lyapunov_algorithm = lyapunov_algorithm)
 
     nᵉ = 𝓂.timings.nExo
 
@@ -407,6 +426,7 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             autocorrelation_periods::U = 1:5,
                                             verbose::Bool = false, 
                                             dependencies_tol::AbstractFloat = 1e-12, 
+                                            quadratic_matrix_equation_algorithm::Symbol = :schur,
                                             sylvester_algorithm::Symbol = :doubling,
                                             lyapunov_algorithm::Symbol = :doubling,
                                             tol::AbstractFloat = eps()) where {U, T <: Real}
@@ -415,6 +435,7 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                             𝓂,
                                                             Val(true);
                                                             verbose = verbose, 
+                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
                                                             sylvester_algorithm = sylvester_algorithm, 
                                                             lyapunov_algorithm = lyapunov_algorithm)
 

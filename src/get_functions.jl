@@ -9,6 +9,7 @@ Return the shock decomposition in absolute deviations from the relevant steady s
 - $PARAMETERS
 - $DATA_IN_LEVELS
 - $SMOOTH
+- $QME
 - $VERBOSE
 
 # Examples
@@ -63,15 +64,15 @@ And data, 4×2×40 Array{Float64, 3}:
 ```
 """
 function get_shock_decomposition(𝓂::ℳ,
-    data::KeyedArray{Float64};
-    parameters::ParameterType = nothing,
-    filter::Symbol = :kalman,
-    algorithm::Symbol = :first_order,
-    quadratic_matrix_equation_solver::Symbol = :schur,
-    data_in_levels::Bool = true,
-    warmup_iterations::Int = 0,
-    smooth::Bool = true,
-    verbose::Bool = false)
+                                data::KeyedArray{Float64};
+                                parameters::ParameterType = nothing,
+                                filter::Symbol = :kalman,
+                                algorithm::Symbol = :first_order,
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                data_in_levels::Bool = true,
+                                warmup_iterations::Int = 0,
+                                smooth::Bool = true,
+                                verbose::Bool = false)
 
     pruning = false
 
@@ -82,7 +83,12 @@ function get_shock_decomposition(𝓂::ℳ,
         pruning = true
     end
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
+    solve!(𝓂, 
+            parameters = parameters, 
+            verbose = verbose, 
+            dynamics = true, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+            algorithm = algorithm)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
@@ -102,7 +108,7 @@ function get_shock_decomposition(𝓂::ℳ,
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                         warmup_iterations = warmup_iterations, 
-                                        quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                         smooth = smooth, 
                                         verbose = verbose)
     
@@ -152,6 +158,7 @@ Return the estimated shocks based on the inversion filter (depending on the `fil
 # Keyword Arguments
 - $PARAMETERS
 - $ALGORITHM
+- $QME
 - $FILTER
 - `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
 - $DATA_IN_LEVELS
@@ -190,14 +197,15 @@ And data, 1×40 Matrix{Float64}:
 ```
 """
 function get_estimated_shocks(𝓂::ℳ,
-    data::KeyedArray{Float64};
-    parameters::ParameterType = nothing,
-    algorithm::Symbol = :first_order, 
-    filter::Symbol = :kalman, 
-    warmup_iterations::Int = 0,
-    data_in_levels::Bool = true,
-    smooth::Bool = true,
-    verbose::Bool = false)
+                            data::KeyedArray{Float64};
+                            parameters::ParameterType = nothing,
+                            algorithm::Symbol = :first_order, 
+                            quadratic_matrix_equation_algorithm::Symbol = :schur,
+                            filter::Symbol = :kalman, 
+                            warmup_iterations::Int = 0,
+                            data_in_levels::Bool = true,
+                            smooth::Bool = true,
+                            verbose::Bool = false)
 
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
@@ -205,7 +213,12 @@ function get_estimated_shocks(𝓂::ℳ,
         filter = :inversion
     end
 
-    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
+    solve!(𝓂, 
+            parameters = parameters, 
+            algorithm = algorithm, 
+            verbose = verbose, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+            dynamics = true)
     
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
@@ -223,7 +236,11 @@ function get_estimated_shocks(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
+    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
+                                                                                    warmup_iterations = warmup_iterations, 
+                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                    smooth = smooth, 
+                                                                                    verbose = verbose)
     
     axis1 = 𝓂.timings.exo
 
@@ -253,6 +270,7 @@ Return the estimated variables (in levels by default, see `levels` keyword argum
 # Keyword Arguments
 - $PARAMETERS
 - $ALGORITHM
+- $QME
 - $FILTER
 - `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
 - $DATA_IN_LEVELS
@@ -295,15 +313,16 @@ And data, 4×40 Matrix{Float64}:
 ```
 """
 function get_estimated_variables(𝓂::ℳ,
-    data::KeyedArray{Float64};
-    parameters::ParameterType = nothing,
-    algorithm::Symbol = :first_order, 
-    filter::Symbol = :kalman, 
-    warmup_iterations::Int = 0,
-    data_in_levels::Bool = true,
-    levels::Bool = true,
-    smooth::Bool = true,
-    verbose::Bool = false)
+                                data::KeyedArray{Float64};
+                                parameters::ParameterType = nothing,
+                                algorithm::Symbol = :first_order, 
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                filter::Symbol = :kalman, 
+                                warmup_iterations::Int = 0,
+                                data_in_levels::Bool = true,
+                                levels::Bool = true,
+                                smooth::Bool = true,
+                                verbose::Bool = false)
 
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
@@ -311,8 +330,13 @@ function get_estimated_variables(𝓂::ℳ,
         filter = :inversion
     end
 
-    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
-    
+    solve!(𝓂, 
+            parameters = parameters, 
+            algorithm = algorithm, 
+            verbose = verbose, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+            dynamics = true)
+
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
 
     data = data(sort(axiskeys(data,1)))
@@ -329,7 +353,11 @@ function get_estimated_variables(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
+    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
+                                                                                    warmup_iterations = warmup_iterations, 
+                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                    smooth = smooth, 
+                                                                                    verbose = verbose)
 
     axis1 = 𝓂.timings.var
 
@@ -356,6 +384,7 @@ Return the standard deviations of the Kalman smoother or filter (depending on th
 - $PARAMETERS
 - $DATA_IN_LEVELS
 - $SMOOTH
+- $QME
 - $VERBOSE
 
 # Examples
@@ -393,15 +422,21 @@ And data, 4×40 Matrix{Float64}:
 ```
 """
 function get_estimated_variable_standard_deviations(𝓂::ℳ,
-    data::KeyedArray{Float64};
-    parameters::ParameterType = nothing,
-    data_in_levels::Bool = true,
-    smooth::Bool = true,
-    verbose::Bool = false)
+                                                    data::KeyedArray{Float64};
+                                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                                    parameters::ParameterType = nothing,
+                                                    data_in_levels::Bool = true,
+                                                    smooth::Bool = true,
+                                                    verbose::Bool = false)
 
     algorithm = :first_order
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true)
+    solve!(𝓂, 
+            parameters = parameters, 
+            # algorithm = algorithm, 
+            verbose = verbose, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+            dynamics = true)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, verbose = verbose)
 
@@ -419,7 +454,10 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
         data_in_deviations = data
     end
 
-    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(:first_order), Val(:kalman), smooth = smooth, verbose = verbose)
+    variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(:first_order), Val(:kalman), 
+                                                                                    smooth = smooth, 
+                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                    verbose = verbose)
 
     axis1 = 𝓂.timings.var
 
@@ -450,6 +488,7 @@ Return the conditional forecast given restrictions on endogenous variables and s
 - $VARIABLES
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
 - $ALGORITHM
+- $QME
 - $LEVELS
 - $VERBOSE
 
@@ -526,16 +565,17 @@ And data, 9×42 Matrix{Float64}:
 ```
 """
 function get_conditional_forecast(𝓂::ℳ,
-    conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
-    shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-    periods::Int = 40, 
-    parameters::ParameterType = nothing,
-    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-    conditions_in_levels::Bool = true,
-    algorithm::Symbol = :first_order,
-    levels::Bool = false,
-    verbose::Bool = false)
+                                conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
+                                shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
+                                initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+                                periods::Int = 40, 
+                                parameters::ParameterType = nothing,
+                                variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
+                                conditions_in_levels::Bool = true,
+                                algorithm::Symbol = :first_order,
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                levels::Bool = false,
+                                verbose::Bool = false)
 
     periods += max(size(conditions,2), shocks isa Nothing ? 1 : size(shocks,2)) # isa Nothing needed otherwise JET tests fail
 
@@ -595,7 +635,12 @@ function get_conditional_forecast(𝓂::ℳ,
         shocks = Matrix{Union{Nothing,Number}}(nothing,length(𝓂.exo),periods)
     end
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm)
+    solve!(𝓂, 
+            parameters = parameters, 
+            verbose = verbose, 
+            dynamics = true, 
+            algorithm = algorithm,
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
 
     state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
 
@@ -800,6 +845,7 @@ Function to use when differentiating IRFs with repect to parameters.
 - $NEGATIVE_SHOCK
 - $INITIAL_STATE
 - $LEVELS
+- $QME
 - $VERBOSE
 
 # Examples
@@ -839,9 +885,12 @@ function get_irf(𝓂::ℳ,
                     negative_shock::Bool = false, 
                     initial_state::Vector{Float64} = [0.0],
                     levels::Bool = false,
+                    quadratic_matrix_equation_algorithm::Symbol = :schur,
                     verbose::Bool = false) where S <: Real
 
-    solve!(𝓂, verbose = verbose)
+    solve!(𝓂, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+            verbose = verbose)
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
@@ -885,7 +934,10 @@ function get_irf(𝓂::ℳ,
     
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)# |> Matrix
 								
-    sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                            T = 𝓂.timings, 
+                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -939,6 +991,7 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedAr
 # Keyword Arguments
 - $PERIODS
 - $ALGORITHM
+- $QME
 - $PARAMETERS
 - $VARIABLES
 - $SHOCKS
@@ -987,6 +1040,7 @@ And data, 4×40×1 Array{Float64, 3}:
 function get_irf(𝓂::ℳ; 
     periods::Int = 40, 
     algorithm::Symbol = :first_order, 
+    quadratic_matrix_equation_algorithm::Symbol = :schur,
     parameters::ParameterType = nothing,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
@@ -1060,6 +1114,7 @@ function get_irf(𝓂::ℳ;
             verbose = verbose, 
             dynamics = true, 
             algorithm = algorithm, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
             # timer = timer, 
             obc = occasionally_binding_constraints || obc_shocks_included)
     
@@ -1286,6 +1341,7 @@ Return the (non stochastic) steady state, calibrated parameters, and derivatives
 - $DERIVATIVES
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation
 - $ALGORITHM
+- $QME
 - $PARAMETER_DERIVATIVES
 - `return_variables_only` [Defaut: `false`, Type: `Bool`]: return only variables and not calibrated parameters
 - $VERBOSE
@@ -1328,6 +1384,7 @@ function get_steady_state(𝓂::ℳ;
     derivatives::Bool = true, 
     stochastic::Bool = false,
     algorithm::Symbol = :first_order,
+    quadratic_matrix_equation_algorithm::Symbol = :schur,
     parameter_derivatives::Union{Symbol_input,String_input} = :all,
     return_variables_only::Bool = false,
     verbose::Bool = false,
@@ -1336,7 +1393,9 @@ function get_steady_state(𝓂::ℳ;
 
     if !(algorithm == :first_order) stochastic = true end
     
-    solve!(𝓂, parameters = parameters, verbose = verbose)
+    solve!(𝓂, 
+            parameters = parameters, 
+            verbose = verbose)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
     
@@ -1365,17 +1424,21 @@ function get_steady_state(𝓂::ℳ;
     end
 
     if stochastic
+        solve!(𝓂, 
+                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                verbose = verbose, 
+                dynamics = true, 
+                algorithm = algorithm, 
+                silent = silent, 
+                obc = length(𝓂.obc_violation_equations) > 0)
+
         if  algorithm == :third_order
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
         elseif  algorithm == :pruned_third_order
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
         elseif  algorithm == :pruned_second_order
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = algorithm, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
         else
-            solve!(𝓂, verbose = verbose, dynamics = true, algorithm = :second_order, silent = silent, obc = length(𝓂.obc_violation_equations) > 0)
             SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
         end
     end
@@ -1415,7 +1478,9 @@ function get_steady_state(𝓂::ℳ;
                     #             SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
                     #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x -> begin SSS = calculate_third_order_stochastic_steady_state(x, 𝓂, verbose = verbose)
+                    dSSS = 𝒟.jacobian(x -> begin SSS = calculate_third_order_stochastic_steady_state(x, 𝓂, 
+                                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                                    verbose = verbose)
                                         return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     end, backend, 𝓂.parameter_values)[:,param_idx]
 
@@ -1427,7 +1492,10 @@ function get_steady_state(𝓂::ℳ;
                     #             SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
                     #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x-> begin SSS= calculate_third_order_stochastic_steady_state(x, 𝓂, verbose = verbose, pruning = true)
+                    dSSS = 𝒟.jacobian(x-> begin SSS= calculate_third_order_stochastic_steady_state(x, 𝓂, 
+                                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                                    verbose = verbose, 
+                                                                                                    pruning = true)
                                         return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     end, backend, 𝓂.parameter_values)[:,param_idx]
 
@@ -1438,7 +1506,10 @@ function get_steady_state(𝓂::ℳ;
                     #             SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
                     #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, verbose = verbose, pruning = true)
+                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, 
+                                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                                    verbose = verbose, 
+                                                                                                    pruning = true)
                                         return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     end, backend, 𝓂.parameter_values)[:,param_idx]
 
@@ -1449,7 +1520,9 @@ function get_steady_state(𝓂::ℳ;
                     #             SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
                     #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, verbose = verbose)
+                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, 
+                                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                                    verbose = verbose)
                                         return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     end, backend, 𝓂.parameter_values)[:,param_idx]
 
@@ -1555,6 +1628,7 @@ The values of the output represent the NSSS in the case of a linear solution and
 # Keyword Arguments
 - $PARAMETERS
 - $ALGORITHM
+- $QME
 - $VERBOSE
 
 The returned `KeyedArray` shows as columns the endogenous variables inlcuding the auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows and other dimensions (depending on the chosen perturbation order) include the NSSS for the linear case only, followed by the states, and exogenous shocks. 
@@ -1595,10 +1669,17 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 function get_solution(𝓂::ℳ; 
     parameters::ParameterType = nothing,
     algorithm::Symbol = :first_order, 
+    quadratic_matrix_equation_algorithm::Symbol = :schur,
     silent::Bool = false,
     verbose::Bool = false)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, silent = silent, algorithm = algorithm)
+    solve!(𝓂, 
+            parameters = parameters, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+            verbose = verbose, 
+            dynamics = true, 
+            silent = silent, 
+            algorithm = algorithm)
 
     if algorithm ∈ [:first_order, :first_order_doubling]
         solution_matrix = 𝓂.solution.perturbation.first_order.solution_matrix
@@ -1707,9 +1788,13 @@ get_perturbation_solution(args...; kwargs...) = get_solution(args...; kwargs...)
 function get_solution(𝓂::ℳ, 
                         parameters::Vector{S}; 
                         algorithm::Symbol = :first_order, 
+                        quadratic_matrix_equation_algorithm::Symbol = :schur,
                         verbose::Bool = false, 
                         tol::AbstractFloat = 1e-12) where S <: Real
-    @ignore_derivatives solve!(𝓂, verbose = verbose, algorithm = algorithm)
+    @ignore_derivatives solve!(𝓂, 
+                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                verbose = verbose, 
+                                algorithm = algorithm)
 
     
     for (k,v) in 𝓂.bounds
@@ -1734,7 +1819,9 @@ function get_solution(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, 
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -1809,6 +1896,7 @@ Return the conditional variance decomposition of endogenous variables with regar
 # Keyword Arguments
 - `periods` [Default: `[1:20...,Inf]`, Type: `Union{Vector{Int},Vector{Float64},UnitRange{Int64}}`]: vector of periods for which to calculate the conditional variance decomposition. If the vector conatins `Inf`, also the unconditional variance decomposition is calculated (same output as [`get_variance_decomposition`](@ref)).
 - $PARAMETERS
+- $QME
 - $VERBOSE
 
 # Examples
@@ -1878,11 +1966,15 @@ And data, 7×2×21 Array{Float64, 3}:
 ```
 """
 function get_conditional_variance_decomposition(𝓂::ℳ; 
-    periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = [1:20...,Inf],
-    parameters::ParameterType = nothing,  
-    verbose::Bool = false)
+                                                periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = [1:20...,Inf],
+                                                parameters::ParameterType = nothing,  
+                                                quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                                verbose::Bool = false)
 
-    solve!(𝓂, parameters = parameters, verbose = verbose)
+    solve!(𝓂, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+            parameters = parameters, 
+            verbose = verbose)
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
@@ -1890,7 +1982,10 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                        T = 𝓂.timings, 
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -1979,6 +2074,7 @@ Return the variance decomposition of endogenous variables with regards to the sh
 - $MODEL
 # Keyword Arguments
 - $PARAMETERS
+- $QME
 - $LYAPUNOV
 - $VERBOSE
 
@@ -2027,16 +2123,23 @@ And data, 7×2 Matrix{Float64}:
 """
 function get_variance_decomposition(𝓂::ℳ; 
     parameters::ParameterType = nothing,  
+    quadratic_matrix_equation_algorithm::Symbol = :schur,
     lyapunov_algorithm::Symbol = :doubling,
     verbose::Bool = false)
     
-    solve!(𝓂, parameters = parameters, verbose = verbose)
+    solve!(𝓂, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+            parameters = parameters, 
+            verbose = verbose)
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose)
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, initial_guess = 𝓂.solution.perturbation.qme_solution)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                            T = 𝓂.timings, 
+                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -2092,6 +2195,7 @@ Return the correlations of endogenous variables using the first, pruned second, 
 # Keyword Arguments
 - $PARAMETERS
 - $ALGORITHM
+- $QME
 - $LYAPUNOV
 - $SYLVESTER
 - $VERBOSE
@@ -2129,22 +2233,30 @@ And data, 4×4 Matrix{Float64}:
 ```
 """
 function get_correlation(𝓂::ℳ; 
-    parameters::ParameterType = nothing,  
-    algorithm::Symbol = :first_order,
-    sylvester_algorithm::Symbol = :doubling,
-    lyapunov_algorithm::Symbol = :doubling, 
-    verbose::Bool = false)
+                        parameters::ParameterType = nothing,  
+                        algorithm::Symbol = :first_order,
+                        quadratic_matrix_equation_algorithm::Symbol = :schur,
+                        sylvester_algorithm::Symbol = :doubling,
+                        lyapunov_algorithm::Symbol = :doubling, 
+                        verbose::Bool = false)
     
     @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
-    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose)
+    solve!(𝓂, 
+            parameters = parameters, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+            algorithm = algorithm, 
+            verbose = verbose)
 
     if algorithm == :pruned_third_order
         covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
     elseif algorithm == :pruned_second_order
         covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
     else
-        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, 
+                                                                        verbose = verbose, 
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                        lyapunov_algorithm = lyapunov_algorithm)
 
         @assert solved "Could not find covariance matrix."
     end
@@ -2187,6 +2299,7 @@ Return the autocorrelations of endogenous variables using the first, pruned seco
 - `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation
 - $PARAMETERS
 - $ALGORITHM
+- $QME
 - $LYAPUNOV
 - $SYLVESTER
 - $VERBOSE
@@ -2224,21 +2337,35 @@ And data, 4×5 Matrix{Float64}:
 ```
 """
 function get_autocorrelation(𝓂::ℳ; 
-    autocorrelation_periods = 1:5,
-    parameters::ParameterType = nothing,  
-    algorithm::Symbol = :first_order,
-    sylvester_algorithm::Symbol = :doubling,
-    lyapunov_algorithm::Symbol = :doubling, 
-    verbose::Bool = false)
+                            autocorrelation_periods = 1:5,
+                            parameters::ParameterType = nothing,  
+                            algorithm::Symbol = :first_order,
+                            quadratic_matrix_equation_algorithm::Symbol = :schur,
+                            sylvester_algorithm::Symbol = :doubling,
+                            lyapunov_algorithm::Symbol = :doubling, 
+                            verbose::Bool = false)
     
     @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order, :pruned_third_order] "Autocorrelation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
-    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose)
+    solve!(𝓂, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+            parameters = parameters, 
+            algorithm = algorithm, 
+            verbose = verbose)
 
     if algorithm == :pruned_third_order
-        covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, 𝓂.timings.var, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose, autocorrelation = true)
+        covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, 𝓂.timings.var, 𝓂, 
+                                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                            sylvester_algorithm = sylvester_algorithm, 
+                                                                                            lyapunov_algorithm = lyapunov_algorithm, 
+                                                                                            verbose = verbose, 
+                                                                                            autocorrelation = true)
     elseif algorithm == :pruned_second_order
-        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, 
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                            sylvester_algorithm = sylvester_algorithm, 
+                                            lyapunov_algorithm = lyapunov_algorithm, 
+                                            verbose = verbose)
 
         ŝ_to_ŝ₂ⁱ = ℒ.diagm(ones(size(Σᶻ₂,1)))
 
@@ -2249,7 +2376,10 @@ function get_autocorrelation(𝓂::ℳ;
             ŝ_to_ŝ₂ⁱ *= ŝ_to_ŝ₂
         end
     else
-        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, 
+                                                                        verbose = verbose, 
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                        lyapunov_algorithm = lyapunov_algorithm)
 
         @assert solved "Could not find covariance matrix."
 
@@ -2300,6 +2430,7 @@ Return the first and second moments of endogenous variables using the first, pru
 - $DERIVATIVES
 - $PARAMETER_DERIVATIVES
 - $ALGORITHM
+- $QME
 - $LYAPUNOV
 - $SYLVESTER
 - `dependencies_tol` [Default: `1e-12`, Type: `AbstractFloat`]: tolerance for the effect of a variable on the variable of interest when isolating part of the system for calculating covariance related statistics
@@ -2355,23 +2486,29 @@ And data, 4×6 Matrix{Float64}:
 ```
 """
 function get_moments(𝓂::ℳ; 
-    parameters::ParameterType = nothing,  
-    non_stochastic_steady_state::Bool = true, 
-    mean::Bool = false,
-    standard_deviation::Bool = true, 
-    variance::Bool = false, 
-    covariance::Bool = false, 
-    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-    derivatives::Bool = true,
-    parameter_derivatives::Union{Symbol_input,String_input} = :all,
-    algorithm::Symbol = :first_order,
-    dependencies_tol::AbstractFloat = 1e-12,
-    sylvester_algorithm::Symbol = :doubling,
-    lyapunov_algorithm::Symbol = :doubling, 
-    verbose::Bool = false,
-    silent::Bool = false)#limit output by selecting pars and vars like for plots and irfs!?
+                    parameters::ParameterType = nothing,  
+                    non_stochastic_steady_state::Bool = true, 
+                    mean::Bool = false,
+                    standard_deviation::Bool = true, 
+                    variance::Bool = false, 
+                    covariance::Bool = false, 
+                    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
+                    derivatives::Bool = true,
+                    parameter_derivatives::Union{Symbol_input,String_input} = :all,
+                    dependencies_tol::AbstractFloat = 1e-12,
+                    algorithm::Symbol = :first_order,
+                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                    sylvester_algorithm::Symbol = :doubling,
+                    lyapunov_algorithm::Symbol = :doubling, 
+                    verbose::Bool = false,
+                    silent::Bool = false)#limit output by selecting pars and vars like for plots and irfs!?
 
-    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, silent = silent)
+    solve!(𝓂, 
+            parameters = parameters, 
+            algorithm = algorithm, 
+            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+            verbose = verbose, 
+            silent = silent)
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
@@ -2472,30 +2609,53 @@ function get_moments(𝓂::ℳ;
             end
 
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, 
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                sylvester_algorithm = sylvester_algorithm, 
+                                                lyapunov_algorithm = lyapunov_algorithm, 
+                                                verbose = verbose)
 
                 # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
-                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
+                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, 
+                                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                        sylvester_algorithm = sylvester_algorithm, 
+                                                                                        lyapunov_algorithm = lyapunov_algorithm, 
+                                                                                        verbose = verbose)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, 
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                sylvester_algorithm = sylvester_algorithm, 
+                                                                                lyapunov_algorithm = lyapunov_algorithm, 
+                                                                                verbose = verbose)
 
                 # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, dependencies_tol = dependencies_tol, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
-                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
+                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, 
+                                                                                        dependencies_tol = dependencies_tol, 
+                                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                        lyapunov_algorithm = lyapunov_algorithm, 
+                                                                                        sylvester_algorithm = sylvester_algorithm, 
+                                                                                        verbose = verbose)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, 
+                                                                        verbose = verbose, 
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                        lyapunov_algorithm = lyapunov_algorithm)
 
                 @assert solved "Could not find covariance matrix."
 
                 # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm), 𝓂.parameter_values[param_idx])[1]
-                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_covariance(x, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
+                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_covariance(x, 𝓂, 
+                                                                            verbose = verbose, 
+                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                            lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
             end
 
             vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
@@ -2517,13 +2677,25 @@ function get_moments(𝓂::ℳ;
 
                 if algorithm == :pruned_second_order
                     # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, 
+                                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                                sylvester_algorithm = sylvester_algorithm, 
+                                                                                                lyapunov_algorithm = lyapunov_algorithm, 
+                                                                                                verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
                 elseif algorithm == :pruned_third_order
                     # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, 
+                                                                                                dependencies_tol = dependencies_tol, 
+                                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                                lyapunov_algorithm = lyapunov_algorithm, 
+                                                                                                sylvester_algorithm = sylvester_algorithm, 
+                                                                                                verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
                 else
                     # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
-                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, 
+                                                                                    verbose = verbose, 
+                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                    lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
                 end
 
                 st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
@@ -2539,30 +2711,53 @@ function get_moments(𝓂::ℳ;
             end
 
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, 
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                sylvester_algorithm = sylvester_algorithm, 
+                                                lyapunov_algorithm = lyapunov_algorithm, 
+                                                verbose = verbose)
 
                 # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, 
+                                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                            sylvester_algorithm = sylvester_algorithm, 
+                                                                                            lyapunov_algorithm = lyapunov_algorithm, 
+                                                                                            verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, 
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                sylvester_algorithm = sylvester_algorithm, 
+                                                                                lyapunov_algorithm = lyapunov_algorithm, 
+                                                                                verbose = verbose)
 
                 # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, 
+                                                                                            dependencies_tol = dependencies_tol, 
+                                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                            lyapunov_algorithm = lyapunov_algorithm, 
+                                                                                            sylvester_algorithm = sylvester_algorithm, 
+                                                                                            verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, 
+                                                                        verbose = verbose, 
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                        lyapunov_algorithm = lyapunov_algorithm)
                 
                 @assert solved "Could not find covariance matrix."
 
                 # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
-                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, 
+                                                                                verbose = verbose, 
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                                lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
             end
 
             standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
@@ -2810,6 +3005,7 @@ Function to use when differentiating model moments with repect to parameters.
 - `autocorrelation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the autocorrelation of the mentioned variables
 - `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation of the mentioned variables
 - $ALGORITHM
+- $QME
 - $LYAPUNOV
 - $SYLVESTER
 - $VERBOSE
@@ -2840,19 +3036,20 @@ get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_
 ```
 """
 function get_statistics(𝓂, 
-    parameter_values::Vector{T}; 
-    parameters::Vector{Symbol} = Symbol[], 
-    non_stochastic_steady_state::Vector{Symbol} = Symbol[],
-    mean::Vector{Symbol} = Symbol[],
-    standard_deviation::Vector{Symbol} = Symbol[],
-    variance::Vector{Symbol} = Symbol[],
-    covariance::Vector{Symbol} = Symbol[],
-    autocorrelation::Vector{Symbol} = Symbol[],
-    autocorrelation_periods::U = 1:5,
-    algorithm::Symbol = :first_order,
-    sylvester_algorithm::Symbol = :doubling,
-    lyapunov_algorithm::Symbol = :doubling, 
-    verbose::Bool = false) where {U,T}
+                        parameter_values::Vector{T}; 
+                        parameters::Vector{Symbol} = Symbol[], 
+                        non_stochastic_steady_state::Vector{Symbol} = Symbol[],
+                        mean::Vector{Symbol} = Symbol[],
+                        standard_deviation::Vector{Symbol} = Symbol[],
+                        variance::Vector{Symbol} = Symbol[],
+                        covariance::Vector{Symbol} = Symbol[],
+                        autocorrelation::Vector{Symbol} = Symbol[],
+                        autocorrelation_periods::U = 1:5,
+                        algorithm::Symbol = :first_order,
+                        quadratic_matrix_equation_algorithm::Symbol = :schur,
+                        sylvester_algorithm::Symbol = :doubling,
+                        lyapunov_algorithm::Symbol = :doubling, 
+                        verbose::Bool = false) where {U,T}
 
     @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order, :pruned_third_order] "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
 
@@ -2999,6 +3196,7 @@ This function is differentiable (so far for the Kalman filter only) and can be u
 - `parameter_values` [Type: `Vector`]: Parameter values.
 # Keyword Arguments
 - $ALGORITHM
+- $QME
 - $FILTER
 - `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data for which the loglikelihood is discarded.
@@ -3032,19 +3230,19 @@ get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 ```
 """
 function get_loglikelihood(𝓂::ℳ, 
-    data::KeyedArray{Float64}, 
-    parameter_values::Vector{S}; 
-    algorithm::Symbol = :first_order, 
-    filter::Symbol = :kalman, 
-    warmup_iterations::Int = 0, 
-    presample_periods::Int = 0,
-    initial_covariance::Symbol = :theoretical,
-    filter_algorithm::Symbol = :LagrangeNewton,
-    quadratic_matrix_equation_solver::Symbol = :schur, 
-    sylvester_algorithm::Symbol = :bicgstab, 
-    tol::AbstractFloat = 1e-12, 
-    # timer::TimerOutput = TimerOutput(),
-    verbose::Bool = false)::S where S <: Real
+                            data::KeyedArray{Float64}, 
+                            parameter_values::Vector{S}; 
+                            algorithm::Symbol = :first_order, 
+                            quadratic_matrix_equation_algorithm::Symbol = :schur, 
+                            sylvester_algorithm::Symbol = :bicgstab, 
+                            filter::Symbol = :kalman, 
+                            warmup_iterations::Int = 0, 
+                            presample_periods::Int = 0,
+                            initial_covariance::Symbol = :theoretical,
+                            filter_algorithm::Symbol = :LagrangeNewton,
+                            tol::AbstractFloat = 1e-12, 
+                            # timer::TimerOutput = TimerOutput(),
+                            verbose::Bool = false)::S where S <: Real
 
     # if algorithm ∈ [:third_order,:pruned_third_order]
     #     sylvester_algorithm = :bicgstab
@@ -3088,7 +3286,7 @@ function get_loglikelihood(𝓂::ℳ,
                                                                                     𝓂, 
                                                                                     tol, 
                                                                                     # timer = timer, 
-                                                                                    quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                     sylvester_algorithm = sylvester_algorithm, 
                                                                                     verbose = verbose)
 

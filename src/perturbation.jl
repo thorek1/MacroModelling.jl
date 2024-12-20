@@ -1,6 +1,6 @@
 function calculate_first_order_solution(∇₁::Matrix{Float64}; 
                                         T::timings, 
-                                        quadratic_matrix_equation_solver::Symbol = :schur,
+                                        quadratic_matrix_equation_algorithm::Symbol = :schur,
                                         verbose::Bool = false,
                                         # timer::TimerOutput = TimerOutput(),
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{Float64}, Matrix{Float64}, Bool}
@@ -45,7 +45,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
 
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, 
                                             T, 
-                                            quadratic_matrix_equation_solver = quadratic_matrix_equation_solver, 
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
                                             # timer = timer,
                                             initial_guess = initial_guess,
                                             verbose = verbose)
@@ -119,7 +119,7 @@ end
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{Float64};
                 T::timings, 
-                quadratic_matrix_equation_solver::Symbol = :schur,
+                quadratic_matrix_equation_algorithm::Symbol = :schur,
                 verbose::Bool = false,
                 # timer::TimerOutput = TimerOutput(),
                 initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))
@@ -165,7 +165,7 @@ function rrule(::typeof(calculate_first_order_solution),
 
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, 
                                             T, 
-                                            quadratic_matrix_equation_solver = quadratic_matrix_equation_solver, 
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
                                             # timer = timer,
                                             initial_guess = initial_guess,
                                             verbose = verbose)
@@ -274,7 +274,7 @@ end
 
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
                                         T::timings, 
-                                        quadratic_matrix_equation_solver::Symbol = :schur,
+                                        quadratic_matrix_equation_algorithm::Symbol = :schur,
                                         verbose::Bool = false,
                                         # timer::TimerOutput = TimerOutput(),
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
@@ -290,7 +290,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
                                                 verbose = verbose,
                                                 initial_guess = initial_guess,
                                                 # timer = timer,
-                                                quadratic_matrix_equation_solver = quadratic_matrix_equation_solver)
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
 
     if !solved 
         return ∇₁, qme_sol, false

@@ -3358,7 +3358,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:first_order}, # algo
                                 ::Val{:inversion}; # filter
-                                quadratic_matrix_equation_solver::Symbol = :schur,
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 warmup_iterations::Int = 0,
                                 smooth::Bool = true,
                                 verbose::Bool = false)
@@ -3384,7 +3384,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                         T = T, 
-                                                        quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                         verbose = verbose)
     
@@ -3491,7 +3491,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:second_order}, # algo
                                 ::Val{:inversion}; # filter
-                                quadratic_matrix_equation_solver::Symbol = :schur,
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Symbol = :doubling, 
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
@@ -3504,7 +3504,7 @@ function filter_data_with_model(𝓂::ℳ,
     shocks = zeros(T.nExo, size(data_in_deviations,2))
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, 
-                            quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm = sylvester_algorithm,
                             verbose = verbose)
 
@@ -3711,7 +3711,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:pruned_second_order}, # algo
                                 ::Val{:inversion}; # filter
-                                quadratic_matrix_equation_solver::Symbol = :schur,
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Symbol = :doubling, 
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
@@ -3726,7 +3726,7 @@ function filter_data_with_model(𝓂::ℳ,
     observables = get_and_check_observables(𝓂, data_in_deviations)
     
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, 
-                                quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm = sylvester_algorithm,
                                 pruning = true, 
                                 verbose = verbose)
@@ -3990,7 +3990,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:third_order}, # algo
                                 ::Val{:inversion}; # filter
-                                quadratic_matrix_equation_solver::Symbol = :schur,
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
@@ -4003,7 +4003,7 @@ function filter_data_with_model(𝓂::ℳ,
     observables = get_and_check_observables(𝓂, data_in_deviations)
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, 
-                                quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 verbose = verbose)
 
     if !converged || solution_error > 1e-12
@@ -4303,7 +4303,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:pruned_third_order}, # algo
                                 ::Val{:inversion}; # filter
-                                quadratic_matrix_equation_solver::Symbol = :schur,
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
@@ -4318,7 +4318,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, 
                     pruning = true, 
-                    quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                     verbose = verbose)
 
     if !converged || solution_error > 1e-12

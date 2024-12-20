@@ -4080,7 +4080,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         verbose::Bool = false, 
                                                         pruning::Bool = false, 
-                                                        quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                        quadratic_matrix_equation_algorithm::Symbol = :schur, 
                                                         sylvester_algorithm::Symbol = :doubling, 
                                                         # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
@@ -4107,7 +4107,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                         T = 𝓂.timings, 
-                                                        quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                         verbose = verbose)
 
@@ -4415,7 +4415,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         𝓂::ℳ; 
                                                         verbose::Bool = false, 
                                                         pruning::Bool = false, 
-                                                        quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                        quadratic_matrix_equation_algorithm::Symbol = :schur, 
                                                         sylvester_algorithm::Symbol = :bicgstab, 
                                                         # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
@@ -4432,7 +4432,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                         T = 𝓂.timings, 
-                                                        quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                         verbose = verbose)
     
@@ -4749,6 +4749,7 @@ function solve!(𝓂::ℳ;
                 parameters::ParameterType = nothing, 
                 dynamics::Bool = false, 
                 algorithm::Symbol = :first_order, 
+                quadratic_matrix_equation_algorithm::Symbol = :schur,
                 obc::Bool = false,
                 verbose::Bool = false,
                 silent::Bool = false,
@@ -4801,13 +4802,11 @@ function solve!(𝓂::ℳ;
 
             # @timeit_debug timer "Calculate first order solution" begin
 
-            if algorithm == :first_order_doubling 
-                qme_solver = :doubling
-            else # default option
-                qme_solver = :schur
-            end
-
-            S₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, quadratic_matrix_equation_solver = qme_solver, verbose = verbose, initial_guess = 𝓂.solution.perturbation.qme_solution)
+            S₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                                T = 𝓂.timings, 
+                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                verbose = verbose, 
+                                                                initial_guess = 𝓂.solution.perturbation.qme_solution)
     
             if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -4826,7 +4825,11 @@ function solve!(𝓂::ℳ;
 
                 ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
-                Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; T = 𝓂.timings, quadratic_matrix_equation_solver = qme_solver, verbose = verbose, initial_guess = 𝓂.solution.perturbation.qme_solution)
+                Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; 
+                                                                    T = 𝓂.timings, 
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                                    verbose = verbose, 
+                                                                    initial_guess = 𝓂.solution.perturbation.qme_solution)
 
                 if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -4853,7 +4856,9 @@ function solve!(𝓂::ℳ;
             ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
             
 
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose) # , timer = timer)
+            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, 
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            verbose = verbose) # , timer = timer)
             
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
@@ -4886,7 +4891,10 @@ function solve!(𝓂::ℳ;
         if  ((:pruned_second_order  == algorithm) && ((:pruned_second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true) # , timer = timer)
+            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, 
+                                verbose = verbose, 
+                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                pruning = true) # , timer = timer)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
@@ -4917,7 +4925,9 @@ function solve!(𝓂::ℳ;
         
         obc_not_solved = isnothing(𝓂.solution.perturbation.third_order.state_update_obc)
         if  ((:third_order  == algorithm) && ((:third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose)
+            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, 
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            verbose = verbose)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
@@ -4949,7 +4959,10 @@ function solve!(𝓂::ℳ;
         obc_not_solved = isnothing(𝓂.solution.perturbation.pruned_third_order.state_update_obc)
         if ((:pruned_third_order  == algorithm) && ((:pruned_third_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
-            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, verbose = verbose, pruning = true)
+            stochastic_steady_state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, 
+                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                verbose = verbose, 
+                                pruning = true)
 
             if !converged  @warn "Solution does not have a stochastic steady state. Try reducing shock sizes by multiplying them with a number < 1." end
 
@@ -7283,14 +7296,14 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                    quadratic_matrix_equation_algorithm::Symbol = :schur, 
                                                     sylvester_algorithm::Symbol = :doubling,
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     verbose::Bool = false) where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 
                                                                     𝓂, 
                                                                     # timer = timer, 
-                                                                    quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                     sylvester_algorithm = sylvester_algorithm, 
                                                                     verbose = verbose)
 
@@ -7314,7 +7327,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                    quadratic_matrix_equation_algorithm::Symbol = :schur, 
                                                     sylvester_algorithm::Symbol = :doubling,
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     verbose::Bool = false)::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
@@ -7322,7 +7335,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order},
                                                                                                                     𝓂, 
                                                                                                                     pruning = true, 
                                                                                                                     # timer = timer, 
-                                                                                                                    quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                                                     sylvester_algorithm = sylvester_algorithm, 
                                                                                                                     verbose = verbose)
 
@@ -7347,14 +7360,14 @@ function get_relevant_steady_state_and_state_update(::Val{:third_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                    quadratic_matrix_equation_algorithm::Symbol = :schur, 
                                                     sylvester_algorithm::Symbol = :bicgstab,
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     verbose::Bool = false) where S <: Real
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 
                                                                                                                         𝓂, 
                                                                                                                         # timer = timer,     
-                                                                                                                        quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                                                         sylvester_algorithm = sylvester_algorithm, 
                                                                                                                         verbose = verbose)
 
@@ -7378,7 +7391,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                    quadratic_matrix_equation_algorithm::Symbol = :schur, 
                                                     sylvester_algorithm::Symbol = :bicgstab,
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     verbose::Bool = false)::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
@@ -7386,7 +7399,7 @@ function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order},
                                                                                                                         𝓂, 
                                                                                                                         pruning = true, 
                                                                                                                         # timer = timer,     
-                                                                                                                        quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                                                         sylvester_algorithm= sylvester_algorithm, 
                                                                                                                         verbose = verbose)
 
@@ -7409,7 +7422,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ, 
                                                     tol::AbstractFloat; 
-                                                    quadratic_matrix_equation_solver::Symbol = :schur, 
+                                                    quadratic_matrix_equation_algorithm::Symbol = :schur, 
                                                     sylvester_algorithm::Symbol = :bicgstab,
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     verbose::Bool = false)::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
@@ -7431,7 +7444,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                         T = TT, 
-                                                        quadratic_matrix_equation_solver = quadratic_matrix_equation_solver,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                         # timer = timer, 
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                         verbose = verbose)

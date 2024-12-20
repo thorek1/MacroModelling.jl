@@ -11,7 +11,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        quadratic_matrix_equation_solver::Symbol = :schur, 
+                                        quadratic_matrix_equation_algorithm::Symbol = :schur, 
                                         # timer::TimerOutput = TimerOutput(),
                                         tol::AbstractFloat = 1e-8, # 1e-14 is too tight
                                         verbose::Bool = false) where R <: Real
@@ -36,17 +36,17 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     end
 
     sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
-                                                        Val(quadratic_matrix_equation_solver), 
+                                                        Val(quadratic_matrix_equation_algorithm), 
                                                         T; 
                                                         initial_guess = initial_guess,
                                                         # tol = tol,
                                                         # timer = timer,
                                                         verbose = verbose)
 
-    if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_solver - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
+    if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_algorithm - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
 
     if reached_tol > tol
-        if quadratic_matrix_equation_solver ≠ :schur # try schur if previous one didn't solve it
+        if quadratic_matrix_equation_algorithm ≠ :schur # try schur if previous one didn't solve it
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:schur), 
                                                                 T; 
@@ -56,7 +56,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                                 verbose = verbose)
 
             if verbose println("Quadratic matrix equation solver: schur - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
-        else quadratic_matrix_equation_solver ≠ :doubling
+        else quadratic_matrix_equation_algorithm ≠ :doubling
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:doubling), 
                                                                 T; 
@@ -509,7 +509,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                         T::timings; 
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, 
-                                        quadratic_matrix_equation_solver::Symbol = :schur, 
+                                        quadratic_matrix_equation_algorithm::Symbol = :schur, 
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
@@ -518,7 +518,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     Ĉ = ℱ.value.(C)
 
     X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ, 
-                                                Val(quadratic_matrix_equation_solver), 
+                                                Val(quadratic_matrix_equation_algorithm), 
                                                 T; 
                                                 tol = tol,
                                                 initial_guess = initial_guess,
