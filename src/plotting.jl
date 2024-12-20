@@ -78,27 +78,36 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 ```
 """
 function plot_model_estimates(𝓂::ℳ,
-    data::KeyedArray{Float64};
-    parameters::ParameterType = nothing,
-    algorithm::Symbol = :first_order, 
-    filter::Symbol = :kalman, 
-    warmup_iterations::Int = 0,
-    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-    shocks::Union{Symbol_input,String_input} = :all, 
-    presample_periods::Int = 0,
-    data_in_levels::Bool = true,
-    shock_decomposition::Bool = false,
-    smooth::Bool = true,
-    show_plots::Bool = true,
-    save_plots::Bool = false,
-    save_plots_format::Symbol = :pdf,
-    save_plots_path::String = ".",
-    plots_per_page::Int = 9,
-    transparency::Float64 = .6,
-    max_elements_per_legend_row::Int = 4,
-    extra_legend_space::Float64 = 0.0,
-    plot_attributes::Dict = Dict(),
-    verbose::Bool = false)
+                                data::KeyedArray{Float64};
+                                parameters::ParameterType = nothing,
+                                algorithm::Symbol = :first_order, 
+                                filter::Symbol = :kalman, 
+                                warmup_iterations::Int = 0,
+                                variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
+                                shocks::Union{Symbol_input,String_input} = :all, 
+                                presample_periods::Int = 0,
+                                data_in_levels::Bool = true,
+                                shock_decomposition::Bool = false,
+                                smooth::Bool = true,
+                                show_plots::Bool = true,
+                                save_plots::Bool = false,
+                                save_plots_format::Symbol = :pdf,
+                                save_plots_path::String = ".",
+                                plots_per_page::Int = 9,
+                                transparency::Float64 = .6,
+                                max_elements_per_legend_row::Int = 4,
+                                extra_legend_space::Float64 = 0.0,
+                                plot_attributes::Dict = Dict(),
+                                verbose::Bool = false,
+                                tol::AbstractFloat = eps(),
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                sylvester_algorithm::Symbol = :doubling,
+                                lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = sylvester_algorithm,
+                                    lyapunov_algorithm = lyapunov_algorithm)
 
     attributes = merge(default_plot_attributes, plot_attributes)
 
@@ -437,23 +446,32 @@ plot_irf(RBC)
 ```
 """
 function plot_irf(𝓂::ℳ;
-    periods::Int = 40, 
-    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
-    variables::Union{Symbol_input,String_input} = :all_excluding_auxilliary_and_obc,
-    parameters::ParameterType = nothing,
-    show_plots::Bool = true,
-    save_plots::Bool = false,
-    save_plots_format::Symbol = :pdf,
-    save_plots_path::String = ".",
-    plots_per_page::Int = 9, 
-    algorithm::Symbol = :first_order,
-    negative_shock::Bool = false,
-    shock_size::Real = 1,
-    generalised_irf::Bool = false,
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-    ignore_obc::Bool = false,
-    plot_attributes::Dict = Dict(),
-    verbose::Bool = false)
+                    periods::Int = 40, 
+                    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
+                    variables::Union{Symbol_input,String_input} = :all_excluding_auxilliary_and_obc,
+                    parameters::ParameterType = nothing,
+                    show_plots::Bool = true,
+                    save_plots::Bool = false,
+                    save_plots_format::Symbol = :pdf,
+                    save_plots_path::String = ".",
+                    plots_per_page::Int = 9, 
+                    algorithm::Symbol = :first_order,
+                    negative_shock::Bool = false,
+                    shock_size::Real = 1,
+                    generalised_irf::Bool = false,
+                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+                    ignore_obc::Bool = false,
+                    plot_attributes::Dict = Dict(),
+                    verbose::Bool = false,
+                    tol::AbstractFloat = eps(),
+                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                    sylvester_algorithm::Symbol = :doubling,
+                    lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                    sylvester_algorithm = sylvester_algorithm,
+                    lyapunov_algorithm = lyapunov_algorithm)
 
     attributes = merge(default_plot_attributes, plot_attributes)
 
@@ -897,18 +915,25 @@ plot_conditional_variance_decomposition(RBC_CME)
 ```
 """
 function plot_conditional_variance_decomposition(𝓂::ℳ;
-    periods::Int = 40, 
-    variables::Union{Symbol_input,String_input} = :all,
-    parameters::ParameterType = nothing,
-    show_plots::Bool = true,
-    save_plots::Bool = false,
-    save_plots_format::Symbol = :pdf,
-    save_plots_path::String = ".",
-    plots_per_page::Int = 9, 
-    plot_attributes::Dict = Dict(),
-    max_elements_per_legend_row::Int = 4,
-    extra_legend_space::Float64 = 0.0,
-    verbose::Bool = false)
+                                                periods::Int = 40, 
+                                                variables::Union{Symbol_input,String_input} = :all,
+                                                parameters::ParameterType = nothing,
+                                                show_plots::Bool = true,
+                                                save_plots::Bool = false,
+                                                save_plots_format::Symbol = :pdf,
+                                                save_plots_path::String = ".",
+                                                plots_per_page::Int = 9, 
+                                                plot_attributes::Dict = Dict(),
+                                                max_elements_per_legend_row::Int = 4,
+                                                extra_legend_space::Float64 = 0.0,
+                                                verbose::Bool = false,
+                                                tol::AbstractFloat = eps(),
+                                                quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                                lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                lyapunov_algorithm = lyapunov_algorithm)
 
     attributes = merge(default_plot_attributes, plot_attributes)
 
@@ -1090,19 +1115,26 @@ plot_solution(RBC_CME, :k)
 ```
 """
 function plot_solution(𝓂::ℳ,
-    state::Union{Symbol,String};
-    variables::Union{Symbol_input,String_input} = :all,
-    algorithm::Union{Symbol,Vector{Symbol}} = :first_order,
-    σ::Union{Int64,Float64} = 2,
-    parameters::ParameterType = nothing,
-    ignore_obc::Bool = false,
-    show_plots::Bool = true,
-    save_plots::Bool = false,
-    save_plots_format::Symbol = :pdf,
-    save_plots_path::String = ".",
-    plots_per_page::Int = 6,
-    plot_attributes::Dict = Dict(),
-    verbose::Bool = false)
+                        state::Union{Symbol,String};
+                        variables::Union{Symbol_input,String_input} = :all,
+                        algorithm::Union{Symbol,Vector{Symbol}} = :first_order,
+                        σ::Union{Int64,Float64} = 2,
+                        parameters::ParameterType = nothing,
+                        ignore_obc::Bool = false,
+                        show_plots::Bool = true,
+                        save_plots::Bool = false,
+                        save_plots_format::Symbol = :pdf,
+                        save_plots_path::String = ".",
+                        plots_per_page::Int = 6,
+                        plot_attributes::Dict = Dict(),
+                        verbose::Bool = false,
+                        tol::AbstractFloat = eps(),
+                        quadratic_matrix_equation_algorithm::Symbol = :schur,
+                        sylvester_algorithm::Symbol = :doubling)
+                    
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            sylvester_algorithm = sylvester_algorithm)
 
     attributes = merge(default_plot_attributes, plot_attributes)
 
@@ -1436,22 +1468,31 @@ plot_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_le
 ```
 """
 function plot_conditional_forecast(𝓂::ℳ,
-    conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
-    shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-    periods::Int = 40, 
-    parameters::ParameterType = nothing,
-    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-    conditions_in_levels::Bool = true,
-    algorithm::Symbol = :first_order,
-    levels::Bool = false,
-    show_plots::Bool = true,
-    save_plots::Bool = false,
-    save_plots_format::Symbol = :pdf,
-    save_plots_path::String = ".",
-    plots_per_page::Int = 9,
-    plot_attributes::Dict = Dict(),
-    verbose::Bool = false)
+                                    conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
+                                    shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
+                                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+                                    periods::Int = 40, 
+                                    parameters::ParameterType = nothing,
+                                    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
+                                    conditions_in_levels::Bool = true,
+                                    algorithm::Symbol = :first_order,
+                                    levels::Bool = false,
+                                    show_plots::Bool = true,
+                                    save_plots::Bool = false,
+                                    save_plots_format::Symbol = :pdf,
+                                    save_plots_path::String = ".",
+                                    plots_per_page::Int = 9,
+                                    plot_attributes::Dict = Dict(),
+                                    verbose::Bool = false,
+                                    tol::AbstractFloat = eps(),
+                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                    sylvester_algorithm::Symbol = :doubling,
+                                    lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = sylvester_algorithm,
+                                    lyapunov_algorithm = lyapunov_algorithm)
 
     attributes = merge(default_plot_attributes, plot_attributes)
 
