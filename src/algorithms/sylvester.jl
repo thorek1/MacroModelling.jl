@@ -145,6 +145,23 @@ function solve_sylvester_equation(A::M,
         end
     end
 
+    if !(reached_tol < tol) && sylvester_algorithm ≠ :doubling
+        aa = collect(A)
+
+        cc = collect(C)
+
+        x, i, reached_tol = solve_sylvester_equation(aa, b, cc, 
+                                                            Val(:doubling), 
+                                                            initial_guess = zeros(0,0), 
+                                                            # tol = tol, 
+                                                            # timer = timer, 
+                                                            verbose = verbose)
+
+        if verbose# && i != 0
+            println("Sylvester equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $reached_tol; algorithm: doubling")
+        end
+    end
+
     # if !solved && sylvester_algorithm ≠ :bicgstab
     #     aa = collect(A)
 
