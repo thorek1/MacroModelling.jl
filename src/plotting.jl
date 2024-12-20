@@ -1,13 +1,5 @@
 import LaTeXStrings
 
-const default_attributes = Dict(:size=>(700,500),
-                                :plot_titlefont => 10, 
-                                :titlefont => 10, 
-                                :guidefont => 8, 
-                                :legendfontsize => 8, 
-                                :tickfontsize => 8,
-                                :framestyle => :semi)
-
 """
 ```
 gr_backend()
@@ -108,7 +100,7 @@ function plot_model_estimates(𝓂::ℳ,
     plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    attributes = merge(default_attributes, plot_attributes)
+    attributes = merge(default_plot_attributes, plot_attributes)
 
     attributes_redux = copy(attributes)
 
@@ -463,7 +455,7 @@ function plot_irf(𝓂::ℳ;
     plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    attributes = merge(default_attributes, plot_attributes)
+    attributes = merge(default_plot_attributes, plot_attributes)
 
     attributes_redux = copy(attributes)
 
@@ -918,7 +910,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     extra_legend_space::Float64 = 0.0,
     verbose::Bool = false)
 
-    attributes = merge(default_attributes, plot_attributes)
+    attributes = merge(default_plot_attributes, plot_attributes)
 
     attributes_redux = copy(attributes)
 
@@ -1112,7 +1104,7 @@ function plot_solution(𝓂::ℳ,
     plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    attributes = merge(default_attributes, plot_attributes)
+    attributes = merge(default_plot_attributes, plot_attributes)
 
     attributes_redux = copy(attributes)
 
@@ -1461,7 +1453,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     plot_attributes::Dict = Dict(),
     verbose::Bool = false)
 
-    attributes = merge(default_attributes, plot_attributes)
+    attributes = merge(default_plot_attributes, plot_attributes)
 
     attributes_redux = copy(attributes)
 
