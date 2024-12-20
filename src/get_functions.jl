@@ -1439,9 +1439,13 @@ function get_steady_state(𝓂::ℳ;
     return_variables_only::Bool = false,
     verbose::Bool = false,
     silent::Bool = false,
-    tol::AbstractFloat = 1e-12)
+    tol::AbstractFloat = 1e-12,
+    quadratic_matrix_equation_algorithm::Symbol = :schur,
+    sylvester_algorithm::Symbol = :doubling)
 
-    opts = merge_calculation_options(tol = tol, verbose = verbose)
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = sylvester_algorithm)
 
     if !(algorithm == :first_order) stochastic = true end
     
