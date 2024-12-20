@@ -68,11 +68,19 @@ function get_shock_decomposition(𝓂::ℳ,
                                 parameters::ParameterType = nothing,
                                 filter::Symbol = :kalman,
                                 algorithm::Symbol = :first_order,
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 data_in_levels::Bool = true,
                                 warmup_iterations::Int = 0,
                                 smooth::Bool = true,
-                                verbose::Bool = false)
+                                verbose::Bool = false,
+                                tol::AbstractFloat = eps(),
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                sylvester_algorithm::Symbol = :doubling,
+                                lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+        sylvester_algorithm = sylvester_algorithm,
+        lyapunov_algorithm = lyapunov_algorithm)
 
     pruning = false
 
@@ -200,12 +208,20 @@ function get_estimated_shocks(𝓂::ℳ,
                             data::KeyedArray{Float64};
                             parameters::ParameterType = nothing,
                             algorithm::Symbol = :first_order, 
-                            quadratic_matrix_equation_algorithm::Symbol = :schur,
                             filter::Symbol = :kalman, 
                             warmup_iterations::Int = 0,
                             data_in_levels::Bool = true,
                             smooth::Bool = true,
-                            verbose::Bool = false)
+                            verbose::Bool = false,
+                            tol::AbstractFloat = eps(),
+                            quadratic_matrix_equation_algorithm::Symbol = :schur,
+                            sylvester_algorithm::Symbol = :doubling,
+                            lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+        sylvester_algorithm = sylvester_algorithm,
+        lyapunov_algorithm = lyapunov_algorithm)
 
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
@@ -316,13 +332,21 @@ function get_estimated_variables(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
                                 algorithm::Symbol = :first_order, 
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 filter::Symbol = :kalman, 
                                 warmup_iterations::Int = 0,
                                 data_in_levels::Bool = true,
                                 levels::Bool = true,
                                 smooth::Bool = true,
-                                verbose::Bool = false)
+                                verbose::Bool = false,
+                                tol::AbstractFloat = eps(),
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                sylvester_algorithm::Symbol = :doubling,
+                                lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+        sylvester_algorithm = sylvester_algorithm,
+        lyapunov_algorithm = lyapunov_algorithm)
 
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
@@ -423,17 +447,24 @@ And data, 4×40 Matrix{Float64}:
 """
 function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                     data::KeyedArray{Float64};
-                                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
                                                     parameters::ParameterType = nothing,
                                                     data_in_levels::Bool = true,
                                                     smooth::Bool = true,
-                                                    verbose::Bool = false)
+                                                    verbose::Bool = false,
+                                                    tol::AbstractFloat = eps(),
+                                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                                    # sylvester_algorithm::Symbol = :doubling,
+                                                    lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+        # sylvester_algorithm = sylvester_algorithm,
+        lyapunov_algorithm = lyapunov_algorithm)
 
     algorithm = :first_order
 
     solve!(𝓂, 
             parameters = parameters, 
-            # algorithm = algorithm, 
             verbose = verbose, 
             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
             dynamics = true)
@@ -573,9 +604,17 @@ function get_conditional_forecast(𝓂::ℳ,
                                 variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
                                 conditions_in_levels::Bool = true,
                                 algorithm::Symbol = :first_order,
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 levels::Bool = false,
-                                verbose::Bool = false)
+                                verbose::Bool = false,
+                                tol::AbstractFloat = eps(),
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                sylvester_algorithm::Symbol = :doubling,
+                                lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+        sylvester_algorithm = sylvester_algorithm,
+        lyapunov_algorithm = lyapunov_algorithm)
 
     periods += max(size(conditions,2), shocks isa Nothing ? 1 : size(shocks,2)) # isa Nothing needed otherwise JET tests fail
 
@@ -885,8 +924,12 @@ function get_irf(𝓂::ℳ,
                     negative_shock::Bool = false, 
                     initial_state::Vector{Float64} = [0.0],
                     levels::Bool = false,
-                    quadratic_matrix_equation_algorithm::Symbol = :schur,
-                    verbose::Bool = false) where S <: Real
+                    verbose::Bool = false,
+                    tol::AbstractFloat = eps(),
+                    quadratic_matrix_equation_algorithm::Symbol = :schur) where S <: Real
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
 
     solve!(𝓂, 
             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
@@ -1040,7 +1083,6 @@ And data, 4×40×1 Array{Float64, 3}:
 function get_irf(𝓂::ℳ; 
     periods::Int = 40, 
     algorithm::Symbol = :first_order, 
-    quadratic_matrix_equation_algorithm::Symbol = :schur,
     parameters::ParameterType = nothing,
     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
@@ -1051,7 +1093,16 @@ function get_irf(𝓂::ℳ;
     shock_size::Real = 1,
     ignore_obc::Bool = false,
     # timer::TimerOutput = TimerOutput(),
-    verbose::Bool = false)
+    verbose::Bool = false,
+    tol::AbstractFloat = eps(),
+    quadratic_matrix_equation_algorithm::Symbol = :schur,
+    sylvester_algorithm::Symbol = :doubling,
+    lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+        sylvester_algorithm = sylvester_algorithm,
+        lyapunov_algorithm = lyapunov_algorithm)
 
     # @timeit_debug timer "Wrangling inputs" begin
 
@@ -1088,7 +1139,7 @@ function get_irf(𝓂::ℳ;
 
         shock_history = zeros(𝓂.timings.nExo, periods + 1)
 
-        shock_history[indexin(shock_input,𝓂.timings.exo),1:size(shocks)[2]] = shocks
+        shock_history[indexin(shock_input, 𝓂.timings.exo),1:size(shocks)[2]] = shocks
 
         shock_idx = 1
 
@@ -1384,12 +1435,13 @@ function get_steady_state(𝓂::ℳ;
     derivatives::Bool = true, 
     stochastic::Bool = false,
     algorithm::Symbol = :first_order,
-    quadratic_matrix_equation_algorithm::Symbol = :schur,
     parameter_derivatives::Union{Symbol_input,String_input} = :all,
     return_variables_only::Bool = false,
     verbose::Bool = false,
     silent::Bool = false,
     tol::AbstractFloat = 1e-12)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose)
 
     if !(algorithm == :first_order) stochastic = true end
     
@@ -1669,9 +1721,15 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 function get_solution(𝓂::ℳ; 
     parameters::ParameterType = nothing,
     algorithm::Symbol = :first_order, 
-    quadratic_matrix_equation_algorithm::Symbol = :schur,
     silent::Bool = false,
-    verbose::Bool = false)
+    verbose::Bool = false,
+    tol::AbstractFloat = eps(),
+    quadratic_matrix_equation_algorithm::Symbol = :schur,
+    sylvester_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+        sylvester_algorithm = sylvester_algorithm)
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -1788,9 +1846,15 @@ get_perturbation_solution(args...; kwargs...) = get_solution(args...; kwargs...)
 function get_solution(𝓂::ℳ, 
                         parameters::Vector{S}; 
                         algorithm::Symbol = :first_order, 
-                        quadratic_matrix_equation_algorithm::Symbol = :schur,
                         verbose::Bool = false, 
-                        tol::AbstractFloat = 1e-12) where S <: Real
+                        tol::AbstractFloat = 1e-12,
+                        quadratic_matrix_equation_algorithm::Symbol = :schur,
+                        sylvester_algorithm::Symbol = :doubling) where S <: Real
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                        sylvester_algorithm = sylvester_algorithm)
+
     @ignore_derivatives solve!(𝓂, 
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
                                 verbose = verbose, 
@@ -1886,7 +1950,7 @@ function get_solution(𝓂::ℳ,
 end
 
 
-
+# TODO: do this for higher order, get rid of Krylov call here
 """
 $(SIGNATURES)
 Return the conditional variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
@@ -1968,8 +2032,14 @@ And data, 7×2×21 Array{Float64, 3}:
 function get_conditional_variance_decomposition(𝓂::ℳ; 
                                                 periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = [1:20...,Inf],
                                                 parameters::ParameterType = nothing,  
+                                                verbose::Bool = false,
+                                                tol::AbstractFloat = eps(),
                                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                                verbose::Bool = false)
+                                                lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                lyapunov_algorithm = lyapunov_algorithm)
 
     solve!(𝓂, 
             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
@@ -2065,7 +2135,7 @@ fevd = get_conditional_variance_decomposition
 
 
 
-
+# TODO: implement this for higher order
 """
 $(SIGNATURES)
 Return the variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
@@ -2122,10 +2192,15 @@ And data, 7×2 Matrix{Float64}:
 ```
 """
 function get_variance_decomposition(𝓂::ℳ; 
-    parameters::ParameterType = nothing,  
-    quadratic_matrix_equation_algorithm::Symbol = :schur,
-    lyapunov_algorithm::Symbol = :doubling,
-    verbose::Bool = false)
+                                    parameters::ParameterType = nothing,  
+                                    verbose::Bool = false,
+                                    tol::AbstractFloat = eps(),
+                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                    lyapunov_algorithm::Symbol = :doubling)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    lyapunov_algorithm = lyapunov_algorithm)
     
     solve!(𝓂, 
             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
@@ -2238,8 +2313,14 @@ function get_correlation(𝓂::ℳ;
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                         sylvester_algorithm::Symbol = :doubling,
                         lyapunov_algorithm::Symbol = :doubling, 
-                        verbose::Bool = false)
-    
+                        verbose::Bool = false,
+                        tol::AbstractFloat = eps())
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                        sylvester_algorithm = sylvester_algorithm,
+                        lyapunov_algorithm = lyapunov_algorithm)
+
     @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
     solve!(𝓂, 
@@ -2343,8 +2424,14 @@ function get_autocorrelation(𝓂::ℳ;
                             quadratic_matrix_equation_algorithm::Symbol = :schur,
                             sylvester_algorithm::Symbol = :doubling,
                             lyapunov_algorithm::Symbol = :doubling, 
-                            verbose::Bool = false)
+                            verbose::Bool = false,
+                            tol::AbstractFloat = eps())
     
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            sylvester_algorithm = sylvester_algorithm,
+                            lyapunov_algorithm = lyapunov_algorithm)
+
     @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order, :pruned_third_order] "Autocorrelation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
     solve!(𝓂, 
@@ -2497,11 +2584,17 @@ function get_moments(𝓂::ℳ;
                     parameter_derivatives::Union{Symbol_input,String_input} = :all,
                     dependencies_tol::AbstractFloat = 1e-12,
                     algorithm::Symbol = :first_order,
+                    silent::Bool = false,
                     quadratic_matrix_equation_algorithm::Symbol = :schur,
                     sylvester_algorithm::Symbol = :doubling,
                     lyapunov_algorithm::Symbol = :doubling, 
                     verbose::Bool = false,
-                    silent::Bool = false)#limit output by selecting pars and vars like for plots and irfs!?
+                    tol::AbstractFloat = eps())#limit output by selecting pars and vars like for plots and irfs!?
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                    sylvester_algorithm = sylvester_algorithm,
+                    lyapunov_algorithm = lyapunov_algorithm)
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -3049,7 +3142,13 @@ function get_statistics(𝓂,
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                         sylvester_algorithm::Symbol = :doubling,
                         lyapunov_algorithm::Symbol = :doubling, 
-                        verbose::Bool = false) where {U,T}
+                        verbose::Bool = false,
+                        tol::AbstractFloat = eps()) where {U,T}
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                        sylvester_algorithm = sylvester_algorithm,
+                        lyapunov_algorithm = lyapunov_algorithm)
 
     @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order, :pruned_third_order] "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
 
@@ -3233,16 +3332,22 @@ function get_loglikelihood(𝓂::ℳ,
                             data::KeyedArray{Float64}, 
                             parameter_values::Vector{S}; 
                             algorithm::Symbol = :first_order, 
-                            quadratic_matrix_equation_algorithm::Symbol = :schur, 
-                            sylvester_algorithm::Symbol = :bicgstab, 
                             filter::Symbol = :kalman, 
                             warmup_iterations::Int = 0, 
                             presample_periods::Int = 0,
                             initial_covariance::Symbol = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
                             tol::AbstractFloat = 1e-12, 
+                            quadratic_matrix_equation_algorithm::Symbol = :schur, 
+                            lyapunov_algorithm::Symbol = :doubling, 
+                            sylvester_algorithm::Symbol = :bicgstab, 
                             # timer::TimerOutput = TimerOutput(),
                             verbose::Bool = false)::S where S <: Real
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            sylvester_algorithm = sylvester_algorithm,
+                            lyapunov_algorithm = lyapunov_algorithm)
 
     # if algorithm ∈ [:third_order,:pruned_third_order]
     #     sylvester_algorithm = :bicgstab
@@ -3375,11 +3480,13 @@ And data, 5-element Vector{Float64}:
  (:CalibrationEquation₁)  8.160392850342646e-8
 ```
 """
-function get_non_stochastic_steady_state_residuals(
-                𝓂::ℳ, 
+function get_non_stochastic_steady_state_residuals(𝓂::ℳ, 
                 values::Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}; 
-                parameters::ParameterType = nothing
-    )
+                parameters::ParameterType = nothing,
+                tol::AbstractFloat = eps(),
+                verbose::Bool = false)
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose)
     
     solve!(𝓂, parameters = parameters)
 

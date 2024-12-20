@@ -100,6 +100,7 @@ const ParameterType = Union{Nothing,
 
 # Imports
 include("common_docstrings.jl")
+include("options.jl")
 include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")
