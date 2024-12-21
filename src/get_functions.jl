@@ -74,12 +74,14 @@ function get_shock_decomposition(𝓂::ℳ,
                                 verbose::Bool = false,
                                 tol::AbstractFloat = eps(),
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                sylvester_algorithm::Symbol = :doubling,
+                                sylvester_algorithm²::Symbol = :doubling,
+                                sylvester_algorithm³::Symbol = :bicgstab,
                                 lyapunov_algorithm::Symbol = :doubling)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-        sylvester_algorithm = sylvester_algorithm,
+        sylvester_algorithm² = sylvester_algorithm²,
+        sylvester_algorithm³ = sylvester_algorithm³,
         lyapunov_algorithm = lyapunov_algorithm)
 
     pruning = false
@@ -215,12 +217,14 @@ function get_estimated_shocks(𝓂::ℳ,
                             verbose::Bool = false,
                             tol::AbstractFloat = eps(),
                             quadratic_matrix_equation_algorithm::Symbol = :schur,
-                            sylvester_algorithm::Symbol = :doubling,
+                            sylvester_algorithm²::Symbol = :doubling,
+                            sylvester_algorithm³::Symbol = :bicgstab,
                             lyapunov_algorithm::Symbol = :doubling)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-        sylvester_algorithm = sylvester_algorithm,
+        sylvester_algorithm² = sylvester_algorithm²,
+        sylvester_algorithm³ = sylvester_algorithm³,
         lyapunov_algorithm = lyapunov_algorithm)
 
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
@@ -340,12 +344,14 @@ function get_estimated_variables(𝓂::ℳ,
                                 verbose::Bool = false,
                                 tol::AbstractFloat = eps(),
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                sylvester_algorithm::Symbol = :doubling,
+                                sylvester_algorithm²::Symbol = :doubling,
+                                sylvester_algorithm³::Symbol = :bicgstab,
                                 lyapunov_algorithm::Symbol = :doubling)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-        sylvester_algorithm = sylvester_algorithm,
+        sylvester_algorithm² = sylvester_algorithm²,
+        sylvester_algorithm³ = sylvester_algorithm³,
         lyapunov_algorithm = lyapunov_algorithm)
 
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
@@ -453,12 +459,10 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                     verbose::Bool = false,
                                                     tol::AbstractFloat = eps(),
                                                     quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                                    # sylvester_algorithm::Symbol = :doubling,
                                                     lyapunov_algorithm::Symbol = :doubling)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-        # sylvester_algorithm = sylvester_algorithm,
         lyapunov_algorithm = lyapunov_algorithm)
 
     algorithm = :first_order
@@ -608,12 +612,14 @@ function get_conditional_forecast(𝓂::ℳ,
                                 verbose::Bool = false,
                                 tol::AbstractFloat = eps(),
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                sylvester_algorithm::Symbol = :doubling,
+                                sylvester_algorithm²::Symbol = :doubling,
+                                sylvester_algorithm³::Symbol = :bicgstab,
                                 lyapunov_algorithm::Symbol = :doubling)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-        sylvester_algorithm = sylvester_algorithm,
+        sylvester_algorithm² = sylvester_algorithm²,
+        sylvester_algorithm³ = sylvester_algorithm³,
         lyapunov_algorithm = lyapunov_algorithm)
 
     periods += max(size(conditions,2), shocks isa Nothing ? 1 : size(shocks,2)) # isa Nothing needed otherwise JET tests fail
@@ -931,9 +937,7 @@ function get_irf(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
 
-    solve!(𝓂, 
-            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-            verbose = verbose)
+    solve!(𝓂, opts = opts)
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
@@ -1096,12 +1100,14 @@ function get_irf(𝓂::ℳ;
     verbose::Bool = false,
     tol::AbstractFloat = eps(),
     quadratic_matrix_equation_algorithm::Symbol = :schur,
-    sylvester_algorithm::Symbol = :doubling,
+    sylvester_algorithm²::Symbol = :doubling,
+    sylvester_algorithm³::Symbol = :bicgstab,
     lyapunov_algorithm::Symbol = :doubling)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-        sylvester_algorithm = sylvester_algorithm,
+        sylvester_algorithm² = sylvester_algorithm²,
+        sylvester_algorithm³ = sylvester_algorithm³,
         lyapunov_algorithm = lyapunov_algorithm)
 
     # @timeit_debug timer "Wrangling inputs" begin
@@ -1441,17 +1447,17 @@ function get_steady_state(𝓂::ℳ;
     silent::Bool = false,
     tol::AbstractFloat = 1e-12,
     quadratic_matrix_equation_algorithm::Symbol = :schur,
-    sylvester_algorithm::Symbol = :doubling)
+    sylvester_algorithm²::Symbol = :doubling,
+    sylvester_algorithm³::Symbol = :bicgstab)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = sylvester_algorithm)
+                                    sylvester_algorithm² = sylvester_algorithm²,
+                                    sylvester_algorithm³ = sylvester_algorithm³)
 
     if !(algorithm == :first_order) stochastic = true end
     
-    solve!(𝓂, 
-            parameters = parameters, 
-            verbose = verbose)
+    solve!(𝓂, parameters = parameters, opts = opts)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
     
@@ -1481,10 +1487,9 @@ function get_steady_state(𝓂::ℳ;
 
     if stochastic
         solve!(𝓂, 
-                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                verbose = verbose, 
+                opts = opts, 
                 dynamics = true, 
-                algorithm = algorithm, 
+                algorithm = algorithm ∈ [:first_order, :first_order_doubling] ? :second_order : algorithm, 
                 silent = silent, 
                 obc = length(𝓂.obc_violation_equations) > 0)
 
@@ -1534,9 +1539,7 @@ function get_steady_state(𝓂::ℳ;
                     #             SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
                     #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x -> begin SSS = calculate_third_order_stochastic_steady_state(x, 𝓂, 
-                                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                                    verbose = verbose)
+                    dSSS = 𝒟.jacobian(x -> begin SSS = calculate_third_order_stochastic_steady_state(x, 𝓂, opts = opts)
                                         return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     end, backend, 𝓂.parameter_values)[:,param_idx]
 
@@ -1548,10 +1551,7 @@ function get_steady_state(𝓂::ℳ;
                     #             SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
                     #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x-> begin SSS= calculate_third_order_stochastic_steady_state(x, 𝓂, 
-                                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                                    verbose = verbose, 
-                                                                                                    pruning = true)
+                    dSSS = 𝒟.jacobian(x-> begin SSS= calculate_third_order_stochastic_steady_state(x, 𝓂, opts = opts, pruning = true)
                                         return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     end, backend, 𝓂.parameter_values)[:,param_idx]
 
@@ -1562,10 +1562,7 @@ function get_steady_state(𝓂::ℳ;
                     #             SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
                     #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, 
-                                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                                    verbose = verbose, 
-                                                                                                    pruning = true)
+                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, opts = opts, pruning = true)
                                         return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     end, backend, 𝓂.parameter_values)[:,param_idx]
 
@@ -1576,9 +1573,7 @@ function get_steady_state(𝓂::ℳ;
                     #             SSS  = SSS_second_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)
                     #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, 
-                                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                                    verbose = verbose)
+                    dSSS = 𝒟.jacobian(x->begin SSS = calculate_second_order_stochastic_steady_state(x, 𝓂, opts = opts)
                                         return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     end, backend, 𝓂.parameter_values)[:,param_idx]
 
@@ -1729,16 +1724,17 @@ function get_solution(𝓂::ℳ;
     verbose::Bool = false,
     tol::AbstractFloat = eps(),
     quadratic_matrix_equation_algorithm::Symbol = :schur,
-    sylvester_algorithm::Symbol = :doubling)
+    sylvester_algorithm²::Symbol = :doubling,
+    sylvester_algorithm³::Symbol = :bicgstab)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
-        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-        sylvester_algorithm = sylvester_algorithm)
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm² = sylvester_algorithm²,
+                                    sylvester_algorithm³ = sylvester_algorithm³)
 
     solve!(𝓂, 
             parameters = parameters, 
-            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-            verbose = verbose, 
+            opts = opts,
             dynamics = true, 
             silent = silent, 
             algorithm = algorithm)
@@ -1853,16 +1849,15 @@ function get_solution(𝓂::ℳ,
                         verbose::Bool = false, 
                         tol::AbstractFloat = 1e-12,
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
-                        sylvester_algorithm::Symbol = :doubling) where S <: Real
+                        sylvester_algorithm²::Symbol = :doubling,
+                        sylvester_algorithm³::Symbol = :bicgstab) where S <: Real
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
-                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                        sylvester_algorithm = sylvester_algorithm)
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm² = sylvester_algorithm²,
+                                    sylvester_algorithm³ = sylvester_algorithm³)
 
-    @ignore_derivatives solve!(𝓂, 
-                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                verbose = verbose, 
-                                algorithm = algorithm)
+    @ignore_derivatives solve!(𝓂, opts = opts, algorithm = algorithm)
 
     
     for (k,v) in 𝓂.bounds
@@ -2045,10 +2040,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 lyapunov_algorithm = lyapunov_algorithm)
 
-    solve!(𝓂, 
-            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-            parameters = parameters, 
-            verbose = verbose)
+    solve!(𝓂, opts = opts, parameters = parameters)
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
@@ -2206,10 +2198,7 @@ function get_variance_decomposition(𝓂::ℳ;
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     lyapunov_algorithm = lyapunov_algorithm)
     
-    solve!(𝓂, 
-            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-            parameters = parameters, 
-            verbose = verbose)
+    solve!(𝓂, opts = opts, parameters = parameters)
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose)
     
@@ -2315,23 +2304,24 @@ function get_correlation(𝓂::ℳ;
                         parameters::ParameterType = nothing,  
                         algorithm::Symbol = :first_order,
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
-                        sylvester_algorithm::Symbol = :doubling,
+                        sylvester_algorithm²::Symbol = :doubling,
+                        sylvester_algorithm³::Symbol = :bicgstab,
                         lyapunov_algorithm::Symbol = :doubling, 
                         verbose::Bool = false,
                         tol::AbstractFloat = eps())
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                        sylvester_algorithm = sylvester_algorithm,
+                        sylvester_algorithm² = sylvester_algorithm²,
+                        sylvester_algorithm³ = sylvester_algorithm³,
                         lyapunov_algorithm = lyapunov_algorithm)
 
     @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
     solve!(𝓂, 
             parameters = parameters, 
-            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-            algorithm = algorithm, 
-            verbose = verbose)
+            opts = opts, 
+            algorithm = algorithm)
 
     if algorithm == :pruned_third_order
         covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
@@ -2426,23 +2416,24 @@ function get_autocorrelation(𝓂::ℳ;
                             parameters::ParameterType = nothing,  
                             algorithm::Symbol = :first_order,
                             quadratic_matrix_equation_algorithm::Symbol = :schur,
-                            sylvester_algorithm::Symbol = :doubling,
+                            sylvester_algorithm²::Symbol = :doubling,
+                            sylvester_algorithm³::Symbol = :bicgstab,
                             lyapunov_algorithm::Symbol = :doubling, 
                             verbose::Bool = false,
                             tol::AbstractFloat = eps())
     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                            sylvester_algorithm = sylvester_algorithm,
+                            sylvester_algorithm² = sylvester_algorithm²,
+                            sylvester_algorithm³ = sylvester_algorithm³,
                             lyapunov_algorithm = lyapunov_algorithm)
 
     @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order, :pruned_third_order] "Autocorrelation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
     solve!(𝓂, 
-            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+            opts = opts, 
             parameters = parameters, 
-            algorithm = algorithm, 
-            verbose = verbose)
+            algorithm = algorithm)
 
     if algorithm == :pruned_third_order
         covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, 𝓂.timings.var, 𝓂, 
@@ -2590,21 +2581,22 @@ function get_moments(𝓂::ℳ;
                     algorithm::Symbol = :first_order,
                     silent::Bool = false,
                     quadratic_matrix_equation_algorithm::Symbol = :schur,
-                    sylvester_algorithm::Symbol = :doubling,
+                    sylvester_algorithm²::Symbol = :doubling,
+                    sylvester_algorithm³::Symbol = :bicgstab,
                     lyapunov_algorithm::Symbol = :doubling, 
                     verbose::Bool = false,
                     tol::AbstractFloat = eps())#limit output by selecting pars and vars like for plots and irfs!?
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                    sylvester_algorithm = sylvester_algorithm,
+                    sylvester_algorithm² = sylvester_algorithm²,
+                    sylvester_algorithm³ = sylvester_algorithm³,
                     lyapunov_algorithm = lyapunov_algorithm)
 
     solve!(𝓂, 
             parameters = parameters, 
             algorithm = algorithm, 
-            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-            verbose = verbose, 
+            opts = opts, 
             silent = silent)
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
@@ -3144,14 +3136,16 @@ function get_statistics(𝓂,
                         autocorrelation_periods::U = 1:5,
                         algorithm::Symbol = :first_order,
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
-                        sylvester_algorithm::Symbol = :doubling,
+                        sylvester_algorithm²::Symbol = :doubling,
+                        sylvester_algorithm³::Symbol = :bicgstab,
                         lyapunov_algorithm::Symbol = :doubling, 
                         verbose::Bool = false,
                         tol::AbstractFloat = eps()) where {U,T}
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                        sylvester_algorithm = sylvester_algorithm,
+                        sylvester_algorithm² = sylvester_algorithm²,
+                        sylvester_algorithm³ = sylvester_algorithm³,
                         lyapunov_algorithm = lyapunov_algorithm)
 
     @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order, :pruned_third_order] "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
@@ -3344,13 +3338,15 @@ function get_loglikelihood(𝓂::ℳ,
                             tol::AbstractFloat = 1e-12, 
                             quadratic_matrix_equation_algorithm::Symbol = :schur, 
                             lyapunov_algorithm::Symbol = :doubling, 
-                            sylvester_algorithm::Symbol = :bicgstab, 
+                            sylvester_algorithm²::Symbol = :doubling,
+                            sylvester_algorithm³::Symbol = :bicgstab,
                             # timer::TimerOutput = TimerOutput(),
                             verbose::Bool = false)::S where S <: Real
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                            sylvester_algorithm = sylvester_algorithm,
+                            sylvester_algorithm² = sylvester_algorithm²,
+                            sylvester_algorithm³ = sylvester_algorithm³,
                             lyapunov_algorithm = lyapunov_algorithm)
 
     # if algorithm ∈ [:third_order,:pruned_third_order]
@@ -3492,7 +3488,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
 
     opts = merge_calculation_options(tol = tol, verbose = verbose)
     
-    solve!(𝓂, parameters = parameters)
+    solve!(𝓂, parameters = parameters, opts = opts)
 
     SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = false)
 

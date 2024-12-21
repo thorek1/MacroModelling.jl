@@ -11,10 +11,16 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        quadratic_matrix_equation_algorithm::Symbol = :schur, 
-                                        # timer::TimerOutput = TimerOutput(),
-                                        tol::AbstractFloat = 1e-8, # 1e-14 is too tight
-                                        verbose::Bool = false) where R <: Real
+                                        opts::CalculationOptions = merge_calculation_options()) where R <: Real
+                                        
+    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm
+
+    tol = opts.qme_tol
+
+    acceptance_tol = opts.qme_acceptance_tol
+
+    verbose = opts.verbose
+
     if length(initial_guess) > 0
         X = initial_guess
 
@@ -28,7 +34,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         
         reached_tol = ℒ.norm(AXX) / AXXnorm
 
-        if reached_tol < (tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if you use the low tol it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
+        if reached_tol < (acceptance_tol * length(initial_guess) / 1e6)# 1e-12 is too large eps is too small; if you use the low tol it can be that a small change in the parameters still yields an acceptable solution but as a better tol can be reached it is actually not accurate
             if verbose println("Quadratic matrix equation solver previous solution has tolerance: $reached_tol") end
 
             return initial_guess, true
@@ -39,39 +45,39 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                                         Val(quadratic_matrix_equation_algorithm), 
                                                         T; 
                                                         initial_guess = initial_guess,
-                                                        # tol = tol,
+                                                        tol = tol,
                                                         # timer = timer,
                                                         verbose = verbose)
 
-    if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_algorithm - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
+    if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_algorithm - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
 
-    if reached_tol > tol
+    if reached_tol > acceptance_tol
         if quadratic_matrix_equation_algorithm ≠ :schur # try schur if previous one didn't solve it
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:schur), 
                                                                 T; 
                                                                 initial_guess = initial_guess,
-                                                                # tol = tol,
+                                                                tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
 
-            if verbose println("Quadratic matrix equation solver: schur - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
+            if verbose println("Quadratic matrix equation solver: schur - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
         else quadratic_matrix_equation_algorithm ≠ :doubling
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:doubling), 
                                                                 T; 
                                                                 initial_guess = initial_guess,
-                                                                # tol = tol,
+                                                                tol = tol,
                                                                 # timer = timer,
                                                                 verbose = verbose)
 
-            if verbose println("Quadratic matrix equation solver: doubling - converged: $(reached_tol < tol) in $iterations iterations to tolerance: $reached_tol") end
+            if verbose println("Quadratic matrix equation solver: doubling - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
         end
     end
 
     # if (reached_tol > tol) println("QME failed: $reached_tol") end
 
-    return sol, reached_tol < tol
+    return sol, reached_tol < acceptance_tol
 end
 
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 

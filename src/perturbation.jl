@@ -1,8 +1,6 @@
 function calculate_first_order_solution(∇₁::Matrix{Float64}; 
                                         T::timings, 
-                                        quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                        verbose::Bool = false,
-                                        # timer::TimerOutput = TimerOutput(),
+                                        opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{Float64}, Matrix{Float64}, Bool}
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -43,15 +41,10 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, 
-                                            T, 
-                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                            # timer = timer,
-                                            initial_guess = initial_guess,
-                                            verbose = verbose)
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, T, opts = opts, initial_guess = initial_guess)
 
     if !solved
-        if verbose println("Quadratic matrix equation solution failed.") end
+        if opts.verbose println("Quadratic matrix equation solution failed.") end
         return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
@@ -76,7 +69,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     Ā̂₀ᵤ = ℒ.lu!(Ā₀ᵤ, check = false)
 
     if !ℒ.issuccess(Ā̂₀ᵤ)
-        if verbose println("Factorisation of Ā₀ᵤ failed") end
+        if opts.verbose println("Factorisation of Ā₀ᵤ failed") end
         return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
 
@@ -102,7 +95,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     C = ℒ.lu!(∇₀, check = false)
     
     if !ℒ.issuccess(C)
-        if verbose println("Factorisation of ∇₀ failed") end
+        if opts.verbose println("Factorisation of ∇₀ failed") end
         return zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false
     end
     
@@ -119,9 +112,7 @@ end
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{Float64};
                 T::timings, 
-                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                verbose::Bool = false,
-                # timer::TimerOutput = TimerOutput(),
+                opts::CalculationOptions = merge_calculation_options(),
                 initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
@@ -165,10 +156,8 @@ function rrule(::typeof(calculate_first_order_solution),
 
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, 
                                             T, 
-                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                            # timer = timer,
-                                            initial_guess = initial_guess,
-                                            verbose = verbose)
+                                            opts = opts,
+                                            initial_guess = initial_guess)
 
     if !solved
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent()
@@ -255,7 +244,10 @@ function rrule(::typeof(calculate_first_order_solution),
 
         tmp1 = M' * ∂𝐒ᵗ * expand[2]
 
-        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1, sylvester_algorithm = :doubling)
+        ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1,
+                                                sylvester_algorithm = opts.sylvester_algorithm²,
+                                                tol = opts.tol,
+                                                acceptance_tol = opts.sylvester_acceptance_tol)
 
         if !solved
             NoTangent(), NoTangent(), NoTangent()
@@ -274,9 +266,7 @@ end
 
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
                                         T::timings, 
-                                        quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                        verbose::Bool = false,
-                                        # timer::TimerOutput = TimerOutput(),
+                                        opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
 
@@ -285,12 +275,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; 
-                                                T = T, 
-                                                verbose = verbose,
-                                                initial_guess = initial_guess,
-                                                # timer = timer,
-                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; T = T, opts = opts, initial_guess = initial_guess)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -331,9 +316,10 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
         if ℒ.norm(CC) < eps() continue end
 
         dX, solved = solve_sylvester_equation(AA, -X, -CC, 
-                                                # sylvester_algorithm = :bicgstab, # more robust than sylvester
-                                                initial_guess = initial_guess, 
-                                                verbose = verbose)
+                                                initial_guess = initial_guess,
+                                                sylvester_algorithm = opts.sylvester_algorithm²,
+                                                tol = opts.tol,
+                                                acceptance_tol = opts.sylvester_acceptance_tol)
 
         # if !solved
         #     dX, solved = solve_sylvester_equation(AA, -X, -CC, 
@@ -376,10 +362,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
                                             T::timings,
                                             initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                                            sylvester_algorithm::Symbol = :doubling,
-                                            tol::AbstractFloat = eps(),
-                                            # timer::TimerOutput = TimerOutput(),
-                                            verbose::Bool = false)::Tuple{<: AbstractMatrix{S}, Bool} where S <: Real
+                                            opts::CalculationOptions = merge_calculation_options())::Tuple{<: AbstractMatrix{S}, Bool} where S <: Real
     # @timeit_debug timer "Calculate second order solution" begin
 
     # inspired by Levintal
@@ -422,7 +405,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
-        if verbose println("Second order solution: inversion failed") end
+        if opts.verbose println("Second order solution: inversion failed") end
         return ∇₁₊𝐒₁➕∇₁₀, false
     end
 
@@ -459,10 +442,10 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     # @timeit_debug timer "Solve sylvester equation" begin
 
     𝐒₂, solved = solve_sylvester_equation(A, B, C, 
-                                            sylvester_algorithm = sylvester_algorithm, 
                                             initial_guess = initial_guess,
-                                            verbose = verbose)#, 
-                                            # tol = tol, 
+                                            sylvester_algorithm = opts.sylvester_algorithm²,
+                                            tol = opts.tol,
+                                            acceptance_tol = opts.sylvester_acceptance_tol)#, 
                                             # timer = timer)
 
     # end # timeit_debug
@@ -506,10 +489,7 @@ function rrule(::typeof(calculate_second_order_solution),
                     M₂::second_order_auxilliary_matrices;  # aux matrices
                     T::timings,
                     initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                    sylvester_algorithm::Symbol = :doubling,
-                    tol::AbstractFloat = eps(),
-                    # timer::TimerOutput = TimerOutput(),
-                    verbose::Bool = false)
+                    opts::CalculationOptions = merge_calculation_options())
     # @timeit_debug timer "Second order solution - forward" begin
     # inspired by Levintal
 
@@ -547,7 +527,7 @@ function rrule(::typeof(calculate_second_order_solution),
     ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
-        if verbose println("Second order solution: inversion failed") end
+        if opts.verbose println("Second order solution: inversion failed") end
         return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
     
@@ -582,10 +562,11 @@ function rrule(::typeof(calculate_second_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Solve sylvester equation" begin
 
-    𝐒₂, solved = solve_sylvester_equation(A, B, C, 
-                                            sylvester_algorithm = sylvester_algorithm, 
+    𝐒₂, solved = solve_sylvester_equation(A, B, C,  
                                             initial_guess = initial_guess,
-                                            verbose = verbose) #, 
+                                            sylvester_algorithm = opts.sylvester_algorithm²,
+                                            tol = opts.tol,
+                                            acceptance_tol = opts.sylvester_acceptance_tol) #, 
                                             # tol = tol, 
                                             # timer = timer)
 
@@ -632,11 +613,10 @@ function rrule(::typeof(calculate_second_order_solution),
 
         # @timeit_debug timer "Sylvester" begin
 
-        ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂, 
-                                                sylvester_algorithm = sylvester_algorithm, 
-                                                # tol = tol, 
-                                                verbose = verbose) # , 
-                                                # timer = timer)
+        ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂,
+                                                sylvester_algorithm = opts.sylvester_algorithm²,
+                                                tol = opts.tol,
+                                                acceptance_tol = opts.sylvester_acceptance_tol)
         
         if !solved
             return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
@@ -771,10 +751,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
                                             initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                                            sylvester_algorithm::Symbol = :bicgstab,
-                                            # timer::TimerOutput = TimerOutput(),
-                                            tol::AbstractFloat = 1e-12, # sylvester tol
-                                            verbose::Bool = false)
+                                            opts::CalculationOptions = merge_calculation_options())
+
     # @timeit_debug timer "Calculate third order solution" begin
     # inspired by Levintal
 
@@ -813,7 +791,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
-        if verbose println("Second order solution: inversion failed") end
+        if opts.verbose println("Second order solution: inversion failed") end
         return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
         
@@ -944,9 +922,10 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     # @timeit_debug timer "Solve sylvester equation" begin
 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
-                                            sylvester_algorithm = sylvester_algorithm, 
                                             initial_guess = initial_guess,
-                                            verbose = verbose) # , 
+                                            sylvester_algorithm = opts.sylvester_algorithm³,
+                                            tol = opts.tol,
+                                            acceptance_tol = opts.sylvester_acceptance_tol) # , 
                                             # tol = tol, 
                                             # timer = timer)
     
@@ -992,10 +971,8 @@ function rrule(::typeof(calculate_third_order_solution),
                 M₃::third_order_auxilliary_matrices;  # aux matrices third order
                 T::timings,
                 initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                sylvester_algorithm::Symbol = :bicgstab,
-                # timer::TimerOutput = TimerOutput(),
-                tol::AbstractFloat = eps(),
-                verbose::Bool = false)    
+                opts::CalculationOptions = merge_calculation_options())    
+
     # @timeit_debug timer "Third order solution - forward" begin
     # inspired by Levintal
 
@@ -1034,7 +1011,7 @@ function rrule(::typeof(calculate_third_order_solution),
     ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
-        if verbose println("Second order solution: inversion failed") end
+        if opts.verbose println("Second order solution: inversion failed") end
         return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
@@ -1170,9 +1147,10 @@ function rrule(::typeof(calculate_third_order_solution),
     # @timeit_debug timer "Solve sylvester equation" begin
 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
-                                            sylvester_algorithm = sylvester_algorithm, 
                                             initial_guess = initial_guess,
-                                            verbose = verbose) # , 
+                                            sylvester_algorithm = opts.sylvester_algorithm³,
+                                            tol = opts.tol,
+                                            acceptance_tol = opts.sylvester_acceptance_tol) # , 
                                             # tol = tol, 
                                             # timer = timer)
     
@@ -1280,11 +1258,10 @@ function rrule(::typeof(calculate_third_order_solution),
 
         # ∂𝐒₃ *= 𝐔₃t
         
-        ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₃, 
-                                                sylvester_algorithm = sylvester_algorithm, 
-                                                # tol = tol,
-                                                # timer = timer,
-                                                verbose = verbose)
+        ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₃,
+                                                sylvester_algorithm = opts.sylvester_algorithm³,
+                                                tol = opts.tol,
+                                                acceptance_tol = opts.sylvester_acceptance_tol)
 
         if !solved
             return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
