@@ -101,12 +101,13 @@ function plot_model_estimates(𝓂::ℳ,
                                 verbose::Bool = false,
                                 tol::AbstractFloat = eps(),
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                sylvester_algorithm::Symbol = :doubling,
+                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                                 lyapunov_algorithm::Symbol = :doubling)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = sylvester_algorithm,
+                                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
     attributes = merge(default_plot_attributes, plot_attributes)
@@ -134,9 +135,9 @@ function plot_model_estimates(𝓂::ℳ,
         pruning = true
     end
 
-    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -182,7 +183,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     date_axis = date_axis[periods]
 
-    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
+    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts)
     
     if pruning
         decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
@@ -465,12 +466,13 @@ function plot_irf(𝓂::ℳ;
                     verbose::Bool = false,
                     tol::AbstractFloat = eps(),
                     quadratic_matrix_equation_algorithm::Symbol = :schur,
-                    sylvester_algorithm::Symbol = :doubling,
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                     lyapunov_algorithm::Symbol = :doubling)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                    sylvester_algorithm = sylvester_algorithm,
+                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2],
                     lyapunov_algorithm = lyapunov_algorithm)
 
     attributes = merge(default_plot_attributes, plot_attributes)
@@ -523,9 +525,9 @@ function plot_irf(𝓂::ℳ;
         occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
     end
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+    solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
     unspecified_initial_state = initial_state == [0.0]
 
@@ -946,7 +948,10 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     fevds = get_conditional_variance_decomposition(𝓂,
                                                     periods = 1:periods,
                                                     parameters = parameters,
-                                                    verbose = verbose)
+                                                    verbose = verbose,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    tol = tol)
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
@@ -1130,11 +1135,14 @@ function plot_solution(𝓂::ℳ,
                         verbose::Bool = false,
                         tol::AbstractFloat = eps(),
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
-                        sylvester_algorithm::Symbol = :doubling)
-                    
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
+                        lyapunov_algorithm::Symbol = :doubling)
+    
     opts = merge_calculation_options(tol = tol, verbose = verbose,
-                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                            sylvester_algorithm = sylvester_algorithm)
+                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                        sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2],
+                        lyapunov_algorithm = lyapunov_algorithm)
 
     attributes = merge(default_plot_attributes, plot_attributes)
 
@@ -1159,13 +1167,17 @@ function plot_solution(𝓂::ℳ,
     end
 
     for a in algorithm
-        solve!(𝓂, verbose = verbose, algorithm = a, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
+        solve!(𝓂, opts = opts, algorithm = a, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
     end
 
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
                             parameters = parameters,
                             variables = :all,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            sylvester_algorithm = sylvester_algorithm,
+                            lyapunov_algorithm = lyapunov_algorithm,
+                            tol = tol,
                             verbose = verbose)
 
     SS_and_std[1] = SS_and_std[1] isa KeyedArray ? axiskeys(SS_and_std[1],1) isa Vector{String} ? rekey(SS_and_std[1], 1 => axiskeys(SS_and_std[1],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[1] : SS_and_std[1]
@@ -1486,13 +1498,8 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     verbose::Bool = false,
                                     tol::AbstractFloat = eps(),
                                     quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                    sylvester_algorithm::Symbol = :doubling,
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                                     lyapunov_algorithm::Symbol = :doubling)
-
-    opts = merge_calculation_options(tol = tol, verbose = verbose,
-                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = sylvester_algorithm,
-                                    lyapunov_algorithm = lyapunov_algorithm)
 
     attributes = merge(default_plot_attributes, plot_attributes)
 
@@ -1516,6 +1523,10 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 conditions_in_levels = conditions_in_levels,
                                 algorithm = algorithm,
                                 levels = levels,
+                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                sylvester_algorithm = sylvester_algorithm,
+                                lyapunov_algorithm = lyapunov_algorithm,
+                                tol = tol,
                                 verbose = verbose)
 
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
