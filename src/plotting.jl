@@ -32,18 +32,23 @@ In case `shock_decomposition = true`, then the plot shows the variables, shocks,
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $ALGORITHM®
+- $FILTER®
 - $VARIABLES®
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
+- $PRESAMPLE_PERIODS®
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks
 - $SMOOTH®
-- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
-- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
-- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
-- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
+- $PLOTS_PER_PAGE®
 - `transparency` [Default: `0.6`, Type: `Float64`]: transparency of bars
-- $ALGORITHM®
+- $MAX_ELEMENTS_PER_LEGENDS_ROW®
+- $EXTRA_LEGEND_SPACE®
+- $PLOT_ATTRIBUTES®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -416,17 +421,18 @@ The left axis shows the level, and the right the deviation from the reference st
 - $SHOCKS®
 - $VARIABLES®
 - $PARAMETERS®
-- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
-- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
-- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
-- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
+- $PLOTS_PER_PAGE®
 - $ALGORITHM®
 - `shock_size` [Default: `1`, Type: `Real`]: affects the size of shocks as long as they are not set to `:none`
 - $NEGATIVE_SHOCK®
 - $GENERALISED_IRF®
 - `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
 - `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
+- $PLOT_ATTRIBUTES®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -466,8 +472,8 @@ function plot_irf(𝓂::ℳ;
                     save_plots_path::String = ".",
                     plots_per_page::Int = 9, 
                     algorithm::Symbol = :first_order,
-                    negative_shock::Bool = false,
                     shock_size::Real = 1,
+                    negative_shock::Bool = false,
                     generalised_irf::Bool = false,
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
                     ignore_obc::Bool = false,
@@ -889,11 +895,14 @@ The vertical axis shows the share of the shocks variance contribution, and horiz
 - $PERIODS®
 - $VARIABLES®
 - $PARAMETERS®
-- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
-- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
-- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
-- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
+- $PLOTS_PER_PAGE®
+- $PLOT_ATTRIBUTES®
+- $MAX_ELEMENTS_PER_LEGENDS_ROW®
+- $EXTRA_LEGEND_SPACE®
 - $QME®
 - $LYAPUNOV®
 - $TOLERANCES®
@@ -1095,11 +1104,12 @@ In the case of pruned solutions there as many (latent) state vectors as the pert
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS®
 - `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
-- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
-- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
-- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
+- $PLOT_ATTRIBUTES®
 - $ALGORITHM®
 - $QME®
 - $SYLVESTER®
@@ -1439,14 +1449,15 @@ The left axis shows the level, and the right axis the deviation from the (non) s
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
 - $VARIABLES®
-`conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
-- $LEVELS®
+- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
 - $ALGORITHM®
-- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
-- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
-- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
-- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- $LEVELS®
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
+- $PLOTS_PER_PAGE®
+- $PLOT_ATTRIBUTES®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
