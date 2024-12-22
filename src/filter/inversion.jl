@@ -9,7 +9,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                 state, 
                                 warmup_iterations, 
                                 filter_algorithm, 
-                                verbose) #; 
+                                opts) #; 
                                 # timer::TimerOutput = TimerOutput())
     return calculate_inversion_filter_loglikelihood(Val(algorithm), 
                                                     state, 
@@ -21,7 +21,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     presample_periods = presample_periods, 
                                                     filter_algorithm = filter_algorithm, 
                                                     # timer = timer, 
-                                                    verbose = verbose)
+                                                    opts = opts)
 end
 
 
@@ -34,7 +34,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    verbose::Bool = false,
+                                                    opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)
     # @timeit_debug timer "Inversion filter" begin    
     # first order
@@ -94,7 +94,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
         jacdecomp = ℒ.lu(jac, check = false)
 
         if !ℒ.issuccess(jacdecomp)
-            if verbose println("Inversion filter failed") end
+            if opts.verbose println("Inversion filter failed") end
             return -Inf
         end
 
@@ -103,14 +103,14 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
     else
         jacdecomp = try ℒ.svd(jac)
         catch
-            if verbose println("Inversion filter failed") end
+            if opts.verbose println("Inversion filter failed") end
             return -Inf
         end
         
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac))
         invjac = try inv(jacdecomp)
         catch
-            if verbose println("Inversion filter failed") end
+            if opts.verbose println("Inversion filter failed") end
             return -Inf
         end
     end
@@ -158,7 +158,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 # timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0, 
                 presample_periods::Int = 0,
-                verbose::Bool = false,
+                opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
     # @timeit_debug timer "Inversion filter - forward" begin    
             
@@ -195,7 +195,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         jacdecomp = ℒ.lu(jac, check = false)
 
         if !ℒ.issuccess(jacdecomp)
-            if verbose println("Inversion filter failed") end
+            if opts.verbose println("Inversion filter failed") end
             return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
@@ -331,7 +331,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    verbose::Bool = false,
+                                                    opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)
     # @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
@@ -477,7 +477,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
             #                             𝐒ⁱ²ᵉ,
             #                             shock_independent)
                 if !matched
-                    if verbose println("Inversion filter failed at step $i") end
+                    if opts.verbose println("Inversion filter failed at step $i") end
                     return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
                 end 
             # end
@@ -565,7 +565,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 # timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
-                verbose::Bool = false,
+                opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
@@ -717,7 +717,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         # end # timeit_debug
     
         if !matched
-            if verbose println("Inversion filter failed at step $i") end
+            if opts.verbose println("Inversion filter failed at step $i") end
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end
 
@@ -1025,7 +1025,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    verbose::Bool = false,
+                                                    opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     # @timeit_debug timer "2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
@@ -1162,7 +1162,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
             #                             𝐒ⁱ²ᵉ,
             #                             shock_independent)
                 if !matched
-                    if verbose println("Inversion filter failed at step $i") end
+                    if opts.verbose println("Inversion filter failed at step $i") end
                     return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
                 end 
             # end
@@ -1251,7 +1251,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 # timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
-                verbose::Bool = false,
+                opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
     # @timeit_debug timer "Inversion filter 2nd - forward" begin
         
@@ -1398,7 +1398,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         # end # timeit_debug
 
         if !matched
-            if verbose println("Inversion filter failed at step $i") end
+            if opts.verbose println("Inversion filter failed at step $i") end
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end
         
@@ -1681,7 +1681,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    verbose::Bool = false,
+                                                    opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton) 
     # @timeit_debug timer "Inversion filter" begin
 
@@ -1916,7 +1916,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         # end
 
         if !matched
-            if verbose println("Inversion filter failed at step $i") end
+            if opts.verbose println("Inversion filter failed at step $i") end
             return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
         end 
             # println("COBYLA: $matched; current x: $x")
@@ -2036,7 +2036,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 # timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
-                verbose::Bool = false,
+                opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
     # @timeit_debug timer "Inversion filter - forward" begin
     precision_factor = 1.0
@@ -2243,7 +2243,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         # end # timeit_debug
 
         if !matched
-            if verbose println("Inversion filter failed at step $i") end
+            if opts.verbose println("Inversion filter failed at step $i") end
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end 
         
@@ -2586,7 +2586,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
-                                                    verbose::Bool = false,
+                                                    opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)
     # @timeit_debug timer "3rd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
@@ -2792,7 +2792,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
         # end
 
         if !matched
-            if verbose println("Inversion filter failed at step $i") end
+            if opts.verbose println("Inversion filter failed at step $i") end
             return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
         end 
             # println("COBYLA: $matched; current x: $x")
@@ -2908,7 +2908,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 # timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
-                verbose::Bool = false,
+                opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
@@ -3087,7 +3087,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         # end # timeit_debug
     
         if !matched
-            if verbose println("Inversion filter failed at step $i") end
+            if opts.verbose println("Inversion filter failed at step $i") end
             return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end
 
@@ -3358,10 +3358,9 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:first_order}, # algo
                                 ::Val{:inversion}; # filter
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 warmup_iterations::Int = 0,
                                 smooth::Bool = true,
-                                verbose::Bool = false)
+                                opts::CalculationOptions = merge_calculation_options())
     T = 𝓂.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
@@ -3369,7 +3368,7 @@ function filter_data_with_model(𝓂::ℳ,
     
     decomposition = zeros(T.nVars, T.nExo + 2, size(data_in_deviations, 2))
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
     if solution_error > 1e-12 || isnan(solution_error)
         @error "No solution for these parameters."
@@ -3384,9 +3383,8 @@ function filter_data_with_model(𝓂::ℳ,
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                         T = T, 
-                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                        verbose = verbose)
+                                                        opts = opts)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -3491,12 +3489,10 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:second_order}, # algo
                                 ::Val{:inversion}; # filter
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                sylvester_algorithm::Symbol = :doubling, 
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
-                                verbose::Bool = false)
+                                opts::CalculationOptions = merge_calculation_options())
 
     T = 𝓂.timings
 
@@ -3505,7 +3501,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts)
 
-    if !converged || solution_error > 1e-12
+    if !converged || solution_error > opts.tol
         @error "Could not find 2nd order stochastic steady state"
         return variables, shocks, [], []
     end
@@ -3708,12 +3704,10 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:pruned_second_order}, # algo
                                 ::Val{:inversion}; # filter
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                sylvester_algorithm::Symbol = :doubling, 
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
-                                verbose::Bool = false)
+                                opts::CalculationOptions = merge_calculation_options())
     T = 𝓂.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
@@ -3724,7 +3718,7 @@ function filter_data_with_model(𝓂::ℳ,
     
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true, opts = opts)
 
-    if solution_error > 1e-12 || isnan(solution_error)
+    if solution_error > opts.tol || isnan(solution_error)
         @error "No solution for these parameters."
         return variables, shocks, [], decomposition
     end
@@ -3983,11 +3977,10 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:third_order}, # algo
                                 ::Val{:inversion}; # filter
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
-                                verbose::Bool = false)
+                                opts::CalculationOptions = merge_calculation_options())
     T = 𝓂.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
@@ -3997,7 +3990,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts) # timer = timer,
 
-    if !converged || solution_error > 1e-12
+    if !converged || solution_error > opts.tol
         @error "Could not find 3rd order stochastic steady state"
         return variables, shocks, [], []
     end
@@ -4294,11 +4287,10 @@ function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
                                 ::Val{:pruned_third_order}, # algo
                                 ::Val{:inversion}; # filter
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 warmup_iterations::Int = 0,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
-                                verbose::Bool = false)
+                                opts::CalculationOptions = merge_calculation_options())
     T = 𝓂.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
@@ -4309,7 +4301,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true, opts = opts) # timer = timer,
 
-    if !converged || solution_error > 1e-12
+    if !converged || solution_error > opts.tol
         @error "Could not find pruned 3rd order stochastic steady state"
         return variables, shocks, [], []
     end

@@ -1,22 +1,19 @@
 # TODO: fix return types and implement early returns on errors
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                lyapunov_algorithm::Symbol = :doubling, 
-                                verbose::Bool = false)::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
+                                opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
-    if solution_error > 1e-12
-        return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < 1e-12
+    if solution_error > opts.tol
+        return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < opts.tol
     end
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                             T = 𝓂.timings, 
-                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                            verbose = verbose)
+                                                            opts = opts)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -30,7 +27,7 @@ function calculate_covariance(parameters::Vector{R},
         return CC, sol, ∇₁, SS_and_pars, solved
     end
 
-    covar_raw, solved = solve_lyapunov_equation(A, CC, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+    covar_raw, solved = solve_lyapunov_equation(A, CC, lyapunov_algorithm = opts.lyapunov_algorithm, verbose = opts.verbose)
 
     return covar_raw, sol , ∇₁, SS_and_pars, solved
 end
@@ -38,29 +35,25 @@ end
 
 function calculate_mean(parameters::Vector{T}, 
                         𝓂::ℳ; 
-                        verbose::Bool = false, 
                         algorithm = :pruned_second_order, 
-                        quadratic_matrix_equation_algorithm::Symbol = :schur,
-                        sylvester_algorithm::Symbol = :doubling, 
-                        tol::Float64 = 1e-12)::Tuple{Vector{T}, 
+                        opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{T}, 
                         # Matrix{T}, Matrix{T}, AbstractSparseMatrix{T}, AbstractSparseMatrix{T}, 
                         Bool} where T <: Real
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order, :pruned_third_order] "Theoretical mean available only for first order, pruned second and pruned third order perturbation solutions."
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
-    if algorithm ∈ [:first_order, :first_order_doubling]
-        return SS_and_pars[1:𝓂.timings.nVars], solution_error < tol
+    if algorithm ∈ [:first_order, :first_order_doubling] || solution_error > opts.tol
+        return SS_and_pars[1:𝓂.timings.nVars], solution_error < opts.tol
     end
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                         T = 𝓂.timings, 
-                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                        verbose = verbose)
+                                                        opts = opts)
     
     if !solved 
         return SS_and_pars[1:𝓂.timings.nVars], false
@@ -73,10 +66,7 @@ function calculate_mean(parameters::Vector{T},
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices; 
                                                 T = 𝓂.timings, 
-                                                initial_guess = 𝓂.solution.perturbation.second_order_solution,
-                                                sylvester_algorithm = sylvester_algorithm, 
-                                                # tol = tol, 
-                                                verbose = verbose)
+                                                opts = opts)
 
     if !solved2
         return SS_and_pars[1:𝓂.timings.nVars], false
@@ -143,35 +133,20 @@ end
 function calculate_second_order_moments(parameters::Vector{R}, 
                                         𝓂::ℳ;
                                         covariance::Bool = true,
-                                        verbose::Bool = false, 
-                                        quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                        sylvester_algorithm::Symbol = :doubling,
-                                        lyapunov_algorithm::Symbol = :doubling,
-                                        tol::AbstractFloat = eps()) where R <: Real
+                                        opts::CalculationOptions = merge_calculation_options()) where R <: Real
     calculate_second_order_moments(parameters, 
                                     𝓂,
                                     Val(covariance);
-                                    verbose = verbose, 
-                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                    sylvester_algorithm = sylvester_algorithm,
-                                    lyapunov_algorithm = lyapunov_algorithm,
-                                    tol = tol)
+                                    opts = opts)
 end
 
 function calculate_second_order_moments(
     parameters::Vector{R}, 
     𝓂::ℳ,
     ::Val{false}; # covariance; 
-    verbose::Bool = false, 
-    quadratic_matrix_equation_algorithm::Symbol = :schur,
-    sylvester_algorithm::Symbol = :doubling,
-    lyapunov_algorithm::Symbol = :doubling,
-    tol::AbstractFloat = eps())::Tuple{Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}, Bool} where R <: Real
+    opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}, Bool} where R <: Real
 
-    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, 
-                                                            verbose = verbose, 
-                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                            lyapunov_algorithm = lyapunov_algorithm)
+    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
 
     nᵉ = 𝓂.timings.nExo
 
@@ -206,10 +181,7 @@ function calculate_second_order_moments(
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices; 
                                                 T = 𝓂.timings, 
-                                                tol = tol, 
-                                                initial_guess = 𝓂.solution.perturbation.second_order_solution,
-                                                sylvester_algorithm = sylvester_algorithm, 
-                                                verbose = verbose)
+                                                opts = opts)
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
@@ -281,17 +253,10 @@ end
 function calculate_second_order_moments(
     parameters::Vector{R}, 
     𝓂::ℳ,
-    ::Val{true}; # covariance
-    verbose::Bool = false, 
-    quadratic_matrix_equation_algorithm::Symbol = :schur,
-    sylvester_algorithm::Symbol = :doubling,
-    lyapunov_algorithm::Symbol = :doubling,
-    tol::AbstractFloat = eps())::Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}, Bool} where R <: Real
+    ::Val{true}; # covariance,
+    opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Vector{R}, Vector{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Matrix{R}, Matrix{R}, AbstractSparseMatrix{R}, AbstractSparseMatrix{R}, Bool} where R <: Real
 
-    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, 
-                                                            verbose = verbose, 
-                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                            lyapunov_algorithm = lyapunov_algorithm)
+    Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
 
     nᵉ = 𝓂.timings.nExo
 
@@ -326,10 +291,7 @@ function calculate_second_order_moments(
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices; 
                                                 T = 𝓂.timings, 
-                                                tol = tol, 
-                                                initial_guess = 𝓂.solution.perturbation.second_order_solution,
-                                                sylvester_algorithm = sylvester_algorithm, 
-                                                verbose = verbose)
+                                                opts = opts)
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
@@ -400,7 +362,7 @@ function calculate_second_order_moments(
 
     C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
 
-    Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+    Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, lyapunov_algorithm = opts.lyapunov_algorithm, verbose = opts.verbose)
 
     # if Σᶻ₂ isa DenseMatrix
     #     Σᶻ₂ = sparse(Σᶻ₂)
@@ -424,20 +386,10 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             covariance::Bool = true,
                                             autocorrelation::Bool = false,
                                             autocorrelation_periods::U = 1:5,
-                                            verbose::Bool = false, 
                                             dependencies_tol::AbstractFloat = 1e-12, 
-                                            quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                            sylvester_algorithm::Symbol = :doubling,
-                                            lyapunov_algorithm::Symbol = :doubling,
-                                            tol::AbstractFloat = eps()) where {U, T <: Real}
+                                            opts::CalculationOptions = merge_calculation_options()) where {U, T <: Real}
 
-    second_order_moments = calculate_second_order_moments(parameters, 
-                                                            𝓂,
-                                                            Val(true);
-                                                            verbose = verbose, 
-                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                            sylvester_algorithm = sylvester_algorithm, 
-                                                            lyapunov_algorithm = lyapunov_algorithm)
+    second_order_moments = calculate_second_order_moments(parameters, 𝓂, Val(true); opts = opts)
 
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = second_order_moments
 
@@ -452,9 +404,7 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                 𝓂.solution.perturbation.third_order_auxilliary_matrices; 
                                                 T = 𝓂.timings, 
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
-                                                sylvester_algorithm = sylvester_algorithm,
-                                                tol = tol, 
-                                                verbose= verbose)
+                                                opts = opts)
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
@@ -645,7 +595,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyapunov_algorithm = opts.lyapunov_algorithm, verbose = opts.verbose)
 
         solved_lyapunov = solved_lyapunov && info
 

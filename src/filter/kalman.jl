@@ -10,7 +10,7 @@ function calculate_loglikelihood(::Val{:kalman},
                                 state, 
                                 warmup_iterations, 
                                 filter_algorithm, 
-                                verbose) #; 
+                                opts) #; 
                                 # timer::TimerOutput = TimerOutput())
     return calculate_kalman_filter_loglikelihood(observables, 
                                                 𝐒, 
@@ -19,7 +19,7 @@ function calculate_loglikelihood(::Val{:kalman},
                                                 presample_periods = presample_periods, 
                                                 initial_covariance = initial_covariance, 
                                                 # timer = timer, 
-                                                verbose = verbose)
+                                                opts = opts)
 end
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
@@ -29,12 +29,11 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical,
-                                                verbose::Bool = false)::S where S <: Real
+                                                opts::CalculationOptions = merge_calculation_options())::S where S <: Real
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, 
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts)
     # timer = timer, 
-    verbose = verbose)
 end
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{String}, 
@@ -44,12 +43,11 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical,
-                                                verbose::Bool = false)::S where S <: Real
+                                                opts::CalculationOptions = merge_calculation_options())::S where S <: Real
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, 
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts)
     # timer = timer, 
-    verbose = verbose)
 end
 
 function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 
@@ -60,7 +58,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
                                                 lyapunov_algorithm::Symbol = :doubling,
-                                                verbose::Bool = false)::S where S <: Real
+                                                opts::CalculationOptions = merge_calculation_options())::S where S <: Real
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
     A = 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
@@ -71,13 +69,11 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     𝐁 = B * B'
 
     # Gaussian Prior
-    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, lyapunov_algorithm = lyapunov_algorithm, 
+    P = get_initial_covariance(Val(initial_covariance), A, 𝐁, opts = opts)
     # timer = timer, 
-    verbose = verbose)
 
-    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods, 
+    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods, verbose = opts.verbose)
     # timer = timer, 
-    verbose = verbose)
 end
 
 # TODO: use higher level wrapper, like for lyapunov/sylvester
@@ -85,12 +81,10 @@ end
 function get_initial_covariance(::Val{:theoretical}, 
                                 A::AbstractMatrix{S}, 
                                 B::AbstractMatrix{S}; 
-                                lyapunov_algorithm::Symbol = :doubling,
+                                opts::CalculationOptions = merge_calculation_options())::Matrix{S} where S <: Real
                                 # timer::TimerOutput = TimerOutput(), 
-                                verbose::Bool = false)::Matrix{S} where S <: Real
-    P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = lyapunov_algorithm, 
-    # timer = timer, 
-    verbose = verbose)
+    P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = opts.lyapunov_algorithm, verbose = opts.verbose) # timer = timer, 
+
     return P
 end
 
@@ -99,9 +93,8 @@ end
 function get_initial_covariance(::Val{:diagonal}, 
                                 A::AbstractMatrix{S}, 
                                 B::AbstractMatrix{S}; 
-                                lyapunov_algorithm::Symbol = :doubling,
+                                opts::CalculationOptions = merge_calculation_options())::Matrix{S} where S <: Real
                                 # timer::TimerOutput = TimerOutput(), 
-                                verbose::Bool = false)::Matrix{S} where S <: Real
     P = @ignore_derivatives collect(ℒ.I(size(A, 1)) * 10.0)
     return P
 end
@@ -558,21 +551,15 @@ end
 function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
     ::Val{:first_order}, # algo
-    ::Val{:kalman}; # filter
-    quadratic_matrix_equation_algorithm::Symbol = :schur,
-    lyapunov_algorithm::Symbol = :doubling,
-    warmup_iterations::Int = 0,
-    smooth::Bool = true,
-    verbose::Bool = false)
+    ::Val{:kalman}; # filter,
+    opts::CalculationOptions = merge_calculation_options(),
+    smooth::Bool = true)
 
     obs_axis = collect(axiskeys(data_in_deviations,1))
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; 
-                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                lyapunov_algorithm = lyapunov_algorithm,
-                                                verbose = verbose)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; opts = opts)
 
     variables           = filtered_and_smoothed[smooth ? 1 : 5]
     standard_deviations = filtered_and_smoothed[smooth ? 2 : 6]
@@ -586,11 +573,8 @@ end
 
 function filter_and_smooth(𝓂::ℳ, 
                             data_in_deviations::AbstractArray{Float64}, 
-                            observables::Vector{Symbol}; 
-                            verbose::Bool = false, 
-                            quadratic_matrix_equation_algorithm::Symbol = :schur,
-                            lyapunov_algorithm::Symbol = :doubling,
-                            tol::AbstractFloat = 1e-12)
+                            observables::Vector{Symbol};
+                            opts::CalculationOptions = merge_calculation_options())
     # Based on Durbin and Koopman (2012)
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
 
@@ -599,20 +583,17 @@ function filter_and_smooth(𝓂::ℳ,
 
     sort!(observables)
 
-    solve!(𝓂, verbose = verbose)
+    solve!(𝓂, opts = opts)
 
     parameters = 𝓂.parameter_values
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
-    @assert solution_error < tol "Could not solve non stochastic steady state." 
+    @assert solution_error < opts.tol "Could not solve non stochastic steady state." 
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, 
-                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                            initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                            verbose = verbose)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = opts)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -624,7 +605,7 @@ function filter_and_smooth(𝓂::ℳ,
 
     𝐁 = B * B'
 
-    P̄ = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)[1]
+    P̄ = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)[1]
 
     n_obs = size(data_in_deviations,2)
 

@@ -116,9 +116,8 @@ function get_shock_decomposition(𝓂::ℳ,
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                         warmup_iterations = warmup_iterations, 
-                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                        smooth = smooth, 
-                                        verbose = verbose)
+                                        opts = opts,
+                                        smooth = smooth)
     
     axis1 = 𝓂.timings.var
 
@@ -254,9 +253,8 @@ function get_estimated_shocks(𝓂::ℳ,
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
-                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                    smooth = smooth, 
-                                                                                    verbose = verbose)
+                                                                                    opts = opts,
+                                                                                    smooth = smooth)
     
     axis1 = 𝓂.timings.exo
 
@@ -379,9 +377,8 @@ function get_estimated_variables(𝓂::ℳ,
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
                                                                                     warmup_iterations = warmup_iterations, 
-                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                    smooth = smooth, 
-                                                                                    verbose = verbose)
+                                                                                    opts = opts,
+                                                                                    smooth = smooth)
 
     axis1 = 𝓂.timings.var
 
@@ -484,8 +481,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(:first_order), Val(:kalman), 
                                                                                     smooth = smooth, 
-                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                    verbose = verbose)
+                                                                                    opts = opts)
 
     axis1 = 𝓂.timings.var
 
@@ -968,7 +964,7 @@ function get_irf(𝓂::ℳ,
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
 
-    reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
+    reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)# |> Matrix
 								
@@ -1467,7 +1463,7 @@ function get_steady_state(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    SS, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose)
+    SS, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
     if solution_error > tol
         @warn "Could not find non-stochastic steady state. Solution error: $solution_error > $tol"
@@ -1571,7 +1567,7 @@ function get_steady_state(𝓂::ℳ;
         else
             # dSS = 𝒜.jacobian(𝒷(), x->𝓂.SS_solve_func(x, 𝓂),𝓂.parameter_values)
             # dSS = 𝒜.jacobian(𝒷(), x->collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1])[[var_idx...,calib_idx...]], 𝓂.parameter_values[param_idx])[1]
-            dSS = 𝒟.jacobian(x->get_NSSS_and_parameters(𝓂, x, verbose = verbose)[1][[var_idx...,calib_idx...]], backend, 𝓂.parameter_values)[:,param_idx]
+            dSS = 𝒟.jacobian(x->get_NSSS_and_parameters(𝓂, x, opts = opts)[1][[var_idx...,calib_idx...]], backend, 𝓂.parameter_values)[:,param_idx]
 
             # if length(𝓂.calibration_equations_parameters) == 0        
             #     return KeyedArray(hcat(collect(NSSS)[1:(end-1)],dNSSS);  Variables = [sort(union(𝓂.exo_present,var))...], Steady_state_and_∂steady_state∂parameter = vcat(:Steady_state, 𝓂.parameters))
@@ -1854,7 +1850,7 @@ function get_solution(𝓂::ℳ,
         end
     end
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
 
     if solution_error > tol || isnan(solution_error)
         if algorithm == :second_order
@@ -2033,7 +2029,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
@@ -2189,7 +2185,7 @@ function get_variance_decomposition(𝓂::ℳ;
     
     solve!(𝓂, opts = opts, parameters = parameters)
 
-    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose)
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
@@ -2312,14 +2308,11 @@ function get_correlation(𝓂::ℳ;
             algorithm = algorithm)
 
     if algorithm == :pruned_third_order
-        covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+        covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, opts = opts)
     elseif algorithm == :pruned_second_order
-        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, opts = opts)
     else
-        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, 
-                                                                        verbose = verbose, 
-                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                        lyapunov_algorithm = lyapunov_algorithm)
+        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
         @assert solved "Could not find covariance matrix."
     end
@@ -2424,17 +2417,10 @@ function get_autocorrelation(𝓂::ℳ;
 
     if algorithm == :pruned_third_order
         covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, 𝓂.timings.var, 𝓂, 
-                                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                            sylvester_algorithm = sylvester_algorithm, 
-                                                                                            lyapunov_algorithm = lyapunov_algorithm, 
-                                                                                            verbose = verbose, 
+                                                                                            opts = opts, 
                                                                                             autocorrelation = true)
     elseif algorithm == :pruned_second_order
-        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, 
-                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                            sylvester_algorithm = sylvester_algorithm, 
-                                            lyapunov_algorithm = lyapunov_algorithm, 
-                                            verbose = verbose)
+        covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, opts = opts)
 
         ŝ_to_ŝ₂ⁱ = ℒ.diagm(ones(size(Σᶻ₂,1)))
 
@@ -2445,10 +2431,7 @@ function get_autocorrelation(𝓂::ℳ;
             ŝ_to_ŝ₂ⁱ *= ŝ_to_ŝ₂
         end
     else
-        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, 
-                                                                        verbose = verbose, 
-                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                        lyapunov_algorithm = lyapunov_algorithm)
+        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
         @assert solved "Could not find covariance matrix."
 
@@ -2607,7 +2590,7 @@ function get_moments(𝓂::ℳ;
         length_par = length(parameter_derivatives)
     end
 
-    NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = verbose) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
+    NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
     @assert solution_error < 1e-12 "Could not find non-stochastic steady state."
 
@@ -2656,7 +2639,7 @@ function get_moments(𝓂::ℳ;
             end
 
             # dNSSS = 𝒜.jacobian(𝒷(), x -> collect(SS_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)[1]), 𝓂.parameter_values[param_idx])[1]
-            dNSSS = 𝒟.jacobian(x -> get_NSSS_and_parameters(𝓂, x, verbose = verbose)[1], backend, 𝓂.parameter_values)[:,param_idx]
+            dNSSS = 𝒟.jacobian(x -> get_NSSS_and_parameters(𝓂, x, opts = opts)[1], backend, 𝓂.parameter_values)[:,param_idx]
             
             if length(𝓂.calibration_equations_parameters) > 0
                 var_idx_ext = vcat(var_idx, 𝓂.timings.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
@@ -2684,53 +2667,30 @@ function get_moments(𝓂::ℳ;
             end
 
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, 
-                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                sylvester_algorithm = sylvester_algorithm, 
-                                                lyapunov_algorithm = lyapunov_algorithm, 
-                                                verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, opts = opts)
 
                 # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
-                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, 
-                                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                        sylvester_algorithm = sylvester_algorithm, 
-                                                                                        lyapunov_algorithm = lyapunov_algorithm, 
-                                                                                        verbose = verbose)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
+                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, opts = opts)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, 
-                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                sylvester_algorithm = sylvester_algorithm, 
-                                                                                lyapunov_algorithm = lyapunov_algorithm, 
-                                                                                verbose = verbose)
+                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, opts = opts)
 
                 # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, dependencies_tol = dependencies_tol, verbose = verbose), 𝓂.parameter_values[param_idx])[1]
-                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, 
-                                                                                        dependencies_tol = dependencies_tol, 
-                                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                        lyapunov_algorithm = lyapunov_algorithm, 
-                                                                                        sylvester_algorithm = sylvester_algorithm, 
-                                                                                        verbose = verbose)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
+                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, dependencies_tol = dependencies_tol, opts = opts)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, 
-                                                                        verbose = verbose, 
-                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                        lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
                 @assert solved "Could not find covariance matrix."
 
                 # dvariance = 𝒜.jacobian(𝒷(), x -> covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm), 𝓂.parameter_values[param_idx])[1]
-                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_covariance(x, 𝓂, 
-                                                                            verbose = verbose, 
-                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                            lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
+                dvariance = 𝒟.jacobian(x -> max.(ℒ.diag(calculate_covariance(x, 𝓂, opts = opts)[1]),eps(Float64)), backend, 𝓂.parameter_values)[:,param_idx]
             end
 
             vari = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
@@ -2752,25 +2712,13 @@ function get_moments(𝓂::ℳ;
 
                 if algorithm == :pruned_second_order
                     # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, 
-                                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                                sylvester_algorithm = sylvester_algorithm, 
-                                                                                                lyapunov_algorithm = lyapunov_algorithm, 
-                                                                                                verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
                 elseif algorithm == :pruned_third_order
                     # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, 
-                                                                                                dependencies_tol = dependencies_tol, 
-                                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                                lyapunov_algorithm = lyapunov_algorithm, 
-                                                                                                sylvester_algorithm = sylvester_algorithm, 
-                                                                                                verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, dependencies_tol = dependencies_tol, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
                 else
                     # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
-                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, 
-                                                                                    verbose = verbose, 
-                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                    lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                    dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
                 end
 
                 st_dev =  KeyedArray(hcat(standard_dev[var_idx], dst_dev[var_idx, :]);  Variables = axis1, Standard_deviation_and_∂standard_deviation∂parameter = axis2)
@@ -2786,53 +2734,30 @@ function get_moments(𝓂::ℳ;
             end
 
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, 
-                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                sylvester_algorithm = sylvester_algorithm, 
-                                                lyapunov_algorithm = lyapunov_algorithm, 
-                                                verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, opts = opts)
 
                 # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_second_order(x, param_idx, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, 
-                                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                            sylvester_algorithm = sylvester_algorithm, 
-                                                                                            lyapunov_algorithm = lyapunov_algorithm, 
-                                                                                            verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_second_order_moments(x, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, 
-                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                sylvester_algorithm = sylvester_algorithm, 
-                                                                                lyapunov_algorithm = lyapunov_algorithm, 
-                                                                                verbose = verbose)
+                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, opts = opts)
 
                 # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives_third_order(x, variables, param_idx, 𝓂, dependencies_tol = dependencies_tol, lyapunov_algorithm = lyapunov_algorithm, sylvester_algorithm = sylvester_algorithm, verbose = verbose)), 𝓂.parameter_values[param_idx])[1]
-                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, 
-                                                                                            dependencies_tol = dependencies_tol, 
-                                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                            lyapunov_algorithm = lyapunov_algorithm, 
-                                                                                            sylvester_algorithm = sylvester_algorithm, 
-                                                                                            verbose = verbose)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_third_order_moments(x, variables, 𝓂, dependencies_tol = dependencies_tol, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
 
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, 
-                                                                        verbose = verbose, 
-                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                        lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
                 
                 @assert solved "Could not find covariance matrix."
 
                 # dst_dev = 𝒜.jacobian(𝒷(), x -> sqrt.(covariance_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)), 𝓂.parameter_values[param_idx])[1]
-                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, 
-                                                                                verbose = verbose, 
-                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                                                lyapunov_algorithm = lyapunov_algorithm)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
+                dst_dev = 𝒟.jacobian(x -> sqrt.(max.(ℒ.diag(calculate_covariance(x, 𝓂, opts = opts)[1]),eps(Float64))), backend, 𝓂.parameter_values)[:,param_idx]
             end
 
             standard_dev = sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))
@@ -2849,12 +2774,12 @@ function get_moments(𝓂::ℳ;
                 axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
             end
 
-            state_μ, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose)
+            state_μ, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, opts = opts)
             
             @assert solved "Mean not found."
 
             # state_μ_dev = 𝒜.jacobian(𝒷(), x -> mean_parameter_derivatives(x, param_idx, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm), 𝓂.parameter_values[param_idx])[1]
-            state_μ_dev = 𝒟.jacobian(x -> calculate_mean(x, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm)[1], backend, 𝓂.parameter_values)[:,param_idx]
+            state_μ_dev = 𝒟.jacobian(x -> calculate_mean(x, 𝓂, algorithm = algorithm, opts = opts)[1], backend, 𝓂.parameter_values)[:,param_idx]
             
             var_means =  KeyedArray(hcat(state_μ[var_idx], state_μ_dev[var_idx, :]);  Variables = axis1, Mean_and_∂mean∂parameter = axis2)
         end
@@ -2886,7 +2811,7 @@ function get_moments(𝓂::ℳ;
         end
 
         if mean && !(variance || standard_deviation || covariance)
-            state_μ, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, verbose = verbose, sylvester_algorithm = sylvester_algorithm)
+            state_μ, solved = calculate_mean(𝓂.parameter_values, 𝓂, algorithm = algorithm, opts = opts)
 
             @assert solved "Mean not found."
 
@@ -2895,17 +2820,17 @@ function get_moments(𝓂::ℳ;
 
         if variance
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, opts = opts)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, dependencies_tol = dependencies_tol, verbose = verbose)
+                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, dependencies_tol = dependencies_tol, opts = opts)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
                 
                 @assert solved "Could not find covariance matrix."
             end
@@ -2921,17 +2846,17 @@ function get_moments(𝓂::ℳ;
 
         if standard_deviation
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, opts = opts)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, dependencies_tol = dependencies_tol, verbose = verbose)
+                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, variables, 𝓂, dependencies_tol = dependencies_tol, opts = opts)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
                 
                 @assert solved "Could not find covariance matrix."
             end
@@ -2940,17 +2865,17 @@ function get_moments(𝓂::ℳ;
 
         if covariance
             if algorithm == :pruned_second_order
-                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, opts = opts)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             elseif algorithm == :pruned_third_order
-                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, dependencies_tol = dependencies_tol, verbose = verbose)
+                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, dependencies_tol = dependencies_tol, opts = opts)
                 if mean
                     var_means = KeyedArray(state_μ[var_idx];  Variables = axis1)
                 end
             else
-                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
                 
                 @assert solved "Could not find covariance matrix."
             end
@@ -3168,24 +3093,24 @@ function get_statistics(𝓂,
         if !(autocorrelation == Symbol[])
             second_mom_third_order = union(autocorrelation, standard_deviation, variance, covariance)
 
-            covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments(all_parameters, second_mom_third_order, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose, autocorrelation = true, autocorrelation_periods = autocorrelation_periods)
+            covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments(all_parameters, second_mom_third_order, 𝓂, opts = opts, autocorrelation = true, autocorrelation_periods = autocorrelation_periods)
 
         elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
 
-            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, union(variance,covariance,standard_deviation), 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, union(variance,covariance,standard_deviation), 𝓂, opts = opts)
 
         end
 
     elseif algorithm == :pruned_second_order
 
         if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])
-            covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(all_parameters, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+            covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(all_parameters, 𝓂,  opts = opts)
         else
-            state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(all_parameters, 𝓂, sylvester_algorithm = sylvester_algorithm, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose, covariance = false)
+            state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(all_parameters, 𝓂, opts = opts, covariance = false)
         end
 
     else
-        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(all_parameters, 𝓂, verbose = verbose, lyapunov_algorithm = lyapunov_algorithm)
+        covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(all_parameters, 𝓂, opts = opts)
 
         # @assert solved "Could not find covariance matrix."
     end
@@ -3370,14 +3295,8 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 
-    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), 
-                                                                                    parameter_values, 
-                                                                                    𝓂, 
-                                                                                    tol, 
-                                                                                    # timer = timer, 
-                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                    sylvester_algorithm = sylvester_algorithm, 
-                                                                                    verbose = verbose)
+    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, opts = opts)
+                                                                                    # timer = timer,
 
     # end # timeit_debug
 
@@ -3397,7 +3316,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Filter" begin
 
-    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, verbose) # timer = timer
+    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts) # timer = timer
 
     # end # timeit_debug
 
@@ -3474,7 +3393,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
     
     solve!(𝓂, parameters = parameters, opts = opts)
 
-    SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, verbose = false)
+    SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
     aux_and_vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_aux_equations)), union(𝓂.parameters_in_equations, 𝓂.➕_vars))))
 
