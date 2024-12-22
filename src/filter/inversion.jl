@@ -3370,7 +3370,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-    if solution_error > 1e-12 || isnan(solution_error)
+    if solution_error > opts.tol || isnan(solution_error)
         @error "No solution for these parameters."
         return variables, shocks, [], decomposition
     end

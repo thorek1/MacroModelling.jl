@@ -27,7 +27,11 @@ function calculate_covariance(parameters::Vector{R},
         return CC, sol, ∇₁, SS_and_pars, solved
     end
 
-    covar_raw, solved = solve_lyapunov_equation(A, CC, lyapunov_algorithm = opts.lyapunov_algorithm, verbose = opts.verbose)
+    covar_raw, solved = solve_lyapunov_equation(A, CC, 
+                                                lyapunov_algorithm = opts.lyapunov_algorithm, 
+                                                tol = opts.lyapunov_tol,
+                                                acceptance_tol = opts.lyapunov_acceptance_tol,
+                                                verbose = opts.verbose)
 
     return covar_raw, sol , ∇₁, SS_and_pars, solved
 end
@@ -362,7 +366,11 @@ function calculate_second_order_moments(
 
     C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
 
-    Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, lyapunov_algorithm = opts.lyapunov_algorithm, verbose = opts.verbose)
+    Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, 
+                                        lyapunov_algorithm = opts.lyapunov_algorithm, 
+                                        tol = opts.lyapunov_tol,
+                                        acceptance_tol = opts.lyapunov_acceptance_tol,
+                                        verbose = opts.verbose)
 
     # if Σᶻ₂ isa DenseMatrix
     #     Σᶻ₂ = sparse(Σᶻ₂)
@@ -595,7 +603,11 @@ function calculate_third_order_moments(parameters::Vector{T},
         C = ê_to_ŝ₃ * Γ₃ * ê_to_ŝ₃' + A + A'
         droptol!(C, eps())
 
-        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, lyapunov_algorithm = opts.lyapunov_algorithm, verbose = opts.verbose)
+        Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, 
+                                            lyapunov_algorithm = opts.lyapunov_algorithm, 
+                                            tol = opts.lyapunov_tol,
+                                            acceptance_tol = opts.lyapunov_acceptance_tol,
+                                            verbose = opts.verbose)
 
         solved_lyapunov = solved_lyapunov && info
 

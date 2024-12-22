@@ -83,7 +83,11 @@ function get_initial_covariance(::Val{:theoretical},
                                 B::AbstractMatrix{S}; 
                                 opts::CalculationOptions = merge_calculation_options())::Matrix{S} where S <: Real
                                 # timer::TimerOutput = TimerOutput(), 
-    P, _ = solve_lyapunov_equation(A, B, lyapunov_algorithm = opts.lyapunov_algorithm, verbose = opts.verbose) # timer = timer, 
+    P, _ = solve_lyapunov_equation(A, B, 
+                                    lyapunov_algorithm = opts.lyapunov_algorithm, 
+                                    tol = opts.lyapunov_tol,
+                                    acceptance_tol = opts.lyapunov_acceptance_tol,
+                                    verbose = opts.verbose) # timer = timer, 
 
     return P
 end

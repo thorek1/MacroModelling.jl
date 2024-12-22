@@ -18,8 +18,8 @@ function solve_sylvester_equation(A::M,
                                     sylvester_algorithm::Symbol = :doubling,
                                     acceptance_tol::AbstractFloat = 1e-10,
                                     tol::AbstractFloat = 1e-14,
-                                    # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
+                                    # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Choose matrix formats" begin
 
     if sylvester_algorithm == :bartels_stewart
@@ -992,7 +992,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::AbstractFloat = 1e-12)                                 
+                                    tol::AbstractFloat = 1e-14)                                 
     # guess_provided = true
 
     if length(initial_guess) == 0

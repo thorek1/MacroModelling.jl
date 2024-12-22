@@ -11,15 +11,10 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         C::AbstractMatrix{R}, 
                                         T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        opts::CalculationOptions = merge_calculation_options()) where R <: Real
-                                        
-    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm
-
-    tol = opts.qme_tol
-
-    acceptance_tol = opts.qme_acceptance_tol
-
-    verbose = opts.verbose
+                                        quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                        tol::AbstractFloat = 1e-14,
+                                        acceptance_tol::AbstractFloat = 1e-8,
+                                        verbose::Bool = false) where R <: Real
 
     if length(initial_guess) > 0
         X = initial_guess

@@ -41,7 +41,12 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, T, opts = opts, initial_guess = initial_guess)
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, T, 
+                                                    initial_guess = initial_guess,
+                                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                                    tol = opts.qme_tol,
+                                                    acceptance_tol = opts.qme_acceptance_tol,
+                                                    verbose = opts.verbose)
 
     if !solved
         if opts.verbose println("Quadratic matrix equation solution failed.") end
@@ -154,10 +159,12 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, 
-                                            T, 
-                                            opts = opts,
-                                            initial_guess = initial_guess)
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, T, 
+                                                    initial_guess = initial_guess,
+                                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                                    tol = opts.qme_tol,
+                                                    acceptance_tol = opts.qme_acceptance_tol,
+                                                    verbose = opts.verbose)
 
     if !solved
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent()
@@ -246,8 +253,9 @@ function rrule(::typeof(calculate_first_order_solution),
 
         ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.tol,
-                                                acceptance_tol = opts.sylvester_acceptance_tol)
+                                                tol = opts.sylvester_tol,
+                                                acceptance_tol = opts.sylvester_acceptance_tol,
+                                                verbose = opts.verbose)
 
         if !solved
             NoTangent(), NoTangent(), NoTangent()
@@ -318,8 +326,9 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
         dX, solved = solve_sylvester_equation(AA, -X, -CC, 
                                                 initial_guess = initial_guess,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.tol,
-                                                acceptance_tol = opts.sylvester_acceptance_tol)
+                                                tol = opts.sylvester_tol,
+                                                acceptance_tol = opts.sylvester_acceptance_tol,
+                                                verbose = opts.verbose)
 
         # if !solved
         #     dX, solved = solve_sylvester_equation(AA, -X, -CC, 
@@ -444,9 +453,9 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     𝐒₂, solved = solve_sylvester_equation(A, B, C, 
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
-                                            tol = opts.tol,
-                                            acceptance_tol = opts.sylvester_acceptance_tol)#, 
-                                            # timer = timer)
+                                            tol = opts.sylvester_tol,
+                                            acceptance_tol = opts.sylvester_acceptance_tol,
+                                            verbose = opts.verbose) # timer = timer)
 
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin
@@ -565,10 +574,9 @@ function rrule(::typeof(calculate_second_order_solution),
     𝐒₂, solved = solve_sylvester_equation(A, B, C,  
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
-                                            tol = opts.tol,
-                                            acceptance_tol = opts.sylvester_acceptance_tol) #, 
-                                            # tol = tol, 
-                                            # timer = timer)
+                                            tol = opts.sylvester_tol,
+                                            acceptance_tol = opts.sylvester_acceptance_tol,
+                                            verbose = opts.verbose) # timer = timer)
 
     # end # timeit_debug
     # @timeit_debug timer "Post-process" begin
@@ -615,8 +623,9 @@ function rrule(::typeof(calculate_second_order_solution),
 
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.tol,
-                                                acceptance_tol = opts.sylvester_acceptance_tol)
+                                                tol = opts.sylvester_tol,
+                                                acceptance_tol = opts.sylvester_acceptance_tol,
+                                                verbose = opts.verbose)
         
         if !solved
             return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
@@ -924,10 +933,9 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
-                                            tol = opts.tol,
-                                            acceptance_tol = opts.sylvester_acceptance_tol) # , 
-                                            # tol = tol, 
-                                            # timer = timer)
+                                            tol = opts.sylvester_tol,
+                                            acceptance_tol = opts.sylvester_acceptance_tol,
+                                            verbose = opts.verbose) # timer = timer)
     
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin
@@ -1149,10 +1157,9 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
-                                            tol = opts.tol,
-                                            acceptance_tol = opts.sylvester_acceptance_tol) # , 
-                                            # tol = tol, 
-                                            # timer = timer)
+                                            tol = opts.sylvester_tol,
+                                            acceptance_tol = opts.sylvester_acceptance_tol,
+                                            verbose = opts.verbose) # timer = timer)
     
     # end # timeit_debug
     # # @timeit_debug timer "Refine sylvester equation" begin
@@ -1260,8 +1267,9 @@ function rrule(::typeof(calculate_third_order_solution),
         
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₃,
                                                 sylvester_algorithm = opts.sylvester_algorithm³,
-                                                tol = opts.tol,
-                                                acceptance_tol = opts.sylvester_acceptance_tol)
+                                                tol = opts.sylvester_tol,
+                                                acceptance_tol = opts.sylvester_acceptance_tol,
+                                                verbose = opts.verbose)
 
         if !solved
             return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 

@@ -4114,7 +4114,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     # end # timeit_debug
 
     if !solved
-        if verbose println("1st order solution not found") end
+        if opts.verbose println("1st order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
@@ -4141,7 +4141,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     # end # timeit_debug
 
     if !solved2
-        if verbose println("2nd order solution not found") end
+        if opts.verbose println("2nd order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
@@ -4156,7 +4156,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
     if !ℒ.issuccess(tmp̄)
-        if verbose println("SSS not found") end
+        if opts.verbose println("SSS not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
@@ -4178,7 +4178,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         SSSstates, converged = calculate_second_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, SSSstates, 𝓂) # , timer = timer)
         
         if !converged
-            if verbose println("SSS not found") end
+            if opts.verbose println("SSS not found") end
             return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
         end
 
@@ -4416,7 +4416,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
     
     if solution_error > opts.tol || isnan(solution_error)
-        if verbose println("NSSS not found") end
+        if opts.verbose println("NSSS not found") end
         return zeros(𝓂.timings.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
     
@@ -4432,7 +4432,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     if !solved
-        if verbose println("1st order solution not found") end
+        if opts.verbose println("1st order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
@@ -4446,7 +4446,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                     opts = opts)
 
     if !solved2
-        if verbose println("2nd order solution not found") end
+        if opts.verbose println("2nd order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
     
@@ -4467,7 +4467,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                 opts = opts)
 
     if !solved3
-        if verbose println("3rd order solution not found") end
+        if opts.verbose println("3rd order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
@@ -4486,7 +4486,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
     if !ℒ.issuccess(tmp̄)
-        if verbose println("SSS not found") end
+        if opts.verbose println("SSS not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
@@ -4511,7 +4511,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         SSSstates, converged = calculate_third_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, 𝐒₃, SSSstates, 𝓂)
         
         if !converged
-            if verbose println("SSS not found") end
+            if opts.verbose println("SSS not found") end
             return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
         end
 
@@ -7371,7 +7371,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     if solution_error > opts.tol # || isnan(solution_error) if it's NaN the fisrt condition is false anyway
         # println("NSSS not found")
-        return TT, SS_and_pars, zeros(S, 0, 0), [state], solution_error < tol
+        return TT, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol
     end
 
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) # , timer = timer)# |> Matrix

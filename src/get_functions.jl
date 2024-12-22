@@ -453,8 +453,8 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                     lyapunov_algorithm::Symbol = :doubling)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
-        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-        lyapunov_algorithm = lyapunov_algorithm)
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    lyapunov_algorithm = lyapunov_algorithm)
 
     algorithm = :first_order
 
@@ -1436,8 +1436,8 @@ function get_steady_state(𝓂::ℳ;
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm² = sylvester_algorithm²,
-                                    sylvester_algorithm³ = sylvester_algorithm³)
+                                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
 
     if !(algorithm == :first_order) stochastic = true end
     
@@ -1712,8 +1712,8 @@ function get_solution(𝓂::ℳ;
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm² = sylvester_algorithm²,
-                                    sylvester_algorithm³ = sylvester_algorithm³)
+                                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -1836,8 +1836,8 @@ function get_solution(𝓂::ℳ,
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm² = sylvester_algorithm²,
-                                    sylvester_algorithm³ = sylvester_algorithm³)
+                                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
 
     @ignore_derivatives solve!(𝓂, opts = opts, algorithm = algorithm)
 
@@ -2205,7 +2205,11 @@ function get_variance_decomposition(𝓂::ℳ;
         
         CC = C * C'
 
-        covar_raw, _ = solve_lyapunov_equation(A, CC, lyapunov_algorithm = lyapunov_algorithm, verbose = verbose)
+        covar_raw, _ = solve_lyapunov_equation(A, CC, 
+                                                lyapunov_algorithm = opts.lyapunov_algorithm, 
+                                                tol = opts.lyapunov_tol,
+                                                acceptance_tol = opts.lyapunov_acceptance_tol,
+                                                verbose = opts.verbose)
 
         variances_by_shock[:,i] = ℒ.diag(covar_raw)
     end
@@ -2554,7 +2558,7 @@ function get_moments(𝓂::ℳ;
                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                     lyapunov_algorithm::Symbol = :doubling, 
                     verbose::Bool = false,
-                    tol::AbstractFloat = eps())#limit output by selecting pars and vars like for plots and irfs!?
+                    tol::AbstractFloat = 1e-12)#limit output by selecting pars and vars like for plots and irfs!?
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2592,7 +2596,7 @@ function get_moments(𝓂::ℳ;
 
     NSSS, (solution_error, iters) = 𝓂.solution.outdated_NSSS ? get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts) : (copy(𝓂.solution.non_stochastic_steady_state), (eps(), 0))
 
-    @assert solution_error < 1e-12 "Could not find non-stochastic steady state."
+    @assert solution_error < tol "Could not find non-stochastic steady state."
 
     if length_par * length(NSSS) > 200 && derivatives
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = 3

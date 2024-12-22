@@ -1,28 +1,55 @@
 struct CalculationOptions
     tol::AbstractFloat
+
+    quadratic_matrix_equation_algorithm::Symbol
     qme_tol::AbstractFloat
     qme_acceptance_tol::AbstractFloat
-    sylvester_tol::AbstractFloat
-    sylvester_acceptance_tol::AbstractFloat
-    verbose::Bool
-    quadratic_matrix_equation_algorithm::Symbol
+
     sylvester_algorithm²::Symbol
     sylvester_algorithm³::Symbol
+    sylvester_tol::AbstractFloat
+    sylvester_acceptance_tol::AbstractFloat
+
     lyapunov_algorithm::Symbol
+    lyapunov_tol::AbstractFloat
+    lyapunov_acceptance_tol::AbstractFloat
+
+    verbose::Bool
 end
 
-function merge_calculation_options(;tol::AbstractFloat=1e-12,
-                                    qme_tol::AbstractFloat=1e-14,
-                                    qme_acceptance_tol::AbstractFloat=1e-8,
-                                    sylvester_tol::AbstractFloat=1e-14,
-                                    sylvester_acceptance_tol::AbstractFloat=1e-10,
-                                    verbose::Bool=false,
-                                    quadratic_matrix_equation_algorithm::Symbol=:schur,
-                                    sylvester_algorithm²::Symbol=:doubling,
-                                    sylvester_algorithm³::Symbol=:bicgstab,
-                                    lyapunov_algorithm::Symbol=:doubling)
+function merge_calculation_options(;tol::AbstractFloat = 1e-12,
+
+                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                    qme_tol::AbstractFloat = 1e-14,
+                                    qme_acceptance_tol::AbstractFloat = 1e-8,
+
+                                    sylvester_algorithm²::Symbol = :doubling,
+                                    sylvester_algorithm³::Symbol = :bicgstab,
+                                    sylvester_tol::AbstractFloat = 1e-14,
+                                    sylvester_acceptance_tol::AbstractFloat = 1e-10,
+
+                                    lyapunov_algorithm::Symbol = :doubling,
+                                    lyapunov_tol::AbstractFloat = 1e-14,
+                                    lyapunov_acceptance_tol::AbstractFloat = 1e-12,
+
+                                    verbose::Bool = false)
                                     
-    return CalculationOptions(tol, qme_tol, qme_acceptance_tol, sylvester_tol, sylvester_acceptance_tol, verbose, quadratic_matrix_equation_algorithm, sylvester_algorithm², sylvester_algorithm³, lyapunov_algorithm)
+    return CalculationOptions(tol, 
+
+                                quadratic_matrix_equation_algorithm, 
+                                qme_tol, 
+                                qme_acceptance_tol, 
+
+                                sylvester_algorithm², 
+                                sylvester_algorithm³, 
+                                sylvester_tol, 
+                                sylvester_acceptance_tol, 
+
+                                lyapunov_algorithm, 
+                                lyapunov_tol, 
+                                lyapunov_acceptance_tol, 
+
+                                verbose)
 end
 
 

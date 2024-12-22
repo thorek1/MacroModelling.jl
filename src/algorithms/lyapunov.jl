@@ -12,9 +12,10 @@
 function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 C::AbstractMatrix{Float64};
                                 lyapunov_algorithm::Symbol = :doubling,
-                                tol::AbstractFloat = 1e-12,
-                                # timer::TimerOutput = TimerOutput(),
+                                tol::AbstractFloat = 1e-14,
+                                acceptance_tol::AbstractFloat = 1e-12,
                                 verbose::Bool = false)
+                                # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Solve lyapunov equation" begin
     # @timeit_debug timer "Choose matrix formats" begin
         
@@ -28,39 +29,30 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     # end # timeit_debug           
     # @timeit_debug timer "Solve" begin
 
-    X, i, reached_tol = solve_lyapunov_equation(A, C, 
-                                                        Val(lyapunov_algorithm))#, 
-                                                        # tol = tol, 
-                                                        # timer = timer)
+    X, i, reached_tol = solve_lyapunov_equation(A, C, Val(lyapunov_algorithm), tol = tol) # timer = timer)
 
     if verbose
-        println("Lyapunov equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $reached_tol; algorithm: $lyapunov_algorithm")
+        println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $lyapunov_algorithm")
     end
 
-    if reached_tol > tol 
-        if (reached_tol < sqrt(tol) || A isa AbstractSparseMatrix) && lyapunov_algorithm ≠ :bicgstab
+    if reached_tol > acceptance_tol 
+        if (reached_tol < sqrt(acceptance_tol) || A isa AbstractSparseMatrix) && lyapunov_algorithm ≠ :bicgstab
             C = collect(C)
 
-            X, i, reached_tol = solve_lyapunov_equation(A, C, 
-                                                                Val(:bicgstab))#, 
-                                                                # tol = tol, 
-                                                                # timer = timer)
+            X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bicgstab), tol = tol) # timer = timer)
 
             if verbose
-                println("Lyapunov equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $reached_tol; algorithm: gmres")
+                println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: gmres")
             end
         else
             A = collect(A)
 
             C = collect(C)
 
-            X, i, reached_tol = solve_lyapunov_equation(A, C, 
-                                                                Val(:bartels_stewart))#, 
-                                                                # tol = tol, 
-                                                                # timer = timer)
+            X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bartels_stewart), tol = tol) # timer = timer)
 
             if verbose
-                println("Lyapunov equation - converged to tol $tol: $(reached_tol < tol); iterations: $i; reached tol: $reached_tol; algorithm: lyapunov")
+                println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: lyapunov")
             end
         end
     end
@@ -70,27 +62,24 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     
     # if (reached_tol > tol) println("Lyapunov failed: $reached_tol") end
 
-    return X, reached_tol < tol
+    return X, reached_tol < acceptance_tol
 end
 
 function rrule(::typeof(solve_lyapunov_equation),
                 A::AbstractMatrix{Float64},
                 C::AbstractMatrix{Float64};
                 lyapunov_algorithm::Symbol = :doubling,
-                tol::AbstractFloat = 1e-12,
+                tol::AbstractFloat = 1e-14,
+                acceptance_tol::AbstractFloat = 1e-12,
                 # timer::TimerOutput = TimerOutput(),
                 verbose::Bool = false)
 
-    P, solved = solve_lyapunov_equation(A, C, lyapunov_algorithm = lyapunov_algorithm, 
-    # tol = tol, 
-    verbose = verbose)
+    P, solved = solve_lyapunov_equation(A, C, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
 
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
-        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm, 
-        # tol = tol, 
-        verbose = verbose)
+        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
     
         ∂A = ∂C * A * P' + ∂C' * A * P
 
@@ -105,16 +94,15 @@ end
 function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}};
                                     lyapunov_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-12,
+                                    tol::AbstractFloat = 1e-14,
+                                    acceptance_tol::AbstractFloat = 1e-12,
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false) where {Z,S,N}
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
 
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, lyapunov_algorithm = lyapunov_algorithm, 
-    # tol = tol, 
-    verbose = verbose)
+    P̂, solved = solve_lyapunov_equation(Â, Ĉ, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
 
     Ã = copy(Â)
     C̃ = copy(Ĉ)
@@ -130,9 +118,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(X) < eps() continue end
 
-        P, solved = solve_lyapunov_equation(Â, X, lyapunov_algorithm = lyapunov_algorithm, 
-        # tol = tol, 
-        verbose = verbose)
+        P, solved = solve_lyapunov_equation(Â, X, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
 
         P̃[:,i] = vec(P)
     end
@@ -148,7 +134,7 @@ function solve_lyapunov_equation(A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},D
                                 C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
                                 ::Val{:bartels_stewart};
                                 # timer::TimerOutput = TimerOutput(),
-                                tol::AbstractFloat = 1e-12)
+                                tol::AbstractFloat = 1e-14)
     𝐂 = try 
         MatrixEquations.lyapd(A, C)
     catch
