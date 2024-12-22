@@ -1552,10 +1552,10 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
     
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
-                                    tol = opts.tol,
-                                    verbose = opts.verbose,
-                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+                                    tol = tol,
+                                    verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = sylvester_algorithm)
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
