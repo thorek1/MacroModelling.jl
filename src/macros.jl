@@ -1,7 +1,7 @@
 
 import MacroTools: unblock, postwalk, @capture, flatten
 
-const all_available_algorithms = [:first_order, :first_order_doubling, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
 
 """

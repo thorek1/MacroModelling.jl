@@ -4780,7 +4780,6 @@ function solve!(𝓂::ℳ;
     if dynamics
         obc_not_solved = isnothing(𝓂.solution.perturbation.first_order.state_update_obc)
         if  ((:first_order         == algorithm) && ((:first_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:first_order_doubling         == algorithm) && ((:first_order_doubling         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:second_order        == algorithm) && ((:second_order        ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_second_order == algorithm) && ((:pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
@@ -4843,7 +4842,7 @@ function solve!(𝓂::ℳ;
             end
             
             𝓂.solution.perturbation.first_order = perturbation_solution(S₁, state_update₁, state_update₁̂)
-            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:first_order, :first_order_doubling])
+            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:first_order])
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
             𝓂.solution.outdated_NSSS = solution_error > opts.tol.NSSS_acceptance_tol
@@ -6922,7 +6921,7 @@ end
 
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function,Bool}
     if occasionally_binding_constraints
-        if algorithm ∈ [:first_order, :first_order_doubling]
+        if algorithm == :first_order
             state_update = 𝓂.solution.perturbation.first_order.state_update_obc
             pruning = false
         elseif :second_order == algorithm
@@ -6939,7 +6938,7 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             pruning = true
         end
     else
-        if algorithm ∈ [:first_order, :first_order_doubling]
+        if algorithm == :first_order
             state_update = 𝓂.solution.perturbation.first_order.state_update
             pruning = false
         elseif :second_order == algorithm

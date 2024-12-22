@@ -677,7 +677,7 @@ if test_set == "basic"
 
         # @test isapprox(sol, sol2, atol = 1e-4)
 
-        sol3 = get_solution(RBC_CME, algorithm = :first_order_doubling, verbose = true)
+        sol3 = get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol, sol3, atol = 1e-4)
 
@@ -744,7 +744,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -815,7 +815,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -885,7 +885,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -956,7 +956,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -1026,7 +1026,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -1096,7 +1096,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -1166,7 +1166,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -1236,7 +1236,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -1305,7 +1305,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -1376,7 +1376,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -1449,7 +1449,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -1522,7 +1522,7 @@ if test_set == "basic"
 
         # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        sol_exo3 = get_solution(m, algorithm = :first_order_doubling, verbose = true)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
         @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
@@ -2339,7 +2339,7 @@ if test_set == "basic"
             std_z_delta = .005
         end
 
-        get_solution(RBC_CME, algorithm = :first_order_doubling)
+        get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling)
 
         @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
                                                                     6.73489e-6   0.000168887
@@ -2350,7 +2350,7 @@ if test_set == "basic"
                                                                     0.005        0.0], atol = 1e-6)
 
 
-        get_solution(RBC_CME, algorithm = :first_order_doubling, parameters = :I_K_ratio => .1)
+        get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :I_K_ratio => .1)
 
         @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
             3.42408e-6   0.000111417
@@ -2361,7 +2361,7 @@ if test_set == "basic"
             0.005        0.0], atol = 1e-6)
 
 
-        get_solution(RBC_CME, algorithm = :first_order_doubling, parameters = :cap_share => 1.5)
+        get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :cap_share => 1.5)
 
         @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
         4.00629e-6   0.000118171

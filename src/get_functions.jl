@@ -814,7 +814,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
             Y[:,i] = pruning ? sum(initial_state) : initial_state
         end
-    elseif algorithm ∈ [:first_order, :first_order_doubling]
+    elseif algorithm == :first_order
         C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
     
         CC = C[cond_var_idx,free_shock_idx]
@@ -1493,7 +1493,7 @@ function get_steady_state(𝓂::ℳ;
         solve!(𝓂, 
                 opts = opts, 
                 dynamics = true, 
-                algorithm = algorithm ∈ [:first_order, :first_order_doubling] ? :second_order : algorithm, 
+                algorithm = algorithm == :first_order ? :second_order : algorithm, 
                 silent = silent, 
                 obc = length(𝓂.obc_violation_equations) > 0)
 
@@ -1744,7 +1744,7 @@ function get_solution(𝓂::ℳ;
             silent = silent, 
             algorithm = algorithm)
 
-    if algorithm ∈ [:first_order, :first_order_doubling]
+    if algorithm == :first_order
         solution_matrix = 𝓂.solution.perturbation.first_order.solution_matrix
     end
 
@@ -2330,7 +2330,7 @@ function get_correlation(𝓂::ℳ;
                         sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
-    @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
+    @assert algorithm ∈ [:first_order, :pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -2439,7 +2439,7 @@ function get_autocorrelation(𝓂::ℳ;
                             sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
-    @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order, :pruned_third_order] "Autocorrelation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
+    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Autocorrelation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
     solve!(𝓂, 
             opts = opts, 
@@ -3091,7 +3091,7 @@ function get_statistics(𝓂,
                         sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
-    @assert algorithm ∈ [:first_order, :first_order_doubling, :pruned_second_order, :pruned_third_order] "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
+    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
 
     @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
