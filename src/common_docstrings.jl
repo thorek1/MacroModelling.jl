@@ -1,5 +1,4 @@
 # commonly used DocStrings
-const VERBOSE = "`verbose` [Default: `false`, Type: `Bool`]: print information about how the NSSS is solved (symbolic or numeric), which solver is used (Levenberg-Marquardt...), and the maximum absolute error."
 const MODEL = "`𝓂`: the object created by [`@model`](@ref) and [`@parameters`](@ref) for which to get the solution."
 const PARAMETER_VALUES = "`parameters` [Type: `Vector`]: Parameter values in alphabetical order (sorted by parameter name)."
 const PARAMETERS = "`parameters` [Default: `nothing`]: If nothing is provided, the solution is calculated for the parameters defined previously. Acceptable inputs are a vector of parameter values, a vector or tuple of pairs of the parameter `Symbol` or `String` and value. If the new parameter values differ from the previously defined the solution will be recalculated."
@@ -22,3 +21,5 @@ const DATA_IN_LEVELS = "`data_in_levels` [Default: `true`, Type: `Bool`]: indica
 const LYAPUNOV = "`lyapunov_algorithm` [Default: `:doubling`, Type: `Symbol`]: algorithm to solve Lyapunov equation (`A * X * A' + C = X`). Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`"
 const SYLVESTER = "`sylvester_algorithm` [Default: `:doubling`, Type: `Symbol`]: algorithm to solve Sylvester equation (`A * X * B + C = X`). Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:dqgmres`, `:gmres`"
 const QME = "`quadratic_matrix_equation_algorithm` [Default: `:schur`, Type: `Symbol`]: algorithm to solve quadratic matrix equation (`A * X ^ 2 + B * X + C = 0`). Available algorithms: `:schur`, `:doubling`"
+const VERBOSE = "`verbose` [Default: `false`, Type: `Bool`]: print information about results of the different solvers used to solve the model (non stochastic steady state solver, Sylvester equations, Lyapunov equation, and quadratic matrix equation)."
+const TOL = "`tol` [Default: `Tolerances()`, Type: `Tolerances`]: define various tolerances for the algorithm used to solve the model. See documentation of [`Tolerances`](@ref) for more details: `?Tolerances`"

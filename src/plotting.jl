@@ -43,6 +43,11 @@ In case `shock_decomposition = true`, then the plot shows the variables, shocks,
 - `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
 - `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
 - `transparency` [Default: `0.6`, Type: `Float64`]: transparency of bars
+- $ALGORITHM
+- $QME
+- $SYLVESTER
+- $LYAPUNOV
+- $TOL
 - $VERBOSE
 
 # Examples
@@ -422,6 +427,10 @@ The left axis shows the level, and the right the deviation from the reference st
 - $GENERALISED_IRF
 - `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
 - `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
+- $QME
+- $SYLVESTER
+- $LYAPUNOV
+- $TOL
 - $VERBOSE
 
 # Examples
@@ -885,6 +894,9 @@ The vertical axis shows the share of the shocks variance contribution, and horiz
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
 - `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- $QME
+- $LYAPUNOV
+- $TOL
 - $VERBOSE
 
 # Examples
@@ -1088,6 +1100,11 @@ In the case of pruned solutions there as many (latent) state vectors as the pert
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
+- $ALGORITHM
+- $QME
+- $SYLVESTER
+- $LYAPUNOV
+- $TOL
 - $VERBOSE
 
 # Examples
@@ -1430,6 +1447,10 @@ The left axis shows the level, and the right axis the deviation from the (non) s
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
 - `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- $QME
+- $SYLVESTER
+- $LYAPUNOV
+- $TOL
 - $VERBOSE
 
 # Examples
