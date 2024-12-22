@@ -2444,11 +2444,11 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
                                                             
     push!(SS_solve_func,:(iters += solution[2][2])) 
     push!(SS_solve_func,:(solution_error += solution[2][1])) 
-    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed after solving block with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
+    push!(SS_solve_func, :(if solution_error > tol if verbose println("Failed after solving block with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
 
     if length(ss_and_aux_equations_error) > 0
         push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error...))))
-        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for aux variables with error $(solution_error)") end; scale = scale * .3 + solved_scale * .7; continue end))
+        push!(SS_solve_func, :(if solution_error > tol if verbose println("Failed for aux variables with error $(solution_error)") end; scale = scale * .3 + solved_scale * .7; continue end))
     end
 
     push!(SS_solve_func,:(sol = solution[1]))
@@ -2975,7 +2975,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             if parsed_eq_to_solve_for != minmax_fixed_eqs
                 [push!(atoms_in_equations, a) for a in setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs))]
                 push!(min_max_errors,:(solution_error += abs($parsed_eq_to_solve_for)))
-                push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for min max terms in equations with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
+                push!(SS_solve_func, :(if solution_error > tol if verbose println("Failed for min max terms in equations with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                 eq_to_solve = eval(minmax_fixed_eqs)
             end
             
@@ -3017,7 +3017,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
                     push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, 𝓂.solved_vars[end], 𝓂.solved_vals[end])))))
-                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical aux variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
+                    push!(SS_solve_func, :(if solution_error > tol if verbose println("Failed for analytical aux variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                     
                     unique_➕_eqs[𝓂.solved_vals[end]] = 𝓂.solved_vars[end]
                 else
@@ -3028,7 +3028,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     if length(vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)) > 0
                         push!(SS_solve_func,vcat(ss_and_aux_equations, ss_and_aux_equations_dep)...)
                         push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)...))))
-                        push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for analytical variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
+                        push!(SS_solve_func, :(if solution_error > tol if verbose println("Failed for analytical variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                     end
                     
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
@@ -3036,7 +3036,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 if haskey(𝓂.bounds, 𝓂.solved_vars[end]) && 𝓂.solved_vars[end] ∉ 𝓂.➕_vars
                     push!(SS_solve_func,:(solution_error += abs(min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vars[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2])) - $(𝓂.solved_vars[end]))))
-                    push!(SS_solve_func, :(if solution_error > 1e-12 if verbose println("Failed for bounded variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
+                    push!(SS_solve_func, :(if solution_error > tol if verbose println("Failed for bounded variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                 end
             end
         else
@@ -3161,7 +3161,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     #                                 current_best = latest
     #                             end
     #                         end))
-        push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < 1e-12) && (scale == 1)
+        push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < tol) && (scale == 1)
                                     reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                             end))
     # push!(SS_solve_func,:(if length(𝓂.NSSS_solver_cache) > 100 popfirst!(𝓂.NSSS_solver_cache) end))
@@ -3185,6 +3185,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     solve_exp = :(function solve_SS(initial_parameters::Vector{Real}, 
                                     𝓂::ℳ,
                                     # fail_fast_solvers_only::Bool, 
+                                    tol::AbstractFloat,
                                     verbose::Bool, 
                                     cold_start::Bool,
                                     solver_parameters::Vector{solver_parameters})
@@ -3223,7 +3224,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     push!(NSSS_solver_cache_scale, closest_solution_init)
                     # fail_fast_solvers_only = true
                     # TODO: try have this run for 1000 and and use closest_solution based on the previous result and not on the cache. that way you dont crowd out good and diverse solutions in the cache and make sure he finds the other SS. rely on previous commit for way of implementing closest_solution
-                    while range_iters <= (cold_start ? 1 : 500) && !(solution_error < 1e-12 && solved_scale == 1)
+                    while range_iters <= (cold_start ? 1 : 500) && !(solution_error < tol && solved_scale == 1)
                         range_iters += 1
                         fail_fast_solvers_only = range_iters > 1 ? true : false
 
@@ -3277,7 +3278,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             iters = 0
                             $(SS_solve_func...)
 
-                            if solution_error < 1e-12
+                            if solution_error < tol
                                 # println("solved for $scale; $range_iters")
                                 solved_scale = scale
                                 if scale == 1
@@ -3604,7 +3605,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                                 end
                             end))
 
-    push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < 1e-12)
+    push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < tol)
                                     reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
                                 # solved_scale = scale
                             end))
@@ -3620,6 +3621,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
 
     solve_exp = :(function solve_SS(initial_parameters::Vector{Real}, 
                                     𝓂::ℳ, 
+                                    tol::AbstractFloat,
                                     # fail_fast_solvers_only::Bool, 
                                     verbose::Bool, 
                                     cold_start::Bool,
@@ -3649,7 +3651,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                     # range_length = [ 1, 2, 4, 8,16,32,64,128,1024]
                     scale = 1.0
 
-                    while range_iters <= 500 && !(solution_error < 1e-12 && solved_scale == 1)
+                    while range_iters <= 500 && !(solution_error < tol && solved_scale == 1)
                         range_iters += 1
 
                     # for range_ in range_length
@@ -3697,7 +3699,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                             iters = 0
                             $(SS_solve_func...)
 
-                            if solution_error < 1e-12
+                            if solution_error < tol
                                 # println("solved for $scale; $range_iters")
                                 solved_scale = scale
                                 if scale == 1
@@ -3738,7 +3740,7 @@ function reverse_diff_friendly_push!(x,y)
     @ignore_derivatives push!(x,y)
 end
 
-function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, 𝓂::ℳ, tol::AbstractFloat = 1e-12)::Float64
+function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, 𝓂::ℳ; tol::AbstractFloat = 1e-12)::Float64
     log_lik = 0.0
     log_lik -= -sum(pars[1:19])                                 # logpdf of a gamma dist with mean and variance 1
     log_lik -= -log(5 * sqrt(2 * π)) - (pars[20]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and variance = 5^2
@@ -3748,7 +3750,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
                                     # xtol ftol rel_xtol
     par_inputs = solver_parameters(1e-12, 1e-14, eps(), 250, pars..., 1, 0.0, 2)
 
-    runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs]) catch end
+    runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
 
     runtime = outmodel isa Tuple{Vector{Float64}, Tuple{Float64, Int64}} ? 
                     (outmodel[2][1] > tol) || !isfinite(outmodel[2][1]) ? 
@@ -3769,7 +3771,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int 
 
     ubs = fill(100.0,length(pars))
     
-    sol = Optim.optimize(x -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂), 
+    sol = Optim.optimize(x -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂, tol = tol), 
                             lbs, ubs, pars, 
                             Optim.SAMIN(verbosity = verbosity, nt = 5, ns = 5), 
                             Optim.Options(time_limit = maxtime, iterations = maxiter))
@@ -3779,7 +3781,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int 
                                     # xtol ftol rel_xtol
     par_inputs = solver_parameters(1e-12, 1e-14, eps(), 250, pars..., 1, 0.0, 2)
 
-    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [par_inputs])
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
 
     if solution_error < tol
         push!(𝓂.solver_parameters, par_inputs)
@@ -3803,7 +3805,7 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::AbstractFloat = 1e
         for _ in 1:10
             start_time = time()
 
-            SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, false, true, [p])
+            SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [p])
 
             elapsed_time = time() - start_time
 
@@ -6988,7 +6990,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                     opts::CalculationOptions = merge_calculation_options()) where S <: Float64
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS" begin
-    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.verbose, false, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
 
     if solution_error > opts.tol || isnan(solution_error)
         if opts.verbose 
@@ -7010,7 +7012,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
 
-    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.verbose, false, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
 
     # end # timeit_debug
 
@@ -7140,7 +7142,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
 
-    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.verbose, false, 𝓂.solver_parameters)
+    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
 
     if solution_error > opts.tol || isnan(solution_error)
         if opts.verbose println("Failed to find NSSS") end

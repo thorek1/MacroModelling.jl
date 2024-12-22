@@ -556,6 +556,7 @@ function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
     ::Val{:first_order}, # algo
     ::Val{:kalman}; # filter,
+    warmup_iterations::Int = 0,
     opts::CalculationOptions = merge_calculation_options(),
     smooth::Bool = true)
 

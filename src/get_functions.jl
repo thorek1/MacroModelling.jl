@@ -115,9 +115,9 @@ function get_shock_decomposition(𝓂::ℳ,
     end
 
     variables, shocks, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), 
-                                        warmup_iterations = warmup_iterations, 
-                                        opts = opts,
-                                        smooth = smooth)
+                                                                                    warmup_iterations = warmup_iterations, 
+                                                                                    opts = opts,
+                                                                                    smooth = smooth)
     
     axis1 = 𝓂.timings.var
 
