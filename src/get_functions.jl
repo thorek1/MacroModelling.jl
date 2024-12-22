@@ -72,7 +72,7 @@ function get_shock_decomposition(𝓂::ℳ,
                                 warmup_iterations::Int = 0,
                                 smooth::Bool = true,
                                 verbose::Bool = false,
-                                tol::AbstractFloat = eps(),
+                                tol::AbstractFloat = 1e-12,
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                                 lyapunov_algorithm::Symbol = :doubling)
@@ -212,7 +212,7 @@ function get_estimated_shocks(𝓂::ℳ,
                             data_in_levels::Bool = true,
                             smooth::Bool = true,
                             verbose::Bool = false,
-                            tol::AbstractFloat = eps(),
+                            tol::AbstractFloat = 1e-12,
                             quadratic_matrix_equation_algorithm::Symbol = :schur,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                             lyapunov_algorithm::Symbol = :doubling)
@@ -336,7 +336,7 @@ function get_estimated_variables(𝓂::ℳ,
                                 levels::Bool = true,
                                 smooth::Bool = true,
                                 verbose::Bool = false,
-                                tol::AbstractFloat = eps(),
+                                tol::AbstractFloat = 1e-12,
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                                 lyapunov_algorithm::Symbol = :doubling)
@@ -448,7 +448,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                     data_in_levels::Bool = true,
                                                     smooth::Bool = true,
                                                     verbose::Bool = false,
-                                                    tol::AbstractFloat = eps(),
+                                                    tol::AbstractFloat = 1e-12,
                                                     quadratic_matrix_equation_algorithm::Symbol = :schur,
                                                     lyapunov_algorithm::Symbol = :doubling)
 
@@ -599,7 +599,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                 algorithm::Symbol = :first_order,
                                 levels::Bool = false,
                                 verbose::Bool = false,
-                                tol::AbstractFloat = eps(),
+                                tol::AbstractFloat = 1e-12,
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                                 lyapunov_algorithm::Symbol = :doubling)
@@ -918,7 +918,7 @@ function get_irf(𝓂::ℳ,
                     initial_state::Vector{Float64} = [0.0],
                     levels::Bool = false,
                     verbose::Bool = false,
-                    tol::AbstractFloat = eps(),
+                    tol::AbstractFloat = 1e-12,
                     quadratic_matrix_equation_algorithm::Symbol = :schur) where S <: Real
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -1085,7 +1085,7 @@ function get_irf(𝓂::ℳ;
                 ignore_obc::Bool = false,
                 # timer::TimerOutput = TimerOutput(),
                 verbose::Bool = false,
-                tol::AbstractFloat = eps(),
+                tol::AbstractFloat = 1e-12,
                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                 lyapunov_algorithm::Symbol = :doubling)
@@ -1706,7 +1706,7 @@ function get_solution(𝓂::ℳ;
     algorithm::Symbol = :first_order, 
     silent::Bool = false,
     verbose::Bool = false,
-    tol::AbstractFloat = eps(),
+    tol::AbstractFloat = 1e-12,
     quadratic_matrix_equation_algorithm::Symbol = :schur,
     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling)
 
@@ -2017,7 +2017,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                 periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = [1:20...,Inf],
                                                 parameters::ParameterType = nothing,  
                                                 verbose::Bool = false,
-                                                tol::AbstractFloat = eps(),
+                                                tol::AbstractFloat = 1e-12,
                                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                                 lyapunov_algorithm::Symbol = :doubling)
 
@@ -2175,7 +2175,7 @@ And data, 7×2 Matrix{Float64}:
 function get_variance_decomposition(𝓂::ℳ; 
                                     parameters::ParameterType = nothing,  
                                     verbose::Bool = false,
-                                    tol::AbstractFloat = eps(),
+                                    tol::AbstractFloat = 1e-12,
                                     quadratic_matrix_equation_algorithm::Symbol = :schur,
                                     lyapunov_algorithm::Symbol = :doubling)
 
@@ -2296,7 +2296,7 @@ function get_correlation(𝓂::ℳ;
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                         lyapunov_algorithm::Symbol = :doubling, 
                         verbose::Bool = false,
-                        tol::AbstractFloat = eps())
+                        tol::AbstractFloat = 1e-12)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2404,7 +2404,7 @@ function get_autocorrelation(𝓂::ℳ;
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                             lyapunov_algorithm::Symbol = :doubling, 
                             verbose::Bool = false,
-                            tol::AbstractFloat = eps())
+                            tol::AbstractFloat = 1e-12)
     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3054,7 +3054,7 @@ function get_statistics(𝓂,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                         lyapunov_algorithm::Symbol = :doubling, 
                         verbose::Bool = false,
-                        tol::AbstractFloat = eps()) where {U,T}
+                        tol::AbstractFloat = 1e-12) where {U,T}
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3390,7 +3390,7 @@ And data, 5-element Vector{Float64}:
 function get_non_stochastic_steady_state_residuals(𝓂::ℳ, 
                 values::Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}; 
                 parameters::ParameterType = nothing,
-                tol::AbstractFloat = eps(),
+                tol::AbstractFloat = 1e-12,
                 verbose::Bool = false)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose)
