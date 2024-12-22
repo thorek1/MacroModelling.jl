@@ -98,7 +98,7 @@ function get_shock_decomposition(𝓂::ℳ,
             dynamics = true, 
             algorithm = algorithm)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
     data = data(sort(axiskeys(data,1)))
 
@@ -235,7 +235,7 @@ function get_estimated_shocks(𝓂::ℳ,
             opts = opts,
             dynamics = true)
     
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -359,7 +359,7 @@ function get_estimated_variables(𝓂::ℳ,
             opts = opts,
             dynamics = true)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -463,7 +463,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
             opts = opts,
             dynamics = true)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, verbose = verbose)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -676,7 +676,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
     unspecified_initial_state = initial_state == [0.0]
 
@@ -1164,7 +1164,7 @@ function get_irf(𝓂::ℳ;
 
     # @timeit_debug timer "Get relevant steady state" begin
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, verbose = verbose)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
     # end # timeit_debug
 

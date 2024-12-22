@@ -1240,7 +1240,11 @@ function plot_solution(𝓂::ℳ,
     relevant_SS_dictionnary = Dict{Symbol,Vector{Float64}}()
 
     for a in algorithm
-        relevant_SS = get_steady_state(𝓂, algorithm = a, return_variables_only = true, derivatives = false)
+        relevant_SS = get_steady_state(𝓂, algorithm = a, return_variables_only = true, derivatives = false,
+                                        tol = opts.tol,
+                                        verbose = opts.verbose,
+                                        quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                        sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
         full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
 
@@ -1248,7 +1252,11 @@ function plot_solution(𝓂::ℳ,
     end
 
     if :first_order ∉ algorithm
-        relevant_SS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false)
+        relevant_SS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
+                                        tol = opts.tol,
+                                        verbose = opts.verbose,
+                                        quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                        sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
         full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
 
@@ -1543,7 +1551,11 @@ function plot_conditional_forecast(𝓂::ℳ,
         var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
     end
     
-    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false)
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
+                                    tol = opts.tol,
+                                    verbose = opts.verbose,
+                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
