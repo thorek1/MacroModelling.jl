@@ -1,54 +1,71 @@
-struct CalculationOptions
-    tol::AbstractFloat
+struct Tolerances
+    NSSS_acceptance_tol::AbstractFloat
+    NSSS_xtol::AbstractFloat
+    NSSS_ftol::AbstractFloat
+    NSSS_rel_xtol::AbstractFloat
 
-    quadratic_matrix_equation_algorithm::Symbol
     qme_tol::AbstractFloat
     qme_acceptance_tol::AbstractFloat
 
-    sylvester_algorithm²::Symbol
-    sylvester_algorithm³::Symbol
     sylvester_tol::AbstractFloat
     sylvester_acceptance_tol::AbstractFloat
 
-    lyapunov_algorithm::Symbol
     lyapunov_tol::AbstractFloat
     lyapunov_acceptance_tol::AbstractFloat
+end
 
+struct CalculationOptions
+    quadratic_matrix_equation_algorithm::Symbol
+    
+    sylvester_algorithm²::Symbol
+    sylvester_algorithm³::Symbol
+    
+    lyapunov_algorithm::Symbol
+    
+    tol::Tolerances
     verbose::Bool
 end
 
-function merge_calculation_options(;tol::AbstractFloat = 1e-12,
 
-                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                    qme_tol::AbstractFloat = 1e-14,
-                                    qme_acceptance_tol::AbstractFloat = 1e-8,
+function Tolerances(;NSSS_acceptance_tol::AbstractFloat = 1e-12,
+                    NSSS_xtol::AbstractFloat = 1e-12,
+                    NSSS_ftol::AbstractFloat = 1e-14,
+                    NSSS_rel_xtol::AbstractFloat = eps(),
+                    
+                    qme_tol::AbstractFloat = 1e-14,
+                    qme_acceptance_tol::AbstractFloat = 1e-8,
 
+                    sylvester_tol::AbstractFloat = 1e-14,
+                    sylvester_acceptance_tol::AbstractFloat = 1e-10,
+
+                    lyapunov_tol::AbstractFloat = 1e-14,
+                    lyapunov_acceptance_tol::AbstractFloat = 1e-12)
+    
+    return Tolerances(NSSS_acceptance_tol,
+                        NSSS_xtol,
+                        NSSS_ftol,
+                        NSSS_rel_xtol, 
+                        qme_tol,
+                        qme_acceptance_tol,
+                        sylvester_tol,
+                        sylvester_acceptance_tol,
+                        lyapunov_tol,
+                        lyapunov_acceptance_tol)
+end
+
+
+function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol = :schur,
                                     sylvester_algorithm²::Symbol = :doubling,
                                     sylvester_algorithm³::Symbol = :bicgstab,
-                                    sylvester_tol::AbstractFloat = 1e-14,
-                                    sylvester_acceptance_tol::AbstractFloat = 1e-10,
-
                                     lyapunov_algorithm::Symbol = :doubling,
-                                    lyapunov_tol::AbstractFloat = 1e-14,
-                                    lyapunov_acceptance_tol::AbstractFloat = 1e-12,
-
+                                    tol::Tolerances = Tolerances(),
                                     verbose::Bool = false)
                                     
-    return CalculationOptions(tol, 
-
-                                quadratic_matrix_equation_algorithm, 
-                                qme_tol, 
-                                qme_acceptance_tol, 
-
+    return CalculationOptions(quadratic_matrix_equation_algorithm, 
                                 sylvester_algorithm², 
                                 sylvester_algorithm³, 
-                                sylvester_tol, 
-                                sylvester_acceptance_tol, 
-
                                 lyapunov_algorithm, 
-                                lyapunov_tol, 
-                                lyapunov_acceptance_tol, 
-
+                                tol, 
                                 verbose)
 end
 

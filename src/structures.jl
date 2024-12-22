@@ -235,10 +235,10 @@ end
 
 
 mutable struct solver_parameters
-    xtol::Float64 
-    ftol::Float64 
-    rel_xtol::Float64 
-    iterations::Int
+    # xtol::Float64 
+    # ftol::Float64 
+    # rel_xtol::Float64 
+    # iterations::Int
     ϕ̄::Float64    
     ϕ̂::Float64    
     μ̄¹::Float64   

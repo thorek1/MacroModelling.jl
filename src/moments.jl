@@ -4,8 +4,8 @@ function calculate_covariance(parameters::Vector{R},
                                 opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
-    if solution_error > opts.tol
-        return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < opts.tol
+    if solution_error > opts.tol.NSSS_acceptance_tol
+        return zeros(0,0), zeros(0,0), zeros(0,0), SS_and_pars, solution_error < opts.tol.NSSS_acceptance_tol
     end
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
@@ -29,8 +29,8 @@ function calculate_covariance(parameters::Vector{R},
 
     covar_raw, solved = solve_lyapunov_equation(A, CC, 
                                                 lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                                tol = opts.lyapunov_tol,
-                                                acceptance_tol = opts.lyapunov_acceptance_tol,
+                                                tol = opts.tol.lyapunov_tol,
+                                                acceptance_tol = opts.tol.lyapunov_acceptance_tol,
                                                 verbose = opts.verbose)
 
     return covar_raw, sol , ∇₁, SS_and_pars, solved
@@ -48,8 +48,8 @@ function calculate_mean(parameters::Vector{T},
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
-    if algorithm ∈ [:first_order, :first_order_doubling] || solution_error > opts.tol
-        return SS_and_pars[1:𝓂.timings.nVars], solution_error < opts.tol
+    if algorithm ∈ [:first_order, :first_order_doubling] || solution_error > opts.tol.NSSS_acceptance_tol
+        return SS_and_pars[1:𝓂.timings.nVars], solution_error < opts.tol.NSSS_acceptance_tol
     end
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
@@ -368,8 +368,8 @@ function calculate_second_order_moments(
 
     Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, 
                                         lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                        tol = opts.lyapunov_tol,
-                                        acceptance_tol = opts.lyapunov_acceptance_tol,
+                                        tol = opts.tol.lyapunov_tol,
+                                        acceptance_tol = opts.tol.lyapunov_acceptance_tol,
                                         verbose = opts.verbose)
 
     # if Σᶻ₂ isa DenseMatrix
@@ -605,8 +605,8 @@ function calculate_third_order_moments(parameters::Vector{T},
 
         Σᶻ₃, info = solve_lyapunov_equation(ŝ_to_ŝ₃, C, 
                                             lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                            tol = opts.lyapunov_tol,
-                                            acceptance_tol = opts.lyapunov_acceptance_tol,
+                                            tol = opts.tol.lyapunov_tol,
+                                            acceptance_tol = opts.tol.lyapunov_acceptance_tol,
                                             verbose = opts.verbose)
 
         solved_lyapunov = solved_lyapunov && info

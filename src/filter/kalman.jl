@@ -85,8 +85,8 @@ function get_initial_covariance(::Val{:theoretical},
                                 # timer::TimerOutput = TimerOutput(), 
     P, _ = solve_lyapunov_equation(A, B, 
                                     lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                    tol = opts.lyapunov_tol,
-                                    acceptance_tol = opts.lyapunov_acceptance_tol,
+                                    tol = opts.tol.lyapunov_tol,
+                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
                                     verbose = opts.verbose) # timer = timer, 
 
     return P
@@ -594,7 +594,7 @@ function filter_and_smooth(𝓂::ℳ,
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
-    @assert solution_error < opts.tol "Could not solve non stochastic steady state." 
+    @assert solution_error < opts.tol.NSSS_acceptance_tol "Could not solve non stochastic steady state." 
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 

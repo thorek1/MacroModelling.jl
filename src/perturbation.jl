@@ -44,8 +44,8 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, T, 
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                                    tol = opts.qme_tol,
-                                                    acceptance_tol = opts.qme_acceptance_tol,
+                                                    tol = opts.tol.qme_tol,
+                                                    acceptance_tol = opts.tol.qme_acceptance_tol,
                                                     verbose = opts.verbose)
 
     if !solved
@@ -162,8 +162,8 @@ function rrule(::typeof(calculate_first_order_solution),
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, T, 
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                                    tol = opts.qme_tol,
-                                                    acceptance_tol = opts.qme_acceptance_tol,
+                                                    tol = opts.tol.qme_tol,
+                                                    acceptance_tol = opts.tol.qme_acceptance_tol,
                                                     verbose = opts.verbose)
 
     if !solved
@@ -253,8 +253,8 @@ function rrule(::typeof(calculate_first_order_solution),
 
         ss, solved = solve_sylvester_equation(tmp2, 𝐒̂ᵗ', -tmp1,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.sylvester_tol,
-                                                acceptance_tol = opts.sylvester_acceptance_tol,
+                                                tol = opts.tol.sylvester_tol,
+                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
 
         if !solved
@@ -326,8 +326,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
         dX, solved = solve_sylvester_equation(AA, -X, -CC, 
                                                 initial_guess = initial_guess,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.sylvester_tol,
-                                                acceptance_tol = opts.sylvester_acceptance_tol,
+                                                tol = opts.tol.sylvester_tol,
+                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
 
         # if !solved
@@ -453,8 +453,8 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
     𝐒₂, solved = solve_sylvester_equation(A, B, C, 
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
-                                            tol = opts.sylvester_tol,
-                                            acceptance_tol = opts.sylvester_acceptance_tol,
+                                            tol = opts.tol.sylvester_tol,
+                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
 
     # end # timeit_debug
@@ -574,8 +574,8 @@ function rrule(::typeof(calculate_second_order_solution),
     𝐒₂, solved = solve_sylvester_equation(A, B, C,  
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
-                                            tol = opts.sylvester_tol,
-                                            acceptance_tol = opts.sylvester_acceptance_tol,
+                                            tol = opts.tol.sylvester_tol,
+                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
 
     # end # timeit_debug
@@ -623,8 +623,8 @@ function rrule(::typeof(calculate_second_order_solution),
 
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.sylvester_tol,
-                                                acceptance_tol = opts.sylvester_acceptance_tol,
+                                                tol = opts.tol.sylvester_tol,
+                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
         
         if !solved
@@ -933,8 +933,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
-                                            tol = opts.sylvester_tol,
-                                            acceptance_tol = opts.sylvester_acceptance_tol,
+                                            tol = opts.tol.sylvester_tol,
+                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
     
     # end # timeit_debug
@@ -1157,8 +1157,8 @@ function rrule(::typeof(calculate_third_order_solution),
     𝐒₃, solved = solve_sylvester_equation(A, B, C, 
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
-                                            tol = opts.sylvester_tol,
-                                            acceptance_tol = opts.sylvester_acceptance_tol,
+                                            tol = opts.tol.sylvester_tol,
+                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
     
     # end # timeit_debug
@@ -1267,8 +1267,8 @@ function rrule(::typeof(calculate_third_order_solution),
         
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₃,
                                                 sylvester_algorithm = opts.sylvester_algorithm³,
-                                                tol = opts.sylvester_tol,
-                                                acceptance_tol = opts.sylvester_acceptance_tol,
+                                                tol = opts.tol.sylvester_tol,
+                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
 
         if !solved

@@ -4,14 +4,17 @@ function levenberg_marquardt(f::Function,
     initial_guess::Array{T,1}, 
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1},
-    parameters::solver_parameters
+    parameters::solver_parameters;
+    tol::Tolerances = Tolerances()
     ) where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
-    xtol = parameters.xtol
-    ftol = parameters.ftol
-    rel_xtol = parameters.rel_xtol
-    iterations = parameters.iterations
+    xtol = tol.NSSS_xtol
+    ftol = tol.NSSS_ftol
+    rel_xtol = tol.NSSS_rel_xtol
+
+    iterations = 250
+    
     ϕ̄ = parameters.ϕ̄
     ϕ̂ = parameters.ϕ̂
     μ̄¹ = parameters.μ̄¹
@@ -214,14 +217,16 @@ function newton(f::Function,
     initial_guess::Array{T,1}, 
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1},
-    parameters::solver_parameters
+    parameters::solver_parameters;
+    tol::Tolerances = Tolerances()
     ) where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
-    ftol = parameters.ftol
-    xtol = parameters.xtol
-    rel_xtol = parameters.rel_xtol
-    iterations = parameters.iterations
+    xtol = tol.NSSS_xtol
+    ftol = tol.NSSS_ftol
+    rel_xtol = tol.NSSS_rel_xtol
+
+    iterations = 250
     # transformation_level = 0 # parameters.transformation_level
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
@@ -304,7 +309,7 @@ function newton(f::Function,
 
         new_residuals_norm = ℒ.norm(new_residuals)
         
-        if iter > 5 && ℒ.norm(rel_xtol_reached) > 1e-12 && new_residuals_norm > old_residuals_norm
+        if iter > 5 && ℒ.norm(rel_xtol_reached) > sqrt(rel_xtol) && new_residuals_norm > old_residuals_norm
             # println("GN: $iter, Norm increase")
             break
         end
