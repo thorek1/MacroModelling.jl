@@ -3,17 +3,17 @@ $(SIGNATURES)
 Return the shock decomposition in absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state) based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 # Arguments
-- $MODEL
-- $DATA
+- $MODEL®
+- $DATA®
 # Keyword Arguments
-- $PARAMETERS
-- $DATA_IN_LEVELS
-- $SMOOTH
-- $QME
-- $SYLVESTER
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $PARAMETERS®
+- $DATA_IN_LEVELS®
+- $SMOOTH®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest
@@ -163,20 +163,20 @@ $(SIGNATURES)
 Return the estimated shocks based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 # Arguments
-- $MODEL
-- $DATA
+- $MODEL®
+- $DATA®
 # Keyword Arguments
-- $PARAMETERS
-- $ALGORITHM
-- $FILTER
+- $PARAMETERS®
+- $ALGORITHM®
+- $FILTER®
 - `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
-- $DATA_IN_LEVELS
-- $SMOOTH
-- $QME
-- $SYLVESTER
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $DATA_IN_LEVELS®
+- $SMOOTH®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest
@@ -285,21 +285,21 @@ $(SIGNATURES)
 Return the estimated variables (in levels by default, see `levels` keyword argument) based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 # Arguments
-- $MODEL
-- $DATA
+- $MODEL®
+- $DATA®
 # Keyword Arguments
-- $PARAMETERS
-- $ALGORITHM
-- $FILTER
+- $PARAMETERS®
+- $ALGORITHM®
+- $FILTER®
 - `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
-- $DATA_IN_LEVELS
-- $LEVELS
-- $SMOOTH
-- $QME
-- $SYLVESTER
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $DATA_IN_LEVELS®
+- $LEVELS®
+- $SMOOTH®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest
@@ -408,16 +408,16 @@ $(SIGNATURES)
 Return the standard deviations of the Kalman smoother or filter (depending on the `smooth` keyword argument) estimates of the model variables based on the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 # Arguments
-- $MODEL
-- $DATA
+- $MODEL®
+- $DATA®
 # Keyword Arguments
-- $PARAMETERS
-- $DATA_IN_LEVELS
-- $SMOOTH
-- $QME
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $PARAMETERS®
+- $DATA_IN_LEVELS®
+- $SMOOTH®
+- $QME®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest
@@ -513,22 +513,22 @@ $(SIGNATURES)
 Return the conditional forecast given restrictions on endogenous variables and shocks (optional) in a 2-dimensional array. By default (see `levels`), the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state). A constrained minimisation problem is solved to find the combinations of shocks with the smallest magnitude to match the conditions.
 
 # Arguments
-- $MODEL
-- $CONDITIONS
+- $MODEL®
+- $CONDITIONS®
 # Keyword Arguments
-- $SHOCK_CONDITIONS
+- $SHOCK_CONDITIONS®
 - `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
-- $PARAMETERS
-- $VARIABLES
+- $PARAMETERS®
+- $VARIABLES®
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
-- $LEVELS
-- $ALGORITHM
-- $QME
-- $SYLVESTER
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $LEVELS®
+- $ALGORITHM®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest
@@ -882,18 +882,18 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional array.
 Function to use when differentiating IRFs with repect to parameters.
 
 # Arguments
-- $MODEL
-- $PARAMETER_VALUES
+- $MODEL®
+- $PARAMETER_VALUES®
 # Keyword Arguments
-- $PERIODS
-- $VARIABLES
-- $SHOCKS
-- $NEGATIVE_SHOCK
-- $INITIAL_STATE
-- $LEVELS
-- $QME
-- $TOL
-- $VERBOSE
+- $PERIODS®
+- $VARIABLES®
+- $SHOCKS®
+- $NEGATIVE_SHOCK®
+- $INITIAL_STATE®
+- $LEVELS®
+- $QME®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest
@@ -1036,24 +1036,24 @@ $(SIGNATURES)
 Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedArray. By default (see `levels`), the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state).
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- $PERIODS
-- $ALGORITHM
-- $PARAMETERS
-- $VARIABLES
-- $SHOCKS
-- $NEGATIVE_SHOCK
+- $PERIODS®
+- $ALGORITHM®
+- $PARAMETERS®
+- $VARIABLES®
+- $SHOCKS®
+- $NEGATIVE_SHOCK®
 - `shock_size` [Default: `1`, Type: `Real`]: affects the size of shocks as long as they are not set to `:none`
-- $GENERALISED_IRF
+- $GENERALISED_IRF®
 - `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
-- $LEVELS
+- $LEVELS®
 - `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
-- $QME
-- $SYLVESTER
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest
@@ -1395,18 +1395,18 @@ $(SIGNATURES)
 Return the (non stochastic) steady state, calibrated parameters, and derivatives with respect to model parameters.
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- $PARAMETERS
-- $DERIVATIVES
+- $PARAMETERS®
+- $DERIVATIVES®
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation
-- $ALGORITHM
-- $PARAMETER_DERIVATIVES
+- $ALGORITHM®
+- $PARAMETER_DERIVATIVES®
 - `return_variables_only` [Defaut: `false`, Type: `Bool`]: return only variables and not calibrated parameters
-- $QME
-- $SYLVESTER
-- $TOL
-- $VERBOSE
+- $QME®
+- $SYLVESTER®
+- $TOLERANCES®
+- $VERBOSE®
 
 The columns show the (non stochastic) steady state and parameters for which derivatives are taken. The rows show the variables and calibrated parameters.
 # Examples
@@ -1679,14 +1679,14 @@ Return the solution of the model. In the linear case it returns the linearised s
 The values of the output represent the NSSS in the case of a linear solution and below it the effect that deviations from the NSSS of the respective past states, shocks, and perturbation parameter have (perturbation parameter = 1) on the present value (NSSS deviation) of the model variables.
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- $PARAMETERS
-- $ALGORITHM
-- $QME
-- $SYLVESTER
-- $TOL
-- $VERBOSE
+- $PARAMETERS®
+- $ALGORITHM®
+- $QME®
+- $SYLVESTER®
+- $TOLERANCES®
+- $VERBOSE®
 
 The returned `KeyedArray` shows as columns the endogenous variables inlcuding the auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows and other dimensions (depending on the chosen perturbation order) include the NSSS for the linear case only, followed by the states, and exogenous shocks. 
 Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
@@ -1962,14 +1962,14 @@ $(SIGNATURES)
 Return the conditional variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
 - `periods` [Default: `[1:20...,Inf]`, Type: `Union{Vector{Int},Vector{Float64},UnitRange{Int64}}`]: vector of periods for which to calculate the conditional variance decomposition. If the vector conatins `Inf`, also the unconditional variance decomposition is calculated (same output as [`get_variance_decomposition`](@ref)).
-- $PARAMETERS
-- $QME
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $PARAMETERS®
+- $QME®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest part1
@@ -2146,13 +2146,13 @@ $(SIGNATURES)
 Return the variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- $PARAMETERS
-- $QME
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $PARAMETERS®
+- $QME®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest part1
@@ -2273,15 +2273,15 @@ $(SIGNATURES)
 Return the correlations of endogenous variables using the first, pruned second, or pruned third order perturbation solution. 
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- $PARAMETERS
-- $ALGORITHM
-- $QME
-- $LYAPUNOV
-- $SYLVESTER
-- $TOL
-- $VERBOSE
+- $PARAMETERS®
+- $ALGORITHM®
+- $QME®
+- $LYAPUNOV®
+- $SYLVESTER®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest part1
@@ -2380,16 +2380,16 @@ $(SIGNATURES)
 Return the autocorrelations of endogenous variables using the first, pruned second, or pruned third order perturbation solution. 
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
 - `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation
-- $PARAMETERS
-- $ALGORITHM
-- $QME
-- $LYAPUNOV
-- $SYLVESTER
-- $TOL
-- $VERBOSE
+- $PARAMETERS®
+- $ALGORITHM®
+- $QME®
+- $LYAPUNOV®
+- $SYLVESTER®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest part1
@@ -2501,24 +2501,24 @@ $(SIGNATURES)
 Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non stochastic steady state (SS), and standard deviations, but can optionally return variances, and covariance matrix.
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- $PARAMETERS
+- $PARAMETERS®
 - `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
 - `mean` [Default: `false`, Type: `Bool`]: switch to return mean of endogenous variables (the mean for the linearised solutoin is the NSSS)
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
-- $VARIABLES
-- $DERIVATIVES
-- $PARAMETER_DERIVATIVES
-- $ALGORITHM
+- $VARIABLES®
+- $DERIVATIVES®
+- $PARAMETER_DERIVATIVES®
+- $ALGORITHM®
 - `dependencies_tol` [Default: `1e-12`, Type: `AbstractFloat`]: tolerance for the effect of a variable on the variable of interest when isolating part of the system for calculating covariance related statistics
-- $QME
-- $LYAPUNOV
-- $SYLVESTER
-- $TOL
-- $VERBOSE
+- $QME®
+- $LYAPUNOV®
+- $SYLVESTER®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest part1
@@ -3025,7 +3025,7 @@ Return the first and second moments of endogenous variables using either the lin
 Function to use when differentiating model moments with repect to parameters.
 
 # Arguments
-- $MODEL
+- $MODEL®
 - `parameter_values` [Type: `Vector`]: Parameter values.
 # Keyword Arguments
 - `parameters` [Type: `Vector{Symbol}`]: Corresponding names of parameters values.
@@ -3036,12 +3036,12 @@ Function to use when differentiating model moments with repect to parameters.
 - `covariance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the covariance of the mentioned variables
 - `autocorrelation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the autocorrelation of the mentioned variables
 - `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation of the mentioned variables
-- $ALGORITHM
-- $QME
-- $LYAPUNOV
-- $SYLVESTER
-- $TOL
-- $VERBOSE
+- $ALGORITHM®
+- $QME®
+- $LYAPUNOV®
+- $SYLVESTER®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest
@@ -3231,20 +3231,20 @@ Return the loglikelihood of the model given the data and parameters provided. Th
 This function is differentiable (so far for the Kalman filter only) and can be used in gradient based sampling or optimisation.
 
 # Arguments
-- $MODEL
-- $DATA
+- $MODEL®
+- $DATA®
 - `parameter_values` [Type: `Vector`]: Parameter values.
 # Keyword Arguments
-- $ALGORITHM
-- $FILTER
+- $ALGORITHM®
+- $FILTER®
 - `warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state.
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data for which the loglikelihood is discarded.
 - `initial_covariance` [Default: `:theoretical`, Type: `Symbol`]: defines the method to initialise the Kalman filters covariance matrix. It can be initialised with the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`).
-- $QME
-- $SYLVESTER
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```jldoctest
@@ -3366,13 +3366,13 @@ $(SIGNATURES)
 Calculate the residuals of the non-stochastic steady state equations of the model for a given set of values. Values not provided, will be filled with the non-stochastic steady state values corresponding to the current parameters.
 
 # Arguments
-- $MODEL
+- $MODEL®
 - `values` [Type: `Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}`]: A Vector, Dict, or KeyedArray containing the values of the variables and calibrated parameters in the non-stochastic steady state equations (including calibration equations). 
 
 # Keyword Arguments
-- $PARAMETERS
-- $TOL
-- $VERBOSE
+- $PARAMETERS®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Returns
 - A KeyedArray containing the absolute values of the residuals of the non-stochastic steady state equations.

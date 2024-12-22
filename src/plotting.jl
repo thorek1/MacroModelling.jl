@@ -28,27 +28,27 @@ The left axis shows the level, and the right the deviation from the reference st
 In case `shock_decomposition = true`, then the plot shows the variables, shocks, and data in absolute deviations from the non stochastic steady state plus the contribution of the shocks as a stacked bar chart per period.
 
 # Arguments
-- $MODEL
-- $DATA
+- $MODEL®
+- $DATA®
 # Keyword Arguments
-- $PARAMETERS
-- $VARIABLES
+- $PARAMETERS®
+- $VARIABLES®
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
-- $DATA_IN_LEVELS
+- $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks
-- $SMOOTH
+- $SMOOTH®
 - `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
 - `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
 - `transparency` [Default: `0.6`, Type: `Float64`]: transparency of bars
-- $ALGORITHM
-- $QME
-- $SYLVESTER
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $ALGORITHM®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```julia
@@ -410,28 +410,28 @@ Plot impulse response functions (IRFs) of the model.
 The left axis shows the level, and the right the deviation from the reference steady state. Linear solutions have the non stochastic steady state as reference other solution the stochastic steady state. The horizontal black line indicates the reference steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- $PERIODS
-- $SHOCKS
-- $VARIABLES
-- $PARAMETERS
+- $PERIODS®
+- $SHOCKS®
+- $VARIABLES®
+- $PARAMETERS®
 - `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
 - `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
-- $ALGORITHM
+- $ALGORITHM®
 - `shock_size` [Default: `1`, Type: `Real`]: affects the size of shocks as long as they are not set to `:none`
-- $NEGATIVE_SHOCK
-- $GENERALISED_IRF
+- $NEGATIVE_SHOCK®
+- $GENERALISED_IRF®
 - `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
 - `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
-- $QME
-- $SYLVESTER
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```julia
@@ -884,20 +884,20 @@ Plot conditional variance decomposition of the model.
 The vertical axis shows the share of the shocks variance contribution, and horizontal axis the period of the variance decomposition. The stacked bars represent each shocks variance contribution at a specific time horizon.
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- $PERIODS
-- $VARIABLES
-- $PARAMETERS
+- $PERIODS®
+- $VARIABLES®
+- $PARAMETERS®
 - `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
 - `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
-- $QME
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $QME®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```julia
@@ -1087,25 +1087,25 @@ The (non) stochastic steady state is plotted along with the mapping from the cho
 In the case of pruned solutions there as many (latent) state vectors as the perturbation order. The first and third order baseline state vectors are the non stochastic steady state and the second order baseline state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order baseline state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of inifite possible mappings.
 
 # Arguments
-- $MODEL
+- $MODEL®
 - `state` [Type: `Union{Symbol,String}`]: state variable to be shown on x-axis.
 # Keyword Arguments
-- $VARIABLES
+- $VARIABLES®
 - `algorithm` [Default: `:first_order`, Type: Union{Symbol,Vector{Symbol}}]: solution algorithm for which to show the IRFs. Can be more than one, e.g.: `[:second_order,:pruned_third_order]`"
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
-- $PARAMETERS
+- $PARAMETERS®
 - `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
 - `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
-- $ALGORITHM
-- $QME
-- $SYLVESTER
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $ALGORITHM®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```julia
@@ -1431,27 +1431,27 @@ Plot conditional forecast given restrictions on endogenous variables and shocks 
 The left axis shows the level, and the right axis the deviation from the (non) stochastic steady state, depending on the solution algorithm (e.g. higher order perturbation algorithms will show the stochastic steady state). Variable names are above the subplots, conditioned values are marked, and the title provides information about the model, and number of pages.
 
 # Arguments
-- $MODEL
-- $CONDITIONS
+- $MODEL®
+- $CONDITIONS®
 # Keyword Arguments
-- $SHOCK_CONDITIONS
+- $SHOCK_CONDITIONS®
 - `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
-- $PARAMETERS
-- $VARIABLES
+- $PARAMETERS®
+- $VARIABLES®
 `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
-- $LEVELS
-- $ALGORITHM
+- $LEVELS®
+- $ALGORITHM®
 - `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
 - `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
 - `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
 - `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
-- $QME
-- $SYLVESTER
-- $LYAPUNOV
-- $TOL
-- $VERBOSE
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Examples
 ```julia

@@ -31,7 +31,7 @@ $(SIGNATURES)
 Return the equations of the model. In case programmatic model writing was used this function returns the parsed equations (see loop over shocks in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -84,7 +84,7 @@ Auxilliary variables facilitate the solution of the NSSS problem. The package su
 Note that the ouput assumes the equations are equal to 0. As in, `-z{δ} * ρ{δ} + z{δ}` implies `-z{δ} * ρ{δ} + z{δ} = 0` and therefore: `z{δ} * ρ{δ} = z{δ}`.
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -139,7 +139,7 @@ In case programmatic model writing was used this function returns the parsed equ
 Note that the ouput assumes the equations are equal to 0. As in, `kᴸ⁽⁻¹⁾[0] - k[-1]` implies `kᴸ⁽⁻¹⁾[0] - k[-1] = 0` and therefore: `kᴸ⁽⁻¹⁾[0] = k[-1]`.
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -197,7 +197,7 @@ In case programmatic model writing was used this function returns the parsed equ
 Note that the ouput assumes the equations are equal to 0. As in, `k / (q * 4) - capital_to_output` implies `k / (q * 4) - capital_to_output = 0` and therefore: `k / (q * 4) = capital_to_output`.
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -242,7 +242,7 @@ Returns the parameters (and optionally the values) which have an impact on the m
 In case programmatic model writing was used this function returns the parsed parameters (see `σ` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
 - `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names
 
@@ -297,7 +297,7 @@ $(SIGNATURES)
 Returns the parameters (and optionally the values) which are determined by a calibration equation. 
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
 - `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names
 
@@ -349,7 +349,7 @@ Returns the parameters contained in the model equations. Note that these paramet
 In case programmatic model writing was used this function returns the parsed parameters (see `σ` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -398,7 +398,7 @@ $(SIGNATURES)
 Returns the parameters which are defined by other parameters which are not necessarily used in the equations of the model (see `α` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -441,7 +441,7 @@ $(SIGNATURES)
 Returns the parameters which define other parameters in the `@parameters` block which are not necessarily used in the equations of the model (see `alpha` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -484,7 +484,7 @@ $(SIGNATURES)
 Returns the parameters used in calibration equations which are not used in the equations of the model (see `capital_to_output` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -529,7 +529,7 @@ Returns the variables of the model without timing subscripts and not including a
 In case programmatic model writing was used this function returns the parsed variables (see `z` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -580,7 +580,7 @@ Returns the auxilliary variables, without timing subscripts, added to the non-st
 See `get_steady_state_equations` for more details on the auxilliary variables and equations.
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -626,7 +626,7 @@ Returns the auxilliary variables, without timing subscripts, part of the augment
 See `get_dynamic_equations` for more details on the auxilliary variables and equations.
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -674,7 +674,7 @@ Returns the exogenous shocks.
 In case programmatic model writing was used this function returns the parsed variables (see `eps` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -724,7 +724,7 @@ Returns the state variables of the model. State variables occur in the past and 
 In case programmatic model writing was used this function returns the parsed variables (see `z` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
@@ -779,7 +779,7 @@ Returns the jump variables of the model. Jumper variables occur in the future an
 In case programmatic model writing was used this function returns the parsed variables (see `z` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
 
 # Examples
 ```jldoctest
