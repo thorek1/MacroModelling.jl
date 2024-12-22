@@ -1,6 +1,6 @@
 using SparseArrays
 using MacroModelling
-import MacroModelling: timings
+import MacroModelling: timings, get_NSSS_and_parameters
 using ForwardDiff
 import LinearAlgebra as ℒ
 using FiniteDifferences, Zygote
@@ -58,7 +58,7 @@ Random.seed!(3)
 end
 
 
-SS_and_pars, _ = RBC_CME.SS_solve_func(RBC_CME.parameter_values, RBC_CME, true, false, RBC_CME.solver_parameters)
+SS_and_pars, _ = get_NSSS_and_parameters(RBC_CME, RBC_CME.parameter_values)
 
 get_irf(RBC_CME, algorithm = :third_order)
 get_irf(RBC_CME, algorithm = :pruned_third_order)
@@ -234,8 +234,6 @@ third_order_solution = sparse(third_order_solution)
     0.0         0.0           0.9           0.005        -0.0]
 
     @test isapprox(first_order_solution,first_order_solution2,rtol = 1e-6)
-
-
 
     @test isapprox(second_order_solution[2,1], -0.006642814796744731,rtol = eps(Float32))
 
