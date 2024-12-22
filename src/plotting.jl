@@ -427,11 +427,11 @@ The left axis shows the level, and the right the deviation from the reference st
 - $SAVE_PLOTS_PATH®
 - $PLOTS_PER_PAGE®
 - $ALGORITHM®
-- `shock_size` [Default: `1`, Type: `Real`]: affects the size of shocks as long as they are not set to `:none`
+- $SHOCK_SIZE®
 - $NEGATIVE_SHOCK®
 - $GENERALISED_IRF®
 - `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
-- `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
+- $IGNORE_OBC®
 - $PLOT_ATTRIBUTES®
 - $QME®
 - $SYLVESTER®
@@ -1103,7 +1103,7 @@ In the case of pruned solutions there as many (latent) state vectors as the pert
 - `algorithm` [Default: `:first_order`, Type: Union{Symbol,Vector{Symbol}}]: solution algorithm for which to show the IRFs. Can be more than one, e.g.: `[:second_order,:pruned_third_order]`"
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS®
-- `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
+- $IGNORE_OBC®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®

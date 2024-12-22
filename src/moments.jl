@@ -394,7 +394,6 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             covariance::Bool = true,
                                             autocorrelation::Bool = false,
                                             autocorrelation_periods::U = 1:5,
-                                            dependencies_tol::AbstractFloat = 1e-12, 
                                             opts::CalculationOptions = merge_calculation_options()) where {U, T <: Real}
 
     second_order_moments = calculate_second_order_moments(parameters, 𝓂, Val(true); opts = opts)
@@ -420,7 +419,7 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     𝐒₃ = sparse(𝐒₃)
 
-    orders = determine_efficient_order(𝐒₁, 𝓂.timings, observables, tol = dependencies_tol)
+    orders = determine_efficient_order(𝐒₁, 𝓂.timings, observables, tol = opts.tol.dependencies_tol)
 
     nᵉ = 𝓂.timings.nExo
 

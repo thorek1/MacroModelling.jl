@@ -31,3 +31,6 @@ const SAVE_PLOTS® = "`save_plots` [Default: `false`, Type: `Bool`]: switch to s
 const SHOW_PLOTS® = "`show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`."
 const EXTRA_LEGEND_SPACE® = "`extra_legend_space` [Default: `0.0`, Type: `Float64`]: space between the plots and the legend (useful if the plots overlap the legend)."
 const MAX_ELEMENTS_PER_LEGENDS_ROW® = "`max_elements_per_legend_row` [Default: `4`, Type: `Int`]: maximum number of elements per legend row. In other words, number of columns in legend."
+const WARMUP_ITERATIONS® = "`warmup_iterations` [Default: `0`, Type: `Int`]: periods added before the first observation for which shocks are computed such that the first observation is matched. A larger value alleviates the problem that the initial value is the relevant steady state."
+const SHOCK_SIZE® = "`shock_size` [Default: `1`, Type: `Real`]: affects the size of shocks as long as they are not set to `:none`"
+const IGNORE_OBC® = "`ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints."
