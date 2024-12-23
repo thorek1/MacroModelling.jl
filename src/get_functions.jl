@@ -1610,7 +1610,7 @@ function get_steady_state(𝓂::ℳ;
     # return 𝓂.SS_solve_func(𝓂)
     # return (var .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[1:length(var)]),  (𝓂.par .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[length(var)+1:end])[getindex(1:length(𝓂.par),map(x->x ∈ collect(𝓂.calibration_equations_parameters),𝓂.par))]
 end
-# TODO: check that derivatives are in oine with finitediff
+# TODO: check that derivatives are in line with finitediff
 
 
 """
@@ -1956,7 +1956,7 @@ function get_solution(𝓂::ℳ,
 end
 
 
-# TODO: do this for higher order, get rid of Krylov call here
+# TODO: do this for higher order
 """
 $(SIGNATURES)
 Return the conditional variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
@@ -2083,20 +2083,13 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
             end
         end
         if Inf in periods
-            sylvester = LinearOperators.LinearOperator(Float64, length(CC), length(CC), false, false, 
-            (sol,𝐱) -> begin 
-                𝐗 = sparse(reshape(𝐱, size(CC)))
-                sol .= vec(A * 𝐗 * A' - 𝐗)
-                return sol
-            end)
-        
-            𝐂, info = Krylov.bicgstab(sylvester, sparsevec(collect(-CC)))
-        
-            if !info.solved
-                𝐂, info = Krylov.gmres(sylvester, sparsevec(collect(-CC)))
-            end
+            covar_raw, _ = solve_lyapunov_equation(A, CC, 
+                                                    lyapunov_algorithm = opts.lyapunov_algorithm, 
+                                                    tol = opts.tol.lyapunov_tol,
+                                                    acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                    verbose = opts.verbose)
 
-            var_container[:,i,indexin(Inf,periods)] = ℒ.diag(reshape(𝐂, size(CC))) # numerically more stable
+            var_container[:,i,indexin(Inf,periods)] = ℒ.diag(covar_raw) # numerically more stable
         end
     end
 
@@ -3019,7 +3012,7 @@ get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or third order perturbation solution. By default returns: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
+Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or third order perturbation solution. By default returns a `Dict` with: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
 Function to use when differentiating model moments with repect to parameters.
 
 # Arguments
