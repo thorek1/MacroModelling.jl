@@ -36,7 +36,7 @@ In case `shock_decomposition = true`, then the plot shows the variables, shocks,
 - $FILTER®
 - $VARIABLES®
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
-- $PRESAMPLE_PERIODS®
+- `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks
 - $SMOOTH®
