@@ -69,7 +69,7 @@ jobs:
             test_set: "basic"
             allow_failure: true
           - version: 'pre'
-            os: macos-latest
+            os: ubuntu-latest
             arch: arm64
             test_set: "basic"
             allow_failure: true
