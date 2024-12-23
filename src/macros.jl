@@ -714,7 +714,6 @@ macro model(𝓂,ex...)
     reorder       = indexin(var, [present_only; past_not_future; future_not_past_and_mixed])
     dynamic_order = indexin(present_but_not_only, [past_not_future; future_not_past_and_mixed])
 
-    # TODO: collect errors so you can tackle them altogether
     @assert length(intersect(union(var,exo),parameters_in_equations)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(union(var,exo),parameters_in_equations)...]))
 
     @assert !any(isnothing, future_not_past_and_mixed_idx) "The following variables appear in the future only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
@@ -901,7 +900,6 @@ macro model(𝓂,ex...)
                         $max_obc_horizon,
                         x->x,
                         # see here for tolerances: https://nlopt.readthedocs.io/en/latest/NLopt_Introduction/#function-value-and-parameter-tolerances
-                        # TODO: make the first 4 elements constants within the package
                         [
                             solver_parameters(1.0242323883590136, 0.58927243157762478, 0.0006988523559835617, 0.009036867721330505, 0.14457591298892497, 1.3282546133453548, 0.7955753778741823, 1.7661485851863441e-6, 2.6206711939142943e-7, 7.052160321659248e-12, 1.06497513443326e-6, 5.118937128189348, 90.94952163302091, 3.1268025435012207e-13, 1.691251847378593, 0.5455751102495228, 0.1201767636895742, 0.0007802908980930664, 0.011310267585075185, 1.0032972640942657, 
                             1, 0.0, 2),

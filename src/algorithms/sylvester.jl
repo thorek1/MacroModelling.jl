@@ -10,7 +10,6 @@
 
 # solves: A * X * B + C = X for X
 
-# TODO: make the main call robust by trying different algos (or at elast krylov at the end); implement refinement (if previous sol has reached tol < sqrt(tol) vs zero intial guess otherwise
 function solve_sylvester_equation(A::M,
                                     B::N,
                                     C::O;
