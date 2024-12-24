@@ -96,7 +96,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            for parameters in [new_params, 
+            for parameters in [old_params, 
                                 (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
                                 Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
                                 m.parameters .=> old_params, 
@@ -165,7 +165,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            for parameters in [new_params, 
+            for parameters in [old_params, 
                                 (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
                                 Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
                                 m.parameters .=> old_params, 
@@ -184,6 +184,43 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
         end
+
+        for filter in [:inversion, :kalman]
+            for presample_periods in [0, 10]
+                for initial_covariance in [:diagonal, :theoretical]
+                    for verbose in [true, false]
+                        for parameters in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
+                            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                                llh = get_loglikelihood(m, data, parameters,
+                                                        algorithm = algorithm,
+                                                        filter = filter,
+                                                        presample_periods = presample_periods,
+                                                        initial_covariance = initial_covariance,
+                                                        tol = tol,
+                                                        verbose = verbose)
+                                for quadratic_matrix_equation_algorithm in [:schur, :doubling]
+                                    for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
+                                        for sylvester_algorithm in [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)]
+                                            LLH = get_loglikelihood(m, data, parameters,
+                                                                    algorithm = algorithm,
+                                                                    filter = filter,
+                                                                    presample_periods = presample_periods,
+                                                                    initial_covariance = initial_covariance,
+                                                                    tol = tol,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                    verbose = verbose)
+                                            @test isapprox(llh,LLH)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end    
     end
 
     # get_conditional_forecast
@@ -198,7 +235,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     # get_autocorrelation
     # get_moments
     # get_statistics
-    # get_loglikelihood
     # get_non_stochastic_steady_state_residuals
 
     ## get_steady_state
@@ -238,7 +274,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     string.(m.parameters[1:2]), 
                                     string.(Tuple(m.parameters[1:3])), 
                                     string.(reshape(m.parameters[1:3],3,1))]
-        for parameters in [new_params, 
+        for parameters in [old_params, 
                             (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
                             Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
                             m.parameters .=> old_params, 
