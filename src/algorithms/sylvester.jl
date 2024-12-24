@@ -27,7 +27,7 @@ function solve_sylvester_equation(A::M,
         b = choose_matrix_format(B)# |> collect
     end
 
-    if sylvester_algorithm ∈ [:bicgstab, :gmres, :bartels_stewart]
+    if sylvester_algorithm ∈ [:bicgstab, :gmres, :dqgmres, :bartels_stewart]
         a = collect(A)
 
         c = collect(C)
