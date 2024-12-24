@@ -1,14 +1,210 @@
 function functionality_test(m; algorithm = :first_order, plots = true)
-    # m_orig = deepcopy(m)
-    # figure out dependencies for defined parameters
+    old_params = copy(m.parameter_values)
+    
+    # Test filtering, smoothing, loglikelihood
+    @testset "filter, smooth, loglikelihood" begin
+        sol = get_solution(m)
 
-    # Check different inputs for get_steady_state
+        if length(m.exo) > 1
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[1:2]
+        else
+            var_idxs = [1]
+        end
+
+        Random.seed!(123)
+
+        simulation = simulate(m, algorithm = algorithm)
+
+        data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+        data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
+
+        if !(algorithm ∈ [:second_order, :third_order])
+            for filter in [:inversion, :kalman]
+                for smooth in [true, false]
+                    for verbose in [true, false]
+                        for quadratic_matrix_equation_algorithm in [:schur, :doubling]
+                            for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
+                                for sylvester_algorithm in [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)]
+                                    estim1 = get_shock_decomposition(m, data, 
+                                                                    algorithm = algorithm, 
+                                                                    data_in_levels = false, 
+                                                                    filter = filter,
+                                                                    smooth = smooth,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                    verbose = verbose)
+                                    estim2 = get_shock_decomposition(m, data_in_levels, 
+                                                                    algorithm = algorithm, 
+                                                                    data_in_levels = true,
+                                                                    filter = filter,
+                                                                    smooth = smooth,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                    verbose = verbose)
+                                    @test isapprox(estim1,estim2)
+
+                                    estim1 = get_estimated_shocks(m, data, 
+                                                                    algorithm = algorithm, 
+                                                                    data_in_levels = false, 
+                                                                    filter = filter,
+                                                                    smooth = smooth,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                    verbose = verbose)
+                                    estim2 = get_estimated_shocks(m, data_in_levels, 
+                                                                    algorithm = algorithm, 
+                                                                    data_in_levels = true,
+                                                                    filter = filter,
+                                                                    smooth = smooth,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                    verbose = verbose)
+                                    @test isapprox(estim1,estim2)
+
+                                    for levels in [true, false]
+                                        estim1 = get_estimated_variables(m, data, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = false, 
+                                                                        levels = levels,
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm,
+                                                                        verbose = verbose)
+                                        estim2 = get_estimated_variables(m, data_in_levels, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = true, 
+                                                                        levels = levels,
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm,
+                                                                        verbose = verbose)
+                                        @test isapprox(estim1,estim2)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            for parameters in [new_params, 
+                                (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                                Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                                m.parameters .=> old_params, 
+                                (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                                Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                                old_params]
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    get_shock_decomposition(m, data, 
+                                            parameters = parameters,
+                                            algorithm = algorithm, 
+                                            data_in_levels = false, 
+                                            verbose = true)
+                    get_shock_decomposition(m, data_in_levels, 
+                                            parameters = parameters,
+                                            algorithm = algorithm, 
+                                            data_in_levels = true,
+                                            verbose = true)
+
+
+                    get_estimated_shocks(m, data, 
+                                    parameters = parameters,
+                                    algorithm = algorithm, 
+                                    data_in_levels = false, 
+                                    verbose = true)
+                    get_estimated_shocks(m, data_in_levels, 
+                                    parameters = parameters,
+                                    algorithm = algorithm, 
+                                    data_in_levels = true,
+                                    verbose = true)
+                    
+                    get_estimated_variables(m, data, 
+                                            parameters = parameters,
+                                            algorithm = algorithm, 
+                                            data_in_levels = false, 
+                                            verbose = true)
+                    get_estimated_variables(m, data_in_levels, 
+                                            parameters = parameters,
+                                            algorithm = algorithm, 
+                                            data_in_levels = true,
+                                            verbose = true)
+                end
+            end
+        end
+
+
+        if algorithm == :first_order
+            for smooth in [true, false]
+                for verbose in [true, false]
+                    for quadratic_matrix_equation_algorithm in [:schur, :doubling]
+                        for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
+                            estim1 = get_estimated_variable_standard_deviations(m, data, 
+                                                                                data_in_levels = false, 
+                                                                                smooth = smooth,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                verbose = verbose)
+                            estim2 = get_estimated_variable_standard_deviations(m, data_in_levels, 
+                                                                                data_in_levels = true,
+                                                                                smooth = smooth,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                verbose = verbose)
+                            @test isapprox(estim1,estim2)
+                        end
+                    end
+                end
+            end
+
+            for parameters in [new_params, 
+                                (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                                Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                                m.parameters .=> old_params, 
+                                (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                                Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                                old_params]
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    get_estimated_variable_standard_deviations(m, data, 
+                                                                parameters = parameters,
+                                                                data_in_levels = false, 
+                                                                verbose = true)
+                    get_estimated_variable_standard_deviations(m, data_in_levels, 
+                                                                parameters = parameters,
+                                                                data_in_levels = true,
+                                                                verbose = true)
+                end
+            end
+        end
+    end
+
+    # get_conditional_forecast
+    # get_irf
+    # get_irf
+    # get_steady_state
+    # get_solution
+    # get_solution
+    # get_conditional_variance_decomposition
+    # get_variance_decomposition
+    # get_correlation
+    # get_autocorrelation
+    # get_moments
+    # get_statistics
+    # get_loglikelihood
+    # get_non_stochastic_steady_state_residuals
+
+    ## get_steady_state
     nsss = get_steady_state(m, verbose = true)
 
-    old_params = copy(m.parameter_values)
-    new_params = copy(m.parameter_values)
-    new_params *= 1.0001
-   
+
     for derivatives in [true, false]
         for stochastic in [true, false]
             for return_variables_only in [true, false]
@@ -44,10 +240,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     string.(reshape(m.parameters[1:3],3,1))]
         for parameters in [new_params, 
                             (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
-                            Tuple(m.parameters[1:2] .=> old_params[1:2]), 
+                            Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
                             m.parameters .=> old_params, 
-                            (string(m.parameters[1]) => new_params[1]), 
-                            Tuple(string.(m.parameters[1:2]) .=> new_params[1:2] .* exp.(rand(2)*1e-4)), 
+                            (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                            Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
                             old_params]
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 nsss = get_steady_state(m, 
@@ -255,49 +451,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         old_cond_var_decomp = get_conditional_variance_decomposition(m, verbose = true, parameters = old_par_vals)
     end
 
-    if !(algorithm ∈ [:second_order, :third_order])
-        # Test filtering and smoothing
-        sol = get_solution(m)
-
-        if length(m.exo) > 1
-            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
-            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[1:2]
-        else
-            var_idxs = [1]
-        end
-        
-        Random.seed!(123)
-
-        simulation = simulate(m, algorithm = algorithm)
-
-        data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
-        data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
-
-        estim_stds1 = get_estimated_variable_standard_deviations(m, data, data_in_levels = false, verbose = true)
-        estim_stds2 = get_estimated_variable_standard_deviations(m, data_in_levels, verbose = true)
-        @test isapprox(estim_stds1,estim_stds2)
-
-        estim_stds1 = get_estimated_variable_standard_deviations(m, data, data_in_levels = false, smooth = false, verbose = true)
-        estim_stds2 = get_estimated_variable_standard_deviations(m, data_in_levels, smooth = false, verbose = true)
-        @test isapprox(estim_stds1,estim_stds2)
-
-        estim_decomp1 = get_shock_decomposition(m, data, algorithm = algorithm, data_in_levels = false, verbose = true)
-        estim_decomp2 = get_shock_decomposition(m, data_in_levels, algorithm = algorithm, verbose = true)
-        @test isapprox(estim_decomp1,estim_decomp2)
-
-        estim_decomp1 = get_shock_decomposition(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true)
-        estim_decomp2 = get_shock_decomposition(m, data_in_levels, algorithm = algorithm, smooth = false, verbose = true)
-        @test isapprox(estim_decomp1,estim_decomp2)
-
-        estim_decomp1 = get_shock_decomposition(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
-        estim_decomp1 = get_shock_decomposition(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
-        estim_decomp2 = get_shock_decomposition(m, data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
-
-        estim_stds1 = get_estimated_variable_standard_deviations(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
-        estim_stds1 = get_estimated_variable_standard_deviations(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
-        estim_stds2 = get_estimated_variable_standard_deviations(m, data, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
-    end
-
     if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order]
         SSS = get_stochastic_steady_state(m, algorithm = algorithm)
     end
@@ -400,93 +553,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     cond_fcst = get_conditional_forecast(m, conditions_lvl, algorithm = algorithm, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
 
     cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = varnames[1], levels = true, verbose = true)
-
-    # Test filtering and smoothing
-    sol = get_solution(m)
-
-    if length(m.exo) > 1
-        n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
-        var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[1:2]
-        var_idxs_kalman = var_idxs
-        # var_idxs = findall(vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> 1e-10,dims = 1)) .> 1)[1:2]
-        # var_idxs_kalman = findall(vec(sum(sol[end-length(m.exo)+1:end,:] .!= 0,dims = 1)) .> 0)[1:2]
-    else
-        var_idxs = [1]
-    end
-    
-    simulation = simulate(m, algorithm = algorithm, ignore_obc = true)
-
-    data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
-    data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
-
-    data_in_levels_kalman = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs_kalman]) : m.var[var_idxs_kalman],:,:simulate)
-    data_kalman = data_in_levels_kalman .- m.solution.non_stochastic_steady_state[var_idxs_kalman]
-
-    estim_vars1 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, verbose = true)
-    estim_vars2 = get_estimated_variables(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, verbose = true)
-    @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
-
-    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, verbose = true)
-    estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, filter = :inversion, verbose = true)
-    @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
-
-    estim_vars1 = get_estimated_variables(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, warmup_iterations = 10, verbose = true)
-    estim_vars2 = get_estimated_variables(m, data_in_levels, algorithm = algorithm, filter = :inversion, warmup_iterations = 10, verbose = true)
-    @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
-
-    estim_vars1 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, filter = :kalman, verbose = true)
-    estim_vars2 = get_estimated_variables(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, filter = :kalman, verbose = true)
-    @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
-
-    estim_vars1 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true)
-    estim_vars2 = get_estimated_variables(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, smooth = false, verbose = true)
-    @test isapprox(estim_vars1,estim_vars2, rtol = eps(Float32))
-
-    estim_vars1 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
-    estim_vars1 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
-    estim_vars2 = get_estimated_variables(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
-
-
-    estim_shocks1 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, verbose = true)
-    estim_shocks2 = get_estimated_shocks(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, verbose = true)
-    @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
-
-    estim_shocks1 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, filter = :kalman, verbose = true)
-    estim_shocks2 = get_estimated_shocks(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, filter = :kalman, verbose = true)
-    @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
-
-    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, verbose = true)
-    estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, filter = :inversion, verbose = true)
-    @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
-
-    estim_shocks1 = get_estimated_shocks(m, data, algorithm = algorithm, data_in_levels = false, filter = :inversion, warmup_iterations = 10, verbose = true)
-    estim_shocks2 = get_estimated_shocks(m, data_in_levels, algorithm = algorithm, filter = :inversion, warmup_iterations = 10, verbose = true)
-    @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
-
-    estim_shocks1 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true)
-    estim_shocks2 = get_estimated_shocks(m, algorithm == :first_order ? data_in_levels_kalman : data_in_levels, algorithm = algorithm, smooth = false, verbose = true)
-    @test isapprox(estim_shocks1,estim_shocks2, rtol = eps(Float32))
-
-    estim_shocks1 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
-    estim_shocks1 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
-    estim_shocks2 = get_estimated_shocks(m, algorithm == :first_order ? data_kalman : data, algorithm = algorithm, data_in_levels = false, smooth = false, verbose = true, parameters = old_par_vals)
-
-
-    Random.seed!(3)
-
-    shocks = randn(m.timings.nExo, 40)
-    
-    data = get_irf(m, shocks = shocks, levels = true, periods = 0, algorithm = algorithm)[:,:,1]
-    
-    obs = axiskeys(data,1)[var_idxs]
-    datA = data(obs,:)
-
-    fshocks = get_estimated_shocks(m, datA, algorithm = algorithm, filter = :inversion)
-    
-    # @test sum(abs, shocks - fshocks) < eps(Float32)
-
-
-    
 
     # get_solution
     sols_nv = get_solution(m, algorithm = algorithm)
