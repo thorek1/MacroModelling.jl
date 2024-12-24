@@ -25,7 +25,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for verbose in [true, false]
                         for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                             for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
-                                for sylvester_algorithm in [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)]
+                                for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
                                     estim1 = get_shock_decomposition(m, data, 
                                                                     algorithm = algorithm, 
                                                                     data_in_levels = false, 
@@ -300,7 +300,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                                     for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                                         for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
-                                            for sylvester_algorithm in [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)]
+                                            for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
                                                 cond_fcst = get_conditional_forecast(m, cndtns,
                                                                                     conditions_in_levels = false, 
                                                                                     algorithm = algorithm, 
