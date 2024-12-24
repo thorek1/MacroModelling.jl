@@ -1,4 +1,4 @@
-function functionality_test(m; algorithm = :first_order, plots = true, verbose = true)
+function functionality_test(m; algorithm = :first_order, plots = true)
     # m_orig = deepcopy(m)
     # figure out dependencies for defined parameters
 
@@ -8,18 +8,18 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
     old_params = copy(m.parameter_values)
     new_params = copy(m.parameter_values)
     new_params *= 1.0001
-
-
+   
     for derivatives in [true, false]
         for stochastic in [true, false]
-            for algorithm in MacroModelling.all_available_algorithms
-                for return_variables_only in [true, false]
-                    for verbose in [true, false]
-                        for silent in [true, false]
-                            for quadratic_matrix_equation_algorithm in [:schur, :doubling]
+            for return_variables_only in [true, false]
+                for verbose in [true, false]
+                    for silent in [true, false]
+                        for quadratic_matrix_equation_algorithm in [:schur, :doubling]
+                            for sylvester_algorithm in [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)]
                                 nsss = get_steady_state(m, 
                                                         verbose = verbose, 
                                                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                        sylvester_algorithm = sylvester_algorithm, 
                                                         silent = silent, 
                                                         return_variables_only = return_variables_only, 
                                                         algorithm = algorithm, 
@@ -30,16 +30,6 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
                     end
                 end
             end
-        end
-    end
-                    
-
-    for algorithm in MacroModelling.all_available_algorithms
-        for sylvester_algorithm in [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)]
-            nsss = get_steady_state(m, 
-                                    sylvester_algorithm = sylvester_algorithm, 
-                                    algorithm = algorithm,
-                                    verbose = true)
         end
     end
 
@@ -62,6 +52,7 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 nsss = get_steady_state(m, 
                                         parameters = parameters, 
+                                        algorithm = algorithm, 
                                         parameter_derivatives = parameter_derivatives,
                                         tol = tol,
                                         verbose = true)
