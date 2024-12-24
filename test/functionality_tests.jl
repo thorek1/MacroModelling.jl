@@ -223,7 +223,123 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end    
     end
 
-    # get_conditional_forecast
+    @testset get_conditional_forecast begin
+        # test conditional forecasting
+        new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = true, variables = :all, shocks = :all)
+        varnames = axiskeys(new_sub_irfs_all,1)
+        shocknames = axiskeys(new_sub_irfs_all,3)
+        sol = get_solution(m)
+        # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
+        n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+        var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,end]]
+
+
+
+        conditions = []
+
+        cndtns = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
+        cndtns[var_idxs[1],1] = .01
+        cndtns[var_idxs[2],2] = .02
+
+        push!(conditions, cndtns)
+
+        cndtns = spzeros(size(new_sub_irfs_all,1),2)
+        cndtns[var_idxs[1],1] = .01
+        cndtns[var_idxs[2],2] = .02
+
+        push!(conditions, cndtns)
+
+        cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[[1, end]]]), Periods = 1:2)
+        cndtns[1,1] = .01
+        cndtns[2,2] = .02
+
+        push!(conditions, cndtns)
+
+        cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[[1, end]]], Periods = 1:2)
+        cndtns[1,1] = .01
+        cndtns[2,2] = .02
+
+        push!(conditions, cndtns)
+
+
+        shocks = []
+
+        push!(shocks, nothing)
+
+        if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
+            shcks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
+            shcks[1,1] = .1
+
+            push!(shocks, shcks)
+
+            shcks = spzeros(size(new_sub_irfs_all,3),1)
+            shcks[1,1] = .1
+            
+            push!(shocks, shcks)
+
+            shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
+            shcks[1,1] = .1
+
+            push!(shocks, shcks)
+
+            shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
+            shcks[1,1] = .1
+
+            push!(shocks, shcks)
+        end
+
+        for cndtns in conditions
+            for shcks in shocks
+                for periods in [0,10,40]
+                    for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.parameters[1], m.parameters[1:2]]
+
+                        # for intial_state in
+
+                        for levels in [true, false]
+                            for verbose in [true, false]
+                                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                                    for quadratic_matrix_equation_algorithm in [:schur, :doubling]
+                                        for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
+                                            for sylvester_algorithm in [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)]
+                                                cond_fcst = get_conditional_forecast(m, cndtns,
+                                                                                    conditions_in_levels = false, 
+                                                                                    algorithm = algorithm, 
+                                                                                    variables = variables,
+                                                                                    periods = periods,
+                                                                                    levels = levels,
+                                                                                    shocks = shcks,
+                                                                                    tol = tol,
+                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                                    verbose = verbose)
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        
+
+        
+        
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_params, variables = :all, verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), variables = string.(varnames[1]), verbose = true)
+        cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_params, variables = varnames[1], verbose = true)
+    end
+
+
+
     # get_irf
     # get_irf
     # get_steady_state
@@ -322,14 +438,14 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         new_auto_corr3 = get_autocorrelation(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
         new_auto_corr3 = get_autocorr(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
         new_auto_corr3 = autocorr(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0002))
-        old_auto_corr = get_autocorrelation(m, algorithm = algorithm, verbose = true, parameters = old_par_vals)
+        old_auto_corr = get_autocorrelation(m, algorithm = algorithm, verbose = true, parameters = old_params)
 
         new_auto_corr1 = get_autocorrelation(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001))
         new_auto_corr2 = get_autocorrelation(m, algorithm = algorithm, verbose = true, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
         new_auto_corr3 = get_autocorrelation(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
         new_auto_corr3 = get_autocorr(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
         new_auto_corr3 = autocorr(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0002))
-        old_auto_corr = get_autocorrelation(m, algorithm = algorithm, verbose = true, parameters = old_par_vals)
+        old_auto_corr = get_autocorrelation(m, algorithm = algorithm, verbose = true, parameters = old_params)
 
         corr_nv = get_correlation(m, algorithm = algorithm)
         corrr = get_correlation(m, algorithm = algorithm, verbose = true)
@@ -339,14 +455,14 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         new_corr3 = get_correlation(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
         new_corr3 = get_corr(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
         new_corr3 = corr(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0002))
-        old_corr = get_correlation(m, algorithm = algorithm, verbose = true, parameters = old_par_vals)
+        old_corr = get_correlation(m, algorithm = algorithm, verbose = true, parameters = old_params)
 
         new_corr1 = get_correlation(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001))
         new_corr2 = get_correlation(m, algorithm = algorithm, verbose = true, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
         new_corr3 = get_correlation(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
         new_corr3 = get_corr(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
         new_corr3 = corr(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0002))
-        old_corr = get_correlation(m, algorithm = algorithm, verbose = true, parameters = old_par_vals)
+        old_corr = get_correlation(m, algorithm = algorithm, verbose = true, parameters = old_params)
 
 
         # Check different inputs for get_moments
@@ -376,12 +492,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         new_moms2 = get_moments(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
         new_moms3 = get_moments(m, algorithm = algorithm, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
         new_moms4 = get_moments(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-        old_moms  = get_moments(m, algorithm = algorithm, verbose = true, parameters = old_par_vals)
+        old_moms  = get_moments(m, algorithm = algorithm, verbose = true, parameters = old_params)
 
         new_moms2 = get_moments(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001))
         new_moms3 = get_moments(m, algorithm = algorithm, verbose = true, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
         new_moms4 = get_moments(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
-        old_moms  = get_moments(m, algorithm = algorithm, verbose = true, parameters = old_par_vals)
+        old_moms  = get_moments(m, algorithm = algorithm, verbose = true, parameters = old_params)
 
 
         new_moms4 = get_standard_deviation(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
@@ -414,51 +530,51 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         irfs_10 = get_irf(m, m.parameter_values, verbose = true, periods = 10)
         irfs_100 = get_irf(m, m.parameter_values, verbose = true, periods = 100)
         new_irfs1 = get_irf(m, m.parameter_values * 1.0001, verbose = true)
-        lvl_irfs  = get_irf(m, old_par_vals, verbose = true, levels = true, variables = :all)
-        lvlv_init_irfs  = get_irf(m, old_par_vals, verbose = true, levels = true, initial_state = collect(lvl_irfs[:,5,1]))
-        lvlv_init_neg_irfs = get_irf(m, old_par_vals, verbose = true, levels = true, initial_state = collect(lvl_irfs[:,5,1]), negative_shock = true)
+        lvl_irfs  = get_irf(m, old_params, verbose = true, levels = true, variables = :all)
+        lvlv_init_irfs  = get_irf(m, old_params, verbose = true, levels = true, initial_state = collect(lvl_irfs[:,5,1]))
+        lvlv_init_neg_irfs = get_irf(m, old_params, verbose = true, levels = true, initial_state = collect(lvl_irfs[:,5,1]), negative_shock = true)
 
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = m.exo[1])
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = m.exo)
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = Tuple(m.exo))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = reshape(m.exo,1,length(m.exo)))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = :all)
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = m.exo[1])
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = m.exo)
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = Tuple(m.exo))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = reshape(m.exo,1,length(m.exo)))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = :all)
 
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = string.(m.exo[1]))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = string.(m.exo))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = Tuple(string.(m.exo)))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = reshape(string.(m.exo),1,length(m.exo)))
-        # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = string.(:all))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = string.(m.exo[1]))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = string.(m.exo))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = Tuple(string.(m.exo)))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = reshape(string.(m.exo),1,length(m.exo)))
+        # new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = string.(:all))
 
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = randn(m.timings.nExo,10))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = KeyedArray(randn(1,10),Shocks = string.([m.timings.exo[1]]), Periods = 1:10))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]))
-        new_sub_lvl_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]), levels = true, variables = :all)
-        # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = string.(:none), initial_state = collect(lvl_irfs[:,5,1]))
-        # new_sub_lvl_irfs  = get_irf(m, old_par_vals, verbose = true, shocks = string.(:none), initial_state = collect(lvl_irfs[:,5,1]), levels = true)
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = randn(m.timings.nExo,10))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = KeyedArray(randn(1,10),Shocks = [m.timings.exo[1]], Periods = 1:10))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = KeyedArray(randn(1,10),Shocks = string.([m.timings.exo[1]]), Periods = 1:10))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]))
+        new_sub_lvl_irfs  = get_irf(m, old_params, verbose = true, shocks = :none, initial_state = collect(lvl_irfs[:,5,1]), levels = true, variables = :all)
+        # new_sub_irfs  = get_irf(m, old_params, verbose = true, shocks = string.(:none), initial_state = collect(lvl_irfs[:,5,1]))
+        # new_sub_lvl_irfs  = get_irf(m, old_params, verbose = true, shocks = string.(:none), initial_state = collect(lvl_irfs[:,5,1]), levels = true)
         @test isapprox(collect(new_sub_lvl_irfs[:,1,:]), collect(lvl_irfs[:,6,1]),rtol = eps(Float32))
 
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = m.timings.var[1])
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = m.timings.var[end-1:end])
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = m.timings.var)
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = Tuple(m.timings.var))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all)
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = m.timings.var[1])
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = m.timings.var[end-1:end])
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = m.timings.var)
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = Tuple(m.timings.var))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = :all)
 
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = :all_excluding_obc)
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = :all_excluding_obc)
 
 
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(m.timings.var[1]))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(m.timings.var[end-1:end]))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(m.timings.var))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = Tuple(string.(m.timings.var)))
-        new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = reshape(string.(m.timings.var),1,length(m.timings.var)))
-        # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(:all))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = string.(m.timings.var[1]))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = string.(m.timings.var[end-1:end]))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = string.(m.timings.var))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = Tuple(string.(m.timings.var)))
+        new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = reshape(string.(m.timings.var),1,length(m.timings.var)))
+        # new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = string.(:all))
 
-        # new_sub_irfs  = get_irf(m, old_par_vals, verbose = true, variables = string.(:all_excluding_obc))
+        # new_sub_irfs  = get_irf(m, old_params, verbose = true, variables = string.(:all_excluding_obc))
         var_decomp_nv = get_variance_decomposition(m)
         var_decomp = get_variance_decomposition(m, verbose = true)
         new_var_decomp = get_variance_decomposition(m, verbose = true, parameters = m.parameter_values * 1.0001)
@@ -466,13 +582,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         new_var_decomp2 = get_variance_decomposition(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
         new_var_decomp3 = get_variance_decomposition(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
         new_var_decomp3 = get_var_decomp(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0002))
-        old_var_decomp = get_variance_decomposition(m, verbose = true, parameters = old_par_vals)
+        old_var_decomp = get_variance_decomposition(m, verbose = true, parameters = old_params)
 
         new_var_decomp1 = get_variance_decomposition(m, verbose = true, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001))
         new_var_decomp2 = get_variance_decomposition(m, verbose = true, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
         new_var_decomp3 = get_variance_decomposition(m, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
         new_var_decomp3 = get_var_decomp(m, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0002))
-        old_var_decomp = get_variance_decomposition(m, verbose = true, parameters = old_par_vals)
+        old_var_decomp = get_variance_decomposition(m, verbose = true, parameters = old_params)
 
         cond_var_decomp_nv = get_conditional_variance_decomposition(m)
         cond_var_decomp = get_conditional_variance_decomposition(m, verbose = true)
@@ -486,13 +602,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         new_cond_var_decomp2 = get_conditional_variance_decomposition(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
         new_cond_var_decomp3 = get_conditional_variance_decomposition(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
         new_cond_var_decomp3 = fevd(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0002))
-        old_cond_var_decomp = get_conditional_variance_decomposition(m, verbose = true, parameters = old_par_vals)
+        old_cond_var_decomp = get_conditional_variance_decomposition(m, verbose = true, parameters = old_params)
 
         new_cond_var_decomp1 = get_conditional_variance_decomposition(m, verbose = true, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001))
         new_cond_var_decomp2 = get_conditional_variance_decomposition(m, verbose = true, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
         new_cond_var_decomp3 = get_conditional_variance_decomposition(m, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
         new_cond_var_decomp3 = fevd(m, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0002))
-        old_cond_var_decomp = get_conditional_variance_decomposition(m, verbose = true, parameters = old_par_vals)
+        old_cond_var_decomp = get_conditional_variance_decomposition(m, verbose = true, parameters = old_params)
     end
 
     if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order]
@@ -562,10 +678,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, verbose = true)
     cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
     cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), verbose = true)
-    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_params, variables = :all, verbose = true)
     cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
     cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), variables = string.(varnames[1]), verbose = true)
-    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_params, variables = varnames[1], verbose = true)
 
 
     if plots
@@ -573,10 +689,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, verbose = true)
         plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
         plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), verbose = true)
-        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = :all, verbose = true)
+        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = old_params, variables = :all, verbose = true)
         plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
         plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), variables = string.(varnames[1]), verbose = true)
-        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = old_par_vals, variables = varnames[1], verbose = true)
+        plot_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, save_plots = true, show_plots = false, periods = 10, parameters = old_params, variables = varnames[1], verbose = true)
     end
 
     NSSS = get_SS(m,derivatives = false)
@@ -596,7 +712,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
     cond_fcst = get_conditional_forecast(m, conditions_lvl, algorithm = algorithm, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
 
-    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_par_vals, variables = varnames[1], levels = true, verbose = true)
+    cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_params, variables = varnames[1], levels = true, verbose = true)
 
     # get_solution
     sols_nv = get_solution(m, algorithm = algorithm)
@@ -606,12 +722,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     new_sols2 = get_solution(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
     new_sols3 = get_solution(m, algorithm = algorithm, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
     new_sols4 = get_solution(m, algorithm = algorithm, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-    old_sols = get_solution(m, algorithm = algorithm, verbose = true, parameters = old_par_vals)
+    old_sols = get_solution(m, algorithm = algorithm, verbose = true, parameters = old_params)
 
     new_sols2 = get_solution(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001))
     new_sols3 = get_solution(m, algorithm = algorithm, verbose = true, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
     new_sols4 = get_solution(m, algorithm = algorithm, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
-    old_sols = get_solution(m, algorithm = algorithm, verbose = true, parameters = old_par_vals)
+    old_sols = get_solution(m, algorithm = algorithm, verbose = true, parameters = old_params)
 
     GC.gc()
 
@@ -624,19 +740,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         new_irfs2 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001), ignore_obc = true)
         new_irfs3 = get_irf(m, verbose = true, algorithm = algorithm, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), ignore_obc = true)
         new_irfs4 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001), ignore_obc = true)
-        lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, ignore_obc = true)
+        lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true, ignore_obc = true)
     
         new_irfs2 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001), ignore_obc = true)
         new_irfs3 = get_irf(m, verbose = true, algorithm = algorithm, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), ignore_obc = true)
         new_irfs4 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001), ignore_obc = true)
-        lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, variables = :all)
+        lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true, variables = :all)
     
         lvl_irfs = axiskeys(lvl_irfs,3) isa Vector{String} ? rekey(lvl_irfs,3 => axiskeys(lvl_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : lvl_irfs
     
-        lvlv_init_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), ignore_obc = true)
-        lvlv_init_neg_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, ignore_obc = true)
-        lvlv_init_neg_gen_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true, ignore_obc = true)
-        init_neg_gen_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true, ignore_obc = true)
+        lvlv_init_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), ignore_obc = true)
+        lvlv_init_neg_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, ignore_obc = true)
+        lvlv_init_neg_gen_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true, ignore_obc = true)
+        init_neg_gen_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true, ignore_obc = true)
     
         new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = m.exo[1], ignore_obc = true)
         new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = m.exo, ignore_obc = true)
@@ -699,19 +815,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     new_irfs2 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
     new_irfs3 = get_irf(m, verbose = true, algorithm = algorithm, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
     new_irfs4 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-    lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true)
+    lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true)
 
     new_irfs2 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001))
     new_irfs3 = get_irf(m, verbose = true, algorithm = algorithm, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
     new_irfs4 = get_irf(m, verbose = true, algorithm = algorithm, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
-    lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, variables = :all)
+    lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true, variables = :all)
 
     lvl_irfs = axiskeys(lvl_irfs,3) isa Vector{String} ? rekey(lvl_irfs,3 => axiskeys(lvl_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : lvl_irfs
 
-    lvlv_init_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
-    lvlv_init_neg_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true)
-    lvlv_init_neg_gen_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true)
-    init_neg_gen_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true)
+    lvlv_init_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
+    lvlv_init_neg_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true)
+    lvlv_init_neg_gen_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true)
+    init_neg_gen_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true)
 
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = m.exo[1])
     new_sub_irfs  = get_irf(m, verbose = true, algorithm = algorithm, shocks = m.exo)
@@ -803,9 +919,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), ignore_obc = true)
             plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001), ignore_obc = true)
 
-            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), ignore_obc = true)
-            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, ignore_obc = true)
-            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_params, initial_state = collect(lvl_irfs(:,5,m.exo[1])), ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_params, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, ignore_obc = true)
+            plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_params, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true, ignore_obc = true)
 
             plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = m.exo[1], ignore_obc = true)
             plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = m.exo, ignore_obc = true)
@@ -867,9 +983,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
         plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
 
-        plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
-        plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true)
-        plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_par_vals, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true)
+        plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_params, initial_state = collect(lvl_irfs(:,5,m.exo[1])))
+        plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_params, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true)
+        plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, parameters = old_params, initial_state = collect(lvl_irfs(:,5,m.exo[1])), negative_shock = true, generalised_irf = true)
 
         plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = m.exo[1])
         plot_irf(m, verbose = true, algorithm = algorithm, show_plots = false, save_plots = true, shocks = m.exo)
