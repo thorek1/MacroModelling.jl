@@ -70,7 +70,7 @@ jobs:
             allow_failure: true
           - version: 'pre'
             os: ubuntu-latest
-            arch: arm64
+            arch: x64
             test_set: "basic"
             allow_failure: true
     steps:
