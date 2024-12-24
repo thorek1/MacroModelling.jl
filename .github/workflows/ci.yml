@@ -64,7 +64,7 @@ jobs:
             arch: x64
             test_set: "basic"
           - version: 'lts'
-            os: windows-latest
+            os: ubuntu-latest
             arch: x64
             test_set: "basic"
             allow_failure: true
