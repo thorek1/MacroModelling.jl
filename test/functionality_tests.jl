@@ -237,67 +237,75 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     # get_statistics
     # get_non_stochastic_steady_state_residuals
 
-    ## get_steady_state
-    nsss = get_steady_state(m, verbose = true)
-
-
-    for derivatives in [true, false]
-        for stochastic in [true, false]
-            for return_variables_only in [true, false]
-                for verbose in [true, false]
-                    for silent in [true, false]
-                        for quadratic_matrix_equation_algorithm in [:schur, :doubling]
-                            for sylvester_algorithm in [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)]
-                                nsss = get_steady_state(m, 
-                                                        verbose = verbose, 
-                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
-                                                        sylvester_algorithm = sylvester_algorithm, 
-                                                        silent = silent, 
-                                                        return_variables_only = return_variables_only, 
-                                                        algorithm = algorithm, 
-                                                        stochastic = stochastic, 
-                                                        derivatives = derivatives)
+    @testset "get_steady_state" begin
+        for derivatives in [true, false]
+            for stochastic in [true, false]
+                for return_variables_only in [true, false]
+                    for verbose in [true, false]
+                        for silent in [true, false]
+                            NSSS = get_steady_state(m, 
+                                                    verbose = verbose, 
+                                                    silent = silent, 
+                                                    return_variables_only = return_variables_only, 
+                                                    algorithm = algorithm, 
+                                                    stochastic = stochastic, 
+                                                    derivatives = derivatives)
+                            for quadratic_matrix_equation_algorithm in [:schur, :doubling]
+                                for sylvester_algorithm in [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)]
+                                    nsss = get_steady_state(m, 
+                                                            verbose = verbose, 
+                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                            sylvester_algorithm = sylvester_algorithm, 
+                                                            silent = silent, 
+                                                            return_variables_only = return_variables_only, 
+                                                            algorithm = algorithm, 
+                                                            stochastic = stochastic, 
+                                                            derivatives = derivatives)
+                                    @test isapprox(NSSS,nsss)
+                                end
                             end
                         end
                     end
                 end
             end
         end
-    end
 
-    for parameter_derivatives in [:all, 
-                                    m.parameters[1], 
-                                    m.parameters[1:3], 
-                                    Tuple(m.parameters[1:3]), 
-                                    reshape(m.parameters[1:3],3,1), 
-                                    string.(m.parameters[1]), 
-                                    string.(m.parameters[1:2]), 
-                                    string.(Tuple(m.parameters[1:3])), 
-                                    string.(reshape(m.parameters[1:3],3,1))]
-        for parameters in [old_params, 
-                            (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
-                            Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
-                            m.parameters .=> old_params, 
-                            (string(m.parameters[1]) => old_params[1] * 1.0001), 
-                            Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
-                            old_params]
-            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                nsss = get_steady_state(m, 
-                                        parameters = parameters, 
-                                        algorithm = algorithm, 
-                                        parameter_derivatives = parameter_derivatives,
-                                        tol = tol,
-                                        verbose = true)
+        for parameter_derivatives in [:all, 
+                                        m.parameters[1], 
+                                        m.parameters[1:3], 
+                                        Tuple(m.parameters[1:3]), 
+                                        reshape(m.parameters[1:3],3,1), 
+                                        string.(m.parameters[1]), 
+                                        string.(m.parameters[1:2]), 
+                                        string.(Tuple(m.parameters[1:3])), 
+                                        string.(reshape(m.parameters[1:3],3,1))]
+            for parameters in [old_params, 
+                                (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                                Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                                m.parameters .=> old_params, 
+                                (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                                Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                                old_params]
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    nsss = get_steady_state(m, 
+                                            parameters = parameters, 
+                                            algorithm = algorithm, 
+                                            parameter_derivatives = parameter_derivatives,
+                                            tol = tol,
+                                            verbose = true)
+                end
             end
         end
     end
+
+
+    nsss = get_steady_state(m, verbose = true)
 
     NSSS = get_SS(m, derivatives = false)
 
     @test maximum(collect(check_residuals(m, NSSS))) < 1e-12
     @test maximum(collect(check_residuals(m, collect(NSSS)))) < 1e-12
     @test maximum(collect(check_residuals(m, Dict(axiskeys(NSSS, 1) .=> collect(NSSS))))) < 1e-12
-
 
     if algorithm ∈ [:pruned_second_order,:second_order]
         sols_nv = get_second_order_solution(m)
