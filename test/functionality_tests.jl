@@ -4,32 +4,70 @@ function functionality_test(m; algorithm = :first_order, plots = true, verbose =
 
     # Check different inputs for get_steady_state
     nsss = get_steady_state(m, verbose = true)
-    nsss_no_derivs = get_steady_state(m, verbose = true, derivatives = false)
-    nsss_select_par_deriv1 = get_steady_state(m, verbose = true, parameter_derivatives = m.parameters[1])
-    nsss_select_par_deriv2 = get_steady_state(m, verbose = true, parameter_derivatives = m.parameters[1:2])
-    nsss_select_par_deriv3 = get_steady_state(m, verbose = true, parameter_derivatives = Tuple(m.parameters[1:3]))
-    nsss_select_par_deriv4 = get_steady_state(m, verbose = true, parameter_derivatives = reshape(m.parameters[1:3],3,1))
 
-    nsss_select_par_deriv1 = get_steady_state(m, verbose = true, parameter_derivatives = string.(m.parameters[1]))
-    nsss_select_par_deriv2 = get_steady_state(m, verbose = true, parameter_derivatives = string.(m.parameters[1:2]))
-    nsss_select_par_deriv3 = get_steady_state(m, verbose = true, parameter_derivatives = string.(Tuple(m.parameters[1:3])))
-    nsss_select_par_deriv4 = get_steady_state(m, verbose = true, parameter_derivatives = string.(reshape(m.parameters[1:3],3,1)))
+    old_params = copy(m.parameter_values)
+    new_params = copy(m.parameter_values)
+    new_params *= 1.0001
 
-    old_par_vals = copy(m.parameter_values)
 
-    new_nsss1 = get_steady_state(m, verbose = true, parameters = m.parameter_values * 1.0001)
-    new_nsss2 = get_steady_state(m, verbose = true, parameters = (m.parameters[1] => m.parameter_values[1] * 1.0001))
-    new_nsss3 = get_steady_state(m, verbose = true, parameters = Tuple(m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001))
-    new_nsss4 = get_steady_state(m, verbose = true, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] / 1.0001))
-    old_nsss = get_steady_state(m, verbose = true, parameters = old_par_vals)
+    for derivatives in [true, false]
+        for stochastic in [true, false]
+            for algorithm in MacroModelling.all_available_algorithms
+                for return_variables_only in [true, false]
+                    for verbose in [true, false]
+                        for silent in [true, false]
+                            for quadratic_matrix_equation_algorithm in [:schur, :doubling]
+                                nsss = get_steady_state(m, 
+                                                        verbose = verbose, 
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
+                                                        silent = silent, 
+                                                        return_variables_only = return_variables_only, 
+                                                        algorithm = algorithm, 
+                                                        stochastic = stochastic, 
+                                                        derivatives = derivatives)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+                    
 
-    new_nsss2 = get_steady_state(m, verbose = true, parameters = (string.(m.parameters[1]) => m.parameter_values[1] * 1.0001))
-    new_nsss3 = get_steady_state(m, verbose = true, parameters = Tuple(string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001))
-    new_nsss4 = get_steady_state(m, verbose = true, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] / 1.0001))
-    old_nsss = get_steady_state(m, verbose = true, parameters = old_par_vals)
-    nsss = get_non_stochastic_steady_state(m)
-    nsss = get_SS(m)
+    for algorithm in MacroModelling.all_available_algorithms
+        for sylvester_algorithm in [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)]
+            nsss = get_steady_state(m, 
+                                    sylvester_algorithm = sylvester_algorithm, 
+                                    algorithm = algorithm,
+                                    verbose = true)
+        end
+    end
 
+    for parameter_derivatives in [:all, 
+                                    m.parameters[1], 
+                                    m.parameters[1:3], 
+                                    Tuple(m.parameters[1:3]), 
+                                    reshape(m.parameters[1:3],3,1), 
+                                    string.(m.parameters[1]), 
+                                    string.(m.parameters[1:2]), 
+                                    string.(Tuple(m.parameters[1:3])), 
+                                    string.(reshape(m.parameters[1:3],3,1))]
+        for parameters in [new_params, 
+                            (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                            Tuple(m.parameters[1:2] .=> old_params[1:2]), 
+                            m.parameters .=> old_params, 
+                            (string(m.parameters[1]) => new_params[1]), 
+                            Tuple(string.(m.parameters[1:2]) .=> new_params[1:2] .* exp.(rand(2)*1e-4)), 
+                            old_params]
+            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                nsss = get_steady_state(m, 
+                                        parameters = parameters, 
+                                        parameter_derivatives = parameter_derivatives,
+                                        tol = tol,
+                                        verbose = true)
+            end
+        end
+    end
 
     NSSS = get_SS(m, derivatives = false)
 
