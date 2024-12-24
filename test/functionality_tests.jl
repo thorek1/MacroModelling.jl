@@ -291,7 +291,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         for cndtns in conditions
             for shcks in shocks
                 for periods in [0,10,40]
-                    for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.parameters[1], m.parameters[1:2]]
+                    for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2]]
 
                         # for intial_state in
 
