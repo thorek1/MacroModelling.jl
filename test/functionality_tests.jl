@@ -223,7 +223,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end    
     end
 
-    @testset get_conditional_forecast begin
+    @testset "get_conditional_forecast" begin
         # test conditional forecasting
         new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = true, variables = :all, shocks = :all)
         varnames = axiskeys(new_sub_irfs_all,1)
