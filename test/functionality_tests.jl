@@ -30,6 +30,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                             for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
                                 for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+                                    # Clear solution caches
                                     pop!(m.NSSS_solver_cache)
                                     m.solution.perturbation.qme_solution = zeros(0,0)
                                     m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -45,6 +46,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     sylvester_algorithm = sylvester_algorithm,
                                                                     verbose = verbose)
 
+                                    # Clear solution caches
                                     pop!(m.NSSS_solver_cache)
                                     m.solution.perturbation.qme_solution = zeros(0,0)
                                     m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -61,6 +63,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     verbose = verbose)
                                     @test isapprox(estim1,estim2)
 
+                                    # Clear solution caches
                                     pop!(m.NSSS_solver_cache)
                                     m.solution.perturbation.qme_solution = zeros(0,0)
                                     m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -76,6 +79,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     sylvester_algorithm = sylvester_algorithm,
                                                                     verbose = verbose)
 
+                                    # Clear solution caches
                                     pop!(m.NSSS_solver_cache)
                                     m.solution.perturbation.qme_solution = zeros(0,0)
                                     m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -93,6 +97,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     @test isapprox(estim1,estim2)
 
                                     for levels in [true, false]
+                                        # Clear solution caches
                                         pop!(m.NSSS_solver_cache)
                                         m.solution.perturbation.qme_solution = zeros(0,0)
                                         m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -109,6 +114,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         sylvester_algorithm = sylvester_algorithm,
                                                                         verbose = verbose)
 
+                                        # Clear solution caches
                                         pop!(m.NSSS_solver_cache)
                                         m.solution.perturbation.qme_solution = zeros(0,0)
                                         m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -188,6 +194,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                         for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
 
+                            # Clear solution caches
                             pop!(m.NSSS_solver_cache)
                             m.solution.perturbation.qme_solution = zeros(0,0)
                             m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -200,6 +207,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 verbose = verbose)
 
+                            # Clear solution caches
                             pop!(m.NSSS_solver_cache)
                             m.solution.perturbation.qme_solution = zeros(0,0)
                             m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -257,6 +265,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                                     for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
                                         for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+                                            
+                                            # Clear solution caches
                                             pop!(m.NSSS_solver_cache)
                                             m.solution.perturbation.qme_solution = zeros(0,0)
                                             m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -384,6 +394,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                                 for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
                                     for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+                                        
+                                        # Clear solution caches
                                         pop!(m.NSSS_solver_cache)
                                         m.solution.perturbation.qme_solution = zeros(0,0)
                                         m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -402,6 +414,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             sylvester_algorithm = sylvester_algorithm,
                                                                             verbose = verbose)
 
+                                        
+                                        # Clear solution caches
                                         pop!(m.NSSS_solver_cache)
                                         m.solution.perturbation.qme_solution = zeros(0,0)
                                         m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -421,6 +435,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                                         @test isapprox(cond_fcst, cond_fcst_lvl)
 
+                                        # Clear solution caches
                                         pop!(m.NSSS_solver_cache)
                                         m.solution.perturbation.qme_solution = zeros(0,0)
                                         m.solution.perturbation.second_order_solution = spzeros(0,0)
@@ -439,6 +454,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
 
+                                        # Clear solution caches
                                         pop!(m.NSSS_solver_cache)
                                         m.solution.perturbation.qme_solution = zeros(0,0)
                                         m.solution.perturbation.second_order_solution = spzeros(0,0)
