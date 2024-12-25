@@ -288,7 +288,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             push!(shocks, shcks)
         end
         
-        init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), periods = 1) |> vec
+        init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
 
         for cndtns in conditions
             for shcks in shocks
