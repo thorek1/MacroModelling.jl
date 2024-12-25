@@ -234,6 +234,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,end]]
 
 
+        stst  = get_irf(m, variables = :all, shocks = :none, periods = 1, levels = true) |> vec
 
         conditions = []
 
@@ -249,17 +250,31 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
         push!(conditions, cndtns)
 
-        cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs[[1, end]]]), Periods = 1:2)
+        cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
         cndtns[1,1] = .01
         cndtns[2,2] = .02
 
         push!(conditions, cndtns)
 
-        cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[[1, end]]], Periods = 1:2)
+        cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
         cndtns[1,1] = .01
         cndtns[2,2] = .02
 
         push!(conditions, cndtns)
+
+        conditions_lvl = []
+
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+        cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+        cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+
+        push!(conditions_lvl, cndtns_lvl)
+
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+        cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+        cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+    
+        push!(conditions_lvl, cndtns_lvl)
 
 
         shocks = []
@@ -296,7 +311,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             algorithm = algorithm, 
                                             shocks = shocks[1])
 
-
         for periods in [0,10,40]
             for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2]]
                 for levels in [true, false]
@@ -317,6 +331,47 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm,
                                                                             verbose = verbose)
+
+                                        cond_fcst_lvl = get_conditional_forecast(m, conditions_lvl[end],
+                                                                                algorithm = algorithm, 
+                                                                                variables = variables,
+                                                                                periods = periods,
+                                                                                levels = levels,
+                                                                                shocks = shocks[end],
+                                                                                tol = tol,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                sylvester_algorithm = sylvester_algorithm,
+                                                                                verbose = verbose)
+
+                                        @test isapprox(cond_fcst, cond_fcst_lvl)
+
+                                        cond_fcst = get_conditional_forecast(m, conditions[end-1],
+                                                                                conditions_in_levels = false,
+                                                                                algorithm = algorithm, 
+                                                                                variables = variables,
+                                                                                periods = periods,
+                                                                                levels = levels,
+                                                                                shocks = shocks[end],
+                                                                                tol = tol,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                sylvester_algorithm = sylvester_algorithm,
+                                                                                verbose = verbose)
+
+                                        cond_fcst_lvl = get_conditional_forecast(m, conditions_lvl[end-1],
+                                                                                algorithm = algorithm, 
+                                                                                variables = variables,
+                                                                                periods = periods,
+                                                                                levels = levels,
+                                                                                shocks = shocks[end],
+                                                                                tol = tol,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                sylvester_algorithm = sylvester_algorithm,
+                                                                                verbose = verbose)
+                                                                                
+                                        @test isapprox(cond_fcst, cond_fcst_lvl)
                                     end
                                 end
                             end
@@ -325,7 +380,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
         end
-
 
         for cndtns in conditions
             for parameters in [old_params, 
