@@ -19,6 +19,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
         data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+
         if !(algorithm ∈ [:second_order, :third_order])
             for filter in [:inversion, :kalman]
                 for smooth in [true, false]
@@ -26,6 +30,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                             for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
                                 for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+                                    pop!(m.NSSS_solver_cache)
+                                    m.solution.perturbation.qme_solution = zeros(0,0)
+                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+
                                     estim1 = get_shock_decomposition(m, data, 
                                                                     algorithm = algorithm, 
                                                                     data_in_levels = false, 
@@ -35,6 +44,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     lyapunov_algorithm = lyapunov_algorithm,
                                                                     sylvester_algorithm = sylvester_algorithm,
                                                                     verbose = verbose)
+
+                                    pop!(m.NSSS_solver_cache)
+                                    m.solution.perturbation.qme_solution = zeros(0,0)
+                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                
                                     estim2 = get_shock_decomposition(m, data_in_levels, 
                                                                     algorithm = algorithm, 
                                                                     data_in_levels = true,
@@ -46,6 +61,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     verbose = verbose)
                                     @test isapprox(estim1,estim2)
 
+                                    pop!(m.NSSS_solver_cache)
+                                    m.solution.perturbation.qme_solution = zeros(0,0)
+                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+
                                     estim1 = get_estimated_shocks(m, data, 
                                                                     algorithm = algorithm, 
                                                                     data_in_levels = false, 
@@ -55,6 +75,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     lyapunov_algorithm = lyapunov_algorithm,
                                                                     sylvester_algorithm = sylvester_algorithm,
                                                                     verbose = verbose)
+
+                                    pop!(m.NSSS_solver_cache)
+                                    m.solution.perturbation.qme_solution = zeros(0,0)
+                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                
                                     estim2 = get_estimated_shocks(m, data_in_levels, 
                                                                     algorithm = algorithm, 
                                                                     data_in_levels = true,
@@ -67,6 +93,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     @test isapprox(estim1,estim2)
 
                                     for levels in [true, false]
+                                        pop!(m.NSSS_solver_cache)
+                                        m.solution.perturbation.qme_solution = zeros(0,0)
+                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    
                                         estim1 = get_estimated_variables(m, data, 
                                                                         algorithm = algorithm, 
                                                                         data_in_levels = false, 
@@ -77,6 +108,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         sylvester_algorithm = sylvester_algorithm,
                                                                         verbose = verbose)
+
+                                        pop!(m.NSSS_solver_cache)
+                                        m.solution.perturbation.qme_solution = zeros(0,0)
+                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                                                    
                                         estim2 = get_estimated_variables(m, data_in_levels, 
                                                                         algorithm = algorithm, 
                                                                         data_in_levels = true, 
@@ -141,18 +178,33 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
 
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
 
         if algorithm == :first_order
             for smooth in [true, false]
                 for verbose in [false] # [true, false]
                     for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                         for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
+
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        
                             estim1 = get_estimated_variable_standard_deviations(m, data, 
                                                                                 data_in_levels = false, 
                                                                                 smooth = smooth,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 verbose = verbose)
+
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        
                             estim2 = get_estimated_variable_standard_deviations(m, data_in_levels, 
                                                                                 data_in_levels = true,
                                                                                 smooth = smooth,
@@ -185,6 +237,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
 
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+
         for filter in [:inversion, :kalman]
             for presample_periods in [0, 10]
                 for initial_covariance in [:diagonal, :theoretical]
@@ -201,6 +257,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                                     for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
                                         for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+                                            pop!(m.NSSS_solver_cache)
+                                            m.solution.perturbation.qme_solution = zeros(0,0)
+                                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        
                                             LLH = get_loglikelihood(m, data, parameters,
                                                                     algorithm = algorithm,
                                                                     filter = filter,
@@ -311,6 +372,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             algorithm = algorithm, 
                                             shocks = shocks[1])
 
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+
         for periods in [0,10,40]
             for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2]]
                 for levels in [true, false]
@@ -319,6 +384,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                                 for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
                                     for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+                                        pop!(m.NSSS_solver_cache)
+                                        m.solution.perturbation.qme_solution = zeros(0,0)
+                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    
                                         cond_fcst = get_conditional_forecast(m, conditions[end],
                                                                             conditions_in_levels = false,
                                                                             algorithm = algorithm, 
@@ -332,6 +402,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             sylvester_algorithm = sylvester_algorithm,
                                                                             verbose = verbose)
 
+                                        pop!(m.NSSS_solver_cache)
+                                        m.solution.perturbation.qme_solution = zeros(0,0)
+                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    
                                         cond_fcst_lvl = get_conditional_forecast(m, conditions_lvl[end],
                                                                                 algorithm = algorithm, 
                                                                                 variables = variables,
@@ -346,6 +421,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                                         @test isapprox(cond_fcst, cond_fcst_lvl)
 
+                                        pop!(m.NSSS_solver_cache)
+                                        m.solution.perturbation.qme_solution = zeros(0,0)
+                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    
                                         cond_fcst = get_conditional_forecast(m, conditions[end-1],
                                                                                 conditions_in_levels = false,
                                                                                 algorithm = algorithm, 
@@ -359,6 +439,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
 
+                                        pop!(m.NSSS_solver_cache)
+                                        m.solution.perturbation.qme_solution = zeros(0,0)
+                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    
                                         cond_fcst_lvl = get_conditional_forecast(m, conditions_lvl[end-1],
                                                                                 algorithm = algorithm, 
                                                                                 variables = variables,
@@ -405,18 +490,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
         end
-
-
-        
-        
-        # cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false)
-        # cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, verbose = true)
-        # cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), verbose = true)
-        # cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), verbose = true)
-        # cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_params, variables = :all, verbose = true)
-        # cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (m.parameters[1:2] .=> m.parameter_values[1:2] * 1.0001), variables = varnames[1], verbose = true)
-        # cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = (string.(m.parameters[1:2]) .=> m.parameter_values[1:2] * 1.0001), variables = string.(varnames[1]), verbose = true)
-        # cond_fcst = get_conditional_forecast(m, conditions, algorithm = algorithm, conditions_in_levels = false, periods = 10, parameters = old_params, variables = varnames[1], verbose = true)
     end
 
 
@@ -433,6 +506,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     # get_moments
     # get_statistics
     # get_non_stochastic_steady_state_residuals
+
+    # plot_model_estimates
+    # plot_irf
+    # plot_conditional_variance_decomposition
+    # plot_solution
+    # plot_conditional_forecast
 
     @testset "get_steady_state" begin
         for derivatives in [true, false]
