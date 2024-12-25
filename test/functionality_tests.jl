@@ -292,7 +292,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
         cond_fcst = get_conditional_forecast(m, conditions[1],
                                             conditions_in_levels = false,
-                                            initial_state = initial_state,
+                                            initial_state = [0.0],
                                             algorithm = algorithm, 
                                             shocks = shocks[1])
 
