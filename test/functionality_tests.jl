@@ -294,7 +294,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for shcks in shocks
                 for periods in [0,10,40]
                     for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2]]
-                        for initial_state in [[0.0], init_state, algorithm  == :pruned_second_order ? [zeros(init_state), init_state] : algorithm == :pruned_third_order ? [zeros(init_state), init_state, zeros(init_state)] : init_state .* 1.01]
+                        for initial_state in [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
                             for levels in [true, false]
                                 for verbose in [true, false]
                                     for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
