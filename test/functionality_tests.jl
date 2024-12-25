@@ -296,35 +296,27 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             algorithm = algorithm, 
                                             shocks = shocks[1])
 
-        for cndtns in conditions
-            # for parameters in 
-            #     for cond_in_lvls in 
-            for shcks in shocks
-                for periods in [0,10,40]
-                    for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2]]
-                        for initial_state in [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
-                            for levels in [true, false]
-                                for verbose in [false] # [true, false]
-                                    for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                                        for quadratic_matrix_equation_algorithm in [:schur, :doubling]
-                                            for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
-                                                for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
-                                                    cond_fcst = get_conditional_forecast(m, cndtns,
-                                                                                        conditions_in_levels = false,
-                                                                                        initial_state = initial_state,
-                                                                                        algorithm = algorithm, 
-                                                                                        variables = variables,
-                                                                                        periods = periods,
-                                                                                        levels = levels,
-                                                                                        shocks = shcks,
-                                                                                        tol = tol,
-                                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                        lyapunov_algorithm = lyapunov_algorithm,
-                                                                                        sylvester_algorithm = sylvester_algorithm,
-                                                                                        verbose = verbose)
-                                                end
-                                            end
-                                        end
+
+        for periods in [0,10,40]
+            for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2]]
+                for levels in [true, false]
+                    for verbose in [false] # [true, false]
+                        for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                            for quadratic_matrix_equation_algorithm in [:schur, :doubling]
+                                for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
+                                    for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+                                        cond_fcst = get_conditional_forecast(m, conditions[end],
+                                                                            conditions_in_levels = false,
+                                                                            algorithm = algorithm, 
+                                                                            variables = variables,
+                                                                            periods = periods,
+                                                                            levels = levels,
+                                                                            shocks = shocks[end],
+                                                                            tol = tol,
+                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                            lyapunov_algorithm = lyapunov_algorithm,
+                                                                            sylvester_algorithm = sylvester_algorithm,
+                                                                            verbose = verbose)
                                     end
                                 end
                             end
@@ -334,7 +326,32 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
 
-        
+
+        for cndtns in conditions
+            for parameters in [old_params, 
+                                (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                                Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                                m.parameters .=> old_params, 
+                                (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                                Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                                old_params]
+                for shcks in shocks
+                    for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2]]
+                        for initial_state in [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
+                            cond_fcst = get_conditional_forecast(m, cndtns,
+                                                                parameters = parameters,
+                                                                conditions_in_levels = false,
+                                                                initial_state = initial_state,
+                                                                algorithm = algorithm, 
+                                                                variables = variables,
+                                                                shocks = shcks,
+                                                                verbose = true)
+                        end
+                    end
+                end
+            end
+        end
+
 
         
         
