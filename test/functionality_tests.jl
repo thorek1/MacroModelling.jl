@@ -508,16 +508,76 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
     end
 
+    @testset "get_correlation" begin
+        corrl = get_correlation(m, algorithm = algorithm)
+
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+        
+        for parameters in [old_params, 
+                            (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                            Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                            m.parameters .=> old_params, 
+                            (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                            Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                            old_params]
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            m.solution.perturbation.qme_solution = zeros(0,0)
+            m.solution.perturbation.second_order_solution = spzeros(0,0)
+            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            
+            get_correlation(m, algorithm = algorithm, parameters = parameters, verbose = true)
+        end
+
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+
+        for verbose in [false] # [true, false]
+            for tol in [MacroModelling.Tolerances(qme_acceptance_tol = 1e-14),MacroModelling.Tolerances(NSSS_xtol = 1e-20, qme_acceptance_tol = 1e-14)]
+                for quadratic_matrix_equation_algorithm in [:schur, :doubling]
+                    for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
+                        for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            
+                            CORRL = get_correlation(m,
+                                            algorithm = algorithm,
+                                            tol = tol,
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                            lyapunov_algorithm = lyapunov_algorithm,
+                                            sylvester_algorithm = sylvester_algorithm,
+                                            verbose = verbose)
+
+                            @test isapprox(corrl, CORRL, rtol = eps(Float32))
+                        end
+                    end
+                end
+            end
+        end
+    end
+# function get_correlation(𝓂::ℳ; 
+#     parameters::ParameterType = nothing,  
+#     algorithm::Symbol = :first_order,
+#     quadratic_matrix_equation_algorithm::Symbol = :schur,
+#     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
+#     lyapunov_algorithm::Symbol = :doubling, 
+#     verbose::Bool = false,
+#     tol::Tolerances = Tolerances())
+
 
 
     # get_irf
     # get_irf
-    # get_steady_state
     # get_solution
     # get_solution
     # get_conditional_variance_decomposition
     # get_variance_decomposition
-    # get_correlation
     # get_autocorrelation
     # get_moments
     # get_statistics
