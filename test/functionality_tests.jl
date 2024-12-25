@@ -22,7 +22,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         if !(algorithm ∈ [:second_order, :third_order])
             for filter in [:inversion, :kalman]
                 for smooth in [true, false]
-                    for verbose in [true] # [true, false]
+                    for verbose in [false] # [true, false]
                         for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                             for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
                                 for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
@@ -144,7 +144,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
         if algorithm == :first_order
             for smooth in [true, false]
-                for verbose in [true] # [true, false]
+                for verbose in [false] # [true, false]
                     for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                         for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
                             estim1 = get_estimated_variable_standard_deviations(m, data, 
@@ -188,7 +188,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         for filter in [:inversion, :kalman]
             for presample_periods in [0, 10]
                 for initial_covariance in [:diagonal, :theoretical]
-                    for verbose in [true] # [true, false]
+                    for verbose in [false] # [true, false]
                         for parameters in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
                             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                                 llh = get_loglikelihood(m, data, parameters,
@@ -304,7 +304,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2]]
                         for initial_state in [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
                             for levels in [true, false]
-                                for verbose in [true] # [true, false]
+                                for verbose in [false] # [true, false]
                                     for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                                         for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                                             for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
