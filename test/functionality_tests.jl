@@ -7,7 +7,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
         if length(m.exo) > 1
             n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
-            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[1:2]
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,end]]
         else
             var_idxs = [1]
         end
