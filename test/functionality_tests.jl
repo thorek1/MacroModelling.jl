@@ -508,8 +508,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
     end
 
-    @testset "get_correlation" begin
+    @testset "correlation, variance decomposition" begin
         corrl = get_correlation(m, algorithm = algorithm)
+
+        if algorithm == :first_order
+            var_decomp = get_variance_decomposition(m)
+        end
 
         while length(m.NSSS_solver_cache) > 2
             pop!(m.NSSS_solver_cache)
@@ -529,6 +533,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
                             
             get_correlation(m, algorithm = algorithm, parameters = parameters, verbose = true)
+
+            if algorithm == :first_order
+                # Clear solution caches
+                pop!(m.NSSS_solver_cache)
+                m.solution.perturbation.qme_solution = zeros(0,0)
+                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                
+                get_variance_decomposition(m, parameters = parameters, verbose = true)
+            end
         end
 
         while length(m.NSSS_solver_cache) > 2
@@ -539,6 +553,23 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for tol in [MacroModelling.Tolerances(qme_acceptance_tol = 1e-14),MacroModelling.Tolerances(NSSS_xtol = 1e-20, qme_acceptance_tol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in [:schur, :doubling]
                     for lyapunov_algorithm in [:doubling, :bartels_stewart, :bicgstab, :gmres]
+                        
+                        if algorithm == :first_order
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+
+                            VAR_DECOMP = get_variance_decomposition(m,
+                                                                    tol = tol,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    verbose = verbose)
+                                                                    
+                            @test isapprox(var_decomp, VAR_DECOMP) #, rtol = eps(Float32))
+                        end
+
                         for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
                             # Clear solution caches
                             pop!(m.NSSS_solver_cache)
@@ -561,15 +592,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
     end
-# function get_correlation(𝓂::ℳ; 
-#     parameters::ParameterType = nothing,  
-#     algorithm::Symbol = :first_order,
-#     quadratic_matrix_equation_algorithm::Symbol = :schur,
-#     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
-#     lyapunov_algorithm::Symbol = :doubling, 
-#     verbose::Bool = false,
-#     tol::Tolerances = Tolerances())
 
+    
 
 
     # get_irf
