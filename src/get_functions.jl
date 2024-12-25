@@ -2216,9 +2216,9 @@ function get_variance_decomposition(𝓂::ℳ;
 
     variances_by_shock = zeros(𝓂.timings.nVars, 𝓂.timings.nExo)
 
-    for i in 1:𝓂.timings.nExo
-        A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+    A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
+    for i in 1:𝓂.timings.nExo
         C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed + i]
         
         CC = C * C'
@@ -2234,6 +2234,10 @@ function get_variance_decomposition(𝓂::ℳ;
     
     var_decomp = variances_by_shock ./ sum(variances_by_shock, dims=2)
 
+    var_decomp[vec(sum(variances_by_shock, dims=2)) .< eps(),:] .= 0
+
+    var_decomp[var_decomp .< eps()] .= 0
+    
     axis1 = 𝓂.var
 
     if any(x -> contains(string(x), "◖"), axis1)
@@ -2311,7 +2315,7 @@ And data, 4×4 Matrix{Float64}:
 function get_correlation(𝓂::ℳ; 
                         parameters::ParameterType = nothing,  
                         algorithm::Symbol = :first_order,
-                        quadratic_matrix_equation_algorithm::Symbol = :schur,
+                        quadratic_matrix_equation_algorithm::Symbol = :doubling,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                         lyapunov_algorithm::Symbol = :doubling, 
                         verbose::Bool = false,
