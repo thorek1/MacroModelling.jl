@@ -2340,8 +2340,8 @@ function get_correlation(𝓂::ℳ;
         @assert solved "Could not find covariance matrix."
     end
 
-    std = sqrt.(ℒ.diag(covar_dcmp))
-
+    std = sqrt.(max.(ℒ.diag(covar_dcmp),eps(Float64)))
+    
     corr = covar_dcmp ./ (std * std')
     
     axis1 = 𝓂.var
@@ -3142,7 +3142,7 @@ function get_statistics(𝓂,
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
 
     if !(variance == Symbol[])
-        varrs = convert(Vector{T},ℒ.diag(covar_dcmp))
+        varrs = convert(Vector{T},max.(ℒ.diag(covar_dcmp),eps(Float64)))
         if !(standard_deviation == Symbol[])
             st_dev = sqrt.(varrs)
         end
@@ -3164,11 +3164,11 @@ function get_statistics(𝓂,
         end
 
         if !(standard_deviation == Symbol[])
-            st_dev = sqrt.(abs.(convert(Vector{T},ℒ.diag(covar_dcmp))))
+            st_dev = sqrt.(abs.(convert(Vector{T}, max.(ℒ.diag(covar_dcmp),eps(Float64)))))
         end
     else
         if !(standard_deviation == Symbol[])
-            st_dev = sqrt.(abs.(convert(Vector{T},ℒ.diag(covar_dcmp))))
+            st_dev = sqrt.(abs.(convert(Vector{T}, max.(ℒ.diag(covar_dcmp),eps(Float64)))))
         end
     end
 
