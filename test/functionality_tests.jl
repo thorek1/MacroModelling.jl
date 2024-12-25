@@ -585,7 +585,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             sylvester_algorithm = sylvester_algorithm,
                                             verbose = verbose)
 
-                            @test isapprox(corrl, CORRL, rtol = eps(Float32))
+                            @test isapprox(corrl, CORRL)#, rtol = eps(Float32))
                         end
                     end
                 end
