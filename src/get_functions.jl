@@ -2344,6 +2344,8 @@ function get_correlation(𝓂::ℳ;
         @assert solved "Could not find covariance matrix."
     end
 
+    covar_dcmp[abs.(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol] .= 0
+
     std = sqrt.(max.(ℒ.diag(covar_dcmp),eps(Float64)))
     
     corr = covar_dcmp ./ (std * std')
