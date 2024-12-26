@@ -2385,7 +2385,7 @@ Return the autocorrelations of endogenous variables using the first, pruned seco
 # Arguments
 - $MODEL®
 # Keyword Arguments
-- `autocorrelation_periods` [Default: `1:5`, Type: `Union{UnitRange{Int}, Vector{Int}, Int}`]: periods for which to return the autocorrelation
+- `autocorrelation_periods` [Default: `1:5`, Type: `UnitRange{Int}`]: periods for which to return the autocorrelation
 - $PARAMETERS®
 - $ALGORITHM®
 - $QME®
@@ -2427,7 +2427,7 @@ And data, 4×5 Matrix{Float64}:
 ```
 """
 function get_autocorrelation(𝓂::ℳ; 
-                            autocorrelation_periods::Union{UnitRange{Int}, Vector{Int}, Int} = 1:5,
+                            autocorrelation_periods::UnitRange{Int} = 1:5,
                             parameters::ParameterType = nothing,  
                             algorithm::Symbol = :first_order,
                             quadratic_matrix_equation_algorithm::Symbol = :schur,
@@ -3044,7 +3044,7 @@ Function to use when differentiating model moments with repect to parameters.
 - `variance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the variance of the mentioned variables
 - `covariance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the covariance of the mentioned variables
 - `autocorrelation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the autocorrelation of the mentioned variables
-- `autocorrelation_periods` [Default: `1:5`, Type = `Union{UnitRange{Int}, Vector{Int}, Int}`]: periods for which to return the autocorrelation of the mentioned variables
+- `autocorrelation_periods` [Default: `1:5`, Type = `UnitRange{Int}`]: periods for which to return the autocorrelation of the mentioned variables
 - $ALGORITHM®
 - $QME®
 - $LYAPUNOV®
@@ -3086,7 +3086,7 @@ function get_statistics(𝓂,
                         variance::Vector{Symbol} = Symbol[],
                         covariance::Vector{Symbol} = Symbol[],
                         autocorrelation::Vector{Symbol} = Symbol[],
-                        autocorrelation_periods::Union{UnitRange{Int}, Vector{Int}, Int} = 1:5,
+                        autocorrelation_periods::UnitRange{Int} = 1:5,
                         algorithm::Symbol = :first_order,
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
