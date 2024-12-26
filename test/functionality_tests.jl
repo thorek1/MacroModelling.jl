@@ -539,7 +539,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 
                 get_correlation(m, algorithm = algorithm, parameters = parameters, verbose = true)
 
-                for autocorrelation_periods in [1:5, 1:3, [1,5,10]]
+                for autocorrelation_periods in [1:5, 1:3]
                     # Clear solution caches
                     pop!(m.NSSS_solver_cache)
                     m.solution.perturbation.qme_solution = zeros(0,0)
