@@ -3442,9 +3442,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
 
     SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 
-    aux_and_vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_aux_equations)), union(𝓂.parameters_in_equations, 𝓂.➕_vars))))
-
-    axis1 = vcat(aux_and_vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+    axis1 = vcat(𝓂.var, 𝓂.calibration_equations_parameters)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_equations)), union(𝓂.parameters_in_equations))))
 
@@ -3472,7 +3470,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
             combined_values[key] = value
         end
     end
-    
+
     vals = [combined_values[i] for i in unknowns]
 
     axis1 = vcat([Symbol("Equation" * sub(string(i))) for i in 1:length(vars_in_ss_equations)], [Symbol("CalibrationEquation" * sub(string(i))) for i in 1:length(𝓂.calibration_equations_parameters)])
