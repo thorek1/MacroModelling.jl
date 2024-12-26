@@ -2381,7 +2381,7 @@ Return the autocorrelations of endogenous variables using the first, pruned seco
 # Arguments
 - $MODEL®
 # Keyword Arguments
-- `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation
+- `autocorrelation_periods` [Default: `1:5`, Type: `Union{UnitRange{Int}, Vector{Int}}`]: periods for which to return the autocorrelation
 - $PARAMETERS®
 - $ALGORITHM®
 - $QME®
@@ -2423,7 +2423,7 @@ And data, 4×5 Matrix{Float64}:
 ```
 """
 function get_autocorrelation(𝓂::ℳ; 
-                            autocorrelation_periods = 1:5,
+                            autocorrelation_periods::Union{UnitRange{Int}, Vector{Int}} = 1:5,
                             parameters::ParameterType = nothing,  
                             algorithm::Symbol = :first_order,
                             quadratic_matrix_equation_algorithm::Symbol = :schur,
@@ -2449,6 +2449,8 @@ function get_autocorrelation(𝓂::ℳ;
         covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, 𝓂.timings.var, 𝓂, 
                                                                                             opts = opts, 
                                                                                             autocorrelation = true)
+
+        autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
     elseif algorithm == :pruned_second_order
         covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, opts = opts)
 
@@ -2456,10 +2458,14 @@ function get_autocorrelation(𝓂::ℳ;
 
         autocorr = zeros(size(covar_dcmp,1),length(autocorrelation_periods))
 
+        covar_dcmp[abs.(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol] .= 0
+
         for i in autocorrelation_periods
             autocorr[:,i] .= ℒ.diag(ŝ_to_y₂ * ŝ_to_ŝ₂ⁱ * autocorr_tmp) ./ ℒ.diag(covar_dcmp) 
             ŝ_to_ŝ₂ⁱ *= ŝ_to_ŝ₂
         end
+
+        autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
     else
         covar_dcmp, sol, _, SS_and_pars, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
 
@@ -2468,6 +2474,8 @@ function get_autocorrelation(𝓂::ℳ;
         A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
     
         autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in autocorrelation_periods])
+
+        autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
     end
 
     
@@ -3032,7 +3040,7 @@ Function to use when differentiating model moments with repect to parameters.
 - `variance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the variance of the mentioned variables
 - `covariance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the covariance of the mentioned variables
 - `autocorrelation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the autocorrelation of the mentioned variables
-- `autocorrelation_periods` [Default: `1:5`]: periods for which to return the autocorrelation of the mentioned variables
+- `autocorrelation_periods` [Default: `1:5`, Type = `Union{UnitRange{Int}, Vector{Int}}`]: periods for which to return the autocorrelation of the mentioned variables
 - $ALGORITHM®
 - $QME®
 - $LYAPUNOV®
@@ -3074,13 +3082,13 @@ function get_statistics(𝓂,
                         variance::Vector{Symbol} = Symbol[],
                         covariance::Vector{Symbol} = Symbol[],
                         autocorrelation::Vector{Symbol} = Symbol[],
-                        autocorrelation_periods::U = 1:5,
+                        autocorrelation_periods::Union{UnitRange{Int}, Vector{Int}} = 1:5,
                         algorithm::Symbol = :first_order,
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                         lyapunov_algorithm::Symbol = :doubling, 
                         verbose::Bool = false,
-                        tol::Tolerances = Tolerances()) where {U,T}
+                        tol::Tolerances = Tolerances()) where T
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
