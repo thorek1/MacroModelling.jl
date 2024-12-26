@@ -2452,6 +2452,7 @@ function get_autocorrelation(𝓂::ℳ;
     if algorithm == :pruned_third_order
         covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments(𝓂.parameter_values, 𝓂.timings.var, 𝓂, 
                                                                                             opts = opts, 
+                                                                                            autocorrelation_periods = autocorrelation_periods,
                                                                                             autocorrelation = true)
 
         autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
