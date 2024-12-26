@@ -2231,12 +2231,12 @@ function get_variance_decomposition(𝓂::ℳ;
 
         variances_by_shock[:,i] = ℒ.diag(covar_raw)
     end
+
+    sum_variances_by_shock = sum(variances_by_shock, dims=2)
     
-    var_decomp = variances_by_shock ./ sum(variances_by_shock, dims=2)
-
-    var_decomp[vec(sum(variances_by_shock, dims=2)) .< eps(),:] .= 0
-
-    var_decomp[var_decomp .< eps()] .= 0
+    variances_by_shock[variances_by_shock .< opts.tol.lyapunov_acceptance_tol] .= 0
+    
+    var_decomp = variances_by_shock ./ sum_variances_by_shock
     
     axis1 = 𝓂.var
 
