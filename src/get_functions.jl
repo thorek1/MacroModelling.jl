@@ -2093,7 +2093,11 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
         end
     end
 
-    cond_var_decomp = var_container ./ sum(var_container,dims=2)
+    sum_var_container = sum(var_container, dims=2)
+    
+    var_container[var_container .< opts.tol.lyapunov_acceptance_tol] .= 0
+    
+    cond_var_decomp = var_container ./ sum_var_container
 
     axis1 = 𝓂.var
 
