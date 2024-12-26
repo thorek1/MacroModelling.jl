@@ -7,7 +7,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
         if length(m.exo) > 1
             n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
-            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,end]]
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
         else
             var_idxs = [1]
         end
@@ -302,7 +302,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         sol = get_solution(m)
         # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
         n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
-        var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,end]]
+        var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
 
 
         stst  = get_irf(m, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
