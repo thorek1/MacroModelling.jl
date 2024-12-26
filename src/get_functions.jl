@@ -2093,7 +2093,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
         end
     end
 
-    sum_var_container = sum(var_container, dims=2)
+    sum_var_container = max.(sum(var_container, dims=2),eps())
     
     var_container[var_container .< opts.tol.lyapunov_acceptance_tol] .= 0
     
@@ -2236,7 +2236,7 @@ function get_variance_decomposition(𝓂::ℳ;
         variances_by_shock[:,i] = ℒ.diag(covar_raw)
     end
 
-    sum_variances_by_shock = sum(variances_by_shock, dims=2)
+    sum_variances_by_shock = max.(sum(variances_by_shock, dims=2), eps())
     
     variances_by_shock[variances_by_shock .< opts.tol.lyapunov_acceptance_tol] .= 0
     
