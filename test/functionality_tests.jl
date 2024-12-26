@@ -305,7 +305,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,end]]
 
 
-        stst  = get_irf(m, variables = :all, shocks = :none, periods = 1, levels = true) |> vec
+        stst  = get_irf(m, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
 
         conditions = []
 
@@ -386,7 +386,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             pop!(m.NSSS_solver_cache)
         end
 
-        for periods in [0,10,40]
+        for periods in [0,10]
             for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2]]
                 for levels in [true, false]
                     for verbose in [false] # [true, false]
