@@ -387,7 +387,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
 
         for periods in [0,10]
-            for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2]]
+            for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2], string(m.var[1]), string.(m.var[1:2])]
                 for levels in [true, false]
                     for verbose in [false] # [true, false]
                         for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
@@ -491,7 +491,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
                                 old_params]
                 for shcks in shocks
-                    for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2]]
+                    for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2], string(m.var[1]), string.(m.var[1:2])]
                         for initial_state in [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
                             cond_fcst = get_conditional_forecast(m, cndtns,
                                                                 parameters = parameters,
@@ -711,11 +711,80 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     # plot_conditional_forecast
 
 
+# # function get_irf(𝓂::ℳ; 
+#     periods::Int = 40, 
+#     algorithm::Symbol = :first_order, 
+#     parameters::ParameterType = nothing,
+#     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
+# #     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
+#     negative_shock::Bool = false, 
+#     generalised_irf::Bool = false,
+#     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+#     levels::Bool = false,
+#     shock_size::Real = 1,
+#     ignore_obc::Bool = false,
+#     verbose::Bool = false,
+# #     tol::Tolerances = Tolerances(),
+# #     quadratic_matrix_equation_algorithm::Symbol = :schur,
+# #     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
+# #     lyapunov_algorithm::Symbol = :doubling)
+
+# complete this for other input types (see Symbol_input,String_input). amend them and check them in separate loop so it doesnt get too many iters.
+
+    @testset "get_irf" begin
+        init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
+
+        for ignore_obc in [true,false]
+            for levels in [true,false]
+                for generalised_irf in [true,false]
+                    for negative_shock in [true,false]
+                        for shock_size in [.1,1]
+                            for periods in [1,10]
+                                get_irf(m, 
+                                        algorithm = algorithm, 
+                                        ignore_obc = ignore_obc,
+                                        levels = levels,
+                                        periods = periods,
+                                        generalised_irf = generalised_irf,
+                                        negative_shock = negative_shock,
+                                        shock_size = shock_size)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+        shock_mat = randn(m.timings.nExo,3)
+
+        shock_mat2 = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10)
+
+        for parameters in [old_params, 
+                            (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                            Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                            m.parameters .=> old_params, 
+                            (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                            Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                            old_params]
+            for variables in [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2], string(m.var[1]), string.(m.var[1:2])]
+                for initial_state in [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
+                    for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], string(m.timings.exo[1]), string.(m.timings.exo[1:2]), shock_mat, shock_mat2]
+                        # Clear solution caches
+                        pop!(m.NSSS_solver_cache)
+                        m.solution.perturbation.qme_solution = zeros(0,0)
+                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    
+                        get_irf(m, algorithm = algorithm, parameters = parameters, variables = variables, initial_state = initial_state, shocks = shocks)
+                    end
+                end
+            end
+        end
+    end
+
     @testset "get_non_stochastic_steady_state_residuals" begin
         steady_state = SS(m, derivatives = false)
         
-        # res = get_non_stochastic_steady_state_residuals(m, Dict(string.(axiskeys(steady_state)[1][1:3]) .=> collect(steady_state)[1:3]))
-
         for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
             for parameters in [old_params, 
                                 (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
