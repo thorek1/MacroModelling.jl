@@ -392,8 +392,8 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             𝓂::ℳ; 
                                             covariance::Bool = true,
                                             autocorrelation::Bool = false,
-                                            autocorrelation_periods::UnitRange{Int} = 1:5,
-                                            opts::CalculationOptions = merge_calculation_options()) where T <: Real
+                                            autocorrelation_periods::U = 1:5,
+                                            opts::CalculationOptions = merge_calculation_options()) where {U, T <: Real}
 
     second_order_moments = calculate_second_order_moments(parameters, 𝓂, Val(true); opts = opts)
 
