@@ -21,6 +21,8 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
         
     if lyapunov_algorithm ≠ :bartels_stewart
         A = choose_matrix_format(A)
+    else
+        A = choose_matrix_format(A, density_threshold = 0.0)
     end
 
     C = choose_matrix_format(C, density_threshold = 0.0)
