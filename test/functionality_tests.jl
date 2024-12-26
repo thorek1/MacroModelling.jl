@@ -512,6 +512,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         if algorithm in [:first_order, :pruned_second_order, :pruned_third_order]
             corrl = get_correlation(m, algorithm = algorithm)
 
+            autocorr = get_autocorrelation(m, algorithm = algorithm)
+
             if algorithm == :first_order
                 var_decomp = get_variance_decomposition(m)
             end
@@ -534,6 +536,20 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 m.solution.perturbation.third_order_solution = spzeros(0,0)
                                 
                 get_correlation(m, algorithm = algorithm, parameters = parameters, verbose = true)
+
+                for autocorrelation_periods in [1:5, 1:3, [1,5,10]]
+                    # Clear solution caches
+                    pop!(m.NSSS_solver_cache)
+                    m.solution.perturbation.qme_solution = zeros(0,0)
+                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        
+                    get_autocorrelation(m, 
+                                        algorithm = algorithm, 
+                                        autocorrelation_periods = autocorrelation_periods, 
+                                        parameters = parameters, 
+                                        verbose = true)
+                end
 
                 if algorithm == :first_order
                     # Clear solution caches
@@ -587,6 +603,22 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 verbose = verbose)
 
                                 @test isapprox(corrl, CORRL)#, rtol = eps(Float32))
+
+                                # Clear solution caches
+                                pop!(m.NSSS_solver_cache)
+                                m.solution.perturbation.qme_solution = zeros(0,0)
+                                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                
+                                AUTOCORR = get_autocorrelation(m,
+                                                                algorithm = algorithm,
+                                                                tol = tol,
+                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                sylvester_algorithm = sylvester_algorithm,
+                                                                verbose = verbose)
+
+                                @test isapprox(autocorr, AUTOCORR)#, rtol = eps(Float32))
                             end
                         end
                     end
