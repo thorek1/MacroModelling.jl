@@ -656,10 +656,50 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
 
+    @testset "solution" begin
+        sol = get_solution(m, algorithm = algorithm)
+
+        for parameters in [old_params, 
+                            (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                            Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                            m.parameters .=> old_params, 
+                            (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                            Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                            old_params]             
+            get_solution(m, algorithm = algorithm, parameters = parameters, verbose = true)
+        end
+
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+
+        for verbose in [false] # [true, false]
+            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for quadratic_matrix_equation_algorithm in [:schur, :doubling]
+                    for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+                        # Clear solution caches
+                        pop!(m.NSSS_solver_cache)
+                        m.solution.outdated_NSSS = true
+                        push!(m.solution.outdated_algorithms, algorithm)
+                        m.solution.perturbation.qme_solution = zeros(0,0)
+                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        
+                        SOL = get_solution(m,
+                                            algorithm = algorithm,
+                                            tol = tol,
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                            sylvester_algorithm = sylvester_algorithm,
+                                            verbose = verbose)
+                        @test isapprox(sol, SOL)#, rtol = eps(Float32))
+                    end
+                end
+            end
+        end
+    end
 
     # get_irf
     # get_irf
-    # get_solution
     # get_solution
     # get_moments
     # get_statistics
