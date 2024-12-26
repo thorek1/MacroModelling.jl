@@ -508,7 +508,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
     end
 
-    @testset "correlation, variance decomposition" begin
+    @testset "(auto) correlation, (conditional) variance decomposition" begin
         if algorithm in [:first_order, :pruned_second_order, :pruned_third_order]
             corrl = get_correlation(m, algorithm = algorithm)
 
@@ -516,6 +516,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             if algorithm == :first_order
                 var_decomp = get_variance_decomposition(m)
+
+                cond_var_decomp = get_conditional_variance_decomposition(m)
             end
 
             while length(m.NSSS_solver_cache) > 2
@@ -559,6 +561,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     m.solution.perturbation.third_order_solution = spzeros(0,0)
                                     
                     get_variance_decomposition(m, parameters = parameters, verbose = true)
+
+                    for periods in [[1,Inf,10], [3,Inf], 1:3]
+                        # Clear solution caches
+                        pop!(m.NSSS_solver_cache)
+                        m.solution.perturbation.qme_solution = zeros(0,0)
+                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        
+                        get_conditional_variance_decomposition(m, periods = periods, parameters = parameters, verbose = true)
+                    end
                 end
             end
 
@@ -585,6 +597,21 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         verbose = verbose)
                                                                         
                                 @test isapprox(var_decomp, VAR_DECOMP) #, rtol = eps(Float32))
+
+                                # Clear solution caches
+                                pop!(m.NSSS_solver_cache)
+                                m.solution.perturbation.qme_solution = zeros(0,0)
+                                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                                                        
+                                COND_VAR_DECOMP = get_conditional_variance_decomposition(m,
+                                                                                        tol = tol,
+                                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                                        verbose = verbose)
+
+                                @test isapprox(cond_var_decomp, COND_VAR_DECOMP) #, rtol = eps(Float32))
+
                             end
 
                             for sylvester_algorithm in (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
@@ -627,16 +654,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
     end
 
-    
+
 
 
     # get_irf
     # get_irf
     # get_solution
     # get_solution
-    # get_conditional_variance_decomposition
-    # get_variance_decomposition
-    # get_autocorrelation
     # get_moments
     # get_statistics
     # get_non_stochastic_steady_state_residuals
