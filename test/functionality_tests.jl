@@ -703,13 +703,44 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     # get_solution
     # get_moments
     # get_statistics
-    # get_non_stochastic_steady_state_residuals
 
     # plot_model_estimates
     # plot_irf
     # plot_conditional_variance_decomposition
     # plot_solution
     # plot_conditional_forecast
+
+
+    @testset "get_non_stochastic_steady_state_residuals" begin
+        steady_state = SS(m, derivatives = false)
+        
+        # res = get_non_stochastic_steady_state_residuals(m, Dict(string.(axiskeys(steady_state)[1][1:3]) .=> collect(steady_state)[1:3]))
+
+        for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+            for parameters in [old_params, 
+                                (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                                Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                                m.parameters .=> old_params, 
+                                (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                                Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                                old_params] 
+
+                res = get_non_stochastic_steady_state_residuals(m, steady_state, tol = tol, verbose = true, parameters = parameters)
+
+                for values in [Dict(axiskeys(steady_state)[1] .=> collect(steady_state)), Dict(string.(axiskeys(steady_state)[1]) .=> collect(steady_state)), collect(steady_state)]   
+                    RES = get_non_stochastic_steady_state_residuals(m, values, tol = tol, verbose = true, parameters = parameters)
+
+                    @test isapprox(res,RES)
+                end
+            end
+
+            res1 = get_non_stochastic_steady_state_residuals(m, steady_state, tol = tol, verbose = true)
+
+            res2 = get_non_stochastic_steady_state_residuals(m, steady_state[1:3], tol = tol, verbose = true)
+
+            @test isapprox(res1,res2)
+        end
+    end
 
     @testset "get_steady_state" begin
         for derivatives in [true, false]
