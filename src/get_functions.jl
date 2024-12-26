@@ -1964,7 +1964,7 @@ Return the conditional variance decomposition of endogenous variables with regar
 # Arguments
 - $MODEL®
 # Keyword Arguments
-- `periods` [Default: `[1:20...,Inf]`, Type: `Union{Vector{Int},Vector{Float64},UnitRange{Int64}}`]: vector of periods for which to calculate the conditional variance decomposition. If the vector conatins `Inf`, also the unconditional variance decomposition is calculated (same output as [`get_variance_decomposition`](@ref)).
+- `periods` [Default: `[1:20...,Inf]`, Type: `Union{Vector{Int},Vector{Float64},UnitRange{Int64}, Int}`]: vector of periods for which to calculate the conditional variance decomposition. If the vector conatins `Inf`, also the unconditional variance decomposition is calculated (same output as [`get_variance_decomposition`](@ref)).
 - $PARAMETERS®
 - $QME®
 - $LYAPUNOV®
@@ -2038,7 +2038,7 @@ And data, 7×2×21 Array{Float64, 3}:
 ```
 """
 function get_conditional_variance_decomposition(𝓂::ℳ; 
-                                                periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = [1:20...,Inf],
+                                                periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}, Int} = [1:20...,Inf],
                                                 parameters::ParameterType = nothing,  
                                                 verbose::Bool = false,
                                                 tol::Tolerances = Tolerances(),
