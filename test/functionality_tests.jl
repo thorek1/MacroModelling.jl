@@ -151,35 +151,35 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             parameters = parameters,
                                             algorithm = algorithm, 
                                             data_in_levels = false, 
-                                            verbose = true)
+                                            verbose = false)
                     get_shock_decomposition(m, data_in_levels, 
                                             parameters = parameters,
                                             algorithm = algorithm, 
                                             data_in_levels = true,
-                                            verbose = true)
+                                            verbose = false)
 
 
                     get_estimated_shocks(m, data, 
                                     parameters = parameters,
                                     algorithm = algorithm, 
                                     data_in_levels = false, 
-                                    verbose = true)
+                                    verbose = false)
                     get_estimated_shocks(m, data_in_levels, 
                                     parameters = parameters,
                                     algorithm = algorithm, 
                                     data_in_levels = true,
-                                    verbose = true)
+                                    verbose = false)
                     
                     get_estimated_variables(m, data, 
                                             parameters = parameters,
                                             algorithm = algorithm, 
                                             data_in_levels = false, 
-                                            verbose = true)
+                                            verbose = false)
                     get_estimated_variables(m, data_in_levels, 
                                             parameters = parameters,
                                             algorithm = algorithm, 
                                             data_in_levels = true,
-                                            verbose = true)
+                                            verbose = false)
                 end
             end
         end
@@ -236,11 +236,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     get_estimated_variable_standard_deviations(m, data, 
                                                                 parameters = parameters,
                                                                 data_in_levels = false, 
-                                                                verbose = true)
+                                                                verbose = false)
                     get_estimated_variable_standard_deviations(m, data_in_levels, 
                                                                 parameters = parameters,
                                                                 data_in_levels = true,
-                                                                verbose = true)
+                                                                verbose = false)
                 end
             end
         end
@@ -296,7 +296,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
     @testset "get_conditional_forecast" begin
         # test conditional forecasting
-        new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = true, variables = :all, shocks = :all)
+        new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
         varnames = axiskeys(new_sub_irfs_all,1)
         shocknames = axiskeys(new_sub_irfs_all,3)
         sol = get_solution(m)
@@ -500,7 +500,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                 algorithm = algorithm, 
                                                                 variables = variables,
                                                                 shocks = shcks,
-                                                                verbose = true)
+                                                                verbose = false)
                         end
                     end
                 end
@@ -537,7 +537,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 m.solution.perturbation.second_order_solution = spzeros(0,0)
                 m.solution.perturbation.third_order_solution = spzeros(0,0)
                                 
-                get_correlation(m, algorithm = algorithm, parameters = parameters, verbose = true)
+                get_correlation(m, algorithm = algorithm, parameters = parameters, verbose = false)
 
                 for autocorrelation_periods in [1:5, 1:3]
                     # Clear solution caches
@@ -550,7 +550,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                         algorithm = algorithm, 
                                         autocorrelation_periods = autocorrelation_periods, 
                                         parameters = parameters, 
-                                        verbose = true)
+                                        verbose = false)
                 end
 
                 if algorithm == :first_order
@@ -560,7 +560,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     m.solution.perturbation.second_order_solution = spzeros(0,0)
                     m.solution.perturbation.third_order_solution = spzeros(0,0)
                                     
-                    get_variance_decomposition(m, parameters = parameters, verbose = true)
+                    get_variance_decomposition(m, parameters = parameters, verbose = false)
 
                     for periods in [[1,Inf,10], [3,Inf], 1:3]
                         # Clear solution caches
@@ -569,7 +569,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         m.solution.perturbation.second_order_solution = spzeros(0,0)
                         m.solution.perturbation.third_order_solution = spzeros(0,0)
                         
-                        get_conditional_variance_decomposition(m, periods = periods, parameters = parameters, verbose = true)
+                        get_conditional_variance_decomposition(m, periods = periods, parameters = parameters, verbose = false)
                     end
                 end
             end
@@ -666,7 +666,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             (string(m.parameters[1]) => old_params[1] * 1.0001), 
                             Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
                             old_params]             
-            get_solution(m, algorithm = algorithm, parameters = parameters, verbose = true)
+            get_solution(m, algorithm = algorithm, parameters = parameters, verbose = false)
         end
 
         while length(m.NSSS_solver_cache) > 2
@@ -794,18 +794,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
                                 old_params] 
 
-                res = get_non_stochastic_steady_state_residuals(m, steady_state, tol = tol, verbose = true, parameters = parameters)
+                res = get_non_stochastic_steady_state_residuals(m, steady_state, tol = tol, verbose = false, parameters = parameters)
 
                 for values in [Dict(axiskeys(steady_state)[1] .=> collect(steady_state)), Dict(string.(axiskeys(steady_state)[1]) .=> collect(steady_state)), collect(steady_state)]   
-                    RES = get_non_stochastic_steady_state_residuals(m, values, tol = tol, verbose = true, parameters = parameters)
+                    RES = get_non_stochastic_steady_state_residuals(m, values, tol = tol, verbose = false, parameters = parameters)
 
                     @test isapprox(res,RES)
                 end
             end
 
-            res1 = get_non_stochastic_steady_state_residuals(m, steady_state, tol = tol, verbose = true)
+            res1 = get_non_stochastic_steady_state_residuals(m, steady_state, tol = tol, verbose = false)
 
-            res2 = get_non_stochastic_steady_state_residuals(m, steady_state[1:3], tol = tol, verbose = true)
+            res2 = get_non_stochastic_steady_state_residuals(m, steady_state[1:3], tol = tol, verbose = false)
 
             @test isapprox(res1,res2)
         end
@@ -866,7 +866,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             algorithm = algorithm, 
                                             parameter_derivatives = parameter_derivatives,
                                             tol = tol,
-                                            verbose = true)
+                                            verbose = false)
                 end
             end
         end
