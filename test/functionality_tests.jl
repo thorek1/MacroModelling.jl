@@ -498,20 +498,25 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
 
         for cndtns in conditions
+            for variables in vars
+                for initial_state in init_states
+                    cond_fcst = get_conditional_forecast(m, cndtns,
+                                                        conditions_in_levels = false,
+                                                        initial_state = initial_state,
+                                                        algorithm = algorithm, 
+                                                        variables = variables,
+                                                        verbose = false)
+                end
+            end
+            
             for parameters in params
                 for shcks in shocks
-                    for variables in vars
-                        for initial_state in init_states
                             cond_fcst = get_conditional_forecast(m, cndtns,
                                                                 parameters = parameters,
                                                                 conditions_in_levels = false,
-                                                                initial_state = initial_state,
                                                                 algorithm = algorithm, 
-                                                                variables = variables,
                                                                 shocks = shcks,
                                                                 verbose = false)
-                        end
-                    end
                 end
             end
         end
@@ -1090,7 +1095,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true, variables = :all)
 
     lvl_irfs = axiskeys(lvl_irfs,3) isa Vector{String} ? rekey(lvl_irfs,3 => axiskeys(lvl_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : lvl_irfs
-    
+
     if plots
         if length(m.obc_violation_equations) > 0
             plot_irf(m, algorithm = algorithm, show_plots = true, ignore_obc = true)
