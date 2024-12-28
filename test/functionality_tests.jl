@@ -270,9 +270,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for presample_periods in [0, 10]
                 for initial_covariance in [:diagonal, :theoretical]
                     for verbose in [false] # [true, false]
-                        for parameters in params
+                        for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
                             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                                llh = get_loglikelihood(m, data, parameters,
+                                llh = get_loglikelihood(m, data, parameter_values,
                                                         algorithm = algorithm,
                                                         filter = filter,
                                                         presample_periods = presample_periods,
@@ -289,7 +289,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             m.solution.perturbation.second_order_solution = spzeros(0,0)
                                             m.solution.perturbation.third_order_solution = spzeros(0,0)
                                         
-                                            LLH = get_loglikelihood(m, data, parameters,
+                                            LLH = get_loglikelihood(m, data, parameter_values,
                                                                     algorithm = algorithm,
                                                                     filter = filter,
                                                                     presample_periods = presample_periods,
@@ -1087,7 +1087,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     get_state_variables(m) 
     get_jump_variables(m)
 
+    lvl_irfs  = get_irf(m, verbose = true, algorithm = algorithm, parameters = old_params, levels = true, variables = :all)
 
+    lvl_irfs = axiskeys(lvl_irfs,3) isa Vector{String} ? rekey(lvl_irfs,3 => axiskeys(lvl_irfs,3) .|> Meta.parse .|> MacroModelling.replace_indices) : lvl_irfs
+    
     if plots
         if length(m.obc_violation_equations) > 0
             plot_irf(m, algorithm = algorithm, show_plots = true, ignore_obc = true)
