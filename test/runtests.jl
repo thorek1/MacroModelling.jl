@@ -84,11 +84,11 @@ if test_set == "higher_order"
         # include("../models/FS2000.jl")
         functionality_test(FS2000, algorithm = :third_order, plots = plots)
     end
-    # FS2000 = nothing
+    FS2000 = nothing
     GC.gc()
 
     @testset verbose = true "FS2000 pruned third order" begin
-        # include("../models/FS2000.jl")
+        include("../models/FS2000.jl")
         functionality_test(FS2000, algorithm = :pruned_third_order, plots = plots)
     end
     FS2000 = nothing
