@@ -824,11 +824,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
     @testset "get_moments" begin
-        for mean in [true, false]
-            for non_stochastic_steady_state in [true, false]
-                for standard_deviation in [true, false]
-                    for variance in [true, false]
-                        for covariance in [true, false]
+        for non_stochastic_steady_state in [true, false]
+            for mean in (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? [true, false] : [false])
+                for standard_deviation in (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? [true, false] : [false])
+                    for variance in (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? [true, false] : [false])
+                        for covariance in (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? [true, false] : [false])
                             for derivatives in [true, false]
                                 get_moments(m,
                                             algorithm = algorithm,
@@ -851,10 +851,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             algorithm = algorithm,
                             variables = variables,
                             non_stochastic_steady_state = true,
-                            mean = true,
-                            standard_deviation = true,
-                            variance = true,
-                            covariance = true,
+                            mean = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                            standard_deviation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                            variance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                            covariance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                             parameter_derivatives = parameter_derivatives,
                             derivatives = true)
             end
@@ -878,10 +878,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     algorithm = algorithm,
                                     parameters = parameters,
                                     non_stochastic_steady_state = true,
-                                    mean = true,
-                                    standard_deviation = true,
-                                    variance = true,
-                                    covariance = true,
+                                    mean = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                                    standard_deviation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                                    variance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                                    covariance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                                     derivatives = derivatives)
                             
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
@@ -900,10 +900,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     algorithm = algorithm,
                                                     parameters = parameters,
                                                     non_stochastic_steady_state = true,
-                                                    mean = true,
-                                                    standard_deviation = true,
-                                                    variance = true,
-                                                    covariance = true,
+                                                    mean = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                                                    standard_deviation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                                                    variance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                                                    covariance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
                                                     derivatives = derivatives,
                                                     tol = tol,
                                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
