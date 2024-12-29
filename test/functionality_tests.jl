@@ -711,9 +711,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     end
 
     # get_irf
-    # get_irf
     # get_solution
-    # get_moments
     # get_statistics
 
     # plot_model_estimates
@@ -721,6 +719,106 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     # plot_conditional_variance_decomposition
     # plot_solution
     # plot_conditional_forecast
+
+
+    @testset "get_statistics" begin
+    # # function get_statistics(𝓂, 
+    #     parameter_values::Vector{T}; 
+    #     parameters::Vector{Symbol} = Symbol[], 
+    #     # non_stochastic_steady_state::Vector{Symbol} = Symbol[],
+    #     # mean::Vector{Symbol} = Symbol[],
+    #     # standard_deviation::Vector{Symbol} = Symbol[],
+    #     # variance::Vector{Symbol} = Symbol[],
+    #     # covariance::Vector{Symbol} = Symbol[],
+    #     # autocorrelation::Vector{Symbol} = Symbol[],
+    #     autocorrelation_periods::UnitRange{Int} = 1:5,
+    #     algorithm::Symbol = :first_order,
+    #     quadratic_matrix_equation_algorithm::Symbol = :schur,
+    #     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
+    #     lyapunov_algorithm::Symbol = :doubling, 
+    #     verbose::Bool = false,
+    #     tol::Tolerances = Tolerances()) where T
+
+        for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
+            for non_stochastic_steady_state in (Symbol[], vars...)
+                for mean in (Symbol[], vars[1])
+                    for standard_deviation in (Symbol[], vars[1])
+                        for variance in (Symbol[], vars[1])
+                            for covariance in (Symbol[], vars[1])
+                                for autocorrelation in (Symbol[], vars[1])
+                                    if !(!(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]))
+                                        non_stochastic_steady_state = vars[1]
+                                    end
+                                    
+                                    get_statistics(m, parameter_values, algorithm = algorithm,
+                                                    non_stochastic_steady_state = non_stochastic_steady_state,
+                                                    mean = mean,
+                                                    standard_deviation = standard_deviation,
+                                                    variance = variance,
+                                                    covariance = covariance,
+                                                    autocorrelation = autocorrelation
+                                    )
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+         
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+
+        for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            m.solution.outdated_NSSS = true
+            push!(m.solution.outdated_algorithms, algorithm)
+            m.solution.perturbation.qme_solution = zeros(0,0)
+            m.solution.perturbation.second_order_solution = spzeros(0,0)
+            m.solution.perturbation.third_order_solution = spzeros(0,0)
+
+            stats = get_statistics(m, parameter_values, algorithm = algorithm,
+                                    non_stochastic_steady_state = :all,
+                                    mean = :all,
+                                    standard_deviation = :all,
+                                    variance = :all,
+                                    covariance = :all,
+                                    autocorrelation = :all)
+
+            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for quadratic_matrix_equation_algorithm in qme_algorithms
+                    for sylvester_algorithm in sylvester_alogorithms
+                        for lyapunov_algorithm in lyapunov_algorithms
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.outdated_NSSS = true
+                            push!(m.solution.outdated_algorithms, algorithm)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            
+                            STATS = get_statistics(m, parameter_values, algorithm = algorithm,
+                                                non_stochastic_steady_state = :all,
+                                                mean = :all,
+                                                standard_deviation = :all,
+                                                variance = :all,
+                                                covariance = :all,
+                                                autocorrelation = :all,
+                                                tol = tol,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                sylvester_algorithm = sylvester_algorithm)
+
+                            @test isapprox([v for (k,v) in stats], [v for (k,v) in STATS], rtol = 1e-12)
+                        end
+                    end
+                end
+            end
+        end
+
+    end
 
     @testset "get_moments" begin
         for mean in [true, false]
