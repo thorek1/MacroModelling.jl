@@ -18,6 +18,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
                 old_params]
                 
+    param_derivs = [:all, 
+                    m.parameters[1], 
+                    m.parameters[1:3], 
+                    Tuple(m.parameters[1:3]), 
+                    reshape(m.parameters[1:3],3,1), 
+                    string.(m.parameters[1]), 
+                    string.(m.parameters[1:2]), 
+                    string.(Tuple(m.parameters[1:3])), 
+                    string.(reshape(m.parameters[1:3],3,1))]
+
     vars = [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
 
     init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
@@ -27,8 +37,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     
     @testset "filter, smooth, loglikelihood" begin
         sol = get_solution(m)
-
-        if length(m.exo) > 1
+        
+        if length(m.exo) > 3
             n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
             var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
         else
@@ -712,26 +722,90 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     # plot_solution
     # plot_conditional_forecast
 
+    @testset "get_moments" begin
+        for mean in [true, false]
+            for non_stochastic_steady_state in [true, false]
+                for standard_deviation in [true, false]
+                    for variance in [true, false]
+                        for covariance in [true, false]
+                            for parameter_derivatives in param_derivs
+                                for variables in vars
+                                    get_moments(m,
+                                                algorithm = algorithm,
+                                                variables = variables,
+                                                non_stochastic_steady_state = non_stochastic_steady_state,
+                                                mean = mean,
+                                                standard_deviation = standard_deviation,
+                                                variance = variance,
+                                                covariance = covariance,
+                                                parameter_derivatives = parameter_derivatives)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
 
-# # function get_irf(𝓂::ℳ; 
-#     periods::Int = 40, 
-#     algorithm::Symbol = :first_order, 
-#     parameters::ParameterType = nothing,
-#     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-# #     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
-#     negative_shock::Bool = false, 
-#     generalised_irf::Bool = false,
-#     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-#     levels::Bool = false,
-#     shock_size::Real = 1,
-#     ignore_obc::Bool = false,
-#     verbose::Bool = false,
-# #     tol::Tolerances = Tolerances(),
-# #     quadratic_matrix_equation_algorithm::Symbol = :schur,
-# #     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
-# #     lyapunov_algorithm::Symbol = :doubling)
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
 
-# complete this for other input types (see Symbol_input,String_input). amend them and check them in separate loop so it doesnt get too many iters.
+        for derivatives in [true, false]
+            for parameters in params
+                # Clear solution caches
+                pop!(m.NSSS_solver_cache)
+                m.solution.outdated_NSSS = true
+                push!(m.solution.outdated_algorithms, algorithm)
+                m.solution.perturbation.qme_solution = zeros(0,0)
+                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                m.solution.perturbation.third_order_solution = spzeros(0,0)
+            
+                moms = get_moments(m,
+                                    algorithm = algorithm,
+                                    parameters = parameters,
+                                    non_stochastic_steady_state = true,
+                                    mean = true,
+                                    standard_deviation = true,
+                                    variance = true,
+                                    covariance = true,
+                                    derivatives = derivatives)
+                            
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        for sylvester_algorithm in sylvester_alogorithms
+                            for lyapunov_algorithm in lyapunov_algorithms
+                                # Clear solution caches
+                                pop!(m.NSSS_solver_cache)
+                                m.solution.outdated_NSSS = true
+                                push!(m.solution.outdated_algorithms, algorithm)
+                                m.solution.perturbation.qme_solution = zeros(0,0)
+                                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                
+                                MOMS = get_moments(m,
+                                                    algorithm = algorithm,
+                                                    parameters = parameters,
+                                                    non_stochastic_steady_state = true,
+                                                    mean = true,
+                                                    standard_deviation = true,
+                                                    variance = true,
+                                                    covariance = true,
+                                                    derivatives = derivatives,
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
+
+                                @test isapprox(moms, MOMS, rtol = 1e-12)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
 
     @testset "get_irf" begin
         for ignore_obc in [true,false]
@@ -762,8 +836,39 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         shock_mat3 = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10)
 
         for parameters in params
-            for variables in vars
-                for initial_state in init_states
+            for initial_state in init_states
+                # Clear solution caches
+                pop!(m.NSSS_solver_cache)
+                m.solution.perturbation.qme_solution = zeros(0,0)
+                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            
+                irf_ = get_irf(m, algorithm = algorithm, parameters = parameters, initial_state = initial_state)
+                
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        for lyapunov_algorithm in lyapunov_algorithms
+                            for sylvester_algorithm in sylvester_alogorithms
+                                # Clear solution caches
+                                pop!(m.NSSS_solver_cache)
+                                m.solution.perturbation.qme_solution = zeros(0,0)
+                                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                            
+                                IRF_ = get_irf(m, 
+                                                algorithm = algorithm, 
+                                                parameters = parameters,
+                                                initial_state = initial_state,
+                                                tol = tol,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                sylvester_algorithm = sylvester_algorithm)
+                                @test isapprox(irf_, IRF_)
+                            end
+                        end
+                    end
+                end
+                for variables in vars
                     for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                         # Clear solution caches
                         pop!(m.NSSS_solver_cache)
@@ -834,15 +939,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
 
-        for parameter_derivatives in [:all, 
-                                        m.parameters[1], 
-                                        m.parameters[1:3], 
-                                        Tuple(m.parameters[1:3]), 
-                                        reshape(m.parameters[1:3],3,1), 
-                                        string.(m.parameters[1]), 
-                                        string.(m.parameters[1:2]), 
-                                        string.(Tuple(m.parameters[1:3])), 
-                                        string.(reshape(m.parameters[1:3],3,1))]
+        for parameter_derivatives in param_derivs
             for parameters in params
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                     nsss = get_steady_state(m, 
