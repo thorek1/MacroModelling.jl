@@ -3190,24 +3190,24 @@ function get_statistics(𝓂,
 
     if !(non_stochastic_steady_state == Symbol[])
         # push!(ret,SS[SS_var_idx])
-        ret[:non_stochastic_steady_state] = solved ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values),length(SS_var_idx))
+        ret[:non_stochastic_steady_state] = solved ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
     end
     if !(mean == Symbol[])
         if algorithm ∉ [:pruned_second_order,:pruned_third_order]
             # push!(ret,SS[mean_var_idx])
-            ret[:mean] = solved ? SS[mean_var_idx] : fill(Inf * sum(abs2,parameter_values),length(mean_var_idx))
+            ret[:mean] = solved ? SS[mean_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(mean_var_idx) ? 0 : length(mean_var_idx))
         else
             # push!(ret,state_μ[mean_var_idx])
-            ret[:mean] = solved ? state_μ[mean_var_idx] : fill(Inf * sum(abs2,parameter_values),length(mean_var_idx))
+            ret[:mean] = solved ? state_μ[mean_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(mean_var_idx) ? 0 : length(mean_var_idx))
         end
     end
     if !(standard_deviation == Symbol[])
         # push!(ret,st_dev[std_var_idx])
-        ret[:standard_deviation] = solved ? st_dev[std_var_idx] : fill(Inf * sum(abs2,parameter_values),length(std_var_idx))
+        ret[:standard_deviation] = solved ? st_dev[std_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(std_var_idx) ? 0 : length(std_var_idx))
     end
     if !(variance == Symbol[])
         # push!(ret,varrs[var_var_idx])
-        ret[:variance] = solved ? varrs[var_var_idx] : fill(Inf * sum(abs2,parameter_values),length(var_var_idx))
+        ret[:variance] = solved ? varrs[var_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(var_var_idx) ? 0 : length(var_var_idx))
     end
     if !(covariance == Symbol[])
         covar_dcmp_sp = sparse(ℒ.triu(covar_dcmp))
@@ -3215,11 +3215,11 @@ function get_statistics(𝓂,
         droptol!(covar_dcmp_sp,eps(Float64))
 
         # push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
-        ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),length(covar_var_idx),length(covar_var_idx))
+        ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
     end
     if !(autocorrelation == Symbol[]) 
         # push!(ret,autocorr[autocorr_var_idx,:] )
-        ret[:autocorrelation] = solved ? autocorr[autocorr_var_idx,:] : fill(Inf * sum(abs2,parameter_values),length(autocorr_var_idx),length(autocorrelation_periods))
+        ret[:autocorrelation] = solved ? autocorr[autocorr_var_idx,:] : fill(Inf * sum(abs2,parameter_values), isnothing(autocorr_var_idx) ? 0 : length(autocorr_var_idx), isnothing(autocorrelation_periods) ? 0 : length(autocorrelation_periods))
     end
 
     return ret
