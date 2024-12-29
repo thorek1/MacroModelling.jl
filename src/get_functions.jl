@@ -2531,6 +2531,9 @@ Return the first and second moments of endogenous variables using the first, pru
 - $TOLERANCES®
 - $VERBOSE®
 
+# Returns
+- A `Dict{Symbol,KeyedArray}` containing the selected moments.
+
 # Examples
 ```jldoctest part1
 using MacroModelling
@@ -2609,6 +2612,26 @@ function get_moments(𝓂::ℳ;
             algorithm = algorithm, 
             opts = opts, 
             silent = silent)
+
+    if mean && !(algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order])
+        mean = false
+        @warn "Mean not available for algorithm: `$algorithm`. `mean` set to `false`"
+    end
+
+    if standard_deviation && !(algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order])
+        standard_deviation = false
+        @warn "Standard deviation not available for algorithm: `$algorithm`. `standard_deviation` set to `false`"
+    end
+    
+    if variance && !(algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order])
+        variance = false
+        @warn "Variance not available for algorithm: `$algorithm`. `variance` set to `false`"
+    end
+
+    if covariance && !(algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order])
+        covariance = false
+        @warn "Covariance not available for algorithm: `$algorithm`. `covariance` set to `false`"
+    end
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
@@ -2804,7 +2827,7 @@ function get_moments(𝓂::ℳ;
             end
         end
 
-        if mean
+        if mean && algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
             axis2 = vcat(:Mean, 𝓂.parameters[param_idx])
         
             if any(x -> contains(string(x), "◖"), axis2)
@@ -2935,18 +2958,22 @@ function get_moments(𝓂::ℳ;
     end
 
     
-    ret = []
+    ret = Dict{Symbol,KeyedArray}()
     if non_stochastic_steady_state
-        push!(ret,SS)
+        # push!(ret,SS)
+        ret[:non_stochastic_steady_state] = SS
     end
     if mean
-        push!(ret,var_means)
+        # push!(ret,var_means)
+        ret[:mean] = var_means
     end
     if standard_deviation
-        push!(ret,st_dev)
+        # push!(ret,st_dev)
+        ret[:standard_deviation] = st_dev
     end
     if variance
-        push!(ret,varrs)
+        # push!(ret,varrs)
+        ret[:variance] = varrs
     end
     if covariance
         axis1 = 𝓂.var[var_idx]
@@ -2956,7 +2983,8 @@ function get_moments(𝓂::ℳ;
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
         end
 
-        push!(ret,KeyedArray(covar_dcmp[var_idx, var_idx]; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1))
+        # push!(ret,KeyedArray(covar_dcmp[var_idx, var_idx]; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1))
+        ret[:covariance] = KeyedArray(covar_dcmp[var_idx, var_idx]; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
     end
 
     return ret
@@ -3111,7 +3139,7 @@ function get_statistics(𝓂,
                         sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
-    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
+    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] || !(!(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])) "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
 
     @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
