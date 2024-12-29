@@ -3033,13 +3033,13 @@ Function to use when differentiating model moments with repect to parameters.
 - `parameter_values` [Type: `Vector`]: Parameter values.
 # Keyword Arguments
 - `parameters` [Type: `Vector{Symbol}`]: Corresponding names of parameters values.
-- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the SS of endogenous variables
-- `mean` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the mean of endogenous variables (the mean for the linearised solutoin is the NSSS)
-- `standard_deviation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the standard deviation of the mentioned variables
-- `variance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the variance of the mentioned variables
-- `covariance` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the covariance of the mentioned variables
-- `autocorrelation` [Default: `Symbol[]`, Type: `Vector{Symbol}`]: if values are provided the function returns the autocorrelation of the mentioned variables
-- `autocorrelation_periods` [Default: `1:5`, Type = `UnitRange{Int}`]: periods for which to return the autocorrelation of the mentioned variables
+- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the SS of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
+- `mean` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the mean of selected variables (the mean for the linearised solution is the NSSS). Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
+- `standard_deviation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the standard deviation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
+- `variance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the variance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
+- `covariance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the covariance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
+- `autocorrelation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the autocorrelation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
+- `autocorrelation_periods` [Default: `1:5`, Type = `UnitRange{Int}`]: periods for which to return the autocorrelation of selected variables
 - $ALGORITHM®
 - $QME®
 - $LYAPUNOV®
@@ -3072,20 +3072,20 @@ get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_
  [0.02666420378525503, 0.26467737291221793, 0.07393254045396483, 0.010206207261596574]
 ```
 """
-function get_statistics(𝓂, 
-                        parameter_values::Vector{T}; 
-                        parameters::Vector{Symbol} = Symbol[], 
-                        non_stochastic_steady_state::Vector{Symbol} = Symbol[],
-                        mean::Vector{Symbol} = Symbol[],
-                        standard_deviation::Vector{Symbol} = Symbol[],
-                        variance::Vector{Symbol} = Symbol[],
-                        covariance::Vector{Symbol} = Symbol[],
-                        autocorrelation::Vector{Symbol} = Symbol[],
+function get_statistics(𝓂,
+                        parameter_values::Vector{T};
+                        parameters::Vector{Symbol} = Symbol[],
+                        non_stochastic_steady_state::Union{Symbol_input,String_input} = Symbol[],
+                        mean::Union{Symbol_input,String_input} = Symbol[],
+                        standard_deviation::Union{Symbol_input,String_input} = Symbol[],
+                        variance::Union{Symbol_input,String_input} = Symbol[],
+                        covariance::Union{Symbol_input,String_input} = Symbol[],
+                        autocorrelation::Union{Symbol_input,String_input} = Symbol[],
                         autocorrelation_periods::UnitRange{Int} = 1:5,
                         algorithm::Symbol = :first_order,
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
-                        lyapunov_algorithm::Symbol = :doubling, 
+                        lyapunov_algorithm::Symbol = :doubling,
                         verbose::Bool = false,
                         tol::Tolerances = Tolerances()) where T
 
@@ -3099,17 +3099,18 @@ function get_statistics(𝓂,
 
     @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
-    SS_var_idx = @ignore_derivatives indexin(non_stochastic_steady_state, 𝓂.var)
+    SS_var_idx = @ignore_derivatives parse_variables_input_to_index(non_stochastic_steady_state, 𝓂.timings)
 
-    mean_var_idx = @ignore_derivatives indexin(mean, 𝓂.var)
+    mean_var_idx = @ignore_derivatives parse_variables_input_to_index(mean, 𝓂.timings)
 
-    std_var_idx = @ignore_derivatives indexin(standard_deviation, 𝓂.var)
+    std_var_idx = @ignore_derivatives parse_variables_input_to_index(standard_deviation, 𝓂.timings)
 
-    var_var_idx = @ignore_derivatives indexin(variance, 𝓂.var)
+    var_var_idx = @ignore_derivatives parse_variables_input_to_index(variance, 𝓂.timings)
 
-    covar_var_idx = @ignore_derivatives indexin(covariance, 𝓂.var)
+    covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂.timings)
 
-    autocorr_var_idx = @ignore_derivatives indexin(autocorrelation, 𝓂.var)
+    autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂.timings)
+
 
     other_parameter_values = @ignore_derivatives 𝓂.parameter_values[indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters)]
 
@@ -3159,7 +3160,9 @@ function get_statistics(𝓂,
         if !(standard_deviation == Symbol[])
             st_dev = sqrt.(varrs)
         end
-    elseif !(autocorrelation == Symbol[])
+    end
+
+    if !(autocorrelation == Symbol[])
         if algorithm == :pruned_second_order
             ŝ_to_ŝ₂ⁱ = zero(ŝ_to_ŝ₂)
             ŝ_to_ŝ₂ⁱ += ℒ.diagm(ones(size(ŝ_to_ŝ₂,1)))
@@ -3175,15 +3178,12 @@ function get_statistics(𝓂,
         
             autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in autocorrelation_periods])
         end
-
-        if !(standard_deviation == Symbol[])
-            st_dev = sqrt.(abs.(convert(Vector{T}, max.(ℒ.diag(covar_dcmp),eps(Float64)))))
-        end
-    else
-        if !(standard_deviation == Symbol[])
-            st_dev = sqrt.(abs.(convert(Vector{T}, max.(ℒ.diag(covar_dcmp),eps(Float64)))))
-        end
     end
+
+    if !(standard_deviation == Symbol[])
+        st_dev = sqrt.(abs.(convert(Vector{T}, max.(ℒ.diag(covar_dcmp),eps(Float64)))))
+    end
+        
 
     # ret = AbstractArray{T}[]
     ret = Dict{Symbol,AbstractArray{T}}()
