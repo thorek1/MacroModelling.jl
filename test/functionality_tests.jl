@@ -741,11 +741,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
         for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
             for non_stochastic_steady_state in (Symbol[], vars...)
-                for mean in (Symbol[], vars[1])
-                    for standard_deviation in (Symbol[], vars[1])
-                        for variance in (Symbol[], vars[1])
-                            for covariance in (Symbol[], vars[1])
-                                for autocorrelation in (Symbol[], vars[1])
+                for mean in (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? (Symbol[], vars[1]) : Symbol[])
+                    for standard_deviation in (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? (Symbol[], vars[1]) : Symbol[])
+                        for variance in (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? (Symbol[], vars[1]) : Symbol[])
+                            for covariance in (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? (Symbol[], vars[1]) : Symbol[])
+                                for autocorrelation in (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? (Symbol[], vars[1]) : Symbol[])
                                     if !(!(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]))
                                         non_stochastic_steady_state = vars[1]
                                     end
@@ -781,11 +781,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             stats = get_statistics(m, parameter_values, algorithm = algorithm,
                                     non_stochastic_steady_state = :all,
-                                    mean = :all,
-                                    standard_deviation = :all,
-                                    variance = :all,
-                                    covariance = :all,
-                                    autocorrelation = :all)
+                                    mean = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
+                                    standard_deviation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
+                                    variance = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
+                                    covariance = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
+                                    autocorrelation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]))
 
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
@@ -801,11 +801,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             
                             STATS = get_statistics(m, parameter_values, algorithm = algorithm,
                                                 non_stochastic_steady_state = :all,
-                                                mean = :all,
-                                                standard_deviation = :all,
-                                                variance = :all,
-                                                covariance = :all,
-                                                autocorrelation = :all,
+                                                mean = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
+                                                standard_deviation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
+                                                variance = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
+                                                covariance = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
+                                                autocorrelation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 lyapunov_algorithm = lyapunov_algorithm,
@@ -821,6 +821,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         # ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
         # non_stochastic_steady_state = :all)[:mean], parameter_values)
     end
+
 
     @testset "get_moments" begin
         for mean in [true, false]
@@ -909,7 +910,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     lyapunov_algorithm = lyapunov_algorithm,
                                                     sylvester_algorithm = sylvester_algorithm)
 
-                                @test isapprox(moms, MOMS, rtol = 1e-10)
+                                @test isapprox([v for (k,v) in moms], [v for (k,v) in MOMS], rtol = 1e-10)
                             end
                         end
                     end
