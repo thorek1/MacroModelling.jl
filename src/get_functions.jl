@@ -2836,6 +2836,10 @@ function get_moments(𝓂::ℳ;
                 var_idx_ext = var_idx
             end
 
+            if mean && algorithm == :first_order
+                var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.var[var_idx])
+            end
+
             SS =  KeyedArray(collect(NSSS)[var_idx_ext];  Variables = axis1)
         end
 
@@ -2869,6 +2873,10 @@ function get_moments(𝓂::ℳ;
                 covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
                 
                 @assert solved "Could not find covariance matrix."
+
+                if mean && algorithm == :first_order
+                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.var[var_idx])
+                end
             end
 
             varr = convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64)))
@@ -2895,6 +2903,10 @@ function get_moments(𝓂::ℳ;
                 covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
                 
                 @assert solved "Could not find covariance matrix."
+
+                if mean && algorithm == :first_order
+                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.var[var_idx])
+                end
             end
             st_dev = KeyedArray(sqrt.(convert(Vector{Real},max.(ℒ.diag(covar_dcmp),eps(Float64))))[var_idx];  Variables = axis1)
         end
@@ -2914,6 +2926,10 @@ function get_moments(𝓂::ℳ;
                 covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
                 
                 @assert solved "Could not find covariance matrix."
+
+                if mean && algorithm == :first_order
+                    var_means = KeyedArray(collect(NSSS)[var_idx];  Variables = 𝓂.var[var_idx])
+                end
             end
         end
     end
