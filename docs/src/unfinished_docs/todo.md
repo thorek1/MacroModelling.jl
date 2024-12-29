@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
+- [ ] add derivatives wrt covariance in get_moments
 - [ ] recheck function examples and docs (include output description)
 - [ ] Docs: document outputs and associated functions to work with function
 - [ ] write documentation/docstrings using copilot

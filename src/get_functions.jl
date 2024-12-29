@@ -2808,7 +2808,19 @@ function get_moments(𝓂::ℳ;
         end
 
 
-        if mean && !(variance || standard_deviation || covariance)
+        if covariance
+            if algorithm == :pruned_second_order
+                covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(𝓂.parameter_values, 𝓂, opts = opts)
+            elseif algorithm == :pruned_third_order
+                covar_dcmp, state_μ, _, solved = calculate_third_order_moments(𝓂.parameter_values, :full_covar, 𝓂, opts = opts)
+            else
+                covar_dcmp, ___, __, _, solved = calculate_covariance(𝓂.parameter_values, 𝓂, opts = opts)
+                
+                @assert solved "Could not find covariance matrix."
+            end
+        end
+
+        if mean && !(variance || standard_deviation)
             axis2 = vcat(:Mean, 𝓂.parameters[param_idx])
         
             if any(x -> contains(string(x), "◖"), axis2)
