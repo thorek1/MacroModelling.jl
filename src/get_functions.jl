@@ -2612,7 +2612,7 @@ function get_moments(𝓂::ℳ;
             algorithm = algorithm, 
             opts = opts, 
             silent = silent)
-            
+
     if mean
         @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Mean only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
     end
@@ -3114,7 +3114,7 @@ get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_
 """
 function get_statistics(𝓂,
                         parameter_values::Vector{T};
-                        parameters::Vector{Symbol} = Symbol[],
+                        parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.parameters,
                         non_stochastic_steady_state::Union{Symbol_input,String_input} = Symbol[],
                         mean::Union{Symbol_input,String_input} = Symbol[],
                         standard_deviation::Union{Symbol_input,String_input} = Symbol[],
@@ -3135,6 +3135,8 @@ function get_statistics(𝓂,
                         sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
+    @assert length(parameter_values) == length(parameters) "Vector of `parameters` must correspond to `parameter_values` in length and order. Define the parameter names in the `parameters` keyword argument."
+    
     @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] || !(!(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])) "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
 
     @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
