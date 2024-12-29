@@ -2612,25 +2612,21 @@ function get_moments(𝓂::ℳ;
             algorithm = algorithm, 
             opts = opts, 
             silent = silent)
-
-    if mean && !(algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order])
-        mean = false
-        @warn "Mean not available for algorithm: `$algorithm`. `mean` set to `false`"
+            
+    if mean
+        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Mean only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
     end
 
-    if standard_deviation && !(algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order])
-        standard_deviation = false
-        @warn "Standard deviation not available for algorithm: `$algorithm`. `standard_deviation` set to `false`"
+    if standard_deviation
+        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Standard deviation only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
     end
     
-    if variance && !(algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order])
-        variance = false
-        @warn "Variance not available for algorithm: `$algorithm`. `variance` set to `false`"
+    if variance
+        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Variance only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
     end
 
-    if covariance && !(algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order])
-        covariance = false
-        @warn "Covariance not available for algorithm: `$algorithm`. `covariance` set to `false`"
+    if covariance
+        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Covariance only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
     end
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
@@ -2993,7 +2989,7 @@ end
 """
 Wrapper for [`get_moments`](@ref) with `variance = true` and `non_stochastic_steady_state = false, standard_deviation = false, covariance = false`.
 """
-get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[1]
+get_variance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = true, non_stochastic_steady_state = false, standard_deviation = false, covariance = false)[:variance]
 
 
 """
@@ -3011,7 +3007,7 @@ var = get_variance
 """
 Wrapper for [`get_moments`](@ref) with `standard_deviation = true` and `non_stochastic_steady_state = false, variance = false, covariance = false`.
 """
-get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[1]
+get_standard_deviation(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = true, covariance = false)[:standard_deviation]
 
 
 """
@@ -3039,7 +3035,7 @@ std =  get_standard_deviation
 """
 Wrapper for [`get_moments`](@ref) with `covariance = true` and `non_stochastic_steady_state = false, variance = false, standard_deviation = false`.
 """
-get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true)[1]
+get_covariance(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = true)[:covariance]
 
 
 """
@@ -3057,7 +3053,7 @@ cov = get_covariance
 """
 Wrapper for [`get_moments`](@ref) with `mean = true`, and `non_stochastic_steady_state = false, variance = false, standard_deviation = false, covariance = false`
 """
-get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[1]
+get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false, non_stochastic_steady_state = false, standard_deviation = false, covariance = false, mean = true)[:mean]
 
 
 # """
