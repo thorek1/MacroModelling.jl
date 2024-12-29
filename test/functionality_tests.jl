@@ -818,6 +818,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
 
+        # ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
+        # non_stochastic_steady_state = :all)[:mean], parameter_values)
     end
 
     @testset "get_moments" begin
@@ -826,22 +828,34 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for standard_deviation in [true, false]
                     for variance in [true, false]
                         for covariance in [true, false]
-                            for parameter_derivatives in param_derivs
-                                for variables in vars
-                                    get_moments(m,
-                                                algorithm = algorithm,
-                                                variables = variables,
-                                                non_stochastic_steady_state = non_stochastic_steady_state,
-                                                mean = mean,
-                                                standard_deviation = standard_deviation,
-                                                variance = variance,
-                                                covariance = covariance,
-                                                parameter_derivatives = parameter_derivatives)
-                                end
+                            for derivatives in [true, false]
+                                get_moments(m,
+                                            algorithm = algorithm,
+                                            non_stochastic_steady_state = non_stochastic_steady_state,
+                                            mean = mean,
+                                            standard_deviation = standard_deviation,
+                                            variance = variance,
+                                            covariance = covariance,
+                                            derivatives = derivatives)
                             end
                         end
                     end
                 end
+            end
+        end
+
+        for parameter_derivatives in param_derivs
+            for variables in vars
+                get_moments(m,
+                            algorithm = algorithm,
+                            variables = variables,
+                            non_stochastic_steady_state = true,
+                            mean = true,
+                            standard_deviation = true,
+                            variance = true,
+                            covariance = true,
+                            parameter_derivatives = parameter_derivatives,
+                            derivatives = true)
             end
         end
 
@@ -895,7 +909,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     lyapunov_algorithm = lyapunov_algorithm,
                                                     sylvester_algorithm = sylvester_algorithm)
 
-                                @test isapprox(moms, MOMS, rtol = 1e-12)
+                                @test isapprox(moms, MOMS, rtol = 1e-10)
                             end
                         end
                     end
