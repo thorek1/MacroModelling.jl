@@ -54,7 +54,7 @@ Random.seed!(3)
 
 
     momm = get_moments(RBC_CME)
-    @test isapprox(momm[2][1], 0.015600269903198518, rtol = eps(Float32))
+    @test isapprox(momm[:standard_deviation][1], 0.015600269903198518, rtol = eps(Float32))
 end
 
 
