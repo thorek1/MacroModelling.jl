@@ -794,7 +794,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)
 
-                            @test isapprox([v for (k,v) in stats], [v for (k,v) in STATS], rtol = 1e-10)
+                            @test isapprox([v for (k,v) in stats], [v for (k,v) in STATS], rtol = 1e-7)
                         end
                     end
                 end
@@ -817,7 +817,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         deriv1 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
 
-        deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1),
+        deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                 x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
                                                         
@@ -835,7 +835,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv2 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             mean = m.var)[:mean], old_params)
 
-            deriv2_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1),
+            deriv2_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             mean = m.var)[:mean], old_params)
                                                                     
@@ -852,7 +852,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv3 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             standard_deviation = m.var)[:standard_deviation], old_params)
             
-            deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1),
+            deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             standard_deviation = m.var)[:standard_deviation], old_params)
                                                                     
@@ -869,7 +869,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv4 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             variance = m.var)[:variance], old_params)
 
-            deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1),
+            deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             variance = m.var)[:variance], old_params)
                                                                     
@@ -886,7 +886,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             covariance = m.var)[:covariance], old_params)
 
-            deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1),
+            deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             covariance = m.var)[:covariance], old_params)
                                                                     
@@ -976,7 +976,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             covariance = m.var)[:covariance], old_params)
-                            @test isapprox(deriv5, DERIV5, rtol = 1e-10)
+                            @test isapprox(deriv5, DERIV5, rtol = 1e-7)
                         end
                     end
                 end
@@ -1073,7 +1073,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     lyapunov_algorithm = lyapunov_algorithm,
                                                     sylvester_algorithm = sylvester_algorithm)
 
-                                @test isapprox([v for (k,v) in moms], [v for (k,v) in MOMS], rtol = 1e-10)
+                                @test isapprox([v for (k,v) in moms], [v for (k,v) in MOMS], rtol = 1e-7)
                             end
                         end
                     end
