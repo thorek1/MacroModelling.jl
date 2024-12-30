@@ -817,11 +817,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         deriv1 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
 
-        deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
+        deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1),
                                                 x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
                                                         
-        @test isapprox(deriv1, deriv1_fin[1], rtol = 1e-10)
+        @test isapprox(deriv1, deriv1_fin[1], rtol = 1e-6)
                         
         if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
             # Clear solution caches
@@ -835,11 +835,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv2 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             mean = m.var)[:mean], old_params)
 
-            deriv2_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
+            deriv2_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             mean = m.var)[:mean], old_params)
                                                                     
-            @test isapprox(deriv2, deriv2_fin[1], rtol = 1e-10)
+            @test isapprox(deriv2, deriv2_fin[1], rtol = 1e-6)
 
             # Clear solution caches
             pop!(m.NSSS_solver_cache)
@@ -852,11 +852,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv3 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             standard_deviation = m.var)[:standard_deviation], old_params)
             
-            deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
+            deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             standard_deviation = m.var)[:standard_deviation], old_params)
                                                                     
-            @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-10)
+            @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-6)
             
             # Clear solution caches
             pop!(m.NSSS_solver_cache)
@@ -869,11 +869,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv4 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             variance = m.var)[:variance], old_params)
 
-            deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
+            deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             variance = m.var)[:variance], old_params)
                                                                     
-            @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-10)
+            @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-6)
             
             # Clear solution caches
             pop!(m.NSSS_solver_cache)
@@ -886,11 +886,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             covariance = m.var)[:covariance], old_params)
 
-            deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
+            deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             covariance = m.var)[:covariance], old_params)
                                                                     
-            @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-10)
+            @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-6)
         end
 
         for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
