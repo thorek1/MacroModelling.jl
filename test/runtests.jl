@@ -3,7 +3,7 @@ using Test
 using MacroModelling
 using Random
 using AxisKeys, SparseArrays
-import Zygote, FiniteDifferences
+import Zygote, FiniteDifferences, ForwardDiff
 import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
 if VERSION < v"1.12"
