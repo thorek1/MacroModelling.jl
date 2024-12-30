@@ -805,7 +805,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         while length(m.NSSS_solver_cache) > 2
             pop!(m.NSSS_solver_cache)
         end
-        
+
         # Clear solution caches
         pop!(m.NSSS_solver_cache)
         m.solution.outdated_NSSS = true
@@ -817,50 +817,51 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         deriv1 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
 
-if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-        # Clear solution caches
-        pop!(m.NSSS_solver_cache)
-        m.solution.outdated_NSSS = true
-        push!(m.solution.outdated_algorithms, algorithm)
-        m.solution.perturbation.qme_solution = zeros(0,0)
-        m.solution.perturbation.second_order_solution = spzeros(0,0)
-        m.solution.perturbation.third_order_solution = spzeros(0,0)
+        if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            m.solution.outdated_NSSS = true
+            push!(m.solution.outdated_algorithms, algorithm)
+            m.solution.perturbation.qme_solution = zeros(0,0)
+            m.solution.perturbation.second_order_solution = spzeros(0,0)
+            m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-        deriv2 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                        mean = m.var)[:mean], old_params)
+            deriv2 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                            mean = m.var)[:mean], old_params)
 
-        # Clear solution caches
-        pop!(m.NSSS_solver_cache)
-        m.solution.outdated_NSSS = true
-        push!(m.solution.outdated_algorithms, algorithm)
-        m.solution.perturbation.qme_solution = zeros(0,0)
-        m.solution.perturbation.second_order_solution = spzeros(0,0)
-        m.solution.perturbation.third_order_solution = spzeros(0,0)
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            m.solution.outdated_NSSS = true
+            push!(m.solution.outdated_algorithms, algorithm)
+            m.solution.perturbation.qme_solution = zeros(0,0)
+            m.solution.perturbation.second_order_solution = spzeros(0,0)
+            m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-        deriv3 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                        standard_deviation = m.var)[:standard_deviation], old_params)
+            deriv3 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                            standard_deviation = m.var)[:standard_deviation], old_params)
 
-        # Clear solution caches
-        pop!(m.NSSS_solver_cache)
-        m.solution.outdated_NSSS = true
-        push!(m.solution.outdated_algorithms, algorithm)
-        m.solution.perturbation.qme_solution = zeros(0,0)
-        m.solution.perturbation.second_order_solution = spzeros(0,0)
-        m.solution.perturbation.third_order_solution = spzeros(0,0)
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            m.solution.outdated_NSSS = true
+            push!(m.solution.outdated_algorithms, algorithm)
+            m.solution.perturbation.qme_solution = zeros(0,0)
+            m.solution.perturbation.second_order_solution = spzeros(0,0)
+            m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-        deriv4 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                        variance = m.var)[:variance], old_params)
+            deriv4 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                            variance = m.var)[:variance], old_params)
 
-        # Clear solution caches
-        pop!(m.NSSS_solver_cache)
-        m.solution.outdated_NSSS = true
-        push!(m.solution.outdated_algorithms, algorithm)
-        m.solution.perturbation.qme_solution = zeros(0,0)
-        m.solution.perturbation.second_order_solution = spzeros(0,0)
-        m.solution.perturbation.third_order_solution = spzeros(0,0)
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            m.solution.outdated_NSSS = true
+            push!(m.solution.outdated_algorithms, algorithm)
+            m.solution.perturbation.qme_solution = zeros(0,0)
+            m.solution.perturbation.second_order_solution = spzeros(0,0)
+            m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-        deriv5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                        endcovariance = m.var)[:covariance], old_params)
+            deriv5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                            endcovariance = m.var)[:covariance], old_params)
+        end
 
         for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
             for quadratic_matrix_equation_algorithm in qme_algorithms
@@ -881,71 +882,72 @@ if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                                                                         sylvester_algorithm = sylvester_algorithm, 
                                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
                         @test isapprox(deriv1, DERIV1)
-if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.outdated_NSSS = true
-                        push!(m.solution.outdated_algorithms, algorithm)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        
+                        if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.outdated_NSSS = true
+                            push!(m.solution.outdated_algorithms, algorithm)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-                        DERIV2 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
-                                                                        tol = tol,
-                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                        lyapunov_algorithm = lyapunov_algorithm,
-                                                                        sylvester_algorithm = sylvester_algorithm, 
-                                                                        mean = m.var)[:mean], old_params)
-                        @test isapprox(deriv2, DERIV2)
+                            DERIV2 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
+                                                                            tol = tol,
+                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                            lyapunov_algorithm = lyapunov_algorithm,
+                                                                            sylvester_algorithm = sylvester_algorithm, 
+                                                                            mean = m.var)[:mean], old_params)
+                            @test isapprox(deriv2, DERIV2)
 
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.outdated_NSSS = true
-                        push!(m.solution.outdated_algorithms, algorithm)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.outdated_NSSS = true
+                            push!(m.solution.outdated_algorithms, algorithm)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-                        DERIV3 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
-                                                                        tol = tol,
-                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                        lyapunov_algorithm = lyapunov_algorithm,
-                                                                        sylvester_algorithm = sylvester_algorithm, 
-                                                                        standard_deviation = m.var)[:standard_deviation], old_params)
-                        @test isapprox(deriv3, DERIV3)
+                            DERIV3 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
+                                                                            tol = tol,
+                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                            lyapunov_algorithm = lyapunov_algorithm,
+                                                                            sylvester_algorithm = sylvester_algorithm, 
+                                                                            standard_deviation = m.var)[:standard_deviation], old_params)
+                            @test isapprox(deriv3, DERIV3)
 
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.outdated_NSSS = true
-                        push!(m.solution.outdated_algorithms, algorithm)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.outdated_NSSS = true
+                            push!(m.solution.outdated_algorithms, algorithm)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-                        DERIV4 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
-                                                                        tol = tol,
-                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                        lyapunov_algorithm = lyapunov_algorithm,
-                                                                        sylvester_algorithm = sylvester_algorithm, 
-                                                                        variance = m.var)[:variance], old_params)
-                        @test isapprox(deriv4, DERIV4)
+                            DERIV4 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
+                                                                            tol = tol,
+                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                            lyapunov_algorithm = lyapunov_algorithm,
+                                                                            sylvester_algorithm = sylvester_algorithm, 
+                                                                            variance = m.var)[:variance], old_params)
+                            @test isapprox(deriv4, DERIV4)
 
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.outdated_NSSS = true
-                        push!(m.solution.outdated_algorithms, algorithm)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.outdated_NSSS = true
+                            push!(m.solution.outdated_algorithms, algorithm)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-                        DERIV5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
-                                                                        tol = tol,
-                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                        lyapunov_algorithm = lyapunov_algorithm,
-                                                                        sylvester_algorithm = sylvester_algorithm, 
-                                                                        covariance = m.var)[:covariance], old_params)
-                        @test isapprox(deriv5, DERIV5, rtol = 1e-10)
-end
+                            DERIV5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
+                                                                            tol = tol,
+                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                            lyapunov_algorithm = lyapunov_algorithm,
+                                                                            sylvester_algorithm = sylvester_algorithm, 
+                                                                            covariance = m.var)[:covariance], old_params)
+                            @test isapprox(deriv5, DERIV5, rtol = 1e-10)
+                        end
                     end
                 end
             end
