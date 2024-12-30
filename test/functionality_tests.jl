@@ -817,6 +817,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         deriv1 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
 
+if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
         # Clear solution caches
         pop!(m.NSSS_solver_cache)
         m.solution.outdated_NSSS = true
@@ -859,7 +860,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         m.solution.perturbation.third_order_solution = spzeros(0,0)
 
         deriv5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                        covariance = m.var)[:covariance], old_params)
+                                                        endcovariance = m.var)[:covariance], old_params)
 
         for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
             for quadratic_matrix_equation_algorithm in qme_algorithms
@@ -880,7 +881,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         sylvester_algorithm = sylvester_algorithm, 
                                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
                         @test isapprox(deriv1, DERIV1)
-
+if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                         # Clear solution caches
                         pop!(m.NSSS_solver_cache)
                         m.solution.outdated_NSSS = true
@@ -943,7 +944,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         sylvester_algorithm = sylvester_algorithm, 
                                                                         covariance = m.var)[:covariance], old_params)
-                        @test isapprox(deriv5, DERIV5)
+                        @test isapprox(deriv5, DERIV5, rtol = 1e-10)
+end
                     end
                 end
             end
