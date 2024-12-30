@@ -3171,13 +3171,13 @@ function get_statistics(𝓂,
     if algorithm == :pruned_third_order
 
         if !(autocorrelation == Symbol[])
-            second_mom_third_order = union(autocorrelation, standard_deviation, variance, covariance)
+            second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx, covar_var_idx)
 
             covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments(all_parameters, second_mom_third_order, 𝓂, opts = opts, autocorrelation = true, autocorrelation_periods = autocorrelation_periods)
 
         elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
 
-            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, union(variance,covariance,standard_deviation), 𝓂, opts = opts)
+            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, union(std_var_idx, var_var_idx, covar_var_idx), 𝓂, opts = opts)
 
         end
 
