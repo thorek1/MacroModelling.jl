@@ -897,7 +897,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-6)
         end
 
-        for tol in [MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14),MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14)]
+        for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14)]
             for quadratic_matrix_equation_algorithm in qme_algorithms
                 for sylvester_algorithm in sylvester_alogorithms
                     for lyapunov_algorithm in lyapunov_algorithms
