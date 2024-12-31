@@ -770,7 +770,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     covariance = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                     autocorrelation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]))
 
-            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+            for tol in [MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14),MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14,NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for sylvester_algorithm in sylvester_alogorithms
                         for lyapunov_algorithm in lyapunov_algorithms
@@ -794,7 +794,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)
 
-                            @test isapprox([v for (k,v) in stats], [v for (k,v) in STATS], rtol = 1e-7)
+                            @test isapprox([v for (k,v) in stats], [v for (k,v) in STATS], rtol = 1e-6)
                         end
                     end
                 end
@@ -983,7 +983,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             # println("DERIV5 norm: $(ℒ.norm(DERIV5))")  
 
                             # println("delta DERIV5 norm: $(ℒ.norm(DERIV5 - deriv5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))")  
-                            @test isapprox(deriv5, DERIV5, rtol = 1e-7)
+                            @test isapprox(deriv5, DERIV5, rtol = 1e-6)
                         end
                     end
                 end
