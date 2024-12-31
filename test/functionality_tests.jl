@@ -892,7 +892,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             covariance = m.var)[:covariance], old_params)
 
-            # println("deriv5 norm: $(ℒ.norm(deriv5))")  
+            println("deriv5 norm: $(ℒ.norm(deriv5))")  
                                                                   
             @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-6)
         end
@@ -980,9 +980,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             covariance = m.var)[:covariance], old_params)
-                            # println("DERIV5 norm: $(ℒ.norm(DERIV5))")  
+                            println("DERIV5 norm: $(ℒ.norm(DERIV5))")  
 
-                            # println("delta DERIV5 norm: $(ℒ.norm(DERIV5 - deriv5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))")  
+                            println("delta DERIV5 norm: $(ℒ.norm(DERIV5 - deriv5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))")  
                             @test isapprox(deriv5, DERIV5, rtol = 1e-6)
                         end
                     end
