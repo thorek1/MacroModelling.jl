@@ -820,7 +820,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                 x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
-                                                        
+                           
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+                             
         @test isapprox(deriv1, deriv1_fin[1], rtol = 1e-6)
                         
         if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
@@ -838,7 +842,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv2_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             mean = m.var)[:mean], old_params)
-                                                                    
+                          
+            while length(m.NSSS_solver_cache) > 2
+                pop!(m.NSSS_solver_cache)
+            end
+                                          
             @test isapprox(deriv2, deriv2_fin[1], rtol = 1e-6)
 
             # Clear solution caches
@@ -855,7 +863,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             standard_deviation = m.var)[:standard_deviation], old_params)
-                                                                    
+                        
+            while length(m.NSSS_solver_cache) > 2
+                pop!(m.NSSS_solver_cache)
+            end
+                                            
             @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-6)
             
             # Clear solution caches
@@ -872,6 +884,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             variance = m.var)[:variance], old_params)
+                        
+            while length(m.NSSS_solver_cache) > 2
+                pop!(m.NSSS_solver_cache)
+            end
                                                                     
             @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-6)
             
@@ -890,7 +906,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
-																														tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
+                                                            tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
                                                             sylvester_acceptance_tol = 1e-14),
                                                             covariance = m.var)[:covariance], old_params)
 
@@ -899,6 +915,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-6)
         end
 
+                        
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+        
         for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14)]
             for quadratic_matrix_equation_algorithm in qme_algorithms
                 for sylvester_algorithm in sylvester_alogorithms
