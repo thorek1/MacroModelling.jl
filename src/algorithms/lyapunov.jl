@@ -36,29 +36,38 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
     if verbose
         println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $lyapunov_algorithm")
     end
+    
+    if reached_tol > acceptance_tol && lyapunov_algorithm ≠ :doubling
+        C = collect(C)
 
-    if reached_tol > acceptance_tol 
-        if (reached_tol < sqrt(acceptance_tol) || A isa AbstractSparseMatrix) && lyapunov_algorithm ≠ :bicgstab
-            C = collect(C)
+        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:doubling), tol = tol) # timer = timer)
 
-            X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bicgstab), tol = tol) # timer = timer)
-
-            if verbose
-                println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: gmres")
-            end
-        else
-            A = collect(A)
-
-            C = collect(C)
-
-            X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bartels_stewart), tol = tol) # timer = timer)
-
-            if verbose
-                println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: lyapunov")
-            end
+        if verbose
+            println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: doubling")
         end
     end
 
+    if reached_tol > acceptance_tol && lyapunov_algorithm ≠ :bicgstab
+        C = collect(C)
+
+        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bicgstab), tol = tol) # timer = timer)
+
+        if verbose
+            println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bicgstab")
+        end
+    end
+
+    if !(reached_tol < acceptance_tol) && lyapunov_algorithm ≠ :bartels_stewart && length(C) < 5e7 # try sylvester if previous one didn't solve it
+        A = collect(A)
+
+        C = collect(C)
+
+        X, i, reached_tol = solve_lyapunov_equation(A, C, Val(:bartels_stewart), tol = tol) # timer = timer)
+
+        if verbose
+            println("Lyapunov equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart")
+        end
+    end
     # end # timeit_debug
     # end # timeit_debug
     
