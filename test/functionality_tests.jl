@@ -890,6 +890,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
+																														tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
+                                                            sylvester_acceptance_tol = 1e-14),
                                                             covariance = m.var)[:covariance], old_params)
 
             println("deriv5 norm: $(ℒ.norm(deriv5))")  
