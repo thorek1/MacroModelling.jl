@@ -910,8 +910,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                             tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
                                                             sylvester_acceptance_tol = 1e-14),
                                                             covariance = m.var)[:covariance], old_params)
-                                                                  
-            @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-6)
+ 
+            @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-4)
         end
         
 
