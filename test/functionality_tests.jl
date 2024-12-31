@@ -4,7 +4,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     # options to itereate over
     filters = [:inversion, :kalman]
 
-    sylvester_alogorithms = (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+    sylvester_algorithms = (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
 
     qme_algorithms = [:schur, :doubling]
 
@@ -62,7 +62,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for verbose in [false] # [true, false]
                         for quadratic_matrix_equation_algorithm in qme_algorithms
                             for lyapunov_algorithm in lyapunov_algorithms
-                                for sylvester_algorithm in sylvester_alogorithms
+                                for sylvester_algorithm in sylvester_algorithms
                                     # Clear solution caches
                                     pop!(m.NSSS_solver_cache)
                                     m.solution.perturbation.qme_solution = zeros(0,0)
@@ -291,7 +291,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                         verbose = verbose)
                                 for quadratic_matrix_equation_algorithm in qme_algorithms
                                     for lyapunov_algorithm in lyapunov_algorithms
-                                        for sylvester_algorithm in sylvester_alogorithms
+                                        for sylvester_algorithm in sylvester_algorithms
                                             
                                             # Clear solution caches
                                             pop!(m.NSSS_solver_cache)
@@ -418,7 +418,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                             for quadratic_matrix_equation_algorithm in qme_algorithms
                                 for lyapunov_algorithm in lyapunov_algorithms
-                                    for sylvester_algorithm in sylvester_alogorithms
+                                    for sylvester_algorithm in sylvester_algorithms
                                         
                                         # Clear solution caches
                                         pop!(m.NSSS_solver_cache)
@@ -632,7 +632,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                             end
 
-                            for sylvester_algorithm in sylvester_alogorithms
+                            for sylvester_algorithm in sylvester_algorithms
                                 # Clear solution caches
                                 pop!(m.NSSS_solver_cache)
                                 m.solution.perturbation.qme_solution = zeros(0,0)
@@ -688,7 +688,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         for verbose in [false] # [true, false]
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
-                    for sylvester_algorithm in sylvester_alogorithms
+                    for sylvester_algorithm in sylvester_algorithms
                         # Clear solution caches
                         pop!(m.NSSS_solver_cache)
                         m.solution.outdated_NSSS = true
@@ -748,7 +748,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
         end
-         
+        
         while length(m.NSSS_solver_cache) > 2
             pop!(m.NSSS_solver_cache)
         end
@@ -763,6 +763,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
 
             stats = get_statistics(m, parameter_values, algorithm = algorithm,
+                                    # tol = MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14, NSSS_xtol = 1e-14),
                                     non_stochastic_steady_state = :all,
                                     mean = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
                                     standard_deviation = (algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] ? :all : Symbol[]),
@@ -772,7 +773,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             for tol in [MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14),MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14,NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
-                    for sylvester_algorithm in sylvester_alogorithms
+                    for sylvester_algorithm in sylvester_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
                             # Clear solution caches
                             pop!(m.NSSS_solver_cache)
@@ -794,7 +795,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)
 
-                            @test isapprox([v for (k,v) in stats], [v for (k,v) in STATS], rtol = 1e-6)
+                            @test isapprox([v for (k,v) in stats], [v for (k,v) in STATS], rtol = 1e-10)
                         end
                     end
                 end
@@ -909,20 +910,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                             tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
                                                             sylvester_acceptance_tol = 1e-14),
                                                             covariance = m.var)[:covariance], old_params)
-
-            println("deriv5 norm: $(ℒ.norm(deriv5))")  
                                                                   
             @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-6)
         end
+        
 
-                        
         while length(m.NSSS_solver_cache) > 2
             pop!(m.NSSS_solver_cache)
         end
-        
+
         for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14)]
             for quadratic_matrix_equation_algorithm in qme_algorithms
-                for sylvester_algorithm in sylvester_alogorithms
+                for sylvester_algorithm in sylvester_algorithms
                     for lyapunov_algorithm in lyapunov_algorithms
                         # Clear solution caches
                         pop!(m.NSSS_solver_cache)
@@ -938,7 +937,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         sylvester_algorithm = sylvester_algorithm, 
                                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
-                        @test isapprox(deriv1, DERIV1)
+                        @test isapprox(deriv1, DERIV1, rtol = 1e-10)
                         
                         if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
                             # Clear solution caches
@@ -955,7 +954,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             mean = m.var)[:mean], old_params)
-                            @test isapprox(deriv2, DERIV2)
+                            @test isapprox(deriv2, DERIV2, rtol = 1e-10)
 
                             # Clear solution caches
                             pop!(m.NSSS_solver_cache)
@@ -971,7 +970,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             standard_deviation = m.var)[:standard_deviation], old_params)
-                            @test isapprox(deriv3, DERIV3)
+                            @test isapprox(deriv3, DERIV3, rtol = 1e-10)
 
                             # Clear solution caches
                             pop!(m.NSSS_solver_cache)
@@ -987,7 +986,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             variance = m.var)[:variance], old_params)
-                            @test isapprox(deriv4, DERIV4)
+                            @test isapprox(deriv4, DERIV4, rtol = 1e-10)
 
                             # Clear solution caches
                             pop!(m.NSSS_solver_cache)
@@ -1003,9 +1002,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             covariance = m.var)[:covariance], old_params)
-                            println("DERIV5 norm: $(ℒ.norm(DERIV5))")  
-
-                            println("delta DERIV5 norm: $(ℒ.norm(DERIV5 - deriv5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))")  
                             @test isapprox(deriv5, DERIV5, rtol = 1e-6)
                         end
                     end
@@ -1079,7 +1075,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
-                        for sylvester_algorithm in sylvester_alogorithms
+                        for sylvester_algorithm in sylvester_algorithms
                             for lyapunov_algorithm in lyapunov_algorithms
                                 # Clear solution caches
                                 pop!(m.NSSS_solver_cache)
@@ -1154,7 +1150,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
-                            for sylvester_algorithm in sylvester_alogorithms
+                            for sylvester_algorithm in sylvester_algorithms
                                 # Clear solution caches
                                 pop!(m.NSSS_solver_cache)
                                 m.solution.perturbation.qme_solution = zeros(0,0)
@@ -1226,7 +1222,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     stochastic = stochastic, 
                                                     derivatives = derivatives)
                             for quadratic_matrix_equation_algorithm in qme_algorithms
-                                for sylvester_algorithm in sylvester_alogorithms
+                                for sylvester_algorithm in sylvester_algorithms
                                     nsss = get_steady_state(m, 
                                                             verbose = verbose, 
                                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
