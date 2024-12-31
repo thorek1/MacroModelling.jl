@@ -884,18 +884,20 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
 
             deriv5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                            tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
+                                                            sylvester_acceptance_tol = 1e-14),
                                                             covariance = m.var)[:covariance], old_params)
 
             deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             covariance = m.var)[:covariance], old_params)
 
-            println("deriv5 norm: $(ℒ.norm(deriv5))")  
+            # println("deriv5 norm: $(ℒ.norm(deriv5))")  
                                                                   
             @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-6)
         end
 
-        for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+        for tol in [MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14),MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14)]
             for quadratic_matrix_equation_algorithm in qme_algorithms
                 for sylvester_algorithm in sylvester_alogorithms
                     for lyapunov_algorithm in lyapunov_algorithms
@@ -978,10 +980,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             covariance = m.var)[:covariance], old_params)
-                            println("DERIV5 norm: $(ℒ.norm(DERIV5))")  
+                            # println("DERIV5 norm: $(ℒ.norm(DERIV5))")  
 
-                            println("delta DERIV5 norm: $(ℒ.norm(DERIV5 - deriv5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))")  
-                            @test isapprox(deriv5, DERIV5, rtol = 1e-6)
+                            # println("delta DERIV5 norm: $(ℒ.norm(DERIV5 - deriv5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))")  
+                            @test isapprox(deriv5, DERIV5, rtol = 1e-10)
                         end
                     end
                 end
