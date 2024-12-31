@@ -90,8 +90,10 @@ function rrule(::typeof(solve_lyapunov_equation),
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
-        ∂C, solved = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
+        ∂C, slvd = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
     
+        solved = solved && slvd
+
         ∂A = ∂C * A * P' + ∂C' * A * P
 
         return NoTangent(), ∂A, ∂C, NoTangent()
@@ -129,7 +131,9 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(X) < eps() continue end
 
-        P, solved = solve_lyapunov_equation(Â, X, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+        P, slvd = solve_lyapunov_equation(Â, X, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+        
+        solved = solved && slvd
 
         P̃[:,i] = vec(P)
     end
