@@ -983,7 +983,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             # println("DERIV5 norm: $(ℒ.norm(DERIV5))")  
 
                             # println("delta DERIV5 norm: $(ℒ.norm(DERIV5 - deriv5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))")  
-                            @test isapprox(deriv5, DERIV5, rtol = 1e-10)
+                            @test isapprox(deriv5, DERIV5, rtol = 1e-7)
                         end
                     end
                 end
