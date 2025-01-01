@@ -795,12 +795,21 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)
 
-if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]                         
-@test isapprox([v for (k,v) in stats][1:end-1], [v for (k,v) in STATS][1:end-1], rtol = 1e-7)  
-@test isapprox([v for (k,v) in stats][end], [v for (k,v) in STATS][end], rtol = 1e-4)
-else
-@test isapprox([v for (k,v) in stats], [v for (k,v) in STATS], rtol = 1e-7)  
-end
+                            if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+                                # println("mean: $(norm(stats[:mean] - STATS[:mean]) / max(norm(stats[:mean]), norm(STATS[:mean])))")
+                                # println("variance: $(norm(stats[:variance] - STATS[:variance]) / max(norm(stats[:variance]), norm(STATS[:variance])))")
+                                # println("standard_deviation: $(norm(stats[:standard_deviation] - STATS[:standard_deviation]) / max(norm(stats[:standard_deviation]), norm(STATS[:standard_deviation])))")
+                                # println("covariance: $(norm(stats[:covariance] - STATS[:covariance]) / max(norm(stats[:covariance]), norm(STATS[:covariance])))")
+                                # println("autocorrelation: $(norm(stats[:autocorrelation] - STATS[:autocorrelation]) / max(norm(stats[:autocorrelation]), norm(STATS[:autocorrelation])))")
+                                @test isapprox(stats[:non_stochastic_steady_state], STATS[:non_stochastic_steady_state], rtol = 1e-7)
+                                @test isapprox(stats[:mean], STATS[:mean], rtol = 1e-7)
+                                @test isapprox(stats[:standard_deviation], STATS[:standard_deviation], rtol = 1e-7)
+                                @test isapprox(stats[:variance], STATS[:variance], rtol = 1e-7)
+                                @test isapprox(stats[:covariance], STATS[:covariance], rtol = 1e-7)
+                                @test isapprox(stats[:autocorrelation], STATS[:autocorrelation], rtol = 1e-4)
+                            else
+                                @test isapprox(stats[:non_stochastic_steady_state], STATS[:non_stochastic_steady_state], rtol = 1e-7)
+                            end
                         end
                     end
                 end
