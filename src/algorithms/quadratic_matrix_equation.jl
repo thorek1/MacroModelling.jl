@@ -554,7 +554,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     
         dX, slvd = solve_sylvester_equation(AA, -X, -CC, sylvester_algorithm = :doubling)
 
-        solved = solved && slvd
+        solved = Bool(solved) && Bool(slvd)
 
         X̃[:,i] = vec(dX)
     end
