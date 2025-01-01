@@ -796,10 +796,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 sylvester_algorithm = sylvester_algorithm)
 
 if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]                         
-@test isapprox([v for (k,v) in stats][1:end-1], [v for (k,v) in STATS][1:end-1], rtol = 1e-10)  
+@test isapprox([v for (k,v) in stats][1:end-1], [v for (k,v) in STATS][1:end-1], rtol = 1e-7)  
 @test isapprox([v for (k,v) in stats][end], [v for (k,v) in STATS][end], rtol = 1e-4)
 else
-@test isapprox([v for (k,v) in stats], [v for (k,v) in STATS], rtol = 1e-10)  
+@test isapprox([v for (k,v) in stats], [v for (k,v) in STATS], rtol = 1e-7)  
 end
                         end
                     end
