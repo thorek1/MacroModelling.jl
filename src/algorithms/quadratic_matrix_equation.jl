@@ -14,7 +14,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
-                                        verbose::Bool = false) where R <: Real
+                                        verbose::Bool = false)::Tuple{AbstractMatrix{R}, Bool} where R <: Real
 
     if length(initial_guess) > 0
         X = initial_guess
