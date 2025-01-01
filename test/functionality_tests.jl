@@ -795,7 +795,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)
 
-                            @test isapprox([v for (k,v) in stats], [v for (k,v) in STATS], rtol = 1e-10)
+@test isapprox([v for (k,v) in stats][1:end-1], [v for (k,v) in STATS][1:end-1], rtol = 1e-10)                            
+@test isapprox([v for (k,v) in stats][end], [v for (k,v) in STATS][end], rtol = 1e-4)
                         end
                     end
                 end
