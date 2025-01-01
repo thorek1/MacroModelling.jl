@@ -61,6 +61,20 @@ if test_set == "higher_order"
     plots = true
     test_higher_order = true
 
+    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned second order" begin
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
+        functionality_test(m, algorithm = :pruned_second_order, plots = plots)
+    end
+    m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned third order" begin
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
+        functionality_test(m, algorithm = :pruned_third_order, plots = plots)
+    end
+    m = nothing
+    GC.gc()
+
     @testset verbose = true "Test various models: NSSS and 1st order solution" begin
         include("test_models.jl")
     end
@@ -108,20 +122,6 @@ if test_set == "higher_order"
     m = nothing
     GC.gc()
 
-    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned second order" begin
-        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
-        functionality_test(m, algorithm = :pruned_second_order, plots = plots)
-    end
-    # m = nothing
-    GC.gc()
-
-    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned third order" begin
-        # include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
-        functionality_test(m, algorithm = :pruned_third_order, plots = plots)
-    end
-    m = nothing
-    GC.gc()
-
     @testset verbose = true "RBC_CME with calibration equations second order" begin
         include("models/RBC_CME_calibration_equations.jl")
         functionality_test(m, algorithm = :second_order, plots = plots)
@@ -159,34 +159,6 @@ if test_set == "plots"
     plots = true
 	Random.seed!(1)
 
-    @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
-        include("../models/Backus_Kehoe_Kydland_1992.jl")
-        functionality_test(Backus_Kehoe_Kydland_1992, plots = plots)
-    end
-    Backus_Kehoe_Kydland_1992 = nothing
-    GC.gc()
-
-    @testset verbose = true "Gali 2015 ELB" begin
-        include("../models/Gali_2015_chapter_3_obc.jl")
-        functionality_test(Gali_2015_chapter_3_obc, plots = plots)
-    end
-    Gali_2015_chapter_3_obc = nothing
-    GC.gc()
-
-    @testset verbose = true "FS2000" begin
-        include("../models/FS2000.jl")
-        functionality_test(FS2000, plots = plots)
-    end
-    FS2000 = nothing
-    GC.gc()
-
-    @testset verbose = true "Smets and Wouters (2007) linear" begin
-        include("../models/Smets_Wouters_2007_linear.jl")
-        functionality_test(Smets_Wouters_2007_linear, plots = plots)
-    end
-    Smets_Wouters_2007_linear = nothing
-    GC.gc()
-
     @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
         include("../models/Smets_Wouters_2007.jl")
         functionality_test(Smets_Wouters_2007, plots = plots)
@@ -194,6 +166,13 @@ if test_set == "plots"
     Smets_Wouters_2007 = nothing
     GC.gc()
 
+    @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
+        include("../models/Smets_Wouters_2003.jl")
+        functionality_test(Smets_Wouters_2003, plots = plots)
+    end
+    Smets_Wouters_2003 = nothing
+    GC.gc()
+    
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
         functionality_test(m, plots = plots)
@@ -222,8 +201,6 @@ if test_set == "plots"
     end
     m = nothing
     GC.gc()
-
-
 
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables numerical SS" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
@@ -310,7 +287,6 @@ if test_set == "plots"
     m = nothing
     GC.gc()
 
-
     @testset verbose = true "RBC_CME with calibration equations" begin
         include("models/RBC_CME_calibration_equations.jl")
         functionality_test(m, plots = plots)
@@ -339,8 +315,6 @@ if test_set == "plots"
     end
     m = nothing
     GC.gc()
-
-
 
     @testset verbose = true "RBC_CME" begin
         include("models/RBC_CME.jl")
@@ -371,14 +345,34 @@ if test_set == "plots"
     m = nothing
     GC.gc()
 
-
-
-    @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
-        include("../models/Smets_Wouters_2003.jl")
-        functionality_test(Smets_Wouters_2003, plots = plots)
+    @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
+        include("../models/Backus_Kehoe_Kydland_1992.jl")
+        functionality_test(Backus_Kehoe_Kydland_1992, plots = plots)
     end
-    Smets_Wouters_2003 = nothing
+    Backus_Kehoe_Kydland_1992 = nothing
     GC.gc()
+
+    @testset verbose = true "Gali 2015 ELB" begin
+        include("../models/Gali_2015_chapter_3_obc.jl")
+        functionality_test(Gali_2015_chapter_3_obc, plots = plots)
+    end
+    Gali_2015_chapter_3_obc = nothing
+    GC.gc()
+
+    @testset verbose = true "FS2000" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, plots = plots)
+    end
+    FS2000 = nothing
+    GC.gc()
+
+    @testset verbose = true "Smets and Wouters (2007) linear" begin
+        include("../models/Smets_Wouters_2007_linear.jl")
+        functionality_test(Smets_Wouters_2007_linear, plots = plots)
+    end
+    Smets_Wouters_2007_linear = nothing
+    GC.gc()
+
 end
 
 
