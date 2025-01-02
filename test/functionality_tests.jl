@@ -721,6 +721,112 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     # plot_conditional_forecast
 
 
+    @testset "get_solution with parameter input" begin
+        for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
+            sol = get_solution(m, parameter_values, algorithm = algorithm)
+
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            m.solution.outdated_NSSS = true
+            push!(m.solution.outdated_algorithms, algorithm)
+            m.solution.perturbation.qme_solution = zeros(0,0)
+            m.solution.perturbation.second_order_solution = spzeros(0,0)
+            m.solution.perturbation.third_order_solution = spzeros(0,0)
+
+            deriv_sol = []
+            for i in 1:length(sol)-1
+                push!(deriv_sol, ForwardDiff.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], old_params))
+            end
+
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            m.solution.outdated_NSSS = true
+            push!(m.solution.outdated_algorithms, algorithm)
+            m.solution.perturbation.qme_solution = zeros(0,0)
+            m.solution.perturbation.second_order_solution = spzeros(0,0)
+            m.solution.perturbation.third_order_solution = spzeros(0,0)
+
+            deriv_sol_fin = []
+            for i in 1:length(sol)-1
+                push!(deriv_sol_fin, FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
+                                                    x->get_solution(m, x, algorithm = algorithm)[i], old_params)[1])
+            end
+
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            m.solution.outdated_NSSS = true
+            push!(m.solution.outdated_algorithms, algorithm)
+            m.solution.perturbation.qme_solution = zeros(0,0)
+            m.solution.perturbation.second_order_solution = spzeros(0,0)
+            m.solution.perturbation.third_order_solution = spzeros(0,0)
+
+            deriv_sol_zyg = []
+            for i in 1:length(sol)-1
+                push!(deriv_sol_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], old_params)[1])
+            end
+
+            @test isapprox(deriv_sol_zyg, deriv_sol_fin, rtol = 1e-6)
+            
+            @test isapprox(deriv_sol, deriv_sol_fin, rtol = 1e-6)
+
+            for tol in [MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14), MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14, NSSS_xtol = 1e-14)]
+                for quadratic_matrix_equation_algorithm in qme_algorithms
+                    for sylvester_algorithm in sylvester_algorithms
+                        # Clear solution caches
+                        pop!(m.NSSS_solver_cache)
+                        m.solution.outdated_NSSS = true
+                        push!(m.solution.outdated_algorithms, algorithm)
+                        m.solution.perturbation.qme_solution = zeros(0,0)
+                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+
+                        SOL = get_solution(m, parameter_values, algorithm = algorithm, tol = tol,
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                            sylvester_algorithm = sylvester_algorithm)
+
+                        @test isapprox([s for s in sol[1:end-1]], [S for S in SOL[1:end-1]], rtol = 1e-7)
+
+                        # Clear solution caches
+                        pop!(m.NSSS_solver_cache)
+                        m.solution.outdated_NSSS = true
+                        push!(m.solution.outdated_algorithms, algorithm)
+                        m.solution.perturbation.qme_solution = zeros(0,0)
+                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+
+                        DERIV_SOL = []
+                        for i in 1:length(sol)-1
+                            push!(DERIV_SOL, ForwardDiff.jacobian(x->get_solution(m, x, algorithm = algorithm, 
+                                            tol = tol,
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                            sylvester_algorithm = sylvester_algorithm)[i], old_params))
+                        end
+
+                        @test isapprox(deriv_sol, DERIV_SOL, rtol = 1e-6)
+
+                        # Clear solution caches
+                        pop!(m.NSSS_solver_cache)
+                        m.solution.outdated_NSSS = true
+                        push!(m.solution.outdated_algorithms, algorithm)
+                        m.solution.perturbation.qme_solution = zeros(0,0)
+                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+
+                        DERIV_SOL_zyg = []
+                        for i in 1:length(sol)-1
+                            push!(DERIV_SOL_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm, 
+                                            tol = tol,
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                            sylvester_algorithm = sylvester_algorithm)[i], old_params)[1])
+                        end
+
+                        @test isapprox(deriv_sol_zyg, DERIV_SOL_zyg, rtol = 1e-6)
+                    end
+                end
+            end
+        end
+    end
+
     @testset "get_statistics" begin
         for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
             for non_stochastic_steady_state in (Symbol[], vars...)
@@ -796,10 +902,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 sylvester_algorithm = sylvester_algorithm)
 
                             if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                                # println("mean: $(norm(stats[:mean] - STATS[:mean]) / max(norm(stats[:mean]), norm(STATS[:mean])))")
-                                # println("variance: $(norm(stats[:variance] - STATS[:variance]) / max(norm(stats[:variance]), norm(STATS[:variance])))")
-                                # println("standard_deviation: $(norm(stats[:standard_deviation] - STATS[:standard_deviation]) / max(norm(stats[:standard_deviation]), norm(STATS[:standard_deviation])))")
-                                # println("covariance: $(norm(stats[:covariance] - STATS[:covariance]) / max(norm(stats[:covariance]), norm(STATS[:covariance])))")
+                                # println("mean: $(ℒ.norm(stats[:mean] - STATS[:mean]) / max(ℒ.norm(stats[:mean]), ℒ.norm(STATS[:mean])))")
+                                # println("variance: $(ℒ.norm(stats[:variance] - STATS[:variance]) / max(ℒ.norm(stats[:variance]), ℒ.norm(STATS[:variance])))")
+                                # println("standard_deviation: $(ℒ.norm(stats[:standard_deviation] - STATS[:standard_deviation]) / max(ℒ.norm(stats[:standard_deviation]), ℒ.norm(STATS[:standard_deviation])))")
+                                # println("covariance: $(ℒ.norm(stats[:covariance] - STATS[:covariance]) / max(ℒ.norm(stats[:covariance]), ℒ.norm(STATS[:covariance])))")
                                 println("autocorrelation: $(ℒ.norm(stats[:autocorrelation] - STATS[:autocorrelation]) / max(ℒ.norm(stats[:autocorrelation]), ℒ.norm(STATS[:autocorrelation])))")
                                 @test isapprox(stats[:non_stochastic_steady_state], STATS[:non_stochastic_steady_state], rtol = 1e-7)
                                 @test isapprox(stats[:mean], STATS[:mean], rtol = 1e-7)
@@ -832,7 +938,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         deriv1 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
 
-        deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
+        deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
                                                 x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
 
@@ -842,6 +948,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         @test isapprox(deriv1_zyg[1], deriv1_fin[1], rtol = 1e-6)
 
         @test isapprox(deriv1, deriv1_fin[1], rtol = 1e-6)
+
+        # ℒ.norm(deriv1 - deriv1_fin[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_fin[1]))
+        # ℒ.norm(deriv1 - deriv1_zyg[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_zyg[1]))
 
         while length(m.NSSS_solver_cache) > 2
             pop!(m.NSSS_solver_cache)
