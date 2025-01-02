@@ -3166,6 +3166,18 @@ function get_statistics(𝓂,
         algorithm = :pruned_second_order
     end
 
+    if !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
+        SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, all_parameters, opts = opts) # timer = timer, 
+        
+        SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+
+        ret = Dict{Symbol,AbstractArray{T}}()
+
+        ret[:non_stochastic_steady_state] = solved ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
+
+        return ret
+    end
+
     @ignore_derivatives solve!(𝓂, algorithm = algorithm, opts = opts)
 
     if algorithm == :pruned_third_order
