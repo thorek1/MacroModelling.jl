@@ -953,7 +953,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                             sylvester_acceptance_tol = 1e-14),
                                                             covariance = m.var)[:covariance], old_params)
    
-            if algorithm == :first_order
+            if algorithm == :first_order_
                 deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
                                                                 sylvester_acceptance_tol = 1e-14),
