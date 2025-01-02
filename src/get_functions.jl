@@ -1866,7 +1866,7 @@ function get_solution(𝓂::ℳ,
     
     for (k,v) in 𝓂.bounds
         if k ∈ 𝓂.parameters
-            if min(max(parameters[indexin([k], 𝓂.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.parameters)][1]
+            if @ignore_derivatives min(max(parameters[indexin([k], 𝓂.parameters)][1], v[1]), v[2]) != parameters[indexin([k], 𝓂.parameters)][1]
                 return -Inf
             end
         end
