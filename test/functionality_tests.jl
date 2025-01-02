@@ -990,13 +990,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
                         @test isapprox(deriv1, DERIV1, rtol = 1e-10)
                         
-                        DERIV_zyg1 = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                        DERIV1_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                         tol = tol,
                                                                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         sylvester_algorithm = sylvester_algorithm, 
                                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
-                        @test isapprox(deriv_zyg1[1], DERIV_zyg1[1], rtol = 1e-10)
+                        @test isapprox(deriv1_zyg[1], DERIV1_zyg[1], rtol = 1e-10)
                         
 
                         if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
@@ -1025,13 +1025,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 m.solution.perturbation.second_order_solution = spzeros(0,0)
                                 m.solution.perturbation.third_order_solution = spzeros(0,0)
     
-                                DERIV_zyg2 = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                DERIV2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 mean = m.var)[:mean], old_params)
-                                @test isapprox(deriv_zyg2[1], DERIV_zyg2[1], rtol = 1e-10)
+                                @test isapprox(deriv2_zyg[1], DERIV2_zyg[1], rtol = 1e-10)
                             end
 
                             # Clear solution caches
@@ -1059,13 +1059,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 m.solution.perturbation.second_order_solution = spzeros(0,0)
                                 m.solution.perturbation.third_order_solution = spzeros(0,0)
     
-                                DERIV_zyg3 = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                DERIV3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 standard_deviation = m.var)[:standard_deviation], old_params)
-                                @test isapprox(deriv_zyg3[1], DERIV_zyg3[1], rtol = 1e-10)
+                                @test isapprox(deriv3_zyg[1], DERIV3_zyg[1], rtol = 1e-10)
                             end
 
                             # Clear solution caches
@@ -1093,13 +1093,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 m.solution.perturbation.second_order_solution = spzeros(0,0)
                                 m.solution.perturbation.third_order_solution = spzeros(0,0)
     
-                                DERIV_zyg4 = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                DERIV4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 variance = m.var)[:variance], old_params)
-                                @test isapprox(deriv_zyg4[1], DERIV_zyg4[1], rtol = 1e-10)
+                                @test isapprox(deriv4_zyg[1], DERIV4_zyg[1], rtol = 1e-10)
                             end
 
                             # Clear solution caches
@@ -1127,13 +1127,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 m.solution.perturbation.second_order_solution = spzeros(0,0)
                                 m.solution.perturbation.third_order_solution = spzeros(0,0)
     
-                                DERIV_zyg5 = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                DERIV5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
                                                                                 covariance = m.var)[:covariance], old_params)
-                                @test isapprox(deriv_zyg5[1], DERIV_zyg5[1], rtol = 1e-4)
+                                @test isapprox(deriv5_zyg[1], DERIV5_zyg[1], rtol = 1e-4)
                             end
                         end
                     end
