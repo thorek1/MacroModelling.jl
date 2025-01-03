@@ -637,7 +637,7 @@ function calculate_third_order_moments(parameters::Vector{T},
                 for obs in variance_observable
                     autocorr_tmp = ℒ.diag(ŝ_to_y₃ * Σᶻ₃ⁱ * ŝ_to_y₃' + ŝ_to_y₃ * ŝ_to_ŝ₃ⁱ * autocorr_tmp + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃') ./ max.(ℒ.diag(Σʸ₃tmp), eps(Float64))
 
-                    autocorr_tmp[ℒ.diag(Σʸ₃tmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
+                    autocorr_tmp[ℒ.diag(Σʸ₃tmp) .< opts.tol.lyapunov_acceptance_tol] .= 0
 
                     autocorr[indexin([obs], 𝓂.timings.var), i] .= autocorr_tmp[indexin([obs], variance_observable)]
                 end
