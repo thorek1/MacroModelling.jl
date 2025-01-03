@@ -1900,6 +1900,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     end
 
 
+    if plots
         if algorithm == :first_order
             # Test filtering and smoothing
             sol = get_solution(m)
