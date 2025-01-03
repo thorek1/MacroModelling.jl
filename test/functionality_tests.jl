@@ -718,7 +718,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
     @testset "get_irf with parameter input" begin
-        if alogrithm == :first_order
+        if algorithm == :first_order
         # # function get_irf(𝓂::ℳ,
         # #     parameters::Vector{S}; 
         #     periods::Int = 40, 
