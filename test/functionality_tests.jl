@@ -1648,17 +1648,91 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
 
-    # if plots
-    #     @testset "plot_solution"
-    #         # plot_solution()
-    #     end
-    # # plot_model_estimates
-    # # plot_irf
-    # # plot_conditional_variance_decomposition
-    # # plot_solution
-    # # plot_conditional_forecast
+    if plots
+        @testset "plot_solution" begin
+            while length(m.NSSS_solver_cache) > 2
+                pop!(m.NSSS_solver_cache)
+            end
 
-    # end
+            states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
+            
+            if algorithm == :first_order
+                algos = [:first_order]
+            elseif algorithm in [:second_order, :pruned_second_order]
+                algos = [[:first_order], [:first_order, :second_order], [:first_order, :pruned_second_order], [:first_order, :second_order, :pruned_second_order]]
+            elseif algorithm in [:third_order, :pruned_third_order]
+                algos = [[:first_order], [:first_order, :second_order], [:first_order, :third_order], [:second_order, :third_order], [:third_order, :pruned_third_order], [:first_order, :second_order, :third_order], [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]]
+            end
+            
+            for variables in vars
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        for lyapunov_algorithm in lyapunov_algorithms
+                            for sylvester_algorithm in sylvester_algorithms
+                                # Clear solution caches
+                                pop!(m.NSSS_solver_cache)
+                                m.solution.perturbation.qme_solution = zeros(0,0)
+                                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                    
+                                plot_solution(m, states[1], 
+                                                algorithm = algos[end],
+                                                variables = variables,
+                                                tol = tol,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                sylvester_algorithm = sylvester_algorithm)
+                            end
+                        end
+                    end
+                end
+            end
+
+            for show_plots in [true, false]
+                for save_plots in [true, false]
+                    for plots_per_page in [1,4]
+                        for save_plots_path in [pwd(), "../"]
+                            for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
+                                for save_plots_format in [:pdf,:png,:ps,:svg]
+                                    plot_solution(m, states[1], algorithm = algos[end],
+                                                    plot_attributes = plot_attributes,
+                                                    show_plots = show_plots,
+                                                    save_plots = save_plots,
+                                                    plots_per_page = plots_per_page,
+                                                    save_plots_path = save_plots_path,
+                                                    save_plots_format = save_plots_format)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            for parameters in params
+                for σ in [0.5, 5]
+                    for ignore_obc in [true, false]
+                        for state in states[[1,end]]
+                            for algo in algos
+                                plot_solution(m, state,
+                                                parameters = parameters,
+                                                σ = σ,
+                                                algorithm = algo,
+                                                ignore_obc = ignore_obc)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    # plot_model_estimates
+    # plot_irf
+    # plot_conditional_variance_decomposition
+    # plot_solution
+    # plot_conditional_forecast
+
+
 
     # test conditional forecasting
     conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[[1, end]]], Periods = 1:2)
@@ -1930,36 +2004,5 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png)
             plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4)
         end
-
-
-        states = m.timings.past_not_future_and_mixed
-        plot_solution(m, states[1])
-        plot_solution(m, states[end], verbose = true)
-        plot_solution(m, states[end], algorithm = algorithm, verbose = true)
-        plot_solution(m, states[end], algorithm = [:first_order, algorithm], verbose = true)
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = true)
-        plot_solution(m, states[1], algorithm = algorithm, σ = 10, verbose = true, show_plots = true)
-        plot_solution(m, states[1], algorithm = algorithm, σ = .1, verbose = true, show_plots = true)
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true)
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true)
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true)
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, parameters = m.parameter_values * 1.0001)
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[1])
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[end-1:end])
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var)
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = Tuple(m.timings.var))
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = :all)
-
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = string.(m.timings.var[1]))
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = string.(m.timings.var[end-1:end]))
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = string.(m.timings.var))
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = Tuple(string.(m.timings.var)))
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = reshape(string.(m.timings.var),1,length(m.timings.var)))
-        # plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, variables = string.(:all))
-
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, plots_per_page = 6)
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png)
-        plot_solution(m, states[1], algorithm = algorithm, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4)
     end
 end
