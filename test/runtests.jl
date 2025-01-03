@@ -61,6 +61,34 @@ if test_set == "higher_order"
     plots = true
     test_higher_order = true
 
+    @testset verbose = true "FS2000 third order" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :third_order, plots = plots)
+    end
+    FS2000 = nothing
+    GC.gc()
+
+    @testset verbose = true "FS2000 pruned third order" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :pruned_third_order, plots = plots)
+    end
+    FS2000 = nothing
+    GC.gc()
+
+    @testset verbose = true "FS2000 second order" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :second_order, plots = plots)
+    end
+    FS2000 = nothing
+    GC.gc()
+
+    @testset verbose = true "FS2000 pruned second order" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :pruned_second_order, plots = plots)
+    end
+    FS2000 = nothing
+    GC.gc()
+
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned second order" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
         functionality_test(m, algorithm = :pruned_second_order, plots = plots)
@@ -78,34 +106,6 @@ if test_set == "higher_order"
     @testset verbose = true "Test various models: NSSS and 1st order solution" begin
         include("test_models.jl")
     end
-    GC.gc()
-
-    @testset verbose = true "FS2000 second order" begin
-        include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :second_order, plots = plots)
-    end
-    # FS2000 = nothing
-    GC.gc()
-
-    @testset verbose = true "FS2000 pruned second order" begin
-        # include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :pruned_second_order, plots = plots)
-    end
-    # FS2000 = nothing
-    GC.gc()
-
-    @testset verbose = true "FS2000 third order" begin
-        # include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :third_order, plots = plots)
-    end
-    FS2000 = nothing
-    GC.gc()
-
-    @testset verbose = true "FS2000 pruned third order" begin
-        include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :pruned_third_order, plots = plots)
-    end
-    FS2000 = nothing
     GC.gc()
 
     @testset verbose = true "RBC_CME with calibration equations and parameter definitions second order" begin
