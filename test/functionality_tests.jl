@@ -1876,6 +1876,195 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
         end
+
+        @testset "plot_conditional_forecast" begin
+            # test conditional forecasting
+            new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
+            varnames = axiskeys(new_sub_irfs_all,1)
+            shocknames = axiskeys(new_sub_irfs_all,3)
+            sol = get_solution(m)
+            # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+
+
+            stst  = get_irf(m, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
+
+            conditions = []
+
+            cndtns = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .01
+            cndtns[var_idxs[2],2] = .02
+
+            push!(conditions, cndtns)
+
+            cndtns = spzeros(size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .01
+            cndtns[var_idxs[2],2] = .02
+
+            push!(conditions, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns[1,1] = .01
+            cndtns[2,2] = .02
+
+            push!(conditions, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns[1,1] = .01
+            cndtns[2,2] = .02
+
+            push!(conditions, cndtns)
+
+            conditions_lvl = []
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+
+            push!(conditions_lvl, cndtns_lvl)
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+        
+            push!(conditions_lvl, cndtns_lvl)
+
+
+            shocks = []
+
+            push!(shocks, nothing)
+
+            if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
+                shcks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
+                shcks[1,1] = .1
+
+                push!(shocks, shcks)
+
+                shcks = spzeros(size(new_sub_irfs_all,3),1)
+                shcks[1,1] = .1
+                
+                push!(shocks, shcks)
+
+                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
+                shcks[1,1] = .1
+
+                push!(shocks, shcks)
+
+                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
+                shcks[1,1] = .1
+
+                push!(shocks, shcks)
+            end
+
+            for show_plots in [true, false]
+                for save_plots in [true, false]
+                    for plots_per_page in [1,4]
+                        for save_plots_path in [pwd(), "../"]
+                            for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
+                                for save_plots_format in [:pdf,:png,:ps,:svg]
+                                    plot_conditional_forecast(m, conditions[1],
+                                                                conditions_in_levels = false,
+                                                                initial_state = [0.0],
+                                                                algorithm = algorithm, 
+                                                                shocks = shocks[1],
+                                                                plot_attributes = plot_attributes,
+                                                                show_plots = show_plots,
+                                                                save_plots = save_plots,
+                                                                plots_per_page = plots_per_page,
+                                                                save_plots_path = save_plots_path,
+                                                                save_plots_format = save_plots_format)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            while length(m.NSSS_solver_cache) > 2
+                pop!(m.NSSS_solver_cache)
+            end
+
+            for periods in [0,10]
+                for variables in vars
+                    for levels in [true, false]
+                        for verbose in [false] # [true, false]
+                            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                                for quadratic_matrix_equation_algorithm in qme_algorithms
+                                    for lyapunov_algorithm in lyapunov_algorithms
+                                        for sylvester_algorithm in sylvester_algorithms
+                                            
+                                            # Clear solution caches
+                                            pop!(m.NSSS_solver_cache)
+                                            m.solution.perturbation.qme_solution = zeros(0,0)
+                                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        
+                                            plot_conditional_forecast(m, conditions[end],
+                                                                                conditions_in_levels = false,
+                                                                                algorithm = algorithm, 
+                                                                                variables = variables,
+                                                                                periods = periods,
+                                                                                levels = levels,
+                                                                                shocks = shocks[end],
+                                                                                tol = tol,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                sylvester_algorithm = sylvester_algorithm,
+                                                                                verbose = verbose)
+
+                                            
+                                            # Clear solution caches
+                                            pop!(m.NSSS_solver_cache)
+                                            m.solution.perturbation.qme_solution = zeros(0,0)
+                                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        
+                                            plot_conditional_forecast(m, conditions_lvl[end],
+                                                                                    algorithm = algorithm, 
+                                                                                    variables = variables,
+                                                                                    periods = periods,
+                                                                                    levels = levels,
+                                                                                    shocks = shocks[end],
+                                                                                    tol = tol,
+                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                                    verbose = verbose)
+
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            for cndtns in conditions
+                for variables in vars
+                    for initial_state in init_states
+                        plot_conditional_forecast(m, cndtns,
+                                                            conditions_in_levels = false,
+                                                            initial_state = initial_state,
+                                                            algorithm = algorithm, 
+                                                            variables = variables,
+                                                            verbose = false)
+                    end
+                end
+                
+                for parameters in params
+                    for shcks in shocks
+                                plot_conditional_forecast(m, cndtns,
+                                                                    parameters = parameters,
+                                                                    conditions_in_levels = false,
+                                                                    algorithm = algorithm, 
+                                                                    shocks = shcks,
+                                                                    verbose = false)
+                    end
+                end
+            end
+        end
     end
 
     # plot_model_estimates
