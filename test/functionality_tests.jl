@@ -743,6 +743,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     end
                 end
 
+                while length(m.NSSS_solver_cache) > 2
+                    pop!(m.NSSS_solver_cache)
+                end
 
                 shock_mat = randn(m.timings.nExo,3)
 
@@ -759,6 +762,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 
                     irf_ = get_irf(m, parameter_values, initial_state = initial_state)
                     
+                    deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
+
+                    deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1), x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
+
+                    @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-8)
+
                     for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                         for quadratic_matrix_equation_algorithm in qme_algorithms
                             # Clear solution caches
@@ -772,7 +781,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             initial_state = initial_state,
                                             tol = tol,
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
-                            @test isapprox(irf_, IRF_)
+                            @test isapprox(irf_, IRF_, rtol = 1e-8)
+
+                            DERIV_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state, tol = tol,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)[:,1,1], parameter_values)
+
+                            @test isapprox(deriv_for, DERIV_for, rtol = 1e-8)
                         end
                     end
                     for variables in vars
@@ -791,6 +805,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
     end
 
+    
     @testset "get_solution with parameter input" begin
         for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
             sol = get_solution(m, parameter_values, algorithm = algorithm)
@@ -1442,6 +1457,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
 
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+
         shock_mat = randn(m.timings.nExo,3)
 
         shock_mat2 = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10)
@@ -1476,7 +1495,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)
-                                @test isapprox(irf_, IRF_)
+                                @test isapprox(irf_, IRF_, rtol = 1e-8)
                             end
                         end
                     end
@@ -1499,32 +1518,69 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     @testset "get_non_stochastic_steady_state_residuals" begin
         steady_state = SS(m, derivatives = false)
         
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+
         for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
             for parameters in params 
+                # Clear solution caches
+                pop!(m.NSSS_solver_cache)
+                m.solution.perturbation.qme_solution = zeros(0,0)
+                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                m.solution.perturbation.third_order_solution = spzeros(0,0)
 
                 res = get_non_stochastic_steady_state_residuals(m, steady_state, tol = tol, verbose = false, parameters = parameters)
 
                 for values in [Dict(axiskeys(steady_state)[1] .=> collect(steady_state)), Dict(string.(axiskeys(steady_state)[1]) .=> collect(steady_state)), collect(steady_state)]   
+                    # Clear solution caches
+                    pop!(m.NSSS_solver_cache)
+                    m.solution.perturbation.qme_solution = zeros(0,0)
+                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                    
                     RES = get_non_stochastic_steady_state_residuals(m, values, tol = tol, verbose = false, parameters = parameters)
 
-                    @test isapprox(res,RES)
+                    @test isapprox(res, RES, rtol = 1e-8)
                 end
             end
 
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            m.solution.perturbation.qme_solution = zeros(0,0)
+            m.solution.perturbation.second_order_solution = spzeros(0,0)
+            m.solution.perturbation.third_order_solution = spzeros(0,0)
+
             res1 = get_non_stochastic_steady_state_residuals(m, steady_state, tol = tol, verbose = false)
+
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            m.solution.perturbation.qme_solution = zeros(0,0)
+            m.solution.perturbation.second_order_solution = spzeros(0,0)
+            m.solution.perturbation.third_order_solution = spzeros(0,0)
 
             res2 = get_non_stochastic_steady_state_residuals(m, steady_state[1:3], tol = tol, verbose = false)
 
-            @test isapprox(res1,res2)
+            @test isapprox(res1, res2, rtol = 1e-8)
         end
     end
 
     @testset "get_steady_state" begin
+        while length(m.NSSS_solver_cache) > 2
+            pop!(m.NSSS_solver_cache)
+        end
+
         for derivatives in [true, false]
             for stochastic in (algorithm == :first_order ? [false] : [true, false])
                 for return_variables_only in [true, false]
                     for verbose in [false]
                         for silent in [true, false]
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+            
                             NSSS = get_steady_state(m, 
                                                     verbose = verbose, 
                                                     silent = silent, 
@@ -1534,6 +1590,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     derivatives = derivatives)
                             for quadratic_matrix_equation_algorithm in qme_algorithms
                                 for sylvester_algorithm in sylvester_algorithms
+                                    # Clear solution caches
+                                    pop!(m.NSSS_solver_cache)
+                                    m.solution.perturbation.qme_solution = zeros(0,0)
+                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                    
                                     nsss = get_steady_state(m, 
                                                             verbose = verbose, 
                                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm, 
@@ -1543,7 +1605,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                             algorithm = algorithm, 
                                                             stochastic = stochastic, 
                                                             derivatives = derivatives)
-                                    @test isapprox(NSSS,nsss)
+                                    @test isapprox(NSSS, nsss, rtol = 1e-8)
                                 end
                             end
                         end
@@ -1555,6 +1617,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         for parameter_derivatives in param_derivs
             for parameters in params
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    # Clear solution caches
+                    pop!(m.NSSS_solver_cache)
+                    m.solution.perturbation.qme_solution = zeros(0,0)
+                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+    
                     nsss = get_steady_state(m, 
                                             parameters = parameters, 
                                             algorithm = algorithm, 
