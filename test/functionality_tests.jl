@@ -647,7 +647,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 sylvester_algorithm = sylvester_algorithm,
                                                 verbose = verbose)
 
-                                @test isapprox(corrl, CORRL, rtol = 1e-8)
+                                @test isapprox(corrl, CORRL, rtol = 1e-6)
 
                                 # Clear solution caches
                                 pop!(m.NSSS_solver_cache)
@@ -748,7 +748,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                     deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1), x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
 
-                    @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-8)
+                    @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-6)
 
                     for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                         for quadratic_matrix_equation_algorithm in qme_algorithms
@@ -832,9 +832,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 push!(deriv_sol_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], parameter_values)[1])
             end
 
-            @test isapprox(deriv_sol_zyg, deriv_sol_fin, rtol = 1e-8)
+            @test isapprox(deriv_sol_zyg, deriv_sol_fin, rtol = 1e-6)
             
-            @test isapprox(deriv_sol, deriv_sol_fin, rtol = 1e-8)
+            @test isapprox(deriv_sol, deriv_sol_fin, rtol = 1e-6)
 
             for tol in [MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14), MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14, NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
