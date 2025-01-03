@@ -1420,7 +1420,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     @testset "get_irf" begin
         for ignore_obc in [true,false]
             for levels in [true,false]
-                for generalised_irf in [true,false]
+                for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
                     for negative_shock in [true,false]
                         for shock_size in [.1,1]
                             for periods in [1,10]
@@ -1724,12 +1724,162 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
         end
+
+
+        @testset "plot_irf" begin
+            while length(m.NSSS_solver_cache) > 2
+                pop!(m.NSSS_solver_cache)
+            end
+
+            for ignore_obc in [true,false]
+                for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
+                    for negative_shock in [true,false]
+                        for shock_size in [.1,1]
+                            for periods in [1,10]
+                                plot_irf(m, 
+                                        algorithm = algorithm, 
+                                        ignore_obc = ignore_obc,
+                                        periods = periods,
+                                        generalised_irf = generalised_irf,
+                                        negative_shock = negative_shock,
+                                        shock_size = shock_size)
+                            end
+                        end
+                    end
+                end
+            end
+
+            while length(m.NSSS_solver_cache) > 2
+                pop!(m.NSSS_solver_cache)
+            end
+
+            shock_mat = randn(m.timings.nExo,3)
+
+            shock_mat2 = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10)
+
+            shock_mat3 = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10)
+
+            for parameters in params
+                for initial_state in init_states
+                    for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                        for quadratic_matrix_equation_algorithm in qme_algorithms
+                            for lyapunov_algorithm in lyapunov_algorithms
+                                for sylvester_algorithm in sylvester_algorithms
+                                    # Clear solution caches
+                                    pop!(m.NSSS_solver_cache)
+                                    m.solution.perturbation.qme_solution = zeros(0,0)
+                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                                
+                                    plot_irf(m, 
+                                                algorithm = algorithm, 
+                                                parameters = parameters,
+                                                initial_state = initial_state,
+                                                tol = tol,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                sylvester_algorithm = sylvester_algorithm)
+                                end
+                            end
+                        end
+                    end
+
+                    for variables in vars
+                        for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        
+                            plot_irf(m, algorithm = algorithm, parameters = parameters, variables = variables, initial_state = initial_state, shocks = shocks)
+                        end
+                    end
+                end
+            end
+
+            for show_plots in [true, false]
+                for save_plots in [true, false]
+                    for plots_per_page in [4,6]
+                        for save_plots_path in [pwd(), "../"]
+                            for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
+                                for save_plots_format in [:pdf,:png,:ps,:svg]
+                                    plot_irf(m, algorithm = algorithm,
+                                                    plot_attributes = plot_attributes,
+                                                    show_plots = show_plots,
+                                                    save_plots = save_plots,
+                                                    plots_per_page = plots_per_page,
+                                                    save_plots_path = save_plots_path,
+                                                    save_plots_format = save_plots_format)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+
+        @testset "plot_conditional_variance_decomposition" begin
+            for periods in [10,40]
+                for variables in vars
+                    plot_conditional_variance_decomposition(m, periods = periods, variables = variables)
+                end
+            end
+
+            while length(m.NSSS_solver_cache) > 2
+                pop!(m.NSSS_solver_cache)
+            end
+
+            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for quadratic_matrix_equation_algorithm in qme_algorithms
+                    for lyapunov_algorithm in lyapunov_algorithms
+                        for sylvester_algorithm in sylvester_algorithms
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                
+                            plot_conditional_variance_decomposition(m, tol = tol,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    sylvester_algorithm = sylvester_algorithm)
+                        end
+                    end
+                end
+            end
+            
+            for show_plots in [true, false]
+                for save_plots in [true, false]
+                    for plots_per_page in [4,6]
+                        for save_plots_path in [pwd(), "../"]
+                            for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
+                                for save_plots_format in [:pdf,:png,:ps,:svg]
+                                    for max_elements_per_legend_row in [3,5]
+                                        for extra_legend_space in [0.0, 0.5]
+                                            plot_conditional_variance_decomposition(m,
+                                                                                    plot_attributes = plot_attributes,
+                                                                                    max_elements_per_legend_row = max_elements_per_legend_row,
+                                                                                    extra_legend_space = extra_legend_space,
+                                                                                    show_plots = show_plots,
+                                                                                    save_plots = save_plots,
+                                                                                    plots_per_page = plots_per_page,
+                                                                                    save_plots_path = save_plots_path,
+                                                                                    save_plots_format = save_plots_format)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
 
     # plot_model_estimates
-    # plot_irf
     # plot_conditional_variance_decomposition
-    # plot_solution
     # plot_conditional_forecast
 
 
