@@ -4,7 +4,7 @@
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
 - [ ] add correlation and other moments to get statistics
-- [ ] get irf with parameters for higher order
+- [ ] get irf with parameters for higher order and make it zygote compatible
 - [ ] implement rrule for higher order moments
 - [ ] add derivatives wrt covariance in get_moments
 - [ ] recheck function examples and docs (include output description)
