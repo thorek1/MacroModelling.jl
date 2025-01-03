@@ -710,12 +710,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
     end
 
-    # plot_model_estimates
-    # plot_irf
-    # plot_conditional_variance_decomposition
-    # plot_solution
-    # plot_conditional_forecast
-
 
     @testset "get_irf with parameter input" begin
         if algorithm == :first_order
@@ -807,8 +801,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
 
             deriv_sol = []
-            for i in 1:length(sol)-1
-                push!(deriv_sol, ForwardDiff.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], old_params))
+            for i in 1:length(sol)-2
+                push!(deriv_sol, ForwardDiff.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], parameter_values))
             end
 
             # Clear solution caches
@@ -820,9 +814,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
 
             deriv_sol_fin = []
-            for i in 1:length(sol)-1
+            for i in 1:length(sol)-2
                 push!(deriv_sol_fin, FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
-                                                    x->get_solution(m, x, algorithm = algorithm)[i], old_params)[1])
+                                                    x->get_solution(m, x, algorithm = algorithm)[i], parameter_values)[1])
             end
 
             # Clear solution caches
@@ -834,8 +828,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
 
             deriv_sol_zyg = []
-            for i in 1:length(sol)-1
-                push!(deriv_sol_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], old_params)[1])
+            for i in 1:length(sol)-2
+                push!(deriv_sol_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], parameter_values)[1])
             end
 
             @test isapprox(deriv_sol_zyg, deriv_sol_fin, rtol = 1e-8)
@@ -868,11 +862,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         m.solution.perturbation.third_order_solution = spzeros(0,0)
 
                         DERIV_SOL = []
-                        for i in 1:length(sol)-1
+                        for i in 1:length(sol)-2
                             push!(DERIV_SOL, ForwardDiff.jacobian(x->get_solution(m, x, algorithm = algorithm, 
                                             tol = tol,
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                            sylvester_algorithm = sylvester_algorithm)[i], old_params))
+                                            sylvester_algorithm = sylvester_algorithm)[i], parameter_values))
                         end
 
                         @test isapprox(deriv_sol, DERIV_SOL, rtol = 1e-8)
@@ -886,11 +880,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         m.solution.perturbation.third_order_solution = spzeros(0,0)
 
                         DERIV_SOL_zyg = []
-                        for i in 1:length(sol)-1
+                        for i in 1:length(sol)-2
                             push!(DERIV_SOL_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm, 
                                             tol = tol,
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                            sylvester_algorithm = sylvester_algorithm)[i], old_params)[1])
+                                            sylvester_algorithm = sylvester_algorithm)[i], parameter_values)[1])
                         end
 
                         @test isapprox(deriv_sol_zyg, DERIV_SOL_zyg, rtol = 1e-8)
@@ -1009,14 +1003,14 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         m.solution.perturbation.third_order_solution = spzeros(0,0)
 
         deriv1 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                        non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
+                                                        non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], parameter_values)
 
         deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1),
                                                 x->get_statistics(m, x, algorithm = algorithm, 
-                                                        non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
+                                                        non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], parameter_values)
 
         deriv1_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                        non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
+                                                        non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], parameter_values)
                  
         @test isapprox(deriv1_zyg[1], deriv1_fin[1], rtol = 1e-8)
 
@@ -1039,16 +1033,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
 
             deriv2 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                            mean = m.var)[:mean], old_params)
+                                                            mean = m.var)[:mean], parameter_values)
             
 
             deriv2_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
-                                                            mean = m.var)[:mean], old_params)
+                                                            mean = m.var)[:mean], parameter_values)
                           
             if algorithm == :first_order
                 deriv2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                mean = m.var)[:mean], old_params)
+                                                                mean = m.var)[:mean], parameter_values)
                                                                 
                 @test isapprox(deriv2_zyg[1], deriv2_fin[1], rtol = 1e-8)
             end
@@ -1069,15 +1063,15 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
 
             deriv3 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                            standard_deviation = m.var)[:standard_deviation], old_params)
+                                                            standard_deviation = m.var)[:standard_deviation], parameter_values)
             
             deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
-                                                            standard_deviation = m.var)[:standard_deviation], old_params)
+                                                            standard_deviation = m.var)[:standard_deviation], parameter_values)
                         
             if algorithm == :first_order
                 deriv3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                standard_deviation = m.var)[:standard_deviation], old_params)
+                                                                standard_deviation = m.var)[:standard_deviation], parameter_values)
                                                                 
                 @test isapprox(deriv3_zyg[1], deriv3_fin[1], rtol = 1e-8)
             end
@@ -1097,15 +1091,15 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
 
             deriv4 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                            variance = m.var)[:variance], old_params)
+                                                            variance = m.var)[:variance], parameter_values)
 
             deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
-                                                            variance = m.var)[:variance], old_params)
+                                                            variance = m.var)[:variance], parameter_values)
                     
             if algorithm == :first_order
                 deriv4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                variance = m.var)[:variance], old_params)
+                                                                variance = m.var)[:variance], parameter_values)
                                                                 
                 @test isapprox(deriv4_zyg[1], deriv4_fin[1], rtol = 1e-8)
             end
@@ -1127,19 +1121,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
                                                             sylvester_acceptance_tol = 1e-14),
-                                                            covariance = m.var)[:covariance], old_params)
+                                                            covariance = m.var)[:covariance], parameter_values)
 
             deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1,max_range = 1e-4),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
                                                             tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
                                                             sylvester_acceptance_tol = 1e-14),
-                                                            covariance = m.var)[:covariance], old_params)
+                                                            covariance = m.var)[:covariance], parameter_values)
    
             if algorithm == :first_order_
                 deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
                                                                 sylvester_acceptance_tol = 1e-14),
-                                                                covariance = m.var)[:covariance], old_params)
+                                                                covariance = m.var)[:covariance], parameter_values)
                                                                 
                 @test isapprox(deriv5_zyg[1], deriv5_fin[1], rtol = 1e-8)
             end
@@ -1169,7 +1163,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         sylvester_algorithm = sylvester_algorithm, 
-                                                                        non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
+                                                                        non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], parameter_values)
                         @test isapprox(deriv1, DERIV1, rtol = 1e-8)
                         
                         DERIV1_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
@@ -1177,7 +1171,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         sylvester_algorithm = sylvester_algorithm, 
-                                                                        non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
+                                                                        non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], parameter_values)
                         @test isapprox(deriv1_zyg[1], DERIV1_zyg[1], rtol = 1e-8)
                         
 
@@ -1195,7 +1189,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
-                                                                            mean = m.var)[:mean], old_params)
+                                                                            mean = m.var)[:mean], parameter_values)
                             @test isapprox(deriv2, DERIV2, rtol = 1e-8)
 
                             if algorithm == :first_order
@@ -1212,7 +1206,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
-                                                                                mean = m.var)[:mean], old_params)
+                                                                                mean = m.var)[:mean], parameter_values)
                                 @test isapprox(deriv2_zyg[1], DERIV2_zyg[1], rtol = 1e-8)
                             end
 
@@ -1229,7 +1223,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
-                                                                            standard_deviation = m.var)[:standard_deviation], old_params)
+                                                                            standard_deviation = m.var)[:standard_deviation], parameter_values)
                             @test isapprox(deriv3, DERIV3, rtol = 1e-8)
 
                             if algorithm == :first_order
@@ -1246,7 +1240,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
-                                                                                standard_deviation = m.var)[:standard_deviation], old_params)
+                                                                                standard_deviation = m.var)[:standard_deviation], parameter_values)
                                 @test isapprox(deriv3_zyg[1], DERIV3_zyg[1], rtol = 1e-8)
                             end
 
@@ -1263,7 +1257,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
-                                                                            variance = m.var)[:variance], old_params)
+                                                                            variance = m.var)[:variance], parameter_values)
                             @test isapprox(deriv4, DERIV4, rtol = 1e-8)
 
                             if algorithm == :first_order
@@ -1280,7 +1274,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
-                                                                                variance = m.var)[:variance], old_params)
+                                                                                variance = m.var)[:variance], parameter_values)
                                 @test isapprox(deriv4_zyg[1], DERIV4_zyg[1], rtol = 1e-8)
                             end
 
@@ -1297,7 +1291,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
-                                                                            covariance = m.var)[:covariance], old_params)
+                                                                            covariance = m.var)[:covariance], parameter_values)
                             @test isapprox(deriv5, DERIV5, rtol = 1e-8)
 
                             if algorithm == :first_order_
@@ -1314,7 +1308,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm, 
-                                                                                covariance = m.var)[:covariance], old_params)
+                                                                                covariance = m.var)[:covariance], parameter_values)
                                 @test isapprox(deriv5_zyg[1], DERIV5_zyg[1], rtol = 1e-8)
                             end
                         end
@@ -1642,7 +1636,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     get_shocks(m) 
     get_state_variables(m) 
     get_jump_variables(m)
-    
+
     GC.gc()
 
     if algorithm == :first_order
@@ -1651,6 +1645,20 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         @test isapprox(collect(new_sub_lvl_irfs[:,1,:]), collect(lvl_irfs[:,6,1]),rtol = eps(Float32))
     end
 
+
+
+
+    # if plots
+    #     @testset "plot_solution"
+    #         # plot_solution()
+    #     end
+    # # plot_model_estimates
+    # # plot_irf
+    # # plot_conditional_variance_decomposition
+    # # plot_solution
+    # # plot_conditional_forecast
+
+    # end
 
     # test conditional forecasting
     conditions = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs[[1, end]]], Periods = 1:2)
