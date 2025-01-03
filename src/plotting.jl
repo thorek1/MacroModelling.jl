@@ -1580,7 +1580,13 @@ function plot_conditional_forecast(𝓂::ℳ,
     var_idx = indexin(var_names,full_SS)
 
     if length(intersect(𝓂.aux,var_names)) > 0
-        var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+        for v in 𝓂.aux
+            idx = indexin([v],var_names)
+            if !isnothing(idx[1])
+                var_names[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+            end
+        end
+        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
     end
     
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
