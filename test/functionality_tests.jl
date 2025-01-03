@@ -710,14 +710,86 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
     end
 
-    # get_irf
-
     # plot_model_estimates
     # plot_irf
     # plot_conditional_variance_decomposition
     # plot_solution
     # plot_conditional_forecast
 
+
+    @testset "get_irf with parameter input" begin
+        if alogrithm == :first_order
+        # # function get_irf(𝓂::ℳ,
+        # #     parameters::Vector{S}; 
+        #     periods::Int = 40, 
+        # #     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
+        # #     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+        #     negative_shock::Bool = false, 
+        # #     initial_state::Vector{Float64} = [0.0],
+        #     levels::Bool = false,
+        # #     verbose::Bool = false,
+        # #     tol::Tolerances = Tolerances(),
+        # #     quadratic_matrix_equation_algorithm::Symbol = :schur) where S <: Real
+
+            for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
+                for levels in [true,false]
+                    for negative_shock in [true,false]
+                        for periods in [1,10]
+                            get_irf(m, parameter_values,
+                                    levels = levels,
+                                    periods = periods,
+                                    negative_shock = negative_shock)
+                        end
+                    end
+                end
+
+
+                shock_mat = randn(m.timings.nExo,3)
+
+                shock_mat2 = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10)
+
+                shock_mat3 = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10)
+
+                for initial_state in init_states
+                    # Clear solution caches
+                    pop!(m.NSSS_solver_cache)
+                    m.solution.perturbation.qme_solution = zeros(0,0)
+                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                
+                    irf_ = get_irf(m, parameter_values, initial_state = initial_state)
+                    
+                    for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                        for quadratic_matrix_equation_algorithm in qme_algorithms
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        
+                            IRF_ = get_irf(m, 
+                                            parameter_values, 
+                                            initial_state = initial_state,
+                                            tol = tol,
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
+                            @test isapprox(irf_, IRF_)
+                        end
+                    end
+                    for variables in vars
+                        for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        
+                            get_irf(m, parameter_values, variables = variables, initial_state = initial_state, shocks = shocks)
+                        end
+                    end
+                end
+            end
+        end
+    end
 
     @testset "get_solution with parameter input" begin
         for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
