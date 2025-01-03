@@ -3227,10 +3227,14 @@ function get_statistics(𝓂,
                 autocorr[:,i] .= ℒ.diag(ŝ_to_y₂ * ŝ_to_ŝ₂ⁱ * autocorr_tmp) ./ max.(ℒ.diag(covar_dcmp),eps(Float64))
                 ŝ_to_ŝ₂ⁱ *= ŝ_to_ŝ₂
             end
+            
+            autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
         elseif !(algorithm == :pruned_third_order)
             A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
         
             autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ max.(ℒ.diag(covar_dcmp),eps(Float64))) for i in autocorrelation_periods])
+
+            autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
         end
     end
 

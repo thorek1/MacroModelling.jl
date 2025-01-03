@@ -711,8 +711,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     end
 
     # get_irf
-    # get_solution
-    # get_statistics
 
     # plot_model_estimates
     # plot_irf
@@ -906,7 +904,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 # println("variance: $(ℒ.norm(stats[:variance] - STATS[:variance]) / max(ℒ.norm(stats[:variance]), ℒ.norm(STATS[:variance])))")
                                 # println("standard_deviation: $(ℒ.norm(stats[:standard_deviation] - STATS[:standard_deviation]) / max(ℒ.norm(stats[:standard_deviation]), ℒ.norm(STATS[:standard_deviation])))")
                                 # println("covariance: $(ℒ.norm(stats[:covariance] - STATS[:covariance]) / max(ℒ.norm(stats[:covariance]), ℒ.norm(STATS[:covariance])))")
-                                println("autocorrelation: $(ℒ.norm(stats[:autocorrelation] - STATS[:autocorrelation]) / max(ℒ.norm(stats[:autocorrelation]), ℒ.norm(STATS[:autocorrelation])))")
+                                println("autocorrelation (qme: $quadratic_matrix_equation_algorithm, sylv: $sylvester_algorithm, lyap: $lyapunov_algorithm, tol: $tol): $(ℒ.norm(stats[:autocorrelation] - STATS[:autocorrelation]) / max(ℒ.norm(stats[:autocorrelation]), ℒ.norm(STATS[:autocorrelation])))")
                                 @test isapprox(stats[:non_stochastic_steady_state], STATS[:non_stochastic_steady_state], rtol = 1e-7)
                                 @test isapprox(stats[:mean], STATS[:mean], rtol = 1e-7)
                                 @test isapprox(stats[:standard_deviation], STATS[:standard_deviation], rtol = 1e-7)
