@@ -564,7 +564,9 @@ function plot_irf(𝓂::ℳ;
                 initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
             end
         else
-            @assert algorithm ∉ [:pruned_second_order, :pruned_third_order] && initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+            end
         end
     end
     
