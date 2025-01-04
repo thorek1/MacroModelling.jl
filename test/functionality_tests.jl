@@ -1343,26 +1343,35 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
 
         for parameter_derivatives in param_derivs
-            for variables in vars
-                get_moments(m,
-                            algorithm = algorithm,
-                            variables = variables,
-                            non_stochastic_steady_state = true,
-                            mean = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
-                            standard_deviation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
-                            variance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
-                            covariance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
-                            parameter_derivatives = parameter_derivatives,
-                            derivatives = true)
-            end
+            get_moments(m,
+                        algorithm = algorithm,
+                        non_stochastic_steady_state = true,
+                        mean = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                        standard_deviation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                        variance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                        covariance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                        parameter_derivatives = parameter_derivatives,
+                        derivatives = true)
+        end
+        
+        for variables in vars
+            get_moments(m,
+                        algorithm = algorithm,
+                        variables = variables,
+                        non_stochastic_steady_state = true,
+                        mean = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                        standard_deviation = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                        variance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                        covariance = algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order],
+                        derivatives = true)
         end
 
         while length(m.NSSS_solver_cache) > 2
             pop!(m.NSSS_solver_cache)
         end
 
-        for derivatives in [true, false]
-            for parameters in params
+        for parameters in params
+            for derivatives in [true, false]
                 # Clear solution caches
                 pop!(m.NSSS_solver_cache)
                 m.solution.outdated_NSSS = true
