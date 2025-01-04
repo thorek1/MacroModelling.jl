@@ -1783,27 +1783,27 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             end
                         end
                     end
+                end
+            end
 
-                    for variables in vars
-                        for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
-                                        
-                            plot_irf(m, algorithm = algorithm, parameters = parameters, variables = variables, initial_state = initial_state, shocks = shocks)
-                        end
-                    end
+            for variables in vars
+                for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                    # Clear solution caches
+                    pop!(m.NSSS_solver_cache)
+                    m.solution.perturbation.qme_solution = zeros(0,0)
+                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                
+                    plot_irf(m, algorithm = algorithm, variables = variables, shocks = shocks)
                 end
             end
 
             for show_plots in [true, false]
                 for save_plots in [true, false]
                     for plots_per_page in [4,6]
-                        for save_plots_path in [pwd(), "../"]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                             for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
-                                for save_plots_format in [:pdf,:png,:ps,:svg]
+                                for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
                                     plot_irf(m, algorithm = algorithm,
                                                     plot_attributes = plot_attributes,
                                                     show_plots = show_plots,
@@ -1834,18 +1834,15 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for lyapunov_algorithm in lyapunov_algorithms
-                        #for sylvester_algorithm in sylvester_algorithms
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
-                                
-                            plot_conditional_variance_decomposition(m, tol = tol,
-                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                    lyapunov_algorithm = lyapunov_algorithm)
-                                                                    #sylvester_algorithm = sylvester_algorithm)
-                        #end
+                        # Clear solution caches
+                        pop!(m.NSSS_solver_cache)
+                        m.solution.perturbation.qme_solution = zeros(0,0)
+                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            
+                        plot_conditional_variance_decomposition(m, tol = tol,
+                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                lyapunov_algorithm = lyapunov_algorithm)
                     end
                 end
             end
@@ -1853,9 +1850,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for show_plots in [true, false]
                 for save_plots in [true, false]
                     for plots_per_page in [4,6]
-                        for save_plots_path in [pwd(), "../"]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                             for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
-                                for save_plots_format in [:pdf,:png,:ps,:svg]
+                                for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
                                     for max_elements_per_legend_row in [3,5]
                                         for extra_legend_space in [0.0, 0.5]
                                             plot_conditional_variance_decomposition(m,
@@ -1960,9 +1957,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for show_plots in [true, false]
                 for save_plots in [true, false]
                     for plots_per_page in [1,4]
-                        for save_plots_path in [pwd(), "../"]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                             for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
-                                for save_plots_format in [:pdf,:png,:ps,:svg]
+                                for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
                                     plot_conditional_forecast(m, conditions[1],
                                                                 conditions_in_levels = false,
                                                                 initial_state = [0.0],
@@ -1986,24 +1983,40 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             for periods in [0,10]
-                for variables in vars
-                    for levels in [true, false]
-                        for verbose in [false] # [true, false]
-                            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                                for quadratic_matrix_equation_algorithm in qme_algorithms
-                                    for lyapunov_algorithm in lyapunov_algorithms
-                                        for sylvester_algorithm in sylvester_algorithms
-                                            
-                                            # Clear solution caches
-                                            pop!(m.NSSS_solver_cache)
-                                            m.solution.perturbation.qme_solution = zeros(0,0)
-                                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                for levels in [true, false]
+                    for verbose in [false] # [true, false]
+                        for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                            for quadratic_matrix_equation_algorithm in qme_algorithms
+                                for lyapunov_algorithm in lyapunov_algorithms
+                                    for sylvester_algorithm in sylvester_algorithms
                                         
-                                            plot_conditional_forecast(m, conditions[end],
-                                                                                conditions_in_levels = false,
+                                        # Clear solution caches
+                                        pop!(m.NSSS_solver_cache)
+                                        m.solution.perturbation.qme_solution = zeros(0,0)
+                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    
+                                        plot_conditional_forecast(m, conditions[end],
+                                                                            conditions_in_levels = false,
+                                                                            algorithm = algorithm, 
+                                                                            periods = periods,
+                                                                            levels = levels,
+                                                                            shocks = shocks[end],
+                                                                            tol = tol,
+                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                            lyapunov_algorithm = lyapunov_algorithm,
+                                                                            sylvester_algorithm = sylvester_algorithm,
+                                                                            verbose = verbose)
+
+                                        
+                                        # Clear solution caches
+                                        pop!(m.NSSS_solver_cache)
+                                        m.solution.perturbation.qme_solution = zeros(0,0)
+                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    
+                                        plot_conditional_forecast(m, conditions_lvl[end],
                                                                                 algorithm = algorithm, 
-                                                                                variables = variables,
                                                                                 periods = periods,
                                                                                 levels = levels,
                                                                                 shocks = shocks[end],
@@ -2013,26 +2026,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
 
-                                            
-                                            # Clear solution caches
-                                            pop!(m.NSSS_solver_cache)
-                                            m.solution.perturbation.qme_solution = zeros(0,0)
-                                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                            m.solution.perturbation.third_order_solution = spzeros(0,0)
-                                        
-                                            plot_conditional_forecast(m, conditions_lvl[end],
-                                                                                    algorithm = algorithm, 
-                                                                                    variables = variables,
-                                                                                    periods = periods,
-                                                                                    levels = levels,
-                                                                                    shocks = shocks[end],
-                                                                                    tol = tol,
-                                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                    lyapunov_algorithm = lyapunov_algorithm,
-                                                                                    sylvester_algorithm = sylvester_algorithm,
-                                                                                    verbose = verbose)
-
-                                        end
                                     end
                                 end
                             end
@@ -2043,25 +2036,35 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             for cndtns in conditions
                 for variables in vars
-                    for initial_state in init_states
-                        plot_conditional_forecast(m, cndtns,
-                                                            conditions_in_levels = false,
-                                                            initial_state = initial_state,
-                                                            algorithm = algorithm, 
-                                                            variables = variables,
-                                                            verbose = false)
-                    end
+                    plot_conditional_forecast(m, cndtns,
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        variables = variables,
+                                                        verbose = false)
                 end
                 
+                for initial_state in init_states
+                    plot_conditional_forecast(m, cndtns,
+                                                        conditions_in_levels = false,
+                                                        initial_state = initial_state,
+                                                        algorithm = algorithm, 
+                                                        verbose = false)
+                end
+
+                for shcks in shocks
+                    plot_conditional_forecast(m, cndtns,
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shcks,
+                                                        verbose = false)
+                end
+
                 for parameters in params
-                    for shcks in shocks
-                                plot_conditional_forecast(m, cndtns,
-                                                                    parameters = parameters,
-                                                                    conditions_in_levels = false,
-                                                                    algorithm = algorithm, 
-                                                                    shocks = shcks,
-                                                                    verbose = false)
-                    end
+                    plot_conditional_forecast(m, cndtns,
+                                                        parameters = parameters,
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        verbose = false)
                 end
             end
         end
