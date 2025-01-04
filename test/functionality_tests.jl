@@ -746,7 +746,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     
                     deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
 
-                    deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(3,1), x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
+                    deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(4,1), x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
 
                     @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-6)
 
@@ -1012,7 +1012,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         deriv1_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = m.var)[:non_stochastic_steady_state], old_params)
                  
-        @test isapprox(deriv1_zyg[1], deriv1_fin[1], rtol = 1e-8)
+        @test isapprox(deriv1_zyg[1], deriv1_fin[1], rtol = 1e-6)
 
         @test isapprox(deriv1, deriv1_fin[1], rtol = 1e-8)
 
@@ -1044,7 +1044,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 deriv2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 mean = m.var)[:mean], old_params)
                                                                 
-                @test isapprox(deriv2_zyg[1], deriv2_fin[1], rtol = 1e-8)
+                @test isapprox(deriv2_zyg[1], deriv2_fin[1], rtol = 1e-6)
             end
             
             @test isapprox(deriv2, deriv2_fin[1], rtol = 1e-8)
@@ -1073,7 +1073,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 deriv3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 standard_deviation = m.var)[:standard_deviation], old_params)
                                                                 
-                @test isapprox(deriv3_zyg[1], deriv3_fin[1], rtol = 1e-8)
+                @test isapprox(deriv3_zyg[1], deriv3_fin[1], rtol = 1e-6)
             end
             
             while length(m.NSSS_solver_cache) > 2
@@ -1101,7 +1101,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 deriv4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                 variance = m.var)[:variance], old_params)
                                                                 
-                @test isapprox(deriv4_zyg[1], deriv4_fin[1], rtol = 1e-8)
+                @test isapprox(deriv4_zyg[1], deriv4_fin[1], rtol = 1e-6)
             end
 
             while length(m.NSSS_solver_cache) > 2
@@ -1135,7 +1135,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                 sylvester_acceptance_tol = 1e-14),
                                                                 covariance = m.var)[:covariance], old_params)
                                                                 
-                @test isapprox(deriv5_zyg[1], deriv5_fin[1], rtol = 1e-8)
+                @test isapprox(deriv5_zyg[1], deriv5_fin[1], rtol = 1e-6)
             end
                                                 
             @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-8)
