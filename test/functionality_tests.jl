@@ -536,7 +536,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         if algorithm in [:first_order, :pruned_second_order, :pruned_third_order]
             corrl = get_correlation(m, algorithm = algorithm)
 
-            autocorr = get_autocorrelation(m, algorithm = algorithm)
+            autocorr_ = get_autocorrelation(m, algorithm = algorithm)
 
             if algorithm == :first_order
                 var_decomp = get_variance_decomposition(m)
@@ -614,7 +614,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                         verbose = verbose)
                                                                         
-                                @test isapprox(var_decomp, VAR_DECOMP) #, rtol = eps(Float32))
+                                @test isapprox(var_decomp, VAR_DECOMP, rtol = 1e-8)
 
                                 # Clear solution caches
                                 pop!(m.NSSS_solver_cache)
@@ -628,7 +628,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                                                         verbose = verbose)
 
-                                @test isapprox(cond_var_decomp, COND_VAR_DECOMP) #, rtol = eps(Float32))
+                                @test isapprox(cond_var_decomp, COND_VAR_DECOMP, rtol = 1e-8)
 
                             end
 
@@ -663,7 +663,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                 verbose = verbose)
 
-                                @test isapprox(autocorr, AUTOCORR)#, rtol = eps(Float32))
+                                @test isapprox(autocorr_, AUTOCORR, rtol = 1e-8)
                             end
                         end
                     end
