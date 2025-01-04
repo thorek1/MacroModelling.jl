@@ -159,6 +159,13 @@ if test_set == "plots"
     plots = true
 	Random.seed!(1)
 
+    @testset verbose = true "Gali 2015 ELB" begin
+        include("../models/Gali_2015_chapter_3_obc.jl")
+        functionality_test(Gali_2015_chapter_3_obc, plots = plots)
+    end
+    Gali_2015_chapter_3_obc = nothing
+    GC.gc()
+    
     @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
         include("../models/Smets_Wouters_2003.jl")
         functionality_test(Smets_Wouters_2003, plots = plots)
@@ -350,13 +357,6 @@ if test_set == "plots"
         functionality_test(Backus_Kehoe_Kydland_1992, plots = plots)
     end
     Backus_Kehoe_Kydland_1992 = nothing
-    GC.gc()
-
-    @testset verbose = true "Gali 2015 ELB" begin
-        include("../models/Gali_2015_chapter_3_obc.jl")
-        functionality_test(Gali_2015_chapter_3_obc, plots = plots)
-    end
-    Gali_2015_chapter_3_obc = nothing
     GC.gc()
 
     @testset verbose = true "FS2000" begin
