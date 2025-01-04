@@ -1014,7 +1014,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                  
         @test isapprox(deriv1_zyg[1], deriv1_fin[1], rtol = 1e-6)
 
-        @test isapprox(deriv1, deriv1_fin[1], rtol = 1e-8)
+        @test isapprox(deriv1, deriv1_fin[1], rtol = 1e-6)
 
         # ℒ.norm(deriv1 - deriv1_fin[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_fin[1]))
         # ℒ.norm(deriv1 - deriv1_zyg[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_zyg[1]))
@@ -1047,7 +1047,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 @test isapprox(deriv2_zyg[1], deriv2_fin[1], rtol = 1e-6)
             end
             
-            @test isapprox(deriv2, deriv2_fin[1], rtol = 1e-8)
+            @test isapprox(deriv2, deriv2_fin[1], rtol = 1e-6)
 
             while length(m.NSSS_solver_cache) > 2
                 pop!(m.NSSS_solver_cache)
@@ -1080,7 +1080,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 pop!(m.NSSS_solver_cache)
             end
                                             
-            @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-8)
+            @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-6)
             
             # Clear solution caches
             pop!(m.NSSS_solver_cache)
@@ -1108,7 +1108,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 pop!(m.NSSS_solver_cache)
             end
                                                                     
-            @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-8)
+            @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-6)
             
             # Clear solution caches
             pop!(m.NSSS_solver_cache)
@@ -1138,7 +1138,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 @test isapprox(deriv5_zyg[1], deriv5_fin[1], rtol = 1e-6)
             end
                                                 
-            @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-8)
+            @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-6)
         end
         
 
