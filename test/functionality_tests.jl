@@ -2049,141 +2049,156 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 plot_conditional_forecast(m, conditions[end],
                                                     conditions_in_levels = false,
                                                     algorithm = algorithm, 
-                                                    variables = variables,
-                                                    verbose = false)
+                                                    variables = variables)
             end
             
             for initial_state in init_states
                 plot_conditional_forecast(m, conditions[end],
                                                     conditions_in_levels = false,
                                                     initial_state = initial_state,
-                                                    algorithm = algorithm, 
-                                                    verbose = false)
+                                                    algorithm = algorithm)
             end
 
             for shcks in shocks
                 plot_conditional_forecast(m, conditions[end],
                                                     conditions_in_levels = false,
                                                     algorithm = algorithm, 
-                                                    shocks = shcks,
-                                                    verbose = false)
+                                                    shocks = shcks)
             end
 
             for parameters in params
                 plot_conditional_forecast(m, conditions[end],
                                                     parameters = parameters,
                                                     conditions_in_levels = false,
-                                                    algorithm = algorithm, 
-                                                    verbose = false)
+                                                    algorithm = algorithm)
             end
 
             for cndtns in conditions
                 plot_conditional_forecast(m, cndtns,
                                                     conditions_in_levels = false,
-                                                    algorithm = algorithm, 
-                                                    verbose = false)
+                                                    algorithm = algorithm)
             end
         end
-    end
-
-    # plot_model_estimates
-
-
-    if plots
-        if algorithm == :first_order
-            # Test filtering and smoothing
+        @testset "plot_model_estimates" begin
             sol = get_solution(m)
-
-            if length(m.exo) > 1
-                # var_idxs = findall(vec(sum(sol[end-length(m.exo)+1:end,:] .!= 0,dims = 1)) .> 0)[1:2]
+            
+            if length(m.exo) > 3
                 n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
-                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[1:2]
+                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
             else
                 var_idxs = [1]
             end
-            
-            simulation = simulate(m)
+
+            Random.seed!(123)
+
+            simulation = simulate(m, algorithm = algorithm)
 
             data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
-            # data_in_levels = simulation(m.var[var_idxs],:,:simulate)
             data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
-    
-            plot_model_estimates(m, data, data_in_levels = false)
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true)
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true)
-            plot_model_estimates(m, data, data_in_levels = false, shock_decomposition = true, verbose = true)
-            plot_model_estimates(m, data, data_in_levels = false, smooth = false, shock_decomposition = true, verbose = true)
-            plot_model_estimates(m, data_in_levels, verbose = true)
-            plot_model_estimates(m, data_in_levels, smooth = false, verbose = true)
-            plot_model_estimates(m, data_in_levels, smooth = false, shock_decomposition = true, verbose = true)
 
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false)
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true)
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, parameters = m.parameter_values * 1.0001)
+            while length(m.NSSS_solver_cache) > 2
+                pop!(m.NSSS_solver_cache)
+            end
+            
+            for shock_decomposition in [true, false]
+                for filter in filters
+                    for smooth in [true, false]
+                        for presample_periods in [0, 10]
+                            for quadratic_matrix_equation_algorithm in qme_algorithms
+                                for lyapunov_algorithm in lyapunov_algorithms
+                                    for sylvester_algorithm in sylvester_algorithms
+                                        # Clear solution caches
+                                        pop!(m.NSSS_solver_cache)
+                                        m.solution.perturbation.qme_solution = zeros(0,0)
+                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = string.(m.timings.var[1]))
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = string.(m.timings.var[end-1:end]))
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = string.(m.timings.var))
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = Tuple(string.(m.timings.var)))
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = reshape(string.(m.timings.var),1,length(m.timings.var)))
-            # plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = string.(:all))
-            # plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = string.(:all))
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = string.(m.timings.exo))
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = string.(m.timings.exo[1]))
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = Tuple(string.(m.timings.exo)))
+                                        plot_model_estimates(m, data, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = false, 
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        presample_periods = presample_periods,
+                                                                        shock_decomposition = shock_decomposition,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm)
 
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[1])
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[end-1:end])
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var)
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = Tuple(m.timings.var))
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = :all)
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = :all)
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = m.timings.exo)
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = m.timings.exo[1])
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = Tuple(m.timings.exo))
+                                        # Clear solution caches
+                                        pop!(m.NSSS_solver_cache)
+                                        m.solution.perturbation.qme_solution = zeros(0,0)
+                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    
+                                        plot_model_estimates(m, data_in_levels, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = true,
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        presample_periods = presample_periods,
+                                                                        shock_decomposition = shock_decomposition,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
 
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, plots_per_page = 6)
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png)
-            plot_model_estimates(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4)
+            for parameters in params
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    plot_model_estimates(m, data, 
+                                            parameters = parameters,
+                                            algorithm = algorithm, 
+                                            tol = tol,
+                                            data_in_levels = false)
+                end
+            end
 
-            plot_shock_decomposition(m, data, data_in_levels = false)
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true)
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true)
-            plot_shock_decomposition(m, data, data_in_levels = false, shock_decomposition = true, verbose = true)
-            plot_shock_decomposition(m, data, data_in_levels = false, smooth = false, shock_decomposition = true, verbose = true)
-            plot_shock_decomposition(m, data_in_levels, verbose = true)
-            plot_shock_decomposition(m, data_in_levels, smooth = false, verbose = true)
-            plot_shock_decomposition(m, data_in_levels, smooth = false, shock_decomposition = true, verbose = true)
+            for variables in vars
+                plot_model_estimates(m, data, 
+                                        variables = variables,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
 
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false)
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true)
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, parameters = m.parameter_values * 1.0001)
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[1])
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var[end-1:end])
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = m.timings.var)
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = Tuple(m.timings.var))
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = reshape(m.timings.var,1,length(m.timings.var)))
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = :all)
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = :all)
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = m.timings.exo)
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = m.timings.exo[1])
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = Tuple(m.timings.exo))
+            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                plot_model_estimates(m, data, 
+                                        shocks = shocks,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end 
 
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = string.(m.timings.var[1]))
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = string.(m.timings.var[end-1:end]))
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = string.(m.timings.var))
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = Tuple(string.(m.timings.var)))
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = reshape(string.(m.timings.var),1,length(m.timings.var)))
-            # plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, variables = string.(:all))
-            # plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = string.(:all))
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = string.(m.timings.exo))
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = string.(m.timings.exo[1]))
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, shocks = Tuple(string.(m.timings.exo)))
-
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, plots_per_page = 6)
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png)
-            plot_shock_decomposition(m, data, data_in_levels = false, verbose = true, show_plots = false, save_plots = true, save_plots_format = :png, plots_per_page = 4)
+            for show_plots in [true, false]
+                for save_plots in [true, false]
+                    for plots_per_page in [4,6]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
+                                for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
+                                    for max_elements_per_legend_row in [3,5]
+                                        for extra_legend_space in [0.0, 0.5]
+                                            plot_model_estimates(m, data, 
+                                                                    algorithm = algorithm, 
+                                                                    data_in_levels = false,
+                                                                    plot_attributes = plot_attributes,
+                                                                    max_elements_per_legend_row = max_elements_per_legend_row,
+                                                                    extra_legend_space = extra_legend_space,
+                                                                    show_plots = show_plots,
+                                                                    save_plots = save_plots,
+                                                                    plots_per_page = plots_per_page,
+                                                                    save_plots_path = save_plots_path,
+                                                                    save_plots_format = save_plots_format)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
         end
     end
 end
