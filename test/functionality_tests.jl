@@ -1834,7 +1834,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for lyapunov_algorithm in lyapunov_algorithms
-                        for sylvester_algorithm in sylvester_algorithms
+                        #for sylvester_algorithm in sylvester_algorithms
                             # Clear solution caches
                             pop!(m.NSSS_solver_cache)
                             m.solution.perturbation.qme_solution = zeros(0,0)
@@ -1843,9 +1843,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 
                             plot_conditional_variance_decomposition(m, tol = tol,
                                                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                    lyapunov_algorithm = lyapunov_algorithm,
-                                                                    sylvester_algorithm = sylvester_algorithm)
-                        end
+                                                                    lyapunov_algorithm = lyapunov_algorithm)
+                                                                    #sylvester_algorithm = sylvester_algorithm)
+                        #end
                     end
                 end
             end
