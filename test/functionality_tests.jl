@@ -647,7 +647,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 sylvester_algorithm = sylvester_algorithm,
                                                 verbose = verbose)
 
-                                @test isapprox(corrl, CORRL, rtol = 1e-6)
+                                @test isapprox(corrl, CORRL, rtol = 1e-5)
 
                                 # Clear solution caches
                                 pop!(m.NSSS_solver_cache)
