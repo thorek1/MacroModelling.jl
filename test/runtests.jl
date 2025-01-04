@@ -159,18 +159,18 @@ if test_set == "plots"
     plots = true
 	Random.seed!(1)
 
-    @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
-        include("../models/Smets_Wouters_2007.jl")
-        functionality_test(Smets_Wouters_2007, plots = plots)
-    end
-    Smets_Wouters_2007 = nothing
-    GC.gc()
-
     @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
         include("../models/Smets_Wouters_2003.jl")
         functionality_test(Smets_Wouters_2003, plots = plots)
     end
     Smets_Wouters_2003 = nothing
+    GC.gc()
+    
+    @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
+        include("../models/Smets_Wouters_2007.jl")
+        functionality_test(Smets_Wouters_2007, plots = plots)
+    end
+    Smets_Wouters_2007 = nothing
     GC.gc()
     
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
