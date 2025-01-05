@@ -546,12 +546,28 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         if algorithm in [:first_order, :pruned_second_order, :pruned_third_order]
             corrl = get_correlation(m, algorithm = algorithm)
 
+            get_corr(m, algorithm = algorithm)
+
+            corr(m, algorithm = algorithm)
+
             autocorr_ = get_autocorrelation(m, algorithm = algorithm)
+
+            get_autocorr(m, algorithm = algorithm)
+
+            autocorr(m, algorithm = algorithm)
 
             if algorithm == :first_order
                 var_decomp = get_variance_decomposition(m)
 
+                get_var_decomp(m)
+
                 cond_var_decomp = get_conditional_variance_decomposition(m)
+
+                get_fevd(m)
+
+                get_forecast_error_variance_decomposition(m)
+
+                fevd(m)
             end
 
             while length(m.NSSS_solver_cache) > 2
