@@ -1707,37 +1707,41 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
+            for plots_per_page in [1,4]
+                for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
+                    plot_solution(m, states[1], algorithm = algos[end],
+                                    plot_attributes = plot_attributes,
+                                    plots_per_page = plots_per_page)
+                end
+            end
+
             for show_plots in [true, false]
                 for save_plots in [true, false]
-                    for plots_per_page in [1,4]
-                        for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
-                            for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                                for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
-                                    plot_solution(m, states[1], algorithm = algos[end],
-                                                    plot_attributes = plot_attributes,
-                                                    show_plots = show_plots,
-                                                    save_plots = save_plots,
-                                                    plots_per_page = plots_per_page,
-                                                    save_plots_path = save_plots_path,
-                                                    save_plots_format = save_plots_format)
-                                end
-                            end
+                    for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                        for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
+                            plot_solution(m, states[1], algorithm = algos[end],
+                                            show_plots = show_plots,
+                                            save_plots = save_plots,
+                                            save_plots_path = save_plots_path,
+                                            save_plots_format = save_plots_format)
                         end
                     end
                 end
             end
 
             for parameters in params
-                for σ in [0.5, 5]
-                    for ignore_obc in [true, false]
-                        for state in states[[1,end]]
-                            for algo in algos
-                                plot_solution(m, state,
-                                                parameters = parameters,
-                                                σ = σ,
-                                                algorithm = algo,
-                                                ignore_obc = ignore_obc)
-                            end
+                plot_solution(m, states[1], algorithm = algos[end],
+                                parameters = parameters)
+            end
+
+            for σ in [0.5, 5]
+                for ignore_obc in [true, false]
+                    for state in states[[1,end]]
+                        for algo in algos
+                            plot_solution(m, state,
+                                            σ = σ,
+                                            algorithm = algo,
+                                            ignore_obc = ignore_obc)
                         end
                     end
                 end
@@ -1778,41 +1782,57 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             shock_mat3 = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10)
 
             for parameters in params
-                for initial_state in init_states
-                    for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                        for quadratic_matrix_equation_algorithm in qme_algorithms
-                            for lyapunov_algorithm in lyapunov_algorithms
-                                for sylvester_algorithm in sylvester_algorithms
-                                    # Clear solution caches
-                                    pop!(m.NSSS_solver_cache)
-                                    m.solution.perturbation.qme_solution = zeros(0,0)
-                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
-                                                
-                                    plot_irf(m, algorithm = algorithm, 
-                                                parameters = parameters,
-                                                initial_state = initial_state,
-                                                tol = tol,
-                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                lyapunov_algorithm = lyapunov_algorithm,
-                                                sylvester_algorithm = sylvester_algorithm)
-                                end
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        for lyapunov_algorithm in lyapunov_algorithms
+                            for sylvester_algorithm in sylvester_algorithms
+                                # Clear solution caches
+                                pop!(m.NSSS_solver_cache)
+                                m.solution.perturbation.qme_solution = zeros(0,0)
+                                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                            
+                                plot_irf(m, algorithm = algorithm, 
+                                            parameters = parameters,
+                                            initial_state = initial_state,
+                                            tol = tol,
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                            lyapunov_algorithm = lyapunov_algorithm,
+                                            sylvester_algorithm = sylvester_algorithm)
                             end
                         end
                     end
                 end
             end
 
+            for initial_state in init_states
+                # Clear solution caches
+                pop!(m.NSSS_solver_cache)
+                m.solution.perturbation.qme_solution = zeros(0,0)
+                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            
+                plot_irf(m, algorithm = algorithm, initial_state = initial_state)
+            end
+
             for variables in vars
-                for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
-                    # Clear solution caches
-                    pop!(m.NSSS_solver_cache)
-                    m.solution.perturbation.qme_solution = zeros(0,0)
-                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                    m.solution.perturbation.third_order_solution = spzeros(0,0)
-                                
-                    plot_irf(m, algorithm = algorithm, variables = variables, shocks = shocks)
-                end
+                # Clear solution caches
+                pop!(m.NSSS_solver_cache)
+                m.solution.perturbation.qme_solution = zeros(0,0)
+                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            
+                plot_irf(m, algorithm = algorithm, variables = variables)
+            end
+
+            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                # Clear solution caches
+                pop!(m.NSSS_solver_cache)
+                m.solution.perturbation.qme_solution = zeros(0,0)
+                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            
+                plot_irf(m, algorithm = algorithm, shocks = shocks)
             end
 
             for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
