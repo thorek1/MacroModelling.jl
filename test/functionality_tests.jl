@@ -1901,6 +1901,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 pop!(m.NSSS_solver_cache)
             end
 
+            plot_IRF(m, algorithm = algorithm)
+
+            plot_irfs(m, algorithm = algorithm)
+
+            plot_simulations(m, algorithm = algorithm)
+
+            plot_simulation(m, algorithm = algorithm)
+
+            plot_girf(m, algorithm = algorithm)
+
             for ignore_obc in [true,false]
                 for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
                     for negative_shock in [true,false]
@@ -2006,6 +2016,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
         @testset "plot_conditional_variance_decomposition" begin
+            plot_fevd(m)
+
+            plot_forecast_error_variance_decomposition(m)
+
             for periods in [10,40]
                 for variables in vars
                     plot_conditional_variance_decomposition(m, periods = periods, variables = variables)
@@ -2276,6 +2290,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 pop!(m.NSSS_solver_cache)
             end
             
+            plot_shock_decomposition(m, data, 
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+
             for quadratic_matrix_equation_algorithm in qme_algorithms
                 for lyapunov_algorithm in lyapunov_algorithms
                     for sylvester_algorithm in sylvester_algorithms

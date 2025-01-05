@@ -875,7 +875,6 @@ Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
 plot_simulation(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = get(kwargs, :periods, 100))
 
-
 """
 Wrapper for [`plot_irf`](@ref) with `generalised_irf = true`.
 """
