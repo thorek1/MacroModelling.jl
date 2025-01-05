@@ -1618,7 +1618,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     end
 
     @testset "get_non_stochastic_steady_state_residuals" begin
-        steady_state = SS(m, derivatives = false)
+        stst = SS(m, derivatives = false)
         
         while length(m.NSSS_solver_cache) > 2
             pop!(m.NSSS_solver_cache)
@@ -1632,9 +1632,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 m.solution.perturbation.second_order_solution = spzeros(0,0)
                 m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-                res = get_non_stochastic_steady_state_residuals(m, steady_state, tol = tol, verbose = false, parameters = parameters)
+                res = get_non_stochastic_steady_state_residuals(m, stst, tol = tol, verbose = false, parameters = parameters)
 
-                for values in [Dict(axiskeys(steady_state)[1] .=> collect(steady_state)), Dict(string.(axiskeys(steady_state)[1]) .=> collect(steady_state)), collect(steady_state)]   
+                for values in [Dict(axiskeys(stst)[1] .=> collect(stst)), Dict(string.(axiskeys(stst)[1]) .=> collect(stst)), collect(stst)]   
                     # Clear solution caches
                     pop!(m.NSSS_solver_cache)
                     m.solution.perturbation.qme_solution = zeros(0,0)
@@ -1653,7 +1653,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.second_order_solution = spzeros(0,0)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-            res1 = get_non_stochastic_steady_state_residuals(m, steady_state, tol = tol, verbose = false)
+            res1 = get_non_stochastic_steady_state_residuals(m, stst, tol = tol, verbose = false)
 
             # Clear solution caches
             pop!(m.NSSS_solver_cache)
@@ -1661,9 +1661,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.second_order_solution = spzeros(0,0)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-            res2 = get_non_stochastic_steady_state_residuals(m, steady_state[1:3], tol = tol, verbose = false)
+            res2 = get_non_stochastic_steady_state_residuals(m, stst[1:3], tol = tol, verbose = false)
 
             @test isapprox(res1, res2, rtol = 1e-8)
+
+            get_residuals(m, stst)
+
+            check_residuals(m, stst)
         end
     end
 
