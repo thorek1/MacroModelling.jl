@@ -1402,6 +1402,36 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
 
+        if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+            get_variance(m, algorithm = algorithm)
+            
+            get_var(m, algorithm = algorithm)
+
+            var(m, algorithm = algorithm)
+
+
+            get_standard_deviation(m, algorithm = algorithm)
+
+            get_std(m, algorithm = algorithm)
+
+            get_stdev(m, algorithm = algorithm)
+
+            stdev(m, algorithm = algorithm)
+
+            std(m, algorithm = algorithm)
+
+
+            get_covariance(m, algorithm = algorithm)
+
+            get_cov(m, algorithm = algorithm)
+
+            cov(m, algorithm = algorithm)
+
+            
+            get_mean(m, algorithm = algorithm)
+        end
+            
+
         for parameter_derivatives in param_derivs
             get_moments(m,
                         algorithm = algorithm,
