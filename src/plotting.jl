@@ -120,13 +120,20 @@ function plot_model_estimates(𝓂::ℳ,
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
-    attributes = merge(default_plot_attributes, plot_attributes)
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
 
     attributes_redux = copy(attributes)
 
     delete!(attributes_redux, :framestyle)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
@@ -490,13 +497,19 @@ function plot_irf(𝓂::ℳ;
                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2],
                     lyapunov_algorithm = lyapunov_algorithm)
 
-    attributes = merge(default_plot_attributes, plot_attributes)
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
+                
     attributes_redux = copy(attributes)
 
     delete!(attributes_redux, :framestyle)
-
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -959,13 +972,19 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 lyapunov_algorithm = lyapunov_algorithm)
 
-    attributes = merge(default_plot_attributes, plot_attributes)
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
+                                            
     attributes_redux = copy(attributes)
 
     delete!(attributes_redux, :framestyle)
-
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     fevds = get_conditional_variance_decomposition(𝓂,
                                                     periods = 1:periods,
@@ -1172,8 +1191,16 @@ function plot_solution(𝓂::ℳ,
                         sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
-    attributes = merge(default_plot_attributes, plot_attributes)
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
+                    
     attributes_redux = copy(attributes)
 
     delete!(attributes_redux, :framestyle)
@@ -1541,14 +1568,19 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm::Symbol = :schur,
                                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
                                     lyapunov_algorithm::Symbol = :doubling)
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
-    attributes = merge(default_plot_attributes, plot_attributes)
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
 
     attributes_redux = copy(attributes)
 
     delete!(attributes_redux, :framestyle)
-
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     conditions = conditions isa KeyedArray ? axiskeys(conditions,1) isa Vector{String} ? rekey(conditions, 1 => axiskeys(conditions,1) .|> Meta.parse .|> replace_indices) : conditions : conditions
 
