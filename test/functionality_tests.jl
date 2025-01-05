@@ -731,6 +731,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     levels = levels,
                                     periods = periods,
                                     negative_shock = negative_shock)
+
+                            get_IRF(m, parameter_values,
+                                    levels = levels,
+                                    periods = periods,
+                                    negative_shock = negative_shock)
+
+                            get_irfs(m, parameter_values,
+                                    levels = levels,
+                                    periods = periods,
+                                    negative_shock = negative_shock)
                         end
                     end
                 end
@@ -1438,23 +1448,44 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
     @testset "get_irf" begin
         for ignore_obc in [true,false]
-            for levels in [true,false]
-                for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
-                    for negative_shock in [true,false]
-                        for shock_size in [.1,1]
-                            for periods in [1,10]
-                                get_irf(m, 
-                                        algorithm = algorithm, 
-                                        ignore_obc = ignore_obc,
-                                        levels = levels,
-                                        periods = periods,
-                                        generalised_irf = generalised_irf,
-                                        negative_shock = negative_shock,
-                                        shock_size = shock_size)
-                            end
-                        end
+            for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
+                for negative_shock in [true,false]
+                    for shock_size in [.1,1]
+                        get_irf(m, 
+                                algorithm = algorithm, 
+                                ignore_obc = ignore_obc,
+                                generalised_irf = generalised_irf,
+                                negative_shock = negative_shock,
+                                shock_size = shock_size)
                     end
                 end
+            end
+        end
+        
+        simulate(m, algorithm = algorithm)
+        
+        get_simulation(m, algorithm = algorithm)
+
+        get_simulations(m, algorithm = algorithm)
+
+        get_girf(m, algorithm = algorithm)
+
+        for periods in [1,10]
+            for levels in [true,false]
+                get_irf(m, 
+                        algorithm = algorithm, 
+                        levels = levels,
+                        periods = periods)
+
+                get_irfs(m, 
+                        algorithm = algorithm, 
+                        levels = levels,
+                        periods = periods)
+
+                get_IRF(m, 
+                        algorithm = algorithm, 
+                        levels = levels,
+                        periods = periods)
             end
         end
 
