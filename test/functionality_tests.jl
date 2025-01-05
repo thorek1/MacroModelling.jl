@@ -1862,15 +1862,23 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            for show_plots in [true, false]
-                for save_plots in [true, false]
-                    for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                        for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
-                            plot_solution(m, states[1], algorithm = algos[end],
-                                            show_plots = show_plots,
-                                            save_plots = save_plots,
-                                            save_plots_path = save_plots_path,
-                                            save_plots_format = save_plots_format)
+            
+            for backend in [:gr, :plotlyjs]
+                if backend == :gr
+                    gr_backend()
+                else
+                    plotlyjs_backend()
+                end
+                for show_plots in [true, false]
+                    for save_plots in [true, false]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:eps,:html,:json,:pdf,:png,:svg] : [:pdf])
+                                plot_solution(m, states[1], algorithm = algos[end],
+                                                show_plots = show_plots,
+                                                save_plots = save_plots,
+                                                save_plots_path = save_plots_path,
+                                                save_plots_format = save_plots_format)
+                            end
                         end
                     end
                 end
@@ -1893,12 +1901,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     end
                 end
             end
-
-            plotlyjs_backend()
-
-            plot_solution(m, states[1], algorithm = algos[end])
-
-            gr_backend()
         end
 
 
@@ -1907,11 +1909,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 pop!(m.NSSS_solver_cache)
             end
 
-            plotlyjs_backend()
-
             plot_IRF(m, algorithm = algorithm)
-
-            gr_backend()
 
             plot_irfs(m, algorithm = algorithm)
 
@@ -2009,15 +2007,22 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            for show_plots in [true, false]
-                for save_plots in [true, false]
-                    for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                        for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
-                            plot_irf(m, algorithm = algorithm,
-                                        show_plots = show_plots,
-                                        save_plots = save_plots,
-                                        save_plots_path = save_plots_path,
-                                        save_plots_format = save_plots_format)
+            for backend in [:gr, :plotlyjs]
+                if backend == :gr
+                    gr_backend()
+                else
+                    plotlyjs_backend()
+                end
+                for show_plots in [true, false]
+                    for save_plots in [true, false]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:eps,:html,:json,:pdf,:png,:svg] : [:pdf])
+                                plot_irf(m, algorithm = algorithm,
+                                            show_plots = show_plots,
+                                            save_plots = save_plots,
+                                            save_plots_path = save_plots_path,
+                                            save_plots_format = save_plots_format)
+                            end
                         end
                     end
                 end
@@ -2026,11 +2031,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
         @testset "plot_conditional_variance_decomposition" begin
-            plotlyjs_backend()
-
             plot_fevd(m)
-
-            gr_backend()
 
             plot_forecast_error_variance_decomposition(m)
 
@@ -2060,23 +2061,30 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
             
-            for show_plots in [true, false]
-                for save_plots in [true, false]
-                    for plots_per_page in [4,6]
-                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
-                                for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
-                                    for max_elements_per_legend_row in [3,5]
-                                        for extra_legend_space in [0.0, 0.5]
-                                            plot_conditional_variance_decomposition(m,
-                                                                                    plot_attributes = plot_attributes,
-                                                                                    max_elements_per_legend_row = max_elements_per_legend_row,
-                                                                                    extra_legend_space = extra_legend_space,
-                                                                                    show_plots = show_plots,
-                                                                                    save_plots = save_plots,
-                                                                                    plots_per_page = plots_per_page,
-                                                                                    save_plots_path = save_plots_path,
-                                                                                    save_plots_format = save_plots_format)
+            for backend in [:gr, :plotlyjs]
+                if backend == :gr
+                    gr_backend()
+                else
+                    plotlyjs_backend()
+                end
+                for show_plots in [true, false]
+                    for save_plots in [true, false]
+                        for plots_per_page in [4,6]
+                            for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                                for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
+                                    for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:eps,:html,:json,:pdf,:png,:svg] : [:pdf])
+                                        for max_elements_per_legend_row in [3,5]
+                                            for extra_legend_space in [0.0, 0.5]
+                                                plot_conditional_variance_decomposition(m,
+                                                                                        plot_attributes = plot_attributes,
+                                                                                        max_elements_per_legend_row = max_elements_per_legend_row,
+                                                                                        extra_legend_space = extra_legend_space,
+                                                                                        show_plots = show_plots,
+                                                                                        save_plots = save_plots,
+                                                                                        plots_per_page = plots_per_page,
+                                                                                        save_plots_path = save_plots_path,
+                                                                                        save_plots_format = save_plots_format)
+                                            end
                                         end
                                     end
                                 end
@@ -2166,24 +2174,31 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                 push!(shocks, shcks)
             end
-
-            for show_plots in [true, false]
-                for save_plots in [true, false]
-                    for plots_per_page in [1,4]
-                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
-                                for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
-                                    plot_conditional_forecast(m, conditions[1],
-                                                                conditions_in_levels = false,
-                                                                initial_state = [0.0],
-                                                                algorithm = algorithm, 
-                                                                shocks = shocks[1],
-                                                                plot_attributes = plot_attributes,
-                                                                show_plots = show_plots,
-                                                                save_plots = save_plots,
-                                                                plots_per_page = plots_per_page,
-                                                                save_plots_path = save_plots_path,
-                                                                save_plots_format = save_plots_format)
+            
+            for backend in [:gr, :plotlyjs]
+                if backend == :gr
+                    gr_backend()
+                else
+                    plotlyjs_backend()
+                end
+                for show_plots in [true, false]
+                    for save_plots in [true, false]
+                        for plots_per_page in [1,4]
+                            for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                                for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
+                                    for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:eps,:html,:json,:pdf,:png,:svg] : [:pdf])
+                                        plot_conditional_forecast(m, conditions[1],
+                                                                    conditions_in_levels = false,
+                                                                    initial_state = [0.0],
+                                                                    algorithm = algorithm, 
+                                                                    shocks = shocks[1],
+                                                                    plot_attributes = plot_attributes,
+                                                                    show_plots = show_plots,
+                                                                    save_plots = save_plots,
+                                                                    plots_per_page = plots_per_page,
+                                                                    save_plots_path = save_plots_path,
+                                                                    save_plots_format = save_plots_format)
+                                    end
                                 end
                             end
                         end
@@ -2282,13 +2297,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             conditions_in_levels = false,
                                             algorithm = algorithm)
             end
-
-            plotlyjs_backend()
-
-            plot_conditional_forecast(m, conditions[end], conditions_in_levels = false)
-
-            gr_backend()
-
         end
         @testset "plot_model_estimates" begin
             sol = get_solution(m)
@@ -2424,17 +2432,24 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            for show_plots in [true, false]
-                for save_plots in [true, false]
-                    for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                        for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
-                            plot_model_estimates(m, data, 
-                                                    algorithm = algorithm, 
-                                                    data_in_levels = false,
-                                                    show_plots = show_plots,
-                                                    save_plots = save_plots,
-                                                    save_plots_path = save_plots_path,
-                                                    save_plots_format = save_plots_format)
+            for backend in [:gr, :plotlyjs]
+                if backend == :gr
+                    gr_backend()
+                else
+                    plotlyjs_backend()
+                end
+                for show_plots in [true, false]
+                    for save_plots in [true, false]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:eps,:html,:json,:pdf,:png,:svg] : [:pdf])
+                                plot_model_estimates(m, data, 
+                                                        algorithm = algorithm, 
+                                                        data_in_levels = false,
+                                                        show_plots = show_plots,
+                                                        save_plots = save_plots,
+                                                        save_plots_path = save_plots_path,
+                                                        save_plots_format = save_plots_format)
+                            end
                         end
                     end
                 end

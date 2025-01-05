@@ -64,3 +64,6 @@ conditional_forecast*.png
 OSR*.png
 intermediate
 *.ps
+*.eps
+*.html
+*.json
