@@ -684,8 +684,20 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
 
-    @testset "solution" begin
+    @testset "get_solution" begin
         sol = get_solution(m, algorithm = algorithm)
+
+        get_first_order_solution(m)
+
+        get_perturbation_solution(m)
+
+        if algorithm in [:second_order, :pruned_second_order,:third_order, :pruned_third_order]
+            get_second_order_solution(m)
+
+            if algorithm in [:third_order, :pruned_third_order]
+                get_third_order_solution(m)
+            end
+        end
 
         for parameters in params          
             get_solution(m, algorithm = algorithm, parameters = parameters, verbose = false)
@@ -810,6 +822,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     
     @testset "get_solution with parameter input" begin
         for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
+            get_first_order_solution(m, parameter_values)
+
+            get_perturbation_solution(m, parameter_values)
+            
+            if algorithm in [:second_order, :pruned_second_order,:third_order, :pruned_third_order]
+                get_second_order_solution(m, parameter_values)
+
+                if algorithm in [:third_order, :pruned_third_order]
+                    get_third_order_solution(m, parameter_values)
+                end
+            end
+
             sol = get_solution(m, parameter_values, algorithm = algorithm)
 
             # Clear solution caches
