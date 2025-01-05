@@ -1463,7 +1463,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
         
         simulate(m, algorithm = algorithm)
-        
+
         get_simulation(m, algorithm = algorithm)
 
         get_simulations(m, algorithm = algorithm)
@@ -1598,6 +1598,48 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     end
 
     @testset "get_steady_state" begin
+        # Clear solution caches
+        pop!(m.NSSS_solver_cache)
+        get_non_stochastic_steady_state(m)
+        
+        # Clear solution caches
+        pop!(m.NSSS_solver_cache)
+        SS(m)
+
+        # Clear solution caches
+        pop!(m.NSSS_solver_cache)
+        steady_state(m)
+
+        # Clear solution caches
+        pop!(m.NSSS_solver_cache)
+        get_SS(m)
+
+        # Clear solution caches
+        pop!(m.NSSS_solver_cache)
+        get_ss(m)
+
+        # Clear solution caches
+        pop!(m.NSSS_solver_cache)
+        ss(m)
+
+        if !(algorithm == :first_order)
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            get_stochastic_steady_state(m)
+
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            get_SSS(m)
+
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            SSS(m)
+
+            # Clear solution caches
+            pop!(m.NSSS_solver_cache)
+            sss(m)
+        end 
+
         while length(m.NSSS_solver_cache) > 2
             pop!(m.NSSS_solver_cache)
         end
