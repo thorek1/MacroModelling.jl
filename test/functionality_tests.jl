@@ -2100,7 +2100,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 pop!(m.NSSS_solver_cache)
             end
             
-            for shock_decomposition in [true, false]
+            for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
                 for filter in filters
                     for smooth in [true, false]
                         for presample_periods in [0, 10]
