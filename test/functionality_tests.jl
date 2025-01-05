@@ -1794,7 +1794,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             
                                 plot_irf(m, algorithm = algorithm, 
                                             parameters = parameters,
-                                            initial_state = initial_state,
                                             tol = tol,
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                             lyapunov_algorithm = lyapunov_algorithm,
