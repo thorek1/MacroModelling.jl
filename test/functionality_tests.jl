@@ -1700,9 +1700,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for show_plots in [true, false]
                 for save_plots in [true, false]
                     for plots_per_page in [1,4]
-                        for save_plots_path in [pwd(), "../"]
-                            for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
-                                for save_plots_format in [:pdf,:png,:ps,:svg]
+                        for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
+                            for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                                for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
                                     plot_solution(m, states[1], algorithm = algos[end],
                                                     plot_attributes = plot_attributes,
                                                     show_plots = show_plots,
@@ -1745,13 +1745,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for negative_shock in [true,false]
                         for shock_size in [.1,1]
                             for periods in [1,10]
-                                plot_irf(m, 
-                                        algorithm = algorithm, 
-                                        ignore_obc = ignore_obc,
-                                        periods = periods,
-                                        generalised_irf = generalised_irf,
-                                        negative_shock = negative_shock,
-                                        shock_size = shock_size)
+                                plot_irf(m, algorithm = algorithm, 
+                                            ignore_obc = ignore_obc,
+                                            periods = periods,
+                                            generalised_irf = generalised_irf,
+                                            negative_shock = negative_shock,
+                                            shock_size = shock_size)
                             end
                         end
                     end
@@ -1780,8 +1779,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     m.solution.perturbation.second_order_solution = spzeros(0,0)
                                     m.solution.perturbation.third_order_solution = spzeros(0,0)
                                                 
-                                    plot_irf(m, 
-                                                algorithm = algorithm, 
+                                    plot_irf(m, algorithm = algorithm, 
                                                 parameters = parameters,
                                                 initial_state = initial_state,
                                                 tol = tol,
@@ -1807,21 +1805,23 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
+            for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
+                for plots_per_page in [4,6]
+                    plot_irf(m, algorithm = algorithm,
+                                plot_attributes = plot_attributes,
+                                plots_per_page = plots_per_page)
+                end
+            end
+
             for show_plots in [true, false]
                 for save_plots in [true, false]
-                    for plots_per_page in [4,6]
-                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
-                                for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
-                                    plot_irf(m, algorithm = algorithm,
-                                                    plot_attributes = plot_attributes,
-                                                    show_plots = show_plots,
-                                                    save_plots = save_plots,
-                                                    plots_per_page = plots_per_page,
-                                                    save_plots_path = save_plots_path,
-                                                    save_plots_format = save_plots_format)
-                                end
-                            end
+                    for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                        for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
+                            plot_irf(m, algorithm = algorithm,
+                                        show_plots = show_plots,
+                                        save_plots = save_plots,
+                                        save_plots_path = save_plots_path,
+                                        save_plots_format = save_plots_format)
                         end
                     end
                 end
@@ -2002,13 +2002,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             m.solution.perturbation.third_order_solution = spzeros(0,0)
                         
                             plot_conditional_forecast(m, conditions[end],
-                                                                conditions_in_levels = false,
-                                                                algorithm = algorithm, 
-                                                                shocks = shocks[end],
-                                                                tol = tol,
-                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                lyapunov_algorithm = lyapunov_algorithm,
-                                                                sylvester_algorithm = sylvester_algorithm)
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[end],
+                                                        tol = tol,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                        sylvester_algorithm = sylvester_algorithm)
                         end
                     end
                 end
@@ -2023,11 +2023,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     m.solution.perturbation.third_order_solution = spzeros(0,0)
                 
                     plot_conditional_forecast(m, conditions[end],
-                                                        conditions_in_levels = false,
-                                                        algorithm = algorithm, 
-                                                        periods = periods,
-                                                        levels = levels,
-                                                        shocks = shocks[end])
+                                                conditions_in_levels = false,
+                                                algorithm = algorithm, 
+                                                periods = periods,
+                                                levels = levels,
+                                                shocks = shocks[end])
 
                     
                     # Clear solution caches
@@ -2037,46 +2037,46 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     m.solution.perturbation.third_order_solution = spzeros(0,0)
                 
                     plot_conditional_forecast(m, conditions_lvl[end],
-                                                            algorithm = algorithm, 
-                                                            periods = periods,
-                                                            levels = levels,
-                                                            shocks = shocks[end])
+                                                algorithm = algorithm, 
+                                                periods = periods,
+                                                levels = levels,
+                                                shocks = shocks[end])
 
                 end
             end
 
             for variables in vars
                 plot_conditional_forecast(m, conditions[end],
-                                                    conditions_in_levels = false,
-                                                    algorithm = algorithm, 
-                                                    variables = variables)
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm, 
+                                            variables = variables)
             end
             
             for initial_state in init_states
                 plot_conditional_forecast(m, conditions[end],
-                                                    conditions_in_levels = false,
-                                                    initial_state = initial_state,
-                                                    algorithm = algorithm)
+                                            conditions_in_levels = false,
+                                            initial_state = initial_state,
+                                            algorithm = algorithm)
             end
 
             for shcks in shocks
                 plot_conditional_forecast(m, conditions[end],
-                                                    conditions_in_levels = false,
-                                                    algorithm = algorithm, 
-                                                    shocks = shcks)
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm, 
+                                            shocks = shcks)
             end
 
             for parameters in params
                 plot_conditional_forecast(m, conditions[end],
-                                                    parameters = parameters,
-                                                    conditions_in_levels = false,
-                                                    algorithm = algorithm)
+                                            parameters = parameters,
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
             end
 
             for cndtns in conditions
                 plot_conditional_forecast(m, cndtns,
-                                                    conditions_in_levels = false,
-                                                    algorithm = algorithm)
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
             end
         end
         @testset "plot_model_estimates" begin
@@ -2100,62 +2100,91 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 pop!(m.NSSS_solver_cache)
             end
             
+            for quadratic_matrix_equation_algorithm in qme_algorithms
+                for lyapunov_algorithm in lyapunov_algorithms
+                    for sylvester_algorithm in sylvester_algorithms
+                        for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+
+                            plot_model_estimates(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    filter = filter,
+                                                    smooth = smooth,
+                                                    presample_periods = presample_periods,
+                                                    shock_decomposition = shock_decomposition,
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
+
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        
+                            plot_model_estimates(m, data_in_levels, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = true,
+                                                    filter = filter,
+                                                    smooth = smooth,
+                                                    presample_periods = presample_periods,
+                                                    shock_decomposition = shock_decomposition,
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
+                        end
+                    end
+                end
+            end
+
             for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
                 for filter in filters
                     for smooth in [true, false]
                         for presample_periods in [0, 10]
-                            for quadratic_matrix_equation_algorithm in qme_algorithms
-                                for lyapunov_algorithm in lyapunov_algorithms
-                                    for sylvester_algorithm in sylvester_algorithms
-                                        # Clear solution caches
-                                        pop!(m.NSSS_solver_cache)
-                                        m.solution.perturbation.qme_solution = zeros(0,0)
-                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
 
-                                        plot_model_estimates(m, data, 
-                                                                        algorithm = algorithm, 
-                                                                        data_in_levels = false, 
-                                                                        filter = filter,
-                                                                        smooth = smooth,
-                                                                        presample_periods = presample_periods,
-                                                                        shock_decomposition = shock_decomposition,
-                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                        lyapunov_algorithm = lyapunov_algorithm,
-                                                                        sylvester_algorithm = sylvester_algorithm)
+                            plot_model_estimates(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    filter = filter,
+                                                    smooth = smooth,
+                                                    presample_periods = presample_periods,
+                                                    shock_decomposition = shock_decomposition)
 
-                                        # Clear solution caches
-                                        pop!(m.NSSS_solver_cache)
-                                        m.solution.perturbation.qme_solution = zeros(0,0)
-                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
-                                    
-                                        plot_model_estimates(m, data_in_levels, 
-                                                                        algorithm = algorithm, 
-                                                                        data_in_levels = true,
-                                                                        filter = filter,
-                                                                        smooth = smooth,
-                                                                        presample_periods = presample_periods,
-                                                                        shock_decomposition = shock_decomposition,
-                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                        lyapunov_algorithm = lyapunov_algorithm,
-                                                                        sylvester_algorithm = sylvester_algorithm)
-                                    end
-                                end
-                            end
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        
+                            plot_model_estimates(m, data_in_levels, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = true,
+                                                    filter = filter,
+                                                    smooth = smooth,
+                                                    presample_periods = presample_periods,
+                                                    shock_decomposition = shock_decomposition)
                         end
                     end
                 end
             end
 
             for parameters in params
-                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                     plot_model_estimates(m, data, 
                                             parameters = parameters,
                                             algorithm = algorithm, 
-                                            tol = tol,
                                             data_in_levels = false)
-                end
             end
 
             for variables in vars
@@ -2172,29 +2201,33 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                         data_in_levels = false)
             end 
 
+            for plots_per_page in [4,6]
+                for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
+                    for max_elements_per_legend_row in [3,5]
+                        for extra_legend_space in [0.0, 0.5]
+                            plot_model_estimates(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false,
+                                                    plot_attributes = plot_attributes,
+                                                    max_elements_per_legend_row = max_elements_per_legend_row,
+                                                    extra_legend_space = extra_legend_space,
+                                                    plots_per_page = plots_per_page,)
+                        end
+                    end
+                end
+            end
+
             for show_plots in [true, false]
                 for save_plots in [true, false]
-                    for plots_per_page in [4,6]
-                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
-                                for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
-                                    for max_elements_per_legend_row in [3,5]
-                                        for extra_legend_space in [0.0, 0.5]
-                                            plot_model_estimates(m, data, 
-                                                                    algorithm = algorithm, 
-                                                                    data_in_levels = false,
-                                                                    plot_attributes = plot_attributes,
-                                                                    max_elements_per_legend_row = max_elements_per_legend_row,
-                                                                    extra_legend_space = extra_legend_space,
-                                                                    show_plots = show_plots,
-                                                                    save_plots = save_plots,
-                                                                    plots_per_page = plots_per_page,
-                                                                    save_plots_path = save_plots_path,
-                                                                    save_plots_format = save_plots_format)
-                                        end
-                                    end
-                                end
-                            end
+                    for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                        for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf])
+                            plot_model_estimates(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false,
+                                                    show_plots = show_plots,
+                                                    save_plots = save_plots,
+                                                    save_plots_path = save_plots_path,
+                                                    save_plots_format = save_plots_format)
                         end
                     end
                 end
