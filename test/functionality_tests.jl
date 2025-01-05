@@ -1129,20 +1129,20 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             m.solution.perturbation.third_order_solution = spzeros(0,0)
 
             deriv5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                            # tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
-                                                            # sylvester_acceptance_tol = 1e-14),
+                                                            tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
+                                                            sylvester_acceptance_tol = 1e-14),
                                                             covariance = m.var)[:covariance], old_params)
 
             deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
                                                             x->get_statistics(m, x, algorithm = algorithm, 
-                                                            # tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
-                                                            # sylvester_acceptance_tol = 1e-14),
+                                                            tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
+                                                            sylvester_acceptance_tol = 1e-14),
                                                             covariance = m.var)[:covariance], old_params)
    
             if algorithm == :first_order_
                 deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                # tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
-                                                                # sylvester_acceptance_tol = 1e-14),
+                                                                tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
+                                                                sylvester_acceptance_tol = 1e-14),
                                                                 covariance = m.var)[:covariance], old_params)
                                                                 
                 @test isapprox(deriv5_zyg[1], deriv5_fin[1], rtol = 1e-4)
