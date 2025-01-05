@@ -508,27 +508,37 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
 
         for cndtns in conditions
-            for variables in vars
-                for initial_state in init_states
-                    cond_fcst = get_conditional_forecast(m, cndtns,
-                                                        conditions_in_levels = false,
-                                                        initial_state = initial_state,
-                                                        algorithm = algorithm, 
-                                                        variables = variables,
-                                                        verbose = false)
-                end
-            end
-            
-            for parameters in params
-                for shcks in shocks
-                            cond_fcst = get_conditional_forecast(m, cndtns,
-                                                                parameters = parameters,
-                                                                conditions_in_levels = false,
-                                                                algorithm = algorithm, 
-                                                                shocks = shcks,
-                                                                verbose = false)
-                end
-            end
+            cond_fcst = get_conditional_forecast(m, cndtns,
+                                                conditions_in_levels = false,
+                                                algorithm = algorithm)
+        end
+
+        for variables in vars
+            cond_fcst = get_conditional_forecast(m, conditions[end],
+                                                conditions_in_levels = false,
+                                                algorithm = algorithm, 
+                                                variables = variables)
+        end
+        
+        for initial_state in init_states
+            cond_fcst = get_conditional_forecast(m, conditions[end],
+                                                conditions_in_levels = false,
+                                                initial_state = initial_state,
+                                                algorithm = algorithm)
+        end
+
+        for shcks in shocks
+            cond_fcst = get_conditional_forecast(m, conditions[end],
+                                                conditions_in_levels = false,
+                                                algorithm = algorithm, 
+                                                shocks = shcks)
+        end
+
+        for parameters in params
+            cond_fcst = get_conditional_forecast(m, conditions[end],
+                                                parameters = parameters,
+                                                conditions_in_levels = false,
+                                                algorithm = algorithm)
         end
     end
 
