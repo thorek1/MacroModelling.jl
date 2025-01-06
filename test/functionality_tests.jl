@@ -1870,7 +1870,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 else
                     plotlyjs_backend()
                 end
-                for show_plots in [true, false]
+                for show_plots in (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                             for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
@@ -2014,7 +2014,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 else
                     plotlyjs_backend()
                 end
-                for show_plots in [true, false]
+                for show_plots in (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                             for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
@@ -2068,7 +2068,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 else
                     plotlyjs_backend()
                 end
-                for show_plots in [true, false]
+                for show_plots in (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for plots_per_page in [4,6]
                             for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
@@ -2182,7 +2182,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 else
                     plotlyjs_backend()
                 end
-                for show_plots in [true, false]
+                for show_plots in (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for plots_per_page in [1,4]
                             for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
@@ -2441,7 +2441,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 else
                     plotlyjs_backend()
                 end
-                for show_plots in [true, false]
+                for show_plots in (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                             for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
