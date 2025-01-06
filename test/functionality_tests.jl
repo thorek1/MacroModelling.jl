@@ -1352,7 +1352,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             covariance = m.var)[:covariance], old_params)
-                            @test isapprox(deriv5, DERIV5, rtol = 1e-6)
+                            println(ℒ.norm(deriv5 - DERIV5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))                      
+								            @test isapprox(deriv5, DERIV5, rtol = 1e-6)
 
                             if algorithm == :first_order_
                                 # Clear solution caches
