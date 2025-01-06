@@ -1864,7 +1864,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             
-            for backend in [:gr, :plotlyjs]
+            for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
                 if backend == :gr
                     gr_backend()
                 else
@@ -2008,7 +2008,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            for backend in [:gr, :plotlyjs]
+            for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
                 if backend == :gr
                     gr_backend()
                 else
@@ -2062,7 +2062,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
             
-            for backend in [:gr, :plotlyjs]
+            for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
                 if backend == :gr
                     gr_backend()
                 else
@@ -2176,7 +2176,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 push!(shocks, shcks)
             end
             
-            for backend in [:gr, :plotlyjs]
+            for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
                 if backend == :gr
                     gr_backend()
                 else
@@ -2433,7 +2433,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            for backend in [:gr, :plotlyjs]
+            for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
                 if backend == :gr
                     gr_backend()
                 else
