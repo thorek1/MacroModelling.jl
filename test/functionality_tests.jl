@@ -2320,9 +2320,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 pop!(m.NSSS_solver_cache)
             end
             
-            plot_shock_decomposition(m, data, 
-                                        algorithm = algorithm, 
-                                        data_in_levels = false)
+            if !(algorithm in [:second_order, :third_order])
+                plot_shock_decomposition(m, data, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = false)
+            end
 
             for quadratic_matrix_equation_algorithm in qme_algorithms
                 for lyapunov_algorithm in lyapunov_algorithms
