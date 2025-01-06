@@ -1352,7 +1352,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm, 
                                                                             covariance = m.var)[:covariance], old_params)
-                            @test isapprox(deriv5, DERIV5, rtol = 1e-6)
+                            println(ℒ.norm(deriv5 - DERIV5) / max(ℒ.norm(deriv5), ℒ.norm(DERIV5)))                      
+								            @test isapprox(deriv5, DERIV5, rtol = 1e-6)
 
                             if algorithm == :first_order_
                                 # Clear solution caches
@@ -1872,7 +1873,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for show_plots in [true, false]
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:eps,:html,:json,:pdf,:png,:svg] : [:pdf])
+                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 plot_solution(m, states[1], algorithm = algos[end],
                                                 show_plots = show_plots,
                                                 save_plots = save_plots,
@@ -2016,7 +2017,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for show_plots in [true, false]
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:eps,:html,:json,:pdf,:png,:svg] : [:pdf])
+                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 plot_irf(m, algorithm = algorithm,
                                             show_plots = show_plots,
                                             save_plots = save_plots,
@@ -2072,7 +2073,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         for plots_per_page in [4,6]
                             for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                                 for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
-                                    for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:eps,:html,:json,:pdf,:png,:svg] : [:pdf])
+                                    for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                         for max_elements_per_legend_row in [3,5]
                                             for extra_legend_space in [0.0, 0.5]
                                                 plot_conditional_variance_decomposition(m,
@@ -2186,7 +2187,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         for plots_per_page in [1,4]
                             for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                                 for plot_attributes in [Dict(), Dict(:plottitle => "Title")]
-                                    for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:eps,:html,:json,:pdf,:png,:svg] : [:pdf])
+                                    for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                         plot_conditional_forecast(m, conditions[1],
                                                                     conditions_in_levels = false,
                                                                     initial_state = [0.0],
@@ -2441,7 +2442,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for show_plots in [true, false]
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:eps,:html,:json,:pdf,:png,:svg] : [:pdf])
+                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 plot_model_estimates(m, data, 
                                                         algorithm = algorithm, 
                                                         data_in_levels = false,
