@@ -727,6 +727,9 @@ StatsPlots.savefig(my_plot, "samples_latest.png")
 Base.show(stdout, MIME"text/plain"(), samps)
 
 
+# MAP results from full sample, 2nd order, tight priors
+## Now, reestimate std on no pandemic sample
+
 init_params = [0.6647831723963108, 0.1696409521786583, 0.5580454054112424, 1.4107875417460551, 0.27150800318229096, 0.2982789062192042, 0.9608926135337186, 0.9968070538427887, 0.9355375595019946, 0.8857554713134486, 0.6671161668424413, 0.363490876566295, 0.9844516855340667, 0.9548251912875737, 0.2672038505621581, 0.4710818007355946, 2.3199691360451973, 1.647356911213051, 0.2681908246948425, 0.4216832168949589, -0.15640416813475932, 0.5091965632941383, 0.6795174040555909, 0.3819940049374918, 0.8953965508435049, 1.0811321641690619, 2.763652185541633, 0.8578346355200306, 0.08963808582038361, 0.5101854590802727, 0.4527575703228302, -0.8627011833961279, 0.5462134869630935, 0.1813725165517729, 0.25860912552471754, 0.02283530676171379, 2.256424512963501, 0.1922713275188999, 8.218707368321041, 5.906699475772892]
 
 fixed_parameters = init_params[8:end]
@@ -789,6 +792,103 @@ elseif smplr == "pigeons"
         result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
         
         result = DynamicPPL.initialize_parameters!!(result, init_params[1:7], DynamicPPL.SampleFromPrior(), target.model)
+
+        return result
+    end
+    
+    cd(dir_name)
+
+    pt = Pigeons.pigeons(target = sw07_lp3, n_rounds = 0, n_chains = 1)
+
+    pt = Pigeons.pigeons(target = sw07_lp3,
+                        checkpoint = true,
+                        record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
+                        multithreaded = true,
+                        n_chains = 1,
+                        n_rounds = 5)
+
+    cd("../..")
+
+    samps = MCMCChains.Chains(pt)
+end
+
+pre_pandemic_stds = [0.6214776253642815, 0.09180625969728813, 0.48695111652187245, 1.7462778722662238, 0.22762104671667938, 0.2841560574382372, 0.42421425521650646]
+
+
+
+## Now, reestimate std and persistence parameters on no pandemic sample
+
+init_params = [0.6647831723963108, 0.1696409521786583, 0.5580454054112424, 1.4107875417460551, 0.27150800318229096, 0.2982789062192042, 0.9608926135337186, 0.9968070538427887, 0.9355375595019946, 0.8857554713134486, 0.6671161668424413, 0.363490876566295, 0.9844516855340667, 0.9548251912875737, 0.2672038505621581, 0.4710818007355946, 2.3199691360451973, 1.647356911213051, 0.2681908246948425, 0.4216832168949589, -0.15640416813475932, 0.5091965632941383, 0.6795174040555909, 0.3819940049374918, 0.8953965508435049, 1.0811321641690619, 2.763652185541633, 0.8578346355200306, 0.08963808582038361, 0.5101854590802727, 0.4527575703228302, -0.8627011833961279, 0.5462134869630935, 0.1813725165517729, 0.25860912552471754, 0.02283530676171379, 2.256424512963501, 0.1922713275188999, 8.218707368321041, 5.906699475772892]
+
+fixed_parameters = init_params[17:end]
+
+dists = dists = [
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ea
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eb
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eg
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eqs
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_em
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_epinf
+    Cauchy(0.0, 2.0, 0.0, 10.0),
+    Beta(0.5, 0.2, μσ = true),        # crhoa
+    Beta(0.5, 0.2, μσ = true),        # crhob
+    Beta(0.5, 0.2, μσ = true),        # crhog
+    Beta(0.5, 0.2, μσ = true),        # crhoqs
+    Beta(0.5, 0.2, μσ = true),        # crhoms
+    Beta(0.5, 0.2, μσ = true),        # crhopinf
+    Beta(0.5, 0.2, μσ = true),        # crhow
+    Beta(0.5, 0.2, μσ = true),        # cmap
+    Beta(0.5, 0.2, μσ = true)]        # cmaw
+
+Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter, dists)
+    all_params ~ Turing.arraydist(dists)
+
+    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw = all_params
+    
+    csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = fixed_parameters
+
+    crdy = 0
+
+    parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+    
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        llh = get_loglikelihood(m, data(observables), parameters_combined, 
+                                filter = filter,
+                                # verbose = true,
+                                # timer = timer,
+                                # presample_periods = 4, initial_covariance = :diagonal, 
+                                algorithm = algorithm)
+
+        Turing.@addlogprob! llh
+    end
+end
+
+
+SW07_llh3 = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists)
+
+LLH = Turing.logjoint(SW07_llh3, (all_params = init_params[1:16],))
+
+
+if smplr == "NUTS"
+    samps = @time Turing.sample(SW07_llh,
+                                # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
+                                NUTS(1000, 0.65, adtype = AutoZygote()),
+                                smpls;
+                                initial_params = isfinite(LLH) ? init_params : nothing,
+                                progress = true,
+                                callback = callback)
+
+    # InferenceReport.report(samps; max_moving_plot_iters = 0, view = false, render = true, exec_folder = "/home/cdsw")
+elseif smplr == "pigeons"
+    # generate a Pigeons log potential
+    sw07_lp3 = Pigeons.TuringLogPotential(SW07_llh3)
+
+    const SW07_LP3 = typeof(sw07_lp3)
+    
+    function Pigeons.initialization(target::SW07_LP3, rng::AbstractRNG, _::Int64)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+        
+        result = DynamicPPL.initialize_parameters!!(result, init_params[1:16], DynamicPPL.SampleFromPrior(), target.model)
 
         return result
     end
