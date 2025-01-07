@@ -5,7 +5,7 @@ import Dates
 using AxisKeys
 using Statistics
 
-dat = CSV.read("./Github/MacroModelling.jl/test/data/EA_SW_rawdata.csv", DataFrame, types = Dict(8=>Float64))
+dat = CSV.read("./test/data/EA_SW_rawdata.csv", DataFrame, types = Dict(8=>Float64))
 
 dat.interest_rate = dat.shortrate / 4
 
