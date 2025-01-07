@@ -1817,6 +1817,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
     if plots
         @testset "plot_solution" begin
+            gr_backend()
+
             while length(m.NSSS_solver_cache) > 2
                 pop!(m.NSSS_solver_cache)
             end
@@ -1906,6 +1908,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
         @testset "plot_irf" begin
+            gr_backend()
+
             while length(m.NSSS_solver_cache) > 2
                 pop!(m.NSSS_solver_cache)
             end
@@ -2032,6 +2036,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
         @testset "plot_conditional_variance_decomposition" begin
+            gr_backend()
+
             plot_fevd(m)
 
             plot_forecast_error_variance_decomposition(m)
@@ -2097,6 +2103,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
 
         @testset "plot_conditional_forecast" begin
+            gr_backend()
+
             # test conditional forecasting
             new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
             varnames = axiskeys(new_sub_irfs_all,1)
@@ -2300,6 +2308,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
         @testset "plot_model_estimates" begin
+            gr_backend()
+
             sol = get_solution(m)
             
             if length(m.exo) > 3
