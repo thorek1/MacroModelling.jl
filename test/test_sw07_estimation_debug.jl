@@ -858,7 +858,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
                                 # timer = timer,
                                 # presample_periods = 4, initial_covariance = :diagonal, 
                                 algorithm = algorithm)
-
+        println("$llh   $all_params")
         Turing.@addlogprob! llh
     end
 end
@@ -910,3 +910,11 @@ elseif smplr == "pigeons"
 end
 
 pre_pandemic_stds = [0.6214776253642815, 0.09180625969728813, 0.48695111652187245, 1.7462778722662238, 0.22762104671667938, 0.2841560574382372, 0.42421425521650646]
+
+### use MAP
+using OptimizationNLopt, OptimizationOptimJL
+# LLH = Turing.logjoint(SW07_llh3, (all_params = init_params[1:16],))
+
+modeSW2007NM2 = Turing.maximum_a_posteriori(SW07_llh3, NLopt.LN_NELDERMEAD(), initial_params = init_params[1:16])
+
+modeSW2007LBFGS = Turing.maximum_a_posteriori(SW07_llh3, Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), initial_params = init_params[1:16], adtype = AutoZygote()) # Out of memory
