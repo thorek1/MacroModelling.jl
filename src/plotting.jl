@@ -1707,7 +1707,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), ylabel = "Level", label = "")
                                 if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                 StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")   
-                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
+                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = gr_back ? :star8 : :pentagon, markercolor = :black)                            
                     end)
                 else
                     push!(pp,begin
@@ -1722,7 +1722,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                     push!(pp,begin
                                 StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
                                 StatsPlots.hline!([SS], color = :black, label = "")
-                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
+                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = gr_back ? :star8 : :pentagon, markercolor = :black)  
                     end)
                 else 
                     push!(pp,begin
@@ -1745,7 +1745,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                 p = StatsPlots.plot(ppp,begin
                                             StatsPlots.scatter(fill(0,1,1), 
                                             label = "Condition", 
-                                            marker = :star8,
+                                            marker = gr_back ? :star8 : :pentagon,
                                             markercolor = :black,
                                             linewidth = 0, 
                                             framestyle = :none, 
@@ -1791,7 +1791,7 @@ function plot_conditional_forecast(𝓂::ℳ,
         p = StatsPlots.plot(ppp,begin
                                 StatsPlots.scatter(fill(0,1,1), 
                                 label = "Condition", 
-                                marker = :star8,
+                                marker = gr_back ? :star8 : :pentagon,
                                 markercolor = :black,
                                 linewidth = 0, 
                                 framestyle = :none, 
