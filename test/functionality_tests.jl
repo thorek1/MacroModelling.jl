@@ -1817,8 +1817,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
     if plots
         @testset "plot_solution" begin
-            gr_backend()
-
             while length(m.NSSS_solver_cache) > 2
                 pop!(m.NSSS_solver_cache)
             end
@@ -1866,16 +1864,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             
-            for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
-                if backend == :gr
-                    gr_backend()
-                else
-                    plotlyjs_backend()
-                end
-                for show_plots in (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                            for save_plots_format in [:pdf,:png,:ps,:svg] # (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 plot_solution(m, states[1], algorithm = algos[end],
                                                 show_plots = show_plots,
                                                 save_plots = save_plots,
@@ -1885,7 +1883,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         end
                     end
                 end
-            end
+            # end
 
             for parameters in params
                 plot_solution(m, states[1], algorithm = algos[end],
@@ -1904,17 +1902,25 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     end
                 end
             end
+
+            plotlyjs_backend()
+
+            plot_solution(m, states[1], algorithm = algos[end])
+
+            gr_backend()
         end
 
 
         @testset "plot_irf" begin
-            gr_backend()
-
             while length(m.NSSS_solver_cache) > 2
                 pop!(m.NSSS_solver_cache)
             end
 
+            plotlyjs_backend()
+
             plot_IRF(m, algorithm = algorithm)
+
+            gr_backend()
 
             plot_irfs(m, algorithm = algorithm)
 
@@ -2012,16 +2018,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
-                if backend == :gr
-                    gr_backend()
-                else
-                    plotlyjs_backend()
-                end
-                for show_plots in (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                            for save_plots_format in [:pdf,:png,:ps,:svg] # (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 plot_irf(m, algorithm = algorithm,
                                             show_plots = show_plots,
                                             save_plots = save_plots,
@@ -2031,14 +2037,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         end
                     end
                 end
-            end
+            # end
         end
 
 
         @testset "plot_conditional_variance_decomposition" begin
-            gr_backend()
-
+            plotlyjs_backend()
+            
             plot_fevd(m)
+
+            gr_backend()
 
             plot_forecast_error_variance_decomposition(m)
 
@@ -2068,18 +2076,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
             
-            for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
-                if backend == :gr
-                    gr_backend()
-                else
-                    plotlyjs_backend()
-                end
-                for show_plots in (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
-                        for plots_per_page in [4,6]
-                            for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                                for plot_attributes in [Dict(), Dict(:plot_title => "Title")]
-                                    for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for save_plots_format in [:pdf,:png,:ps,:svg] # (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                                for plots_per_page in [4,6]
+                                    for plot_attributes in [Dict(), Dict(:plot_title => "Title")]
                                         for max_elements_per_legend_row in [3,5]
                                             for extra_legend_space in [0.0, 0.5]
                                                 plot_conditional_variance_decomposition(m,
@@ -2099,12 +2107,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         end
                     end
                 end
-            end
+            # end
         end
 
         @testset "plot_conditional_forecast" begin
-            gr_backend()
-
             # test conditional forecasting
             new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
             varnames = axiskeys(new_sub_irfs_all,1)
@@ -2184,18 +2190,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 push!(shocks, shcks)
             end
             
-            for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
-                if backend == :gr
-                    gr_backend()
-                else
-                    plotlyjs_backend()
-                end
-                for show_plots in (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
-                        for plots_per_page in [1,4]
-                            for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                                for plot_attributes in [Dict(), Dict(:plot_title => "Title")]
-                                    for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for save_plots_format in [:pdf,:png,:ps,:svg] # (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                                for plots_per_page in [1,4]
+                                    for plot_attributes in [Dict(), Dict(:plot_title => "Title")]
                                         plot_conditional_forecast(m, conditions[1],
                                                                     conditions_in_levels = false,
                                                                     initial_state = [0.0],
@@ -2213,7 +2219,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         end
                     end
                 end
-            end
+            # end
 
             while length(m.NSSS_solver_cache) > 2
                 pop!(m.NSSS_solver_cache)
@@ -2306,10 +2312,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             conditions_in_levels = false,
                                             algorithm = algorithm)
             end
+            
+            plotlyjs_backend()
+
+            plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+
+            gr_backend()
         end
         @testset "plot_model_estimates" begin
-            gr_backend()
-
             sol = get_solution(m)
             
             if length(m.exo) > 3
@@ -2331,6 +2343,14 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
             
             if !(algorithm in [:second_order, :third_order])
+                plotlyjs_backend()
+
+                plot_shock_decomposition(m, data, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = false)
+
+                gr_backend()
+
                 plot_shock_decomposition(m, data, 
                                             algorithm = algorithm, 
                                             data_in_levels = false)
@@ -2445,16 +2465,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
-                if backend == :gr
-                    gr_backend()
-                else
-                    plotlyjs_backend()
-                end
-                for show_plots in (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for save_plots_format in (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                            for save_plots_format in [:pdf,:png,:ps,:svg] # (save_plots ? backend == :gr ? [:pdf,:png,:ps,:svg] : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 plot_model_estimates(m, data, 
                                                         algorithm = algorithm, 
                                                         data_in_levels = false,
@@ -2466,7 +2486,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         end
                     end
                 end
-            end
+            # end
         end
     end
 end
