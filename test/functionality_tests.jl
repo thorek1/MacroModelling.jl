@@ -748,94 +748,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
     end
 
-
-    @testset "get_irf with parameter input" begin
-        if algorithm == :first_order
-            for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
-                for levels in [true,false]
-                    for negative_shock in [true,false]
-                        for periods in [1,10]
-                            get_irf(m, parameter_values,
-                                    levels = levels,
-                                    periods = periods,
-                                    negative_shock = negative_shock)
-
-                            get_IRF(m, parameter_values,
-                                    levels = levels,
-                                    periods = periods,
-                                    negative_shock = negative_shock)
-
-                            get_irfs(m, parameter_values,
-                                    levels = levels,
-                                    periods = periods,
-                                    negative_shock = negative_shock)
-                        end
-                    end
-                end
-
-                while length(m.NSSS_solver_cache) > 2
-                    pop!(m.NSSS_solver_cache)
-                end
-
-                shock_mat = randn(m.timings.nExo,3)
-
-                shock_mat2 = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10)
-
-                shock_mat3 = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10)
-
-                for initial_state in init_states
-                    # Clear solution caches
-                    pop!(m.NSSS_solver_cache)
-                    m.solution.perturbation.qme_solution = zeros(0,0)
-                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                    m.solution.perturbation.third_order_solution = spzeros(0,0)
-                                
-                    irf_ = get_irf(m, parameter_values, initial_state = initial_state)
-                    
-                    deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
-
-                    deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
-
-                    @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-6)
-
-                    for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                        for quadratic_matrix_equation_algorithm in qme_algorithms
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
-                                        
-                            IRF_ = get_irf(m, 
-                                            parameter_values, 
-                                            initial_state = initial_state,
-                                            tol = tol,
-                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
-                            @test isapprox(irf_, IRF_, rtol = 1e-8)
-
-                            DERIV_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state, tol = tol,
-                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)[:,1,1], parameter_values)
-
-                            @test isapprox(deriv_for, DERIV_for, rtol = 1e-8)
-                        end
-                    end
-                    for variables in vars
-                        for shocks in [:all, :all_excluding_obc, :none, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
-                                        
-                            get_irf(m, parameter_values, variables = variables, initial_state = initial_state, shocks = shocks)
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    
     @testset "get_solution with parameter input" begin
         for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
             get_first_order_solution(m, parameter_values)
@@ -954,6 +866,94 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
     end
 
+
+    @testset "get_irf with parameter input" begin
+        if algorithm == :first_order
+            for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
+                for levels in [true,false]
+                    for negative_shock in [true,false]
+                        for periods in [1,10]
+                            get_irf(m, parameter_values,
+                                    levels = levels,
+                                    periods = periods,
+                                    negative_shock = negative_shock)
+
+                            get_IRF(m, parameter_values,
+                                    levels = levels,
+                                    periods = periods,
+                                    negative_shock = negative_shock)
+
+                            get_irfs(m, parameter_values,
+                                    levels = levels,
+                                    periods = periods,
+                                    negative_shock = negative_shock)
+                        end
+                    end
+                end
+
+                while length(m.NSSS_solver_cache) > 2
+                    pop!(m.NSSS_solver_cache)
+                end
+
+                shock_mat = randn(m.timings.nExo,3)
+
+                shock_mat2 = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10)
+
+                shock_mat3 = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10)
+
+                for initial_state in init_states
+                    # Clear solution caches
+                    pop!(m.NSSS_solver_cache)
+                    m.solution.perturbation.qme_solution = zeros(0,0)
+                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                
+                    irf_ = get_irf(m, parameter_values, initial_state = initial_state)
+                    
+                    deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
+
+                    deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
+
+                    @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-6)
+
+                    for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                        for quadratic_matrix_equation_algorithm in qme_algorithms
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        
+                            IRF_ = get_irf(m, 
+                                            parameter_values, 
+                                            initial_state = initial_state,
+                                            tol = tol,
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
+                            @test isapprox(irf_, IRF_, rtol = 1e-8)
+
+                            DERIV_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state, tol = tol,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)[:,1,1], parameter_values)
+
+                            @test isapprox(deriv_for, DERIV_for, rtol = 1e-8)
+                        end
+                    end
+                    for variables in vars
+                        for shocks in [:all, :all_excluding_obc, :none, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                            # Clear solution caches
+                            pop!(m.NSSS_solver_cache)
+                            m.solution.perturbation.qme_solution = zeros(0,0)
+                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        
+                            get_irf(m, parameter_values, variables = variables, initial_state = initial_state, shocks = shocks)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    
     @testset "get_statistics" begin
         for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
             for non_stochastic_steady_state in (Symbol[], vars...)
