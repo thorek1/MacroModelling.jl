@@ -23,7 +23,7 @@ const SYLVESTER® = "`sylvester_algorithm` [Default: `:doubling`, Type: `Union{S
 const QME® = "`quadratic_matrix_equation_algorithm` [Default: `:schur`, Type: `Symbol`]: algorithm to solve quadratic matrix equation (`A * X ^ 2 + B * X + C = 0`). Available algorithms: `:schur`, `:doubling`"
 const VERBOSE® = "`verbose` [Default: `false`, Type: `Bool`]: print information about results of the different solvers used to solve the model (non stochastic steady state solver, Sylvester equations, Lyapunov equation, and quadratic matrix equation)."
 const TOLERANCES® = "`tol` [Default: `Tolerances()`, Type: `Tolerances`]: define various tolerances for the algorithm used to solve the model. See documentation of [`Tolerances`](@ref) for more details: `?Tolerances`"
-const PLOT_ATTRIBUTES® = "`plot_attributes` [Default: `Dict()`, Type: `Dict`]: pass on plot attributes for the top-level plot (see https://docs.juliaplots.org/latest/generated/attributes_plot/). E.g. Dict(:plot_title => \"Title\")."
+const PLOT_ATTRIBUTES® = "`plot_attributes` [Default: `Dict()`, Type: `Dict`]: pass on plot attributes for the top-level plot (see https://docs.juliaplots.org/latest/generated/attributes_plot/). E.g. Dict(:plot_titlefontcolor => :red)."
 const PLOTS_PER_PAGE® = "`plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page"
 const SAVE_PLOTS_PATH® = "`save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots"
 const SAVE_PLOTS_FORMATH® = "`save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats."
