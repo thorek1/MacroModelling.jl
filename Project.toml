@@ -64,6 +64,7 @@ FiniteDifferences = "0.12"
 ForwardDiff = "0.10"
 JET = "0.7, 0.8, 0.9"
 JSON = "0.21"
+Kaleido_jll = "0.1"
 Krylov = "0.9"
 LaTeXStrings = "1"
 LineSearches = "7"
@@ -106,6 +107,7 @@ DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
 FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
+Kaleido_jll = "f7e6163d-2fa5-5f23-b69c-1db539e41963"
 LineSearches = "d3d80556-e9d4-5f37-9878-2ab0fcc64255"
 MCMCChains = "c7f686f2-ff18-58e9-bc7b-31028e88f75d"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
@@ -117,4 +119,4 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["Aqua", "JET", "CSV", "DataFrames", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Zygote", "StatsPlots", "PlotlyJS"]
+test = ["Aqua", "JET", "CSV", "DataFrames", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Zygote", "StatsPlots", "PlotlyJS", "Kaleido_jll"]
