@@ -1856,7 +1856,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             for plots_per_page in [1,4]
-                for plot_attributes in [Dict(), Dict(:plot_title => "Title")]
+                for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
                     plot_solution(m, states[1], algorithm = algos[end],
                                     plot_attributes = plot_attributes,
                                     plots_per_page = plots_per_page)
@@ -2010,7 +2010,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 plot_irf(m, algorithm = algorithm, shocks = shocks)
             end
 
-            for plot_attributes in [Dict(), Dict(:plot_title => "Title")]
+            for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
                 for plots_per_page in [4,6]
                     plot_irf(m, algorithm = algorithm,
                                 plot_attributes = plot_attributes,
@@ -2087,7 +2087,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                             for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 for plots_per_page in [4,6]
-                                    for plot_attributes in [Dict(), Dict(:plot_title => "Title")]
+                                    for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
                                         for max_elements_per_legend_row in [3,5]
                                             for extra_legend_space in [0.0, 0.5]
                                                 plot_conditional_variance_decomposition(m,
@@ -2201,7 +2201,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                             for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 for plots_per_page in [1,4]
-                                    for plot_attributes in [Dict(), Dict(:plot_title => "Title")]
+                                    for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
                                         plot_conditional_forecast(m, conditions[1],
                                                                     conditions_in_levels = false,
                                                                     initial_state = [0.0],
@@ -2450,7 +2450,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end 
 
             for plots_per_page in [4,6]
-                for plot_attributes in [Dict(), Dict(:plot_title => "Title")]
+                for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
                     for max_elements_per_legend_row in [3,5]
                         for extra_legend_space in [0.0, 0.5]
                             plot_model_estimates(m, data, 
