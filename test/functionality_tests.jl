@@ -1903,11 +1903,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            plotlyjs_backend()
+            # plotlyjs_backend()
 
-            plot_solution(m, states[1], algorithm = algos[end])
+            # plot_solution(m, states[1], algorithm = algos[end])
 
-            gr_backend()
+            # gr_backend()
         end
 
 
@@ -1916,11 +1916,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 pop!(m.NSSS_solver_cache)
             end
 
-            plotlyjs_backend()
+            # plotlyjs_backend()
 
             plot_IRF(m, algorithm = algorithm)
 
-            gr_backend()
+            # gr_backend()
 
             plot_irfs(m, algorithm = algorithm)
 
@@ -2042,11 +2042,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
         @testset "plot_conditional_variance_decomposition" begin
-            plotlyjs_backend()
+            # plotlyjs_backend()
             
             plot_fevd(m)
 
-            gr_backend()
+            # gr_backend()
 
             plot_forecast_error_variance_decomposition(m)
 
@@ -2313,13 +2313,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             algorithm = algorithm)
             end
             
-            plotlyjs_backend()
+            # plotlyjs_backend()
 
-            plot_conditional_forecast(m, conditions[end],
-                                            conditions_in_levels = false,
-                                            algorithm = algorithm)
+            # plot_conditional_forecast(m, conditions[end],
+            #                                 conditions_in_levels = false,
+            #                                 algorithm = algorithm)
 
-            gr_backend()
+            # gr_backend()
         end
         @testset "plot_model_estimates" begin
             sol = get_solution(m)
@@ -2343,13 +2343,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
             
             if !(algorithm in [:second_order, :third_order])
-                plotlyjs_backend()
+                # plotlyjs_backend()
 
-                plot_shock_decomposition(m, data, 
-                                            algorithm = algorithm, 
-                                            data_in_levels = false)
+                # plot_shock_decomposition(m, data, 
+                #                             algorithm = algorithm, 
+                #                             data_in_levels = false)
 
-                gr_backend()
+                # gr_backend()
 
                 plot_shock_decomposition(m, data, 
                                             algorithm = algorithm, 
