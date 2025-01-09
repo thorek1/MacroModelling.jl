@@ -57,7 +57,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
 
         if !(algorithm ∈ [:second_order, :third_order])
-            for filter in (algorithm == :first_order ? filters : :inversion)
+            for filter in (algorithm == :first_order ? filters : [:inversion])
                 for smooth in [true, false]
                     for verbose in [false] # [true, false]
                         for quadratic_matrix_equation_algorithm in qme_algorithms
@@ -276,19 +276,51 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             pop!(m.NSSS_solver_cache)
         end
 
-        for filter in (algorithm == :first_order ? filters : :inversion)
+        for filter in (algorithm == :first_order ? filters : [:inversion])
             for presample_periods in [0, 10]
                 for initial_covariance in [:diagonal, :theoretical]
                     for verbose in [false] # [true, false]
                         for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
                             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                                llh = get_loglikelihood(m, data, parameter_values,
+                                llh = get_loglikelihood(m, data_in_levels, parameter_values,
                                                         algorithm = algorithm,
                                                         filter = filter,
                                                         presample_periods = presample_periods,
                                                         initial_covariance = initial_covariance,
                                                         tol = tol,
                                                         verbose = verbose)
+
+                                # # Clear solution caches
+                                # pop!(m.NSSS_solver_cache)
+                                # m.solution.perturbation.qme_solution = zeros(0,0)
+                                # m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                # m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        
+                                # fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), 
+                                #                                         x -> get_loglikelihood(m, data_in_levels, x,
+                                #                                                                 algorithm = algorithm,
+                                #                                                                 filter = filter,
+                                #                                                                 presample_periods = presample_periods,
+                                #                                                                 initial_covariance = initial_covariance,
+                                #                                                                 tol = tol,
+                                #                                                                 verbose = verbose), parameter_values)
+
+                                # Clear solution caches
+                                pop!(m.NSSS_solver_cache)
+                                m.solution.perturbation.qme_solution = zeros(0,0)
+                                m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        
+                                zyg_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels, x,
+                                                                                                algorithm = algorithm,
+                                                                                                filter = filter,
+                                                                                                presample_periods = presample_periods,
+                                                                                                initial_covariance = initial_covariance,
+                                                                                                tol = tol,
+                                                                                                verbose = verbose), parameter_values)
+
+                                # @test isapprox(fin_grad_llh[1], zyg_grad_llh[1], rtol = 1e-6)
+                                                                            
                                 for quadratic_matrix_equation_algorithm in qme_algorithms
                                     for lyapunov_algorithm in lyapunov_algorithms
                                         for sylvester_algorithm in sylvester_algorithms
@@ -299,7 +331,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             m.solution.perturbation.second_order_solution = spzeros(0,0)
                                             m.solution.perturbation.third_order_solution = spzeros(0,0)
                                         
-                                            LLH = get_loglikelihood(m, data, parameter_values,
+                                            LLH = get_loglikelihood(m, data_in_levels, parameter_values,
                                                                     algorithm = algorithm,
                                                                     filter = filter,
                                                                     presample_periods = presample_periods,
@@ -310,6 +342,25 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     sylvester_algorithm = sylvester_algorithm,
                                                                     verbose = verbose)
                                             @test isapprox(llh, LLH, rtol = 1e-8)
+
+                                            # Clear solution caches
+                                            pop!(m.NSSS_solver_cache)
+                                            m.solution.perturbation.qme_solution = zeros(0,0)
+                                            m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    
+                                            ZYG_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels, x,
+                                                                                                            algorithm = algorithm,
+                                                                                                            filter = filter,
+                                                                                                            presample_periods = presample_periods,
+                                                                                                            initial_covariance = initial_covariance,
+                                                                                                            tol = tol,
+                                                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                                            lyapunov_algorithm = lyapunov_algorithm,
+                                                                                                            sylvester_algorithm = sylvester_algorithm,
+                                                                                                            verbose = verbose), parameter_values)
+            
+                                            @test isapprox(ZYG_grad_llh[1], zyg_grad_llh[1], rtol = 1e-6)    
                                         end
                                     end
                                 end
@@ -318,7 +369,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     end
                 end
             end
-        end    
+        end
     end
 
     @testset "get_conditional_forecast" begin
@@ -2393,7 +2444,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
-                for filter in (algorithm == :first_order ? filters : :inversion)
+                for filter in (algorithm == :first_order ? filters : [:inversion])
                     for smooth in [true, false]
                         for presample_periods in [0, 10]
                             # Clear solution caches
