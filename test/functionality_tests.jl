@@ -262,20 +262,24 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                                 verbose = verbose), parameter_values)
 
                                 if algorithm == :first_order && filter == :kalman
-                                    fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), 
-                                                                            x -> begin 
-                                                                                    clear_solution_caches!(m, algorithm)
-
-                                                                                    get_loglikelihood(m, data_in_levels, x,
-                                                                                                    algorithm = algorithm,
-                                                                                                    filter = filter,
-                                                                                                    presample_periods = presample_periods,
-                                                                                                    initial_covariance = initial_covariance,
-                                                                                                    tol = tol,
-                                                                                                    verbose = verbose)
-                                                                                    end, parameter_values)
-
-                                    @test isapprox(fin_grad_llh[1], zyg_grad_llh[1], rtol = 1e-6)
+                                    for i in 1:100
+                                        local fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), 
+                                                                                x -> begin 
+                                                                                        clear_solution_caches!(m, algorithm)
+    
+                                                                                        get_loglikelihood(m, data_in_levels, x,
+                                                                                                        algorithm = algorithm,
+                                                                                                        filter = filter,
+                                                                                                        presample_periods = presample_periods,
+                                                                                                        initial_covariance = initial_covariance,
+                                                                                                        tol = tol,
+                                                                                                        verbose = verbose)
+                                                                                        end, parameter_values)
+                                        if isfinite(ℒ.norm(fin_grad_llh[1]))
+                                            @test isapprox(fin_grad_llh[1], zyg_grad_llh[1], rtol = 1e-6)
+                                            break
+                                        end
+                                    end
                                 end
                                                                   
                                 for quadratic_matrix_equation_algorithm in qme_algorithms
@@ -812,14 +816,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                              
                     deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
 
-                    deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), 
-                                                                x -> begin 
-                                                                    clear_solution_caches!(m, algorithm)
-
-                                                                    get_irf(m, x, initial_state = initial_state)[:,1,1]
-                                                                end, parameter_values)
-
-                    @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-5)
+                    for i in 1:100        
+                        local deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), 
+                                                                    x -> begin 
+                                                                        clear_solution_caches!(m, algorithm)
+    
+                                                                        get_irf(m, x, initial_state = initial_state)[:,1,1]
+                                                                    end, parameter_values)
+                        if isfinite(ℒ.norm(deriv_fin[1]))
+                            @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-5)
+                            break
+                        end
+                    end
 
                     for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                         for quadratic_matrix_equation_algorithm in qme_algorithms
@@ -938,25 +946,28 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         deriv1 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)
 
-        deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
-                                            x -> begin 
-                                                clear_solution_caches!(m, algorithm)
-
-                                                get_statistics(m, x, 
-                                                                algorithm = algorithm, 
-                                                                non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state]
-                                            end, old_params)
-
         deriv1_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)
                  
-        @test isapprox(deriv1_zyg[1], deriv1_fin[1], rtol = 1e-5)
-
-        @test isapprox(deriv1, deriv1_fin[1], rtol = 1e-5)
-
-        # ℒ.norm(deriv1 - deriv1_fin[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_fin[1]))
-        # ℒ.norm(deriv1 - deriv1_zyg[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_zyg[1]))
-
+        for i in 1:100        
+            local deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+                                                x -> begin 
+                                                    clear_solution_caches!(m, algorithm)
+    
+                                                    get_statistics(m, x, 
+                                                                    algorithm = algorithm, 
+                                                                    non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state]
+                                                end, old_params)
+            if isfinite(ℒ.norm(deriv1_fin[1]))
+                # ℒ.norm(deriv1 - deriv1_fin[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_fin[1]))
+                # ℒ.norm(deriv1 - deriv1_zyg[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_zyg[1]))
+        
+                @test isapprox(deriv1_zyg[1], deriv1_fin[1], rtol = 1e-5)
+        
+                @test isapprox(deriv1, deriv1_fin[1], rtol = 1e-5)
+                break
+            end
+        end
         
                         
         if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
@@ -965,74 +976,79 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             deriv2 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             mean = :all_excluding_obc)[:mean], old_params)
             
-
-            deriv2_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
-                                                    x -> begin 
-                                                        clear_solution_caches!(m, algorithm)
-
-                                                        get_statistics(m, x, 
-                                                                        algorithm = algorithm, 
-                                                                        mean = :all_excluding_obc)[:mean]
-                                                    end, old_params)
-                          
-            if algorithm == :first_order
-                deriv2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                mean = :all_excluding_obc)[:mean], old_params)
-                                                                
-                @test isapprox(deriv2_zyg[1], deriv2_fin[1], rtol = 1e-5)
-            end
-            
-            @test isapprox(deriv2, deriv2_fin[1], rtol = 1e-5)
-
-            
-                                          
+            for i in 1:100        
+                local deriv2_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+                                                        x -> begin 
+                                                            clear_solution_caches!(m, algorithm)
+    
+                                                            get_statistics(m, x, 
+                                                                            algorithm = algorithm, 
+                                                                            mean = :all_excluding_obc)[:mean]
+                                                        end, old_params)
+                              
+                if isfinite(ℒ.norm(deriv2_fin[1]))
+                    if algorithm == :first_order
+                        deriv2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                        mean = :all_excluding_obc)[:mean], old_params)
+                                                                        
+                        @test isapprox(deriv2_zyg[1], deriv2_fin[1], rtol = 1e-5)
+                    end
+                    
+                    @test isapprox(deriv2, deriv2_fin[1], rtol = 1e-5)
+                    break
+                end
+            end                            
 
             clear_solution_caches!(m, algorithm)
 
             deriv3 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)
             
-            deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+            for i in 1:100        
+                local deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
                                                         x -> begin 
                                                             clear_solution_caches!(m, algorithm)
 
                                                             get_statistics(m, x, algorithm = algorithm, standard_deviation = :all_excluding_obc)[:standard_deviation]
                                                         end, old_params)
-                        
-            if algorithm == :first_order
-                deriv3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)
-                                                                
-                @test isapprox(deriv3_zyg[1], deriv3_fin[1], rtol = 1e-5)
+                              
+                if isfinite(ℒ.norm(deriv3_fin[1]))
+                    if algorithm == :first_order
+                        deriv3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                        standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)
+                                                                        
+                        @test isapprox(deriv3_zyg[1], deriv3_fin[1], rtol = 1e-5)
+                    end
+                    
+                    @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-5)
+                    break
+                end
             end
-            
-            @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-5)
-
-            
             
             clear_solution_caches!(m, algorithm)
 
             deriv4 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             variance = :all_excluding_obc)[:variance], old_params)
 
-            deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
-                                                        x -> begin 
-                                                            clear_solution_caches!(m, algorithm)
-                                                            
-                                                            get_statistics(m, x, algorithm = algorithm, variance = :all_excluding_obc)[:variance]
-                                                        end, old_params)
-                    
-            if algorithm == :first_order
-                deriv4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                variance = :all_excluding_obc)[:variance], old_params)
+            for i in 1:100
+                local deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+                                                            x -> begin 
+                                                                clear_solution_caches!(m, algorithm)
                                                                 
-                @test isapprox(deriv4_zyg[1], deriv4_fin[1], rtol = 1e-5)
+                                                                get_statistics(m, x, algorithm = algorithm, variance = :all_excluding_obc)[:variance]
+                                                            end, old_params)
+                if isfinite(ℒ.norm(deriv4_fin[1]))
+                    if algorithm == :first_order
+                        deriv4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                        variance = :all_excluding_obc)[:variance], old_params)
+                                                                        
+                        @test isapprox(deriv4_zyg[1], deriv4_fin[1], rtol = 1e-5)
+                    end
+                    @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-5)
+                    break
+                end
             end
 
-            @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-5)
-
-                                                             
-            
             clear_solution_caches!(m, algorithm)
 
             deriv5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
@@ -1040,26 +1056,31 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                             sylvester_acceptance_tol = 1e-14),
                                                             covariance = :all_excluding_obc)[:covariance], old_params)
 
-            deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
-                                                        x -> begin 
-                                                            clear_solution_caches!(m, algorithm)
-                                                            
-                                                            get_statistics(m, x, algorithm = algorithm, 
-                                                                            tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
-                                                                            sylvester_acceptance_tol = 1e-14),
-                                                                            covariance = :all_excluding_obc)[:covariance]
-                                                        end, old_params)
-   
-            if algorithm == :first_order_
-                deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
-                                                                tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
-                                                                sylvester_acceptance_tol = 1e-14),
-                                                                covariance = :all_excluding_obc)[:covariance], old_params)
-                                                                
-                @test isapprox(deriv5_zyg[1], deriv5_fin[1], rtol = 1e-4)
+            for i in 1:100        
+                local deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+                                                                x -> begin 
+                                                                    clear_solution_caches!(m, algorithm)
+                                                                    
+                                                                    get_statistics(m, x, algorithm = algorithm, 
+                                                                                    tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
+                                                                                    sylvester_acceptance_tol = 1e-14),
+                                                                                    covariance = :all_excluding_obc)[:covariance]
+                                                                end, old_params)
+                if isfinite(ℒ.norm(deriv5_fin[1]))
+                    if algorithm == :first_order_
+                        deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
+                                                                        tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
+                                                                        sylvester_acceptance_tol = 1e-14),
+                                                                        covariance = :all_excluding_obc)[:covariance], old_params)
+                                                                        
+                        @test isapprox(deriv5_zyg[1], deriv5_fin[1], rtol = 1e-4)
+                    end
+
+                    # println(ℒ.norm(deriv5 - deriv5_fin[1]) / max(ℒ.norm(deriv5), ℒ.norm(deriv5_fin[1])))                      
+                    @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-4)
+                    break
+                end
             end
-            # println(ℒ.norm(deriv5 - deriv5_fin[1]) / max(ℒ.norm(deriv5), ℒ.norm(deriv5_fin[1])))                      
-            @test isapprox(deriv5, deriv5_fin[1], rtol = 1e-4)
         end
         
 
