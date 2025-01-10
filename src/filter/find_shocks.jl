@@ -318,7 +318,7 @@ function find_shocks(::Val{:LagrangeNewton},
         ℒ.axpby!(1, shock_independent, -1, x̂)
 
         if ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
-            # println("LagrangeNewton: $i, Tol reached")
+            # println("LagrangeNewton: $i, Tol: $(ℒ.norm(Δxλ) / ℒ.norm(xλ)) reached, x: $x")
             break
         end
 

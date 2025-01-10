@@ -1915,9 +1915,9 @@ function get_solution(𝓂::ℳ,
 
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-        𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+        # 𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-        𝐒₂ = sparse(𝐒₂)
+        𝐒₂ = sparse(𝐒₂ * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
@@ -1931,9 +1931,9 @@ function get_solution(𝓂::ℳ,
     
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-        𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+        # 𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-        𝐒₂ = sparse(𝐒₂)
+        𝐒₂ = sparse(𝐒₂ * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
 
         ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
                 
@@ -1947,9 +1947,9 @@ function get_solution(𝓂::ℳ,
 
         if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
         
-        𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
+        # 𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 
-        𝐒₃ = sparse(𝐒₃)
+        𝐒₃ = sparse(𝐒₃ * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
     else
