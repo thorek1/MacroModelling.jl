@@ -32,7 +32,7 @@ import Polyester
 import NLopt
 import Optim, LineSearches
 # import Zygote
-import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearAlgebra: mul!
 # import Octavian: matmul!
@@ -840,7 +840,9 @@ function choose_matrix_format(A::AbstractSparseMatrix{S};
                                 tol::AbstractFloat = eps()) where S <: Real
     droptol!(A, tol)
 
-    lennz = A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(findnz(A)[3]) : length(A.nzval)
+    # lennz = A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(A.A.nzval) : length(A.nzval)
+
+    lennz = nnz(A)
 
     if lennz / length(A) > density_threshold || length(A) < min_length
         return collect(A)
@@ -1098,7 +1100,7 @@ function compressed_kron³(a::AbstractMatrix{T};
     end
     # Initialize arrays to collect indices and values
     # Estimate an upper bound for non-zero entries to preallocate arrays
-    lennz = a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
+    lennz = nnz(a) # a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
 
     m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
     m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
