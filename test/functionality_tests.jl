@@ -52,9 +52,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
         data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
 
         if !(algorithm ∈ [:second_order, :third_order])
             for filter in (algorithm == :first_order ? filters : [:inversion])
@@ -63,11 +60,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         for quadratic_matrix_equation_algorithm in qme_algorithms
                             for lyapunov_algorithm in lyapunov_algorithms
                                 for sylvester_algorithm in sylvester_algorithms
-                                    # Clear solution caches
-                                    pop!(m.NSSS_solver_cache)
-                                    m.solution.perturbation.qme_solution = zeros(0,0)
-                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    clear_solution_caches!(m, algorithm)
 
                                     estim1 = get_shock_decomposition(m, data, 
                                                                     algorithm = algorithm, 
@@ -79,11 +72,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     sylvester_algorithm = sylvester_algorithm,
                                                                     verbose = verbose)
 
-                                    # Clear solution caches
-                                    pop!(m.NSSS_solver_cache)
-                                    m.solution.perturbation.qme_solution = zeros(0,0)
-                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    clear_solution_caches!(m, algorithm)
                                 
                                     estim2 = get_shock_decomposition(m, data_in_levels, 
                                                                     algorithm = algorithm, 
@@ -96,11 +85,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     verbose = verbose)
                                     @test isapprox(estim1, estim2, rtol = 1e-8)
 
-                                    # Clear solution caches
-                                    pop!(m.NSSS_solver_cache)
-                                    m.solution.perturbation.qme_solution = zeros(0,0)
-                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    clear_solution_caches!(m, algorithm)
 
                                     estim1 = get_estimated_shocks(m, data, 
                                                                     algorithm = algorithm, 
@@ -112,11 +97,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     sylvester_algorithm = sylvester_algorithm,
                                                                     verbose = verbose)
 
-                                    # Clear solution caches
-                                    pop!(m.NSSS_solver_cache)
-                                    m.solution.perturbation.qme_solution = zeros(0,0)
-                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    clear_solution_caches!(m, algorithm)
                                 
                                     estim2 = get_estimated_shocks(m, data_in_levels, 
                                                                     algorithm = algorithm, 
@@ -130,11 +111,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     @test isapprox(estim1, estim2, rtol = 1e-8)
 
                                     for levels in [true, false]
-                                        # Clear solution caches
-                                        pop!(m.NSSS_solver_cache)
-                                        m.solution.perturbation.qme_solution = zeros(0,0)
-                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        clear_solution_caches!(m, algorithm)
                                     
                                         estim1 = get_estimated_variables(m, data, 
                                                                         algorithm = algorithm, 
@@ -147,11 +124,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         sylvester_algorithm = sylvester_algorithm,
                                                                         verbose = verbose)
 
-                                        # Clear solution caches
-                                        pop!(m.NSSS_solver_cache)
-                                        m.solution.perturbation.qme_solution = zeros(0,0)
-                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        clear_solution_caches!(m, algorithm)
                                                                     
                                         estim2 = get_estimated_variables(m, data_in_levels, 
                                                                         algorithm = algorithm, 
@@ -217,9 +190,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
 
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
+        
 
         if algorithm == :first_order
             for smooth in [true, false]
@@ -227,11 +198,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
 
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
                         
                             estim1 = get_estimated_variable_standard_deviations(m, data, 
                                                                                 data_in_levels = false, 
@@ -240,11 +207,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                                                 verbose = verbose)
 
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
                         
                             estim2 = get_estimated_variable_standard_deviations(m, data_in_levels, 
                                                                                 data_in_levels = true,
@@ -272,9 +235,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
 
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
+        
 
         for filter in (algorithm == :first_order ? filters : [:inversion])
             for presample_periods in [0, 10]
@@ -290,11 +251,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                         tol = tol,
                                                         verbose = verbose)
 
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
                         
                                 zyg_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels, x,
                                                                                                 algorithm = algorithm,
@@ -307,11 +264,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 if algorithm == :first_order && filter == :kalman
                                     fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), 
                                                                             x -> begin 
-                                                                                    # Clear solution caches
-                                                                                    pop!(m.NSSS_solver_cache)
-                                                                                    m.solution.perturbation.qme_solution = zeros(0,0)
-                                                                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                                                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                                                                    clear_solution_caches!(m, algorithm)
 
                                                                                     get_loglikelihood(m, data_in_levels, x,
                                                                                                     algorithm = algorithm,
@@ -329,11 +282,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     for lyapunov_algorithm in lyapunov_algorithms
                                         for sylvester_algorithm in sylvester_algorithms
                                             
-                                            # Clear solution caches
-                                            pop!(m.NSSS_solver_cache)
-                                            m.solution.perturbation.qme_solution = zeros(0,0)
-                                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                            clear_solution_caches!(m, algorithm)
                                         
                                             LLH = get_loglikelihood(m, data_in_levels, parameter_values,
                                                                     algorithm = algorithm,
@@ -347,11 +296,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     verbose = verbose)
                                             @test isapprox(llh, LLH, rtol = 1e-8)
 
-                                            # Clear solution caches
-                                            pop!(m.NSSS_solver_cache)
-                                            m.solution.perturbation.qme_solution = zeros(0,0)
-                                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                            clear_solution_caches!(m, algorithm)
                                     
                                             ZYG_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels, x,
                                                                                                             algorithm = algorithm,
@@ -462,9 +407,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             algorithm = algorithm, 
                                             shocks = shocks[1])
 
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
+        
 
         for periods in [0,10]
             for variables in vars
@@ -475,11 +418,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 for lyapunov_algorithm in lyapunov_algorithms
                                     for sylvester_algorithm in sylvester_algorithms
                                         
-                                        # Clear solution caches
-                                        pop!(m.NSSS_solver_cache)
-                                        m.solution.perturbation.qme_solution = zeros(0,0)
-                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        clear_solution_caches!(m, algorithm)
                                     
                                         cond_fcst = get_conditional_forecast(m, conditions[end],
                                                                             conditions_in_levels = false,
@@ -495,11 +434,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             verbose = verbose)
 
                                         
-                                        # Clear solution caches
-                                        pop!(m.NSSS_solver_cache)
-                                        m.solution.perturbation.qme_solution = zeros(0,0)
-                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        clear_solution_caches!(m, algorithm)
                                     
                                         cond_fcst_lvl = get_conditional_forecast(m, conditions_lvl[end],
                                                                                 algorithm = algorithm, 
@@ -515,11 +450,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                                         @test isapprox(cond_fcst, cond_fcst_lvl)
 
-                                        # Clear solution caches
-                                        pop!(m.NSSS_solver_cache)
-                                        m.solution.perturbation.qme_solution = zeros(0,0)
-                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        clear_solution_caches!(m, algorithm)
                                     
                                         cond_fcst = get_conditional_forecast(m, conditions[end-1],
                                                                                 conditions_in_levels = false,
@@ -534,11 +465,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
 
-                                        # Clear solution caches
-                                        pop!(m.NSSS_solver_cache)
-                                        m.solution.perturbation.qme_solution = zeros(0,0)
-                                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                        clear_solution_caches!(m, algorithm)
                                     
                                         cond_fcst_lvl = get_conditional_forecast(m, conditions_lvl[end-1],
                                                                                 algorithm = algorithm, 
@@ -625,25 +552,15 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 fevd(m)
             end
 
-            while length(m.NSSS_solver_cache) > 2
-                pop!(m.NSSS_solver_cache)
-            end
+            
             
             for parameters in params
-                # Clear solution caches
-                pop!(m.NSSS_solver_cache)
-                m.solution.perturbation.qme_solution = zeros(0,0)
-                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                clear_solution_caches!(m, algorithm)
                                 
                 get_correlation(m, algorithm = algorithm, parameters = parameters, verbose = false)
 
                 for autocorrelation_periods in [1:5, 1:3]
-                    # Clear solution caches
-                    pop!(m.NSSS_solver_cache)
-                    m.solution.perturbation.qme_solution = zeros(0,0)
-                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                    clear_solution_caches!(m, algorithm)
                         
                     get_autocorrelation(m, 
                                         algorithm = algorithm, 
@@ -653,41 +570,27 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
 
                 if algorithm == :first_order
-                    # Clear solution caches
-                    pop!(m.NSSS_solver_cache)
-                    m.solution.perturbation.qme_solution = zeros(0,0)
-                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                    clear_solution_caches!(m, algorithm)
                                     
                     get_variance_decomposition(m, parameters = parameters, verbose = false)
 
                     for periods in [[1,Inf,10], [3,Inf], 1:3]
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        clear_solution_caches!(m, algorithm)
                         
                         get_conditional_variance_decomposition(m, periods = periods, parameters = parameters, verbose = false)
                     end
                 end
             end
 
-            while length(m.NSSS_solver_cache) > 2
-                pop!(m.NSSS_solver_cache)
-            end
+            
 
             for verbose in [false] # [true, false]
-                for tol in [MacroModelling.Tolerances(qme_acceptance_tol = 1e-14),MacroModelling.Tolerances(NSSS_xtol = 1e-20, qme_acceptance_tol = 1e-14)]
+                for tol in [MacroModelling.Tolerances(qme_acceptance_tol = 1e-14), MacroModelling.Tolerances(NSSS_xtol = 1e-20, qme_acceptance_tol = 1e-14)]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
                             
                             if algorithm == :first_order
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
 
                                 VAR_DECOMP = get_variance_decomposition(m,
                                                                         tol = tol,
@@ -697,11 +600,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         
                                 @test isapprox(var_decomp, VAR_DECOMP, rtol = 1e-8)
 
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
                                                                         
                                 COND_VAR_DECOMP = get_conditional_variance_decomposition(m,
                                                                                         tol = tol,
@@ -714,11 +613,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             end
 
                             for sylvester_algorithm in sylvester_algorithms
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
                                 
                                 CORRL = get_correlation(m,
                                                 algorithm = algorithm,
@@ -730,11 +625,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                                 @test isapprox(corrl, CORRL, rtol = 1e-5)
 
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
                                 
                                 AUTOCORR = get_autocorrelation(m,
                                                                 algorithm = algorithm,
@@ -774,21 +665,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             get_solution(m, algorithm = algorithm, parameters = parameters, verbose = false)
         end
 
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
+        
 
         for verbose in [false] # [true, false]
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for sylvester_algorithm in sylvester_algorithms
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.outdated_NSSS = true
-                        push!(m.solution.outdated_algorithms, algorithm)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        clear_solution_caches!(m, algorithm)
                         
                         SOL = get_solution(m,
                                             algorithm = algorithm,
@@ -819,40 +702,26 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             sol = get_solution(m, parameter_values, algorithm = algorithm)
 
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
-            m.solution.outdated_NSSS = true
-            push!(m.solution.outdated_algorithms, algorithm)
-            m.solution.perturbation.qme_solution = zeros(0,0)
-            m.solution.perturbation.second_order_solution = spzeros(0,0)
-            m.solution.perturbation.third_order_solution = spzeros(0,0)
+            clear_solution_caches!(m, algorithm)
 
             deriv_sol = []
             for i in 1:length(sol)-2
                 push!(deriv_sol, ForwardDiff.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], parameter_values))
             end
 
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
-            m.solution.outdated_NSSS = true
-            push!(m.solution.outdated_algorithms, algorithm)
-            m.solution.perturbation.qme_solution = zeros(0,0)
-            m.solution.perturbation.second_order_solution = spzeros(0,0)
-            m.solution.perturbation.third_order_solution = spzeros(0,0)
+            clear_solution_caches!(m, algorithm)
 
             deriv_sol_fin = []
             for i in 1:length(sol)-2
                 push!(deriv_sol_fin, FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
-                                                    x->get_solution(m, x, algorithm = algorithm)[i], parameter_values)[1])
+                                                        x -> begin 
+                                                            clear_solution_caches!(m, algorithm)
+                                                            
+                                                            get_solution(m, x, algorithm = algorithm)[i]
+                                                        end, parameter_values)[1])
             end
 
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
-            m.solution.outdated_NSSS = true
-            push!(m.solution.outdated_algorithms, algorithm)
-            m.solution.perturbation.qme_solution = zeros(0,0)
-            m.solution.perturbation.second_order_solution = spzeros(0,0)
-            m.solution.perturbation.third_order_solution = spzeros(0,0)
+            clear_solution_caches!(m, algorithm)
 
             deriv_sol_zyg = []
             for i in 1:length(sol)-2
@@ -866,13 +735,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for tol in [MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14), MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14, NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for sylvester_algorithm in sylvester_algorithms
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.outdated_NSSS = true
-                        push!(m.solution.outdated_algorithms, algorithm)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        clear_solution_caches!(m, algorithm)
 
                         SOL = get_solution(m, parameter_values, algorithm = algorithm, tol = tol,
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -880,13 +743,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                         @test isapprox([s for s in sol[1:end-1]], [S for S in SOL[1:end-1]], rtol = 1e-8)
 
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.outdated_NSSS = true
-                        push!(m.solution.outdated_algorithms, algorithm)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        clear_solution_caches!(m, algorithm)
 
                         DERIV_SOL = []
                         for i in 1:length(sol)-2
@@ -898,13 +755,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                         @test isapprox(deriv_sol, DERIV_SOL, rtol = 1e-8)
 
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.outdated_NSSS = true
-                        push!(m.solution.outdated_algorithms, algorithm)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        clear_solution_caches!(m, algorithm)
 
                         DERIV_SOL_zyg = []
                         for i in 1:length(sol)-2
@@ -946,10 +797,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     end
                 end
 
-                while length(m.NSSS_solver_cache) > 2
-                    pop!(m.NSSS_solver_cache)
-                end
-
                 shock_mat = randn(m.timings.nExo,3)
 
                 shock_mat2 = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10)
@@ -957,27 +804,26 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 shock_mat3 = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10)
 
                 for initial_state in init_states
-                    # Clear solution caches
-                    pop!(m.NSSS_solver_cache)
-                    m.solution.perturbation.qme_solution = zeros(0,0)
-                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                    clear_solution_caches!(m, algorithm)
                                 
                     irf_ = get_irf(m, parameter_values, initial_state = initial_state)
                     
+                    clear_solution_caches!(m, algorithm)
+                             
                     deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
 
-                    deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
+                    deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), 
+                                                                x -> begin 
+                                                                    clear_solution_caches!(m, algorithm)
+
+                                                                    get_irf(m, x, initial_state = initial_state)[:,1,1]
+                                                                end, parameter_values)
 
                     @test isapprox(deriv_for, deriv_fin[1], rtol = 1e-5)
 
                     for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                         for quadratic_matrix_equation_algorithm in qme_algorithms
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
                                         
                             IRF_ = get_irf(m, 
                                             parameter_values, 
@@ -994,11 +840,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     end
                     for variables in vars
                         for shocks in [:all, :all_excluding_obc, :none, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
                                         
                             get_irf(m, parameter_values, variables = variables, initial_state = initial_state, shocks = shocks)
                         end
@@ -1037,18 +879,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
         
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
+        
 
         for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
-            m.solution.outdated_NSSS = true
-            push!(m.solution.outdated_algorithms, algorithm)
-            m.solution.perturbation.qme_solution = zeros(0,0)
-            m.solution.perturbation.second_order_solution = spzeros(0,0)
-            m.solution.perturbation.third_order_solution = spzeros(0,0)
+            clear_solution_caches!(m, algorithm)
 
             stats = get_statistics(m, parameter_values, algorithm = algorithm,
                                     # tol = MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14, NSSS_xtol = 1e-14),
@@ -1063,13 +897,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for sylvester_algorithm in sylvester_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.outdated_NSSS = true
-                            push!(m.solution.outdated_algorithms, algorithm)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
                             
                             STATS = get_statistics(m, parameter_values, algorithm = algorithm,
                                                 non_stochastic_steady_state = :all,
@@ -1105,24 +933,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
 
 
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
-
-        # Clear solution caches
-        pop!(m.NSSS_solver_cache)
-        m.solution.outdated_NSSS = true
-        push!(m.solution.outdated_algorithms, algorithm)
-        m.solution.perturbation.qme_solution = zeros(0,0)
-        m.solution.perturbation.second_order_solution = spzeros(0,0)
-        m.solution.perturbation.third_order_solution = spzeros(0,0)
+        clear_solution_caches!(m, algorithm)
 
         deriv1 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)
 
         deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
-                                                x->get_statistics(m, x, algorithm = algorithm, 
-                                                        non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)
+                                            x -> begin 
+                                                clear_solution_caches!(m, algorithm)
+
+                                                get_statistics(m, x, 
+                                                                algorithm = algorithm, 
+                                                                non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state]
+                                            end, old_params)
 
         deriv1_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                         non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)
@@ -1134,26 +957,23 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         # ℒ.norm(deriv1 - deriv1_fin[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_fin[1]))
         # ℒ.norm(deriv1 - deriv1_zyg[1]) / max(ℒ.norm(deriv1), ℒ.norm(deriv1_zyg[1]))
 
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
+        
                         
         if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
-            m.solution.outdated_NSSS = true
-            push!(m.solution.outdated_algorithms, algorithm)
-            m.solution.perturbation.qme_solution = zeros(0,0)
-            m.solution.perturbation.second_order_solution = spzeros(0,0)
-            m.solution.perturbation.third_order_solution = spzeros(0,0)
+            clear_solution_caches!(m, algorithm)
 
             deriv2 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             mean = :all_excluding_obc)[:mean], old_params)
             
 
             deriv2_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
-                                                            x->get_statistics(m, x, algorithm = algorithm, 
-                                                            mean = :all_excluding_obc)[:mean], old_params)
+                                                    x -> begin 
+                                                        clear_solution_caches!(m, algorithm)
+
+                                                        get_statistics(m, x, 
+                                                                        algorithm = algorithm, 
+                                                                        mean = :all_excluding_obc)[:mean]
+                                                    end, old_params)
                           
             if algorithm == :first_order
                 deriv2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
@@ -1164,25 +984,20 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             
             @test isapprox(deriv2, deriv2_fin[1], rtol = 1e-5)
 
-            while length(m.NSSS_solver_cache) > 2
-                pop!(m.NSSS_solver_cache)
-            end
+            
                                           
 
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
-            m.solution.outdated_NSSS = true
-            push!(m.solution.outdated_algorithms, algorithm)
-            m.solution.perturbation.qme_solution = zeros(0,0)
-            m.solution.perturbation.second_order_solution = spzeros(0,0)
-            m.solution.perturbation.third_order_solution = spzeros(0,0)
+            clear_solution_caches!(m, algorithm)
 
             deriv3 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)
             
             deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
-                                                            x->get_statistics(m, x, algorithm = algorithm, 
-                                                            standard_deviation = :all_excluding_obc)[:standard_deviation], old_params)
+                                                        x -> begin 
+                                                            clear_solution_caches!(m, algorithm)
+
+                                                            get_statistics(m, x, algorithm = algorithm, standard_deviation = :all_excluding_obc)[:standard_deviation]
+                                                        end, old_params)
                         
             if algorithm == :first_order
                 deriv3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
@@ -1193,24 +1008,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             
             @test isapprox(deriv3, deriv3_fin[1], rtol = 1e-5)
 
-            while length(m.NSSS_solver_cache) > 2
-                pop!(m.NSSS_solver_cache)
-            end
             
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
-            m.solution.outdated_NSSS = true
-            push!(m.solution.outdated_algorithms, algorithm)
-            m.solution.perturbation.qme_solution = zeros(0,0)
-            m.solution.perturbation.second_order_solution = spzeros(0,0)
-            m.solution.perturbation.third_order_solution = spzeros(0,0)
+            
+            clear_solution_caches!(m, algorithm)
 
             deriv4 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             variance = :all_excluding_obc)[:variance], old_params)
 
             deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
-                                                            x->get_statistics(m, x, algorithm = algorithm, 
-                                                            variance = :all_excluding_obc)[:variance], old_params)
+                                                        x -> begin 
+                                                            clear_solution_caches!(m, algorithm)
+                                                            
+                                                            get_statistics(m, x, algorithm = algorithm, variance = :all_excluding_obc)[:variance]
+                                                        end, old_params)
                     
             if algorithm == :first_order
                 deriv4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
@@ -1221,17 +1031,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             @test isapprox(deriv4, deriv4_fin[1], rtol = 1e-5)
 
-            while length(m.NSSS_solver_cache) > 2
-                pop!(m.NSSS_solver_cache)
-            end                                                 
+                                                             
             
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
-            m.solution.outdated_NSSS = true
-            push!(m.solution.outdated_algorithms, algorithm)
-            m.solution.perturbation.qme_solution = zeros(0,0)
-            m.solution.perturbation.second_order_solution = spzeros(0,0)
-            m.solution.perturbation.third_order_solution = spzeros(0,0)
+            clear_solution_caches!(m, algorithm)
 
             deriv5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                             tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
@@ -1239,10 +1041,14 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                             covariance = :all_excluding_obc)[:covariance], old_params)
 
             deriv5_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
-                                                            x->get_statistics(m, x, algorithm = algorithm, 
-                                                            tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
-                                                            sylvester_acceptance_tol = 1e-14),
-                                                            covariance = :all_excluding_obc)[:covariance], old_params)
+                                                        x -> begin 
+                                                            clear_solution_caches!(m, algorithm)
+                                                            
+                                                            get_statistics(m, x, algorithm = algorithm, 
+                                                                            tol = MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, 
+                                                                            sylvester_acceptance_tol = 1e-14),
+                                                                            covariance = :all_excluding_obc)[:covariance]
+                                                        end, old_params)
    
             if algorithm == :first_order_
                 deriv5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
@@ -1257,21 +1063,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
         
 
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
+        
 
         for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14, lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14)]
             for quadratic_matrix_equation_algorithm in qme_algorithms
                 for sylvester_algorithm in sylvester_algorithms
                     for lyapunov_algorithm in lyapunov_algorithms
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.outdated_NSSS = true
-                        push!(m.solution.outdated_algorithms, algorithm)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                        clear_solution_caches!(m, algorithm)
 
                         DERIV1 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
                                                                         tol = tol,
@@ -1291,13 +1089,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         
 
                         if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.outdated_NSSS = true
-                            push!(m.solution.outdated_algorithms, algorithm)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
 
                             DERIV2 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
                                                                             tol = tol,
@@ -1308,13 +1100,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             @test isapprox(deriv2, DERIV2, rtol = 1e-8)
 
                             if algorithm == :first_order
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.outdated_NSSS = true
-                                push!(m.solution.outdated_algorithms, algorithm)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
     
                                 DERIV2_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
@@ -1325,13 +1111,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 @test isapprox(deriv2_zyg[1], DERIV2_zyg[1], rtol = 1e-8)
                             end
 
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.outdated_NSSS = true
-                            push!(m.solution.outdated_algorithms, algorithm)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
 
                             DERIV3 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
                                                                             tol = tol,
@@ -1342,13 +1122,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             @test isapprox(deriv3, DERIV3, rtol = 1e-8)
 
                             if algorithm == :first_order
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.outdated_NSSS = true
-                                push!(m.solution.outdated_algorithms, algorithm)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
     
                                 DERIV3_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
@@ -1359,13 +1133,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 @test isapprox(deriv3_zyg[1], DERIV3_zyg[1], rtol = 1e-8)
                             end
 
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.outdated_NSSS = true
-                            push!(m.solution.outdated_algorithms, algorithm)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
 
                             DERIV4 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
                                                                             tol = tol,
@@ -1376,13 +1144,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             @test isapprox(deriv4, DERIV4, rtol = 1e-8)
 
                             if algorithm == :first_order
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.outdated_NSSS = true
-                                push!(m.solution.outdated_algorithms, algorithm)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
     
                                 DERIV4_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
@@ -1393,13 +1155,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 @test isapprox(deriv4_zyg[1], DERIV4_zyg[1], rtol = 1e-8)
                             end
 
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.outdated_NSSS = true
-                            push!(m.solution.outdated_algorithms, algorithm)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
 
                             DERIV5 = ForwardDiff.jacobian(x->get_statistics(m, x, algorithm = algorithm,
                                                                             tol = tol,
@@ -1411,13 +1167,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 							@test isapprox(deriv5, DERIV5, rtol = 1e-4)
 
                             if algorithm == :first_order_
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.outdated_NSSS = true
-                                push!(m.solution.outdated_algorithms, algorithm)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
     
                                 DERIV5_zyg = Zygote.jacobian(x->get_statistics(m, x, algorithm = algorithm, 
                                                                                 tol = tol,
@@ -1512,19 +1262,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         derivatives = true)
         end
 
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
+        
 
         for parameters in params
             for derivatives in [true, false]
-                # Clear solution caches
-                pop!(m.NSSS_solver_cache)
-                m.solution.outdated_NSSS = true
-                push!(m.solution.outdated_algorithms, algorithm)
-                m.solution.perturbation.qme_solution = zeros(0,0)
-                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                clear_solution_caches!(m, algorithm)
             
                 moms = get_moments(m,
                                     algorithm = algorithm,
@@ -1540,13 +1282,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for sylvester_algorithm in sylvester_algorithms
                             for lyapunov_algorithm in lyapunov_algorithms
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.outdated_NSSS = true
-                                push!(m.solution.outdated_algorithms, algorithm)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
                                 
                                 MOMS = get_moments(m,
                                                     algorithm = algorithm,
@@ -1615,9 +1351,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
 
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
+        
 
         shock_mat = randn(m.timings.nExo,3)
 
@@ -1627,11 +1361,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
         for parameters in params
             for initial_state in init_states
-                # Clear solution caches
-                pop!(m.NSSS_solver_cache)
-                m.solution.perturbation.qme_solution = zeros(0,0)
-                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                clear_solution_caches!(m, algorithm)
                             
                 irf_ = get_irf(m, algorithm = algorithm, parameters = parameters, initial_state = initial_state)
                 
@@ -1639,11 +1369,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
                             for sylvester_algorithm in sylvester_algorithms
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
                                             
                                 IRF_ = get_irf(m, 
                                                 algorithm = algorithm, 
@@ -1660,11 +1386,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
                 for variables in vars
                     for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                       clear_solution_caches!(m, algorithm)
                                     
                         get_irf(m, algorithm = algorithm, parameters = parameters, variables = variables, initial_state = initial_state, shocks = shocks)
                     end
@@ -1676,26 +1398,16 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     @testset "get_non_stochastic_steady_state_residuals" begin
         stst = SS(m, derivatives = false)
         
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
+        
 
         for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
             for parameters in params 
-                # Clear solution caches
-                pop!(m.NSSS_solver_cache)
-                m.solution.perturbation.qme_solution = zeros(0,0)
-                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                clear_solution_caches!(m, algorithm)
 
                 res = get_non_stochastic_steady_state_residuals(m, stst, tol = tol, verbose = false, parameters = parameters)
 
                 for values in [Dict(axiskeys(stst)[1] .=> collect(stst)), Dict(string.(axiskeys(stst)[1]) .=> collect(stst)), collect(stst)]   
-                    # Clear solution caches
-                    pop!(m.NSSS_solver_cache)
-                    m.solution.perturbation.qme_solution = zeros(0,0)
-                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                    clear_solution_caches!(m, algorithm)
                     
                     RES = get_non_stochastic_steady_state_residuals(m, values, tol = tol, verbose = false, parameters = parameters)
 
@@ -1703,19 +1415,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
-            m.solution.perturbation.qme_solution = zeros(0,0)
-            m.solution.perturbation.second_order_solution = spzeros(0,0)
-            m.solution.perturbation.third_order_solution = spzeros(0,0)
+            clear_solution_caches!(m, algorithm)
 
             res1 = get_non_stochastic_steady_state_residuals(m, stst, tol = tol, verbose = false)
 
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
-            m.solution.perturbation.qme_solution = zeros(0,0)
-            m.solution.perturbation.second_order_solution = spzeros(0,0)
-            m.solution.perturbation.third_order_solution = spzeros(0,0)
+            clear_solution_caches!(m, algorithm)
 
             res2 = get_non_stochastic_steady_state_residuals(m, stst[1:3], tol = tol, verbose = false)
 
@@ -1728,62 +1432,46 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     end
 
     @testset "get_steady_state" begin
-        # Clear solution caches
-        pop!(m.NSSS_solver_cache)
+        clear_solution_caches!(m, algorithm)
         get_non_stochastic_steady_state(m)
         
-        # Clear solution caches
-        pop!(m.NSSS_solver_cache)
+        clear_solution_caches!(m, algorithm)
         SS(m)
 
-        # Clear solution caches
-        pop!(m.NSSS_solver_cache)
+        clear_solution_caches!(m, algorithm)
         steady_state(m)
 
-        # Clear solution caches
-        pop!(m.NSSS_solver_cache)
+        clear_solution_caches!(m, algorithm)
         get_SS(m)
 
-        # Clear solution caches
-        pop!(m.NSSS_solver_cache)
+        clear_solution_caches!(m, algorithm)
         get_ss(m)
 
-        # Clear solution caches
-        pop!(m.NSSS_solver_cache)
+        clear_solution_caches!(m, algorithm)
         ss(m)
 
         if !(algorithm == :first_order)
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
+            clear_solution_caches!(m, algorithm)
             get_stochastic_steady_state(m)
 
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
+            clear_solution_caches!(m, algorithm)
             get_SSS(m)
 
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
+            clear_solution_caches!(m, algorithm)
             SSS(m)
 
-            # Clear solution caches
-            pop!(m.NSSS_solver_cache)
+            clear_solution_caches!(m, algorithm)
             sss(m)
         end 
 
-        while length(m.NSSS_solver_cache) > 2
-            pop!(m.NSSS_solver_cache)
-        end
+        
 
         for derivatives in [true, false]
             for stochastic in (algorithm == :first_order ? [false] : [true, false])
                 for return_variables_only in [true, false]
                     for verbose in [false]
                         for silent in [true, false]
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
             
                             NSSS = get_steady_state(m, 
                                                     verbose = verbose, 
@@ -1794,11 +1482,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     derivatives = derivatives)
                             for quadratic_matrix_equation_algorithm in qme_algorithms
                                 for sylvester_algorithm in sylvester_algorithms
-                                    # Clear solution caches
-                                    pop!(m.NSSS_solver_cache)
-                                    m.solution.perturbation.qme_solution = zeros(0,0)
-                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                    clear_solution_caches!(m, algorithm)
                     
                                     nsss = get_steady_state(m, 
                                                             verbose = verbose, 
@@ -1821,11 +1505,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         for parameter_derivatives in param_derivs
             for parameters in params
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                    # Clear solution caches
-                    pop!(m.NSSS_solver_cache)
-                    m.solution.perturbation.qme_solution = zeros(0,0)
-                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                    clear_solution_caches!(m, algorithm)
     
                     nsss = get_steady_state(m, 
                                             parameters = parameters, 
@@ -1872,9 +1552,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
     if plots
         @testset "plot_solution" begin
-            while length(m.NSSS_solver_cache) > 2
-                pop!(m.NSSS_solver_cache)
-            end
+            
 
             states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
             
@@ -1891,11 +1569,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
                             for sylvester_algorithm in sylvester_algorithms
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
                     
                                 plot_solution(m, states[1], 
                                                 algorithm = algos[end],
@@ -1967,9 +1641,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
         @testset "plot_irf" begin
-            while length(m.NSSS_solver_cache) > 2
-                pop!(m.NSSS_solver_cache)
-            end
+            
 
             # plotlyjs_backend()
 
@@ -2002,9 +1674,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            while length(m.NSSS_solver_cache) > 2
-                pop!(m.NSSS_solver_cache)
-            end
+            
 
             shock_mat = randn(m.timings.nExo,3)
 
@@ -2017,11 +1687,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
                             for sylvester_algorithm in sylvester_algorithms
-                                # Clear solution caches
-                                pop!(m.NSSS_solver_cache)
-                                m.solution.perturbation.qme_solution = zeros(0,0)
-                                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                                clear_solution_caches!(m, algorithm)
                                             
                                 plot_irf(m, algorithm = algorithm, 
                                             parameters = parameters,
@@ -2036,31 +1702,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             for initial_state in init_states
-                # Clear solution caches
-                pop!(m.NSSS_solver_cache)
-                m.solution.perturbation.qme_solution = zeros(0,0)
-                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                clear_solution_caches!(m, algorithm)
                             
                 plot_irf(m, algorithm = algorithm, initial_state = initial_state)
             end
 
             for variables in vars
-                # Clear solution caches
-                pop!(m.NSSS_solver_cache)
-                m.solution.perturbation.qme_solution = zeros(0,0)
-                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                clear_solution_caches!(m, algorithm)
                             
                 plot_irf(m, algorithm = algorithm, variables = variables)
             end
 
             for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
-                # Clear solution caches
-                pop!(m.NSSS_solver_cache)
-                m.solution.perturbation.qme_solution = zeros(0,0)
-                m.solution.perturbation.second_order_solution = spzeros(0,0)
-                m.solution.perturbation.third_order_solution = spzeros(0,0)
+                clear_solution_caches!(m, algorithm)
                             
                 plot_irf(m, algorithm = algorithm, shocks = shocks)
             end
@@ -2111,18 +1765,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            while length(m.NSSS_solver_cache) > 2
-                pop!(m.NSSS_solver_cache)
-            end
+            
 
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for lyapunov_algorithm in lyapunov_algorithms
-                        # Clear solution caches
-                        pop!(m.NSSS_solver_cache)
-                        m.solution.perturbation.qme_solution = zeros(0,0)
-                        m.solution.perturbation.second_order_solution = spzeros(0,0)
-                        m.solution.perturbation.third_order_solution = spzeros(0,0)
+                       clear_solution_caches!(m, algorithm)
                             
                         plot_conditional_variance_decomposition(m, tol = tol,
                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2276,19 +1924,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             # end
 
-            while length(m.NSSS_solver_cache) > 2
-                pop!(m.NSSS_solver_cache)
-            end
+            
 
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for lyapunov_algorithm in lyapunov_algorithms
                         for sylvester_algorithm in sylvester_algorithms
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
                         
                             plot_conditional_forecast(m, conditions[end],
                                                         conditions_in_levels = false,
@@ -2305,11 +1947,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             for periods in [0,10]
                 for levels in [true, false]
-                    # Clear solution caches
-                    pop!(m.NSSS_solver_cache)
-                    m.solution.perturbation.qme_solution = zeros(0,0)
-                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                    clear_solution_caches!(m, algorithm)
                 
                     plot_conditional_forecast(m, conditions[end],
                                                 conditions_in_levels = false,
@@ -2319,11 +1957,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 shocks = shocks[end])
 
                     
-                    # Clear solution caches
-                    pop!(m.NSSS_solver_cache)
-                    m.solution.perturbation.qme_solution = zeros(0,0)
-                    m.solution.perturbation.second_order_solution = spzeros(0,0)
-                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+                    clear_solution_caches!(m, algorithm)
                 
                     plot_conditional_forecast(m, conditions_lvl[end],
                                                 algorithm = algorithm, 
@@ -2393,9 +2027,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
             data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
-            while length(m.NSSS_solver_cache) > 2
-                pop!(m.NSSS_solver_cache)
-            end
+            
             
             if !(algorithm in [:second_order, :third_order])
                 # plotlyjs_backend()
@@ -2415,11 +2047,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for lyapunov_algorithm in lyapunov_algorithms
                     for sylvester_algorithm in sylvester_algorithms
                         for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
 
                             plot_model_estimates(m, data, 
                                                     algorithm = algorithm, 
@@ -2429,11 +2057,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     lyapunov_algorithm = lyapunov_algorithm,
                                                     sylvester_algorithm = sylvester_algorithm)
 
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
                         
                             plot_model_estimates(m, data_in_levels, 
                                                     algorithm = algorithm, 
@@ -2451,11 +2075,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for filter in (algorithm == :first_order ? filters : [:inversion])
                     for smooth in [true, false]
                         for presample_periods in [0, 10]
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
 
                             plot_model_estimates(m, data, 
                                                     algorithm = algorithm, 
@@ -2465,11 +2085,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     presample_periods = presample_periods,
                                                     shock_decomposition = shock_decomposition)
 
-                            # Clear solution caches
-                            pop!(m.NSSS_solver_cache)
-                            m.solution.perturbation.qme_solution = zeros(0,0)
-                            m.solution.perturbation.second_order_solution = spzeros(0,0)
-                            m.solution.perturbation.third_order_solution = spzeros(0,0)
+                            clear_solution_caches!(m, algorithm)
                         
                             plot_model_estimates(m, data_in_levels, 
                                                     algorithm = algorithm, 

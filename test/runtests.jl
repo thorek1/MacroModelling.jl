@@ -1,6 +1,7 @@
 # using Revise
 using Test
 using MacroModelling
+import MacroModelling: clear_solution_caches!
 using Random
 using AxisKeys, SparseArrays
 import Zygote, FiniteDifferences, ForwardDiff
