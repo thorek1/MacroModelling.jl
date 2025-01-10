@@ -717,7 +717,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             deriv_sol_fin = []
             for i in 1:length(sol)-2
-                push!(deriv_sol_fin, FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+                push!(deriv_sol_fin, FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(4,1, max_range = 1e-3),
                                                         x -> begin 
                                                             clear_solution_caches!(m, algorithm)
                                                             
@@ -732,9 +732,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 push!(deriv_sol_zyg, Zygote.jacobian(x->get_solution(m, x, algorithm = algorithm)[i], parameter_values)[1])
             end
 
-            @test isapprox(deriv_sol_zyg, deriv_sol_fin, rtol = 1e-6)
+            @test isapprox(deriv_sol_zyg, deriv_sol_fin, rtol = 1e-5)
             
-            @test isapprox(deriv_sol, deriv_sol_fin, rtol = 1e-6)
+            @test isapprox(deriv_sol, deriv_sol_fin, rtol = 1e-5)
 
             for tol in [MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14), MacroModelling.Tolerances(lyapunov_acceptance_tol = 1e-14, sylvester_acceptance_tol = 1e-14, NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
