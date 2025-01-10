@@ -290,21 +290,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                         tol = tol,
                                                         verbose = verbose)
 
-                                # # Clear solution caches
-                                # pop!(m.NSSS_solver_cache)
-                                # m.solution.perturbation.qme_solution = zeros(0,0)
-                                # m.solution.perturbation.second_order_solution = spzeros(0,0)
-                                # m.solution.perturbation.third_order_solution = spzeros(0,0)
-                        
-                                # fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), 
-                                #                                         x -> get_loglikelihood(m, data_in_levels, x,
-                                #                                                                 algorithm = algorithm,
-                                #                                                                 filter = filter,
-                                #                                                                 presample_periods = presample_periods,
-                                #                                                                 initial_covariance = initial_covariance,
-                                #                                                                 tol = tol,
-                                #                                                                 verbose = verbose), parameter_values)
-
                                 # Clear solution caches
                                 pop!(m.NSSS_solver_cache)
                                 m.solution.perturbation.qme_solution = zeros(0,0)
@@ -319,8 +304,27 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                                 tol = tol,
                                                                                                 verbose = verbose), parameter_values)
 
-                                # @test isapprox(fin_grad_llh[1], zyg_grad_llh[1], rtol = 1e-6)
-                                                                            
+                                if algorithm == :first_order && filter == :kalman
+                                    fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), 
+                                                                            x -> begin 
+                                                                                    # Clear solution caches
+                                                                                    pop!(m.NSSS_solver_cache)
+                                                                                    m.solution.perturbation.qme_solution = zeros(0,0)
+                                                                                    m.solution.perturbation.second_order_solution = spzeros(0,0)
+                                                                                    m.solution.perturbation.third_order_solution = spzeros(0,0)
+
+                                                                                    get_loglikelihood(m, data_in_levels, x,
+                                                                                                    algorithm = algorithm,
+                                                                                                    filter = filter,
+                                                                                                    presample_periods = presample_periods,
+                                                                                                    initial_covariance = initial_covariance,
+                                                                                                    tol = tol,
+                                                                                                    verbose = verbose)
+                                                                                    end, parameter_values)
+
+                                    @test isapprox(fin_grad_llh[1], zyg_grad_llh[1], rtol = 1e-6)
+                                end
+                                                                  
                                 for quadratic_matrix_equation_algorithm in qme_algorithms
                                     for lyapunov_algorithm in lyapunov_algorithms
                                         for sylvester_algorithm in sylvester_algorithms
