@@ -840,7 +840,7 @@ function choose_matrix_format(A::AbstractSparseMatrix{S};
                                 tol::AbstractFloat = eps()) where S <: Real
     droptol!(A, tol)
 
-    lennz = A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(A.A.nzval) : length(A.nzval)
+    lennz = A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(findnz(A)[3]) : length(A.nzval)
 
     if lennz / length(A) > density_threshold || length(A) < min_length
         return collect(A)
