@@ -103,11 +103,6 @@ if test_set == "higher_order"
     m = nothing
     GC.gc()
 
-    @testset verbose = true "Test various models: NSSS and 1st order solution" begin
-        include("test_models.jl")
-    end
-    GC.gc()
-
     @testset verbose = true "RBC_CME with calibration equations and parameter definitions second order" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
         functionality_test(m, algorithm = :second_order, plots = plots)
@@ -400,10 +395,12 @@ if test_set == "basic"
         end
     end
 
+    test_higher_order = true
     @testset verbose = true "Test various models: NSSS and 1st order solution" begin
         include("test_models.jl")
     end
     GC.gc()
+    test_higher_order = false
 
     @testset verbose = true "Standalone functions" begin
         include("test_standalone_function.jl")
