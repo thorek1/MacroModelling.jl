@@ -1389,8 +1389,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         for parameters in params
             for initial_state in init_states
                 clear_solution_caches!(m, algorithm)
-                            
-                irf_ = get_irf(m, algorithm = algorithm, parameters = parameters, initial_state = initial_state)
+                
+                irf_ = get_irf(m, algorithm = algorithm, parameters = parameters, ignore_obc = true, initial_state = initial_state)
                 
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
@@ -1400,6 +1400,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             
                                 IRF_ = get_irf(m, 
                                                 algorithm = algorithm, 
+                                                ignore_obc = true,
                                                 parameters = parameters,
                                                 initial_state = initial_state,
                                                 tol = tol,
@@ -1413,7 +1414,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
                 for variables in vars
                     for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
-                       clear_solution_caches!(m, algorithm)
+                        clear_solution_caches!(m, algorithm)
                                     
                         get_irf(m, algorithm = algorithm, parameters = parameters, variables = variables, initial_state = initial_state, shocks = shocks)
                     end
