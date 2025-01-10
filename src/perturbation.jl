@@ -1177,7 +1177,7 @@ function rrule(::typeof(calculate_third_order_solution),
         return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
     end
 
-    𝐒₃ = sparse(𝐒₃)
+    𝐒₃ = choose_matrix_format(𝐒₃, density_threshold = 1.0, min_length = 10)
 
     # # end # timeit_debug
 
