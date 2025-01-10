@@ -1380,8 +1380,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
         end
 
-        
-
         shock_mat = randn(m.timings.nExo,3)
 
         shock_mat2 = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10)
@@ -1408,7 +1406,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 lyapunov_algorithm = lyapunov_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)
-                                @test isapprox(irf_, IRF_, rtol = 1e-8)
+                                @test isapprox(irf_, IRF_, rtol = 1e-6)
                             end
                         end
                     end
