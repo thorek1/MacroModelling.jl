@@ -161,9 +161,7 @@ end
 
 
 
-
-
-if test_set == "plots"
+if test_set == "plots_1"
     plots = true
 	Random.seed!(1)
 
@@ -174,13 +172,6 @@ if test_set == "plots"
     Gali_2015_chapter_3_obc = nothing
     GC.gc()
 
-    @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
-        include("../models/Smets_Wouters_2003.jl")
-        functionality_test(Smets_Wouters_2003, plots = plots)
-    end
-    Smets_Wouters_2003 = nothing
-    GC.gc()
-    
     @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
         include("../models/Backus_Kehoe_Kydland_1992.jl")
         functionality_test(Backus_Kehoe_Kydland_1992, plots = plots)
@@ -193,6 +184,18 @@ if test_set == "plots"
         functionality_test(FS2000, plots = plots)
     end
     FS2000 = nothing
+    GC.gc()
+end
+
+if test_set == "plots_2"
+    plots = true
+	Random.seed!(1)
+
+    @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
+        include("../models/Smets_Wouters_2003.jl")
+        functionality_test(Smets_Wouters_2003, plots = plots)
+    end
+    Smets_Wouters_2003 = nothing
     GC.gc()
 
     @testset verbose = true "Smets and Wouters (2007) linear" begin
@@ -208,7 +211,14 @@ if test_set == "plots"
     end
     Smets_Wouters_2007 = nothing
     GC.gc()
-    
+end
+
+
+
+if test_set == "plots_3"
+    plots = true
+	Random.seed!(1)
+
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
         functionality_test(m, plots = plots)

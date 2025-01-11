@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test_set: ["basic", "plots", "estimation"]
+        test_set: ["basic", "estimation"]
         version: ['1']
         os: [ubuntu-latest, macos-latest, windows-latest]
         arch: [x64, arm64]
@@ -55,6 +55,18 @@ jobs:
             os: windows-latest
             arch: x64
             test_set: "higher_order_3"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "plots_1"
+          - version: '1'
+            os: macOS-latest
+            arch: x64
+            test_set: "plots_2"
+          - version: '1'
+            os: windows-latest
+            arch: x64
+            test_set: "plots_3"
           - version: '1'
             os: macOS-latest
             arch: x64
