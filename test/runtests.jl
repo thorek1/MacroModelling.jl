@@ -155,6 +155,20 @@ if test_set == "plots"
     plots = true
 	Random.seed!(1)
 
+    @testset verbose = true "Gali 2015 ELB" begin
+        include("../models/Gali_2015_chapter_3_obc.jl")
+        functionality_test(Gali_2015_chapter_3_obc, plots = plots)
+    end
+    Gali_2015_chapter_3_obc = nothing
+    GC.gc()
+
+    @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
+        include("../models/Smets_Wouters_2003.jl")
+        functionality_test(Smets_Wouters_2003, plots = plots)
+    end
+    Smets_Wouters_2003 = nothing
+    GC.gc()
+    
     @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
         include("../models/Backus_Kehoe_Kydland_1992.jl")
         functionality_test(Backus_Kehoe_Kydland_1992, plots = plots)
@@ -176,20 +190,6 @@ if test_set == "plots"
     Smets_Wouters_2007_linear = nothing
     GC.gc()
 
-    @testset verbose = true "Gali 2015 ELB" begin
-        include("../models/Gali_2015_chapter_3_obc.jl")
-        functionality_test(Gali_2015_chapter_3_obc, plots = plots)
-    end
-    Gali_2015_chapter_3_obc = nothing
-    GC.gc()
-
-    @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
-        include("../models/Smets_Wouters_2003.jl")
-        functionality_test(Smets_Wouters_2003, plots = plots)
-    end
-    Smets_Wouters_2003 = nothing
-    GC.gc()
-    
     @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
         include("../models/Smets_Wouters_2007.jl")
         functionality_test(Smets_Wouters_2007, plots = plots)
