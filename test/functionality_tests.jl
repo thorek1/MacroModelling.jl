@@ -950,7 +950,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                         non_stochastic_steady_state = :all_excluding_obc)[:non_stochastic_steady_state], old_params)
                  
         for i in 1:100        
-            local deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+            local deriv1_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(4,1, max_range = 1e-3),
                                                 x -> begin 
                                                     clear_solution_caches!(m, algorithm)
     
@@ -982,7 +982,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             for i in 1:100
-                local deriv2_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+                local deriv2_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(4,1, max_range = 1e-3),
                                                         x -> begin 
                                                             clear_solution_caches!(m, algorithm)
     
@@ -1012,7 +1012,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end                    
 
             for i in 1:100        
-                local deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+                local deriv3_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(4,1, max_range = 1e-3),
                                                         x -> begin 
                                                             clear_solution_caches!(m, algorithm)
 
@@ -1040,7 +1040,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             for i in 1:100
-                local deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3),
+                local deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(4,1, max_range = 1e-3),
                                                             x -> begin 
                                                                 clear_solution_caches!(m, algorithm)
                                                                 
