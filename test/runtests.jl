@@ -57,8 +57,7 @@ if test_set == "3rd_order_estimation"
     include("test_3rd_order_estimation.jl")
 end
 
-
-if test_set == "higher_order"
+if test_set == "higher_order_1"
     plots = true
     test_higher_order = true
 
@@ -89,6 +88,12 @@ if test_set == "higher_order"
     end
     FS2000 = nothing
     GC.gc()
+
+end
+
+if test_set == "higher_order_2"
+    plots = true
+    test_higher_order = true
 
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned second order" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
