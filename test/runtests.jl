@@ -62,13 +62,6 @@ if test_set == "plots_1"
     plots = true
 	Random.seed!(1)
 
-    @testset verbose = true "Gali 2015 ELB" begin
-        include("../models/Gali_2015_chapter_3_obc.jl")
-        functionality_test(Gali_2015_chapter_3_obc, plots = plots)
-    end
-    Gali_2015_chapter_3_obc = nothing
-    GC.gc()
-
     @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
         include("../models/Backus_Kehoe_Kydland_1992.jl")
         functionality_test(Backus_Kehoe_Kydland_1992, plots = plots)
@@ -111,6 +104,18 @@ if test_set == "plots_2"
 end
 
 if test_set == "plots_3"
+    plots = true
+	Random.seed!(1)
+
+    @testset verbose = true "Gali 2015 ELB" begin
+        include("../models/Gali_2015_chapter_3_obc.jl")
+        functionality_test(Gali_2015_chapter_3_obc, plots = plots)
+    end
+    Gali_2015_chapter_3_obc = nothing
+    GC.gc()
+end
+
+if test_set == "plots_4"
     plots = true
 	Random.seed!(1)
 

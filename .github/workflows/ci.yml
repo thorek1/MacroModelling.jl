@@ -69,6 +69,10 @@ jobs:
             test_set: "plots_3"
           - version: '1'
             os: macOS-latest
+            arch: arm64
+            test_set: "plots_4"
+          - version: '1'
+            os: macOS-latest
             arch: x64
             test_set: "estimate_sw07"
           - version: '1'
