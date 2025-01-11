@@ -123,6 +123,13 @@ if test_set == "higher_order_2"
     m = nothing
     GC.gc()
 
+end
+
+
+if test_set == "higher_order_3"
+    plots = true
+    test_higher_order = true
+
     @testset verbose = true "RBC_CME with calibration equations second order" begin
         include("models/RBC_CME_calibration_equations.jl")
         functionality_test(m, algorithm = :second_order, plots = plots)
