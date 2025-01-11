@@ -57,109 +57,6 @@ if test_set == "3rd_order_estimation"
     include("test_3rd_order_estimation.jl")
 end
 
-if test_set == "higher_order_1"
-    plots = true
-    test_higher_order = true
-
-    @testset verbose = true "FS2000 third order" begin
-        include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :third_order, plots = plots)
-    end
-    FS2000 = nothing
-    GC.gc()
-
-    @testset verbose = true "FS2000 pruned third order" begin
-        include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :pruned_third_order, plots = plots)
-    end
-    FS2000 = nothing
-    GC.gc()
-
-    @testset verbose = true "FS2000 second order" begin
-        include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :second_order, plots = plots)
-    end
-    FS2000 = nothing
-    GC.gc()
-
-    @testset verbose = true "FS2000 pruned second order" begin
-        include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :pruned_second_order, plots = plots)
-    end
-    FS2000 = nothing
-    GC.gc()
-
-end
-
-if test_set == "higher_order_2"
-    plots = true
-    test_higher_order = true
-
-    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned second order" begin
-        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
-        functionality_test(m, algorithm = :pruned_second_order, plots = plots)
-    end
-    m = nothing
-    GC.gc()
-
-    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned third order" begin
-        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
-        functionality_test(m, algorithm = :pruned_third_order, plots = plots)
-    end
-    m = nothing
-    GC.gc()
-
-    @testset verbose = true "RBC_CME with calibration equations and parameter definitions second order" begin
-        include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-        functionality_test(m, algorithm = :second_order, plots = plots)
-    end
-    # m = nothing
-    GC.gc()
-
-    @testset verbose = true "RBC_CME with calibration equations and parameter definitions third order" begin
-        # include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-        functionality_test(m, algorithm = :third_order, plots = plots)
-    end
-    m = nothing
-    GC.gc()
-
-end
-
-
-if test_set == "higher_order_3"
-    plots = true
-    test_higher_order = true
-
-    @testset verbose = true "RBC_CME with calibration equations second order" begin
-        include("models/RBC_CME_calibration_equations.jl")
-        functionality_test(m, algorithm = :second_order, plots = plots)
-    end
-    # m = nothing
-    GC.gc()
-
-    @testset verbose = true "RBC_CME with calibration equations third order" begin
-        # include("models/RBC_CME_calibration_equations.jl")
-        functionality_test(m, algorithm = :third_order, plots = plots)
-    end
-    m = nothing
-    GC.gc()
-
-    @testset verbose = true "RBC_CME second order" begin
-        include("models/RBC_CME.jl")
-        functionality_test(m, algorithm = :second_order, plots = plots)
-    end
-    # m = nothing
-    GC.gc()
-
-    @testset verbose = true "RBC_CME third order" begin
-        # include("models/RBC_CME.jl")
-        functionality_test(m, algorithm = :third_order, plots = plots)
-    end
-    m = nothing
-    GC.gc()
-end
-
-
 
 if test_set == "plots_1"
     plots = true
@@ -212,8 +109,6 @@ if test_set == "plots_2"
     Smets_Wouters_2007 = nothing
     GC.gc()
 end
-
-
 
 if test_set == "plots_3"
     plots = true
@@ -393,6 +288,108 @@ if test_set == "plots_3"
 
 end
 
+
+if test_set == "higher_order_1"
+    plots = true
+    test_higher_order = true
+
+    @testset verbose = true "FS2000 third order" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :third_order, plots = plots)
+    end
+    FS2000 = nothing
+    GC.gc()
+
+    @testset verbose = true "FS2000 pruned third order" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :pruned_third_order, plots = plots)
+    end
+    FS2000 = nothing
+    GC.gc()
+
+    @testset verbose = true "FS2000 second order" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :second_order, plots = plots)
+    end
+    FS2000 = nothing
+    GC.gc()
+
+    @testset verbose = true "FS2000 pruned second order" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :pruned_second_order, plots = plots)
+    end
+    FS2000 = nothing
+    GC.gc()
+
+end
+
+
+if test_set == "higher_order_2"
+    plots = true
+    test_higher_order = true
+
+    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned second order" begin
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
+        functionality_test(m, algorithm = :pruned_second_order, plots = plots)
+    end
+    m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned third order" begin
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
+        functionality_test(m, algorithm = :pruned_third_order, plots = plots)
+    end
+    m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME with calibration equations and parameter definitions second order" begin
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+        functionality_test(m, algorithm = :second_order, plots = plots)
+    end
+    # m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME with calibration equations and parameter definitions third order" begin
+        # include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+        functionality_test(m, algorithm = :third_order, plots = plots)
+    end
+    m = nothing
+    GC.gc()
+end
+
+
+if test_set == "higher_order_3"
+    plots = true
+    test_higher_order = true
+
+    @testset verbose = true "RBC_CME with calibration equations second order" begin
+        include("models/RBC_CME_calibration_equations.jl")
+        functionality_test(m, algorithm = :second_order, plots = plots)
+    end
+    # m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME with calibration equations third order" begin
+        # include("models/RBC_CME_calibration_equations.jl")
+        functionality_test(m, algorithm = :third_order, plots = plots)
+    end
+    m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME second order" begin
+        include("models/RBC_CME.jl")
+        functionality_test(m, algorithm = :second_order, plots = plots)
+    end
+    # m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME third order" begin
+        # include("models/RBC_CME.jl")
+        functionality_test(m, algorithm = :third_order, plots = plots)
+    end
+    m = nothing
+    GC.gc()
+end
 
 
 if test_set == "basic"
