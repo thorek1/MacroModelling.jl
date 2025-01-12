@@ -25,7 +25,9 @@ $(SIGNATURES)
 Plot model estimates of the variables given the data. The default plot shows the estimated variables, shocks, and the data to estimate the former.
 The left axis shows the level, and the right the deviation from the reference steady state. The horizontal black line indicates the non stochastic steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
 
-In case `shock_decomposition = true`, then the plot shows the variables, shocks, and data in absolute deviations from the non stochastic steady state plus the contribution of the shocks as a stacked bar chart per period.
+In case `shock_decomposition = true`, then the plot shows the variables, shocks, and data in absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state) as a stacked bar chart per period. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model.
+
+In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
 
 # Arguments
 - $MODEL®

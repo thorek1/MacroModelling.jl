@@ -1,6 +1,8 @@
 """
 $(SIGNATURES)
-Return the shock decomposition in absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state) based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+Return the shock decomposition in absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state) based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`. 
+
+In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
 
 # Arguments
 - $MODEL®
