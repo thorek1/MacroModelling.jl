@@ -263,7 +263,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                                 if algorithm == :first_order && filter == :kalman
                                     for i in 1:100
-                                        local fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3,1, max_range = 1e-3), 
+                                        local fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.central_fdm(3,1, max_range = 1e-3), 
                                                                                 x -> begin 
                                                                                         clear_solution_caches!(m, algorithm)
     
@@ -589,7 +589,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             
 
             for verbose in [false] # [true, false]
-                for tol in [MacroModelling.Tolerances(qme_acceptance_tol = 1e-14), MacroModelling.Tolerances(NSSS_xtol = 1e-20, qme_acceptance_tol = 1e-14)]
+                for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
                             
