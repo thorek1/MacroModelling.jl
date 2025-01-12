@@ -1,6 +1,7 @@
 using MacroModelling
 import Turing
 import Pigeons
+import Zygote
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
@@ -9,7 +10,7 @@ import DynamicPPL
 include("../models/FS2000.jl")
 
 # load data
-dat = CSV.read("data/FS2000_data.csv", DataFrame)
+dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
 data = log.(data)
 
@@ -42,6 +43,14 @@ end
 
 
 Random.seed!(30)
+
+n_samples = 500
+
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+
+println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+
+sample_nuts = mean(samps).nt.mean
 
 # generate a Pigeons log potential
 FS2000_pruned2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order))

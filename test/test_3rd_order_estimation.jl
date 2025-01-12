@@ -61,6 +61,14 @@ Random.seed!(3)
 
 # samps = sample(Caldara_et_al_2012_loglikelihood, IS(), 1000, progress = true)#, init_params = sol)
 
+n_samples = 500
+
+samps = @time sample(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = Caldara_et_al_2012_estim.parameter_values)
+
+println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+
+sample_nuts = mean(samps).nt.mean
+
 
 # generate a Pigeons log potential
 Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim))
