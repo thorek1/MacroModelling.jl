@@ -304,7 +304,7 @@ end
 
 if test_set == "higher_order_1"
     plots = true
-    test_higher_order = true
+    # test_higher_order = true
 
     @testset verbose = true "FS2000 second order" begin
         include("../models/FS2000.jl")
@@ -338,7 +338,7 @@ end
 
 if test_set == "higher_order_2"
     plots = true
-    test_higher_order = true
+    # test_higher_order = true
 
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned second order" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
@@ -358,7 +358,7 @@ end
 
 if test_set == "higher_order_3"
     plots = true
-    test_higher_order = true
+    # test_higher_order = true
 
     @testset verbose = true "RBC_CME with calibration equations second order" begin
         include("models/RBC_CME_calibration_equations.jl")
@@ -406,7 +406,7 @@ end
 
 if test_set == "basic"
     plots = false
-    test_higher_order = false
+    # test_higher_order = false
 
     @testset verbose = true "Code quality (Aqua.jl)" begin
         # Aqua.test_all(MacroModelling)
@@ -427,12 +427,12 @@ if test_set == "basic"
         end
     end
 
-    test_higher_order = true
+    # test_higher_order = true
     @testset verbose = true "Test various models: NSSS and 1st order solution" begin
         include("test_models.jl")
     end
     GC.gc()
-    test_higher_order = false
+    # test_higher_order = false
 
     @testset verbose = true "Standalone functions" begin
         include("test_standalone_function.jl")
