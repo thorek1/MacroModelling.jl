@@ -46,18 +46,18 @@ Random.seed!(30)
 
 n_samples = 500
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
 # generate a Pigeons log potential
-FS2000_pruned2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order))
+FS2000_pruned2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order))
 
 init_params = FS2000.parameter_values
 
-LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :second_order), (all_params = init_params,))
+LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order), (all_params = init_params,))
 
 if isfinite(LLH)
     const FS2000_pruned2nd_LP = typeof(FS2000_pruned2nd_lp)
