@@ -77,9 +77,9 @@ function calculate_mean(parameters::Vector{T},
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-    # 𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-    𝐒₂ = sparse(𝐒₂ * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+    𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
 
     nᵉ = 𝓂.timings.nExo
     nˢ = 𝓂.timings.nPast_not_future_and_mixed
@@ -188,9 +188,9 @@ function calculate_second_order_moments(
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-    # 𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-    𝐒₂ = sparse(𝐒₂ * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+    𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
 
     s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
     e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
@@ -298,9 +298,9 @@ function calculate_second_order_moments(
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-    # 𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-    𝐒₂ = sparse(𝐒₂ * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+    𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
 
     s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
     e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
@@ -414,9 +414,9 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
-    # 𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
+    𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 
-    𝐒₃ = sparse(𝐒₃ * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+    𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
 
     orders = determine_efficient_order(𝐒₁, 𝓂.timings, observables, tol = opts.tol.dependencies_tol)
 
