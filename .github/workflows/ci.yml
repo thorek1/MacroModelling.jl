@@ -80,16 +80,16 @@ jobs:
             arch: x64
             test_set: "1st_order_inversion_estimation"
           - version: '1'
-            os: ubuntu-latest
-            arch: arm64
+            os: macOS-latest
+            arch: x64
             test_set: "2nd_order_estimation"
           - version: '1'
-            os: windows-latest
-            arch: arm64
+            os: macOS-latest
+            arch: x64
             test_set: "pruned_2nd_order_estimation"
           - version: '1'
             os: macOS-latest
-            arch: arm64
+            arch: x64
             test_set: "3rd_order_estimation"
           - version: '1'
             os: macOS-latest
