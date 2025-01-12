@@ -88,11 +88,11 @@ jobs:
             arch: x64
             test_set: "pruned_2nd_order_estimation"
           - version: '1'
-            os: macOS-latest
+            os: ubuntu-latest
             arch: x64
             test_set: "3rd_order_estimation"
           - version: '1'
-            os: macOS-latest
+            os: ubuntu-latest
             arch: x64
             test_set: "pruned_3rd_order_estimation"
           - version: 'min'
