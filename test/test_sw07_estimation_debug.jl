@@ -24,7 +24,7 @@ using Serialization
 using StatsPlots
 
 using LinearAlgebra
-BLAS.set_num_threads(Threads.nthreads())
+BLAS.set_num_threads(Threads.nthreads() ÷ 2)
 
 println("Threads used: ", Threads.nthreads())
 println("BLAS threads used: ", BLAS.get_num_threads())
@@ -450,7 +450,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
 
         # if !isfinite(llh) println(all_params) end
 
-        # println(llh, all_params)
+        println(llh, all_params)
         # println(llh)
         
         Turing.@addlogprob! llh
@@ -582,8 +582,23 @@ init_params = [0.6972060514611745, 0.11417651001389305, 0.4929070221735187, 1.69
 LLH = Turing.logjoint(SW07_llh, (all_params = init_params,))
 
 
-modeSW2007LBFGS = Turing.maximum_a_posteriori(SW07_llh, Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), initial_params = init_params, adtype = AutoZygote()) # Out of memory
+SW07_llh_1st = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :first_order, :inversion, dists)
+# init_params = vcat(init_params,100,fill(.25,7),fill(.5,7))
+LLH = Turing.logjoint(SW07_llh_1st, (all_params = init_params,))
+
+
+modeSW2007LBFGS = Turing.maximum_a_posteriori(SW07_llh_1st, Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), initial_params = init_params, adtype = AutoZygote()) # Out of memory
 modeSW2007LBFGS.values |>println
+using OptimizationNLopt
+modeSW2007NM2 = Turing.maximum_a_posteriori(SW07_llh_1st, NLopt.LN_NELDERMEAD(), initial_params = modeSW2007LBFGS.values)
+
+params_1st = [0.3471067561059984, 0.029853593292799636, 0.36601883410711716, 1.1304447873900294, 0.13349681815074355, 0.12078554093525876, 0.4049264083636736, 0.9933764662069903, 0.9766956899955519, 0.9470156325801418, 0.045290592300713674, 0.38452192098151655, 0.9961591419245828, 0.9795823151901328, 0.32465118916259866, 0.3701509300027761, 3.4130907844613256, 1.0086080263238937, 0.6863588331260274, 0.6064750386072955, -0.31333653119935356, 0.4361815501353056, 0.691079518496658, 0.18563423079879676, 0.7301598665688914, 1.5655124811994616, 2.537173204497591, 0.8367102890939476, 0.05272387995298558, 0.4755349103985329, 0.16843994968498574, 2.42983922079997, 0.4172710627231169, 0.3222837296295691, 0.10473426929730235, 0.02786767587007142, 1.0134021801635524, 0.18934359655965216, 5.269068218992456, 9.314244916234761]
+
+param_1st_inv = [0.5106276515140549, 0.05594934598918483, 0.5139866029319221, 1.6603088960641923, 0.1940985075140035, 0.12300211694586954, 0.28801254084831807, 0.9964749807727908, 0.9785258734100093, 0.843772286914506, 0.11644208342880888, 0.32640375901016727, 0.9951487680800755, 0.9756852348030886, 0.7376560200408028, 0.806360986279305, 4.074694951667264, 2.000557186437432, 0.5277845330795315, 0.5044467879023459, -0.03830099298446077, 0.5964415119986256, 0.629156340779393, 0.32709354730694584, 0.705460688560748, 1.5458176723434498, 2.194671920264213, 0.8417966737919648, 0.13583180295232292, 0.4953083152363611, 0.4088022187397261, 0.5218726104866338, 0.5692409044349769, 0.34193532764656936, 0.15355744905444985, 0.02306018235309688, 2.669088419246719, 0.1855740113649244, 10.348018560219453, 7.6517443417065385]
+
+params_2nd = [0.4758090964481575, 0.05735509075506158, 0.4231751962500576, 1.9479861587804708, 0.2038010050296437, 0.14991185719504346, 0.2738577921282174, 0.993018333972185, 0.9845823926549805, 0.9242022446522489, 0.15816374331457125, 0.35883155202023914, 0.9970735653438992, 0.9715314646128677, 0.5819750705293351, 0.7232361732507496, 1.8989125186376357, 2.0640286670380936, 0.4497304148458487, 0.49150096409878286, 0.5720261372462075, 0.5483201649385216, 0.5741994981156373, 0.2704793036690951, 0.6986018238739508, 1.5853366595719518, 2.212469927909714, 0.8202444073737285, 0.1303457013463347, 0.49542009025136424, 0.4056495292842603, 0.4572805913923878, 0.626215191718963, 0.3957722295855412, 0.22284153165198672, 0.02436253011257165, 1.9741440677434379, 0.18310695767761806, 7.567898322202916, 12.044801110222311]
+
+init_params = modeSW2007LBFGS.values
 
 modeSW2007SA = Turing.maximum_a_posteriori(SW07_llh, Optim.SimulatedAnnealing(), initial_params = init_params)
 # modeSW2007NM.values
@@ -614,7 +629,7 @@ if !isfinite(LLH)
     end
 
     if !(smplr == "pigeons")
-        modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh, 
+        modeSW2007 = try Turing.maximum_a_posteriori(SW07_llh_1st, 
                                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
                                                 adtype = AutoZygote(),
                                                 initial_params = init_params)#,
@@ -634,7 +649,7 @@ end
 println("Mode variable values: $(init_params); Mode loglikelihood: $(LLH)")
 
 if smplr == "NUTS"
-    samps = @time Turing.sample(SW07_llh,
+    samps = @time Turing.sample(SW07_llh_1st,
                                 # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
                                 NUTS(1000, 0.65, adtype = AutoZygote()),
                                 smpls;
@@ -645,7 +660,7 @@ if smplr == "NUTS"
     # InferenceReport.report(samps; max_moving_plot_iters = 0, view = false, render = true, exec_folder = "/home/cdsw")
 elseif smplr == "pigeons"
     # generate a Pigeons log potential
-    sw07_lp = Pigeons.TuringLogPotential(SW07_llh)
+    sw07_lp = Pigeons.TuringLogPotential(SW07_llh_1st)
 
     const SW07_LP = typeof(sw07_lp)
     
@@ -681,7 +696,7 @@ elseif smplr == "pigeons"
                             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
                             multithreaded = true,
                             n_chains = 1,
-                            n_rounds = rnds)
+                            n_rounds = 4)
     # end
 
     cd("../..")
@@ -902,7 +917,7 @@ elseif smplr == "pigeons"
                         record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
                         multithreaded = true,
                         n_chains = 1,
-                        n_rounds = 5)
+                        n_rounds = 4)
 
     cd("../..")
 
@@ -918,3 +933,1011 @@ using OptimizationNLopt, OptimizationOptimJL
 modeSW2007NM2 = Turing.maximum_a_posteriori(SW07_llh3, NLopt.LN_NELDERMEAD(), initial_params = init_params[1:16])
 
 modeSW2007LBFGS = Turing.maximum_a_posteriori(SW07_llh3, Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), initial_params = init_params[1:16], adtype = AutoZygote()) # Out of memory
+
+
+
+## Now, reestimate std and persistence parameters on no pandemic sample
+
+init_params = [0.6647831723963108, 0.1696409521786583, 0.5580454054112424, 1.4107875417460551, 0.27150800318229096, 0.2982789062192042, 0.9608926135337186, 0.9968070538427887, 0.9355375595019946, 0.8857554713134486, 0.6671161668424413, 0.363490876566295, 0.9844516855340667, 0.9548251912875737, 0.2672038505621581, 0.4710818007355946, 2.3199691360451973, 1.647356911213051, 0.2681908246948425, 0.4216832168949589, -0.15640416813475932, 0.5091965632941383, 0.6795174040555909, 0.3819940049374918, 0.8953965508435049, 1.0811321641690619, 2.763652185541633, 0.8578346355200306, 0.08963808582038361, 0.5101854590802727, 0.4527575703228302, -0.8627011833961279, 0.5462134869630935, 0.1813725165517729, 0.25860912552471754, 0.02283530676171379, 2.256424512963501, 0.1922713275188999, 8.218707368321041, 5.906699475772892]
+
+fixed_parameters = init_params[17:end]
+
+dists = dists = [
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ea
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eb
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eg
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eqs
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_em
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_epinf
+    Cauchy(0.0, 2.0, 0.0, 10.0),
+    Beta(0.5, 0.2, μσ = true),        # crhoa
+    Beta(0.5, 0.2, μσ = true),        # crhob
+    Beta(0.5, 0.2, μσ = true),        # crhog
+    Beta(0.5, 0.2, μσ = true),        # crhoqs
+    Beta(0.5, 0.2, μσ = true),        # crhoms
+    Beta(0.5, 0.2, μσ = true),        # crhopinf
+    Beta(0.5, 0.2, μσ = true),        # crhow
+    Beta(0.5, 0.2, μσ = true),        # cmap
+    Beta(0.5, 0.2, μσ = true)]        # cmaw
+
+Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter, dists)
+    all_params ~ Turing.arraydist(dists)
+
+    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw = all_params
+    
+    csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = fixed_parameters
+
+    crdy = 0
+
+    parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+    
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        llh = get_loglikelihood(m, data(observables), parameters_combined, 
+                                filter = filter,
+                                # verbose = true,
+                                # timer = timer,
+                                # presample_periods = 4, initial_covariance = :diagonal, 
+                                algorithm = algorithm)
+        println("$llh   $all_params")
+        Turing.@addlogprob! llh
+    end
+end
+
+
+SW07_llh3 = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists)
+
+LLH = Turing.logjoint(SW07_llh3, (all_params = init_params[1:16],))
+
+
+if smplr == "NUTS"
+    samps = @time Turing.sample(SW07_llh,
+                                # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
+                                NUTS(1000, 0.65, adtype = AutoZygote()),
+                                smpls;
+                                initial_params = isfinite(LLH) ? init_params : nothing,
+                                progress = true,
+                                callback = callback)
+
+    # InferenceReport.report(samps; max_moving_plot_iters = 0, view = false, render = true, exec_folder = "/home/cdsw")
+elseif smplr == "pigeons"
+    # generate a Pigeons log potential
+    sw07_lp3 = Pigeons.TuringLogPotential(SW07_llh3)
+
+    const SW07_LP3 = typeof(sw07_lp3)
+    
+    function Pigeons.initialization(target::SW07_LP3, rng::AbstractRNG, _::Int64)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+        
+        result = DynamicPPL.initialize_parameters!!(result, init_params[1:16], DynamicPPL.SampleFromPrior(), target.model)
+
+        return result
+    end
+    
+    cd(dir_name)
+
+    pt = Pigeons.pigeons(target = sw07_lp3, n_rounds = 0, n_chains = 1)
+
+    pt = Pigeons.pigeons(target = sw07_lp3,
+                        checkpoint = true,
+                        record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
+                        multithreaded = true,
+                        n_chains = 1,
+                        n_rounds = 4)
+
+    cd("../..")
+
+    samps = MCMCChains.Chains(pt)
+end
+
+pre_pandemic_stds = [0.6214776253642815, 0.09180625969728813, 0.48695111652187245, 1.7462778722662238, 0.22762104671667938, 0.2841560574382372, 0.42421425521650646]
+
+### use MAP
+using OptimizationNLopt, OptimizationOptimJL
+# LLH = Turing.logjoint(SW07_llh3, (all_params = init_params[1:16],))
+
+modeSW2007NM2 = Turing.maximum_a_posteriori(SW07_llh3, NLopt.LN_NELDERMEAD(), initial_params = init_params[1:16])
+
+modeSW2007LBFGS = Turing.maximum_a_posteriori(SW07_llh3, Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), initial_params = init_params[1:16], adtype = AutoZygote()) # Out of memory
+
+
+## Now, reestimate std and persistence parameters  as well as philips curve related parameters on no pandemic sample
+
+init_params = [0.6647831723963108, 0.1696409521786583, 0.5580454054112424, 1.4107875417460551, 0.27150800318229096, 0.2982789062192042, 0.9608926135337186, 0.9968070538427887, 0.9355375595019946, 0.8857554713134486, 0.6671161668424413, 0.363490876566295, 0.9844516855340667, 0.9548251912875737, 0.2672038505621581, 0.4710818007355946, 2.3199691360451973, 1.647356911213051, 0.2681908246948425, 0.4216832168949589, -0.15640416813475932, 0.5091965632941383, 0.6795174040555909, 0.3819940049374918, 0.8953965508435049, 1.0811321641690619, 2.763652185541633, 0.8578346355200306, 0.08963808582038361, 0.5101854590802727, 0.4527575703228302, -0.8627011833961279, 0.5462134869630935, 0.1813725165517729, 0.25860912552471754, 0.02283530676171379, 2.256424512963501, 0.1922713275188999, 8.218707368321041, 5.906699475772892]
+
+fixed_parameters = init_params[[17:19...,21,25:40...]]
+
+dists = dists = [
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ea
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eb
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eg
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eqs
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_em
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_epinf
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ew
+    
+    Beta(0.5, 0.2, μσ = true),        # crhoa
+    Beta(0.5, 0.2, μσ = true),        # crhob
+    Beta(0.5, 0.2, μσ = true),        # crhog
+    Beta(0.5, 0.2, μσ = true),        # crhoqs
+    Beta(0.5, 0.2, μσ = true),        # crhoms
+    Beta(0.5, 0.2, μσ = true),        # crhopinf
+    Beta(0.5, 0.2, μσ = true),        # crhow
+    Beta(0.5, 0.2, μσ = true),        # cmap
+    Beta(0.5, 0.2, μσ = true),        # cmaw
+
+    Beta(0.5, 0.1, μσ = true),           # cprobw
+    Beta(0.5, 0.1, μσ = true),          # cprobp
+    Beta(0.5, 0.15, μσ = true),         # cindw
+    Beta(0.5, 0.15, μσ = true)]         # cindp    
+
+Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter, dists)
+    all_params ~ Turing.arraydist(dists)
+
+    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, cprobw, cprobp, cindw, cindp = all_params
+    
+    csadjcost, csigma, chabb, csigl, czcap, cfc, crpi, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = fixed_parameters
+
+    crdy = 0
+
+    parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+    
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        llh = get_loglikelihood(m, data(observables), parameters_combined, 
+                                filter = filter,
+                                # verbose = true,
+                                # timer = timer,
+                                # presample_periods = 4, initial_covariance = :diagonal, 
+                                algorithm = algorithm)
+        println("$llh   $all_params")
+        Turing.@addlogprob! llh
+    end
+end
+
+
+SW07_llh3 = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists)
+
+LLH = Turing.logjoint(SW07_llh3, (all_params = init_params[[1:16...,20,22:24...]],))
+
+
+if smplr == "NUTS"
+    samps = @time Turing.sample(SW07_llh,
+                                # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
+                                NUTS(1000, 0.65, adtype = AutoZygote()),
+                                smpls;
+                                initial_params = isfinite(LLH) ? init_params : nothing,
+                                progress = true,
+                                callback = callback)
+
+    # InferenceReport.report(samps; max_moving_plot_iters = 0, view = false, render = true, exec_folder = "/home/cdsw")
+elseif smplr == "pigeons"
+    # generate a Pigeons log potential
+    sw07_lp3 = Pigeons.TuringLogPotential(SW07_llh3)
+
+    const SW07_LP3 = typeof(sw07_lp3)
+    
+    function Pigeons.initialization(target::SW07_LP3, rng::AbstractRNG, _::Int64)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+        
+        result = DynamicPPL.initialize_parameters!!(result, init_params[[1:16...,20,22:24...]], DynamicPPL.SampleFromPrior(), target.model)
+
+        return result
+    end
+    
+    cd(dir_name)
+
+    pt = Pigeons.pigeons(target = sw07_lp3, n_rounds = 0, n_chains = 1)
+
+    pt = Pigeons.pigeons(target = sw07_lp3,
+                        checkpoint = true,
+                        record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
+                        multithreaded = true,
+                        n_chains = 1,
+                        n_rounds = 4)
+
+    cd("../..")
+
+    samps = MCMCChains.Chains(pt)
+end
+
+pre_pandemic_stds = [0.6214776253642815, 0.09180625969728813, 0.48695111652187245, 1.7462778722662238, 0.22762104671667938, 0.2841560574382372, 0.42421425521650646]
+
+### use MAP
+using OptimizationNLopt, OptimizationOptimJL
+# LLH = Turing.logjoint(SW07_llh3, (all_params = init_params[1:16],))
+
+modeSW2007NM2 = Turing.maximum_a_posteriori(SW07_llh3, NLopt.LN_NELDERMEAD(), initial_params = init_params[[1:16...,20,22:24...]])
+
+modeSW2007SB2 = Turing.maximum_a_posteriori(SW07_llh3, NLopt.LN_SBPLX(), initial_params = init_params[[1:16...,20,22:24...]])
+
+modeSW2007LBFGS = Turing.maximum_a_posteriori(SW07_llh3, Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), initial_params = init_params[[1:16...,20,22:24...]], adtype = AutoZygote()) # Out of memory
+
+modeSW2007NM2 = Turing.maximum_a_posteriori(SW07_llh3, NLopt.LN_NELDERMEAD(), initial_params = modeSW2007LBFGS.values)
+
+
+
+## Now, reestimate std and philips curve related parameters on no pandemic sample
+
+init_params = [0.6647831723963108, 0.1696409521786583, 0.5580454054112424, 1.4107875417460551, 0.27150800318229096, 0.2982789062192042, 0.9608926135337186, 0.9968070538427887, 0.9355375595019946, 0.8857554713134486, 0.6671161668424413, 0.363490876566295, 0.9844516855340667, 0.9548251912875737, 0.2672038505621581, 0.4710818007355946, 2.3199691360451973, 1.647356911213051, 0.2681908246948425, 0.4216832168949589, -0.15640416813475932, 0.5091965632941383, 0.6795174040555909, 0.3819940049374918, 0.8953965508435049, 1.0811321641690619, 2.763652185541633, 0.8578346355200306, 0.08963808582038361, 0.5101854590802727, 0.4527575703228302, -0.8627011833961279, 0.5462134869630935, 0.1813725165517729, 0.25860912552471754, 0.02283530676171379, 2.256424512963501, 0.1922713275188999, 8.218707368321041, 5.906699475772892]
+
+fixed_parameters = init_params[[8:19...,21,25:40...]]
+
+dists = dists = [
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ea
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eb
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eg
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eqs
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_em
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_epinf
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ew
+    
+    # Beta(0.5, 0.2, μσ = true),        # crhoa
+    # Beta(0.5, 0.2, μσ = true),        # crhob
+    # Beta(0.5, 0.2, μσ = true),        # crhog
+    # Beta(0.5, 0.2, μσ = true),        # crhoqs
+    # Beta(0.5, 0.2, μσ = true),        # crhoms
+    # Beta(0.5, 0.2, μσ = true),        # crhopinf
+    # Beta(0.5, 0.2, μσ = true),        # crhow
+    # Beta(0.5, 0.2, μσ = true),        # cmap
+    # Beta(0.5, 0.2, μσ = true),        # cmaw
+
+    Beta(0.5, 0.1, μσ = true),           # cprobw
+    Beta(0.5, 0.1, μσ = true),          # cprobp
+    Beta(0.5, 0.15, μσ = true),         # cindw
+    Beta(0.5, 0.15, μσ = true)]         # cindp    
+
+Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter, dists)
+    all_params ~ Turing.arraydist(dists)
+
+    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, cprobw, cprobp, cindw, cindp = all_params
+    
+    crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, csigl, czcap, cfc, crpi, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = fixed_parameters
+
+    crdy = 0
+
+    parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+    
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        llh = get_loglikelihood(m, data(observables), parameters_combined, 
+                                filter = filter,
+                                # verbose = true,
+                                # timer = timer,
+                                # presample_periods = 4, initial_covariance = :diagonal, 
+                                algorithm = algorithm)
+        println("$llh   $all_params")
+        Turing.@addlogprob! llh
+    end
+end
+
+
+SW07_llh3 = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists)
+
+LLH = Turing.logjoint(SW07_llh3, (all_params = init_params[[1:7...,20,22:24...]],))
+
+
+if smplr == "NUTS"
+    samps = @time Turing.sample(SW07_llh,
+                                # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
+                                NUTS(1000, 0.65, adtype = AutoZygote()),
+                                smpls;
+                                initial_params = isfinite(LLH) ? init_params : nothing,
+                                progress = true,
+                                callback = callback)
+
+    # InferenceReport.report(samps; max_moving_plot_iters = 0, view = false, render = true, exec_folder = "/home/cdsw")
+elseif smplr == "pigeons"
+    # generate a Pigeons log potential
+    sw07_lp3 = Pigeons.TuringLogPotential(SW07_llh3)
+
+    const SW07_LP3 = typeof(sw07_lp3)
+    
+    function Pigeons.initialization(target::SW07_LP3, rng::AbstractRNG, _::Int64)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+        
+        result = DynamicPPL.initialize_parameters!!(result, init_params[[1:7...,20,22:24...]], DynamicPPL.SampleFromPrior(), target.model)
+
+        return result
+    end
+    
+    cd(dir_name)
+
+    pt = Pigeons.pigeons(target = sw07_lp3, n_rounds = 0, n_chains = 1)
+
+    pt = Pigeons.pigeons(target = sw07_lp3,
+                        checkpoint = true,
+                        record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
+                        multithreaded = true,
+                        n_chains = 1,
+                        n_rounds = 4)
+
+    cd("../..")
+
+    samps = MCMCChains.Chains(pt)
+end
+
+pre_pandemic_stds = [0.6214776253642815, 0.09180625969728813, 0.48695111652187245, 1.7462778722662238, 0.22762104671667938, 0.2841560574382372, 0.42421425521650646]
+
+### use MAP
+using OptimizationNLopt, OptimizationOptimJL
+# LLH = Turing.logjoint(SW07_llh3, (all_params = init_params[1:16],))
+
+modeSW2007NM2 = Turing.maximum_a_posteriori(SW07_llh3, NLopt.LN_NELDERMEAD(), initial_params = init_params[[1:7...,20,22:24...]])
+
+modeSW2007SB2 = Turing.maximum_a_posteriori(SW07_llh3, NLopt.LN_SBPLX(), initial_params = init_params[[1:16...,20,22:24...]])
+
+modeSW2007LBFGS = Turing.maximum_a_posteriori(SW07_llh3, Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), initial_params = init_params[[1:7...,20,22:24...]], adtype = AutoZygote()) # Out of memory
+
+modeSW2007NM2 = Turing.maximum_a_posteriori(SW07_llh3, NLopt.LN_NELDERMEAD(), initial_params = modeSW2007LBFGS.values)
+
+# check with augmented taylor rule
+
+# check vs first order results and impact of nonlinearity
+first_order_params = [0.5155251475194788, 0.07660166839374086, 0.42934249231657745, 1.221167691146145, 0.7156091225215181, 0.13071182824630584, 0.5072333270577154, 0.9771677130980795, 0.986794686927924, 0.9822502018161883, 0.09286109236460689, 0.4654804216926021, 0.9370552043932711, 0.47725222696887853, 0.44661470121418184, 0.4303294544434745, 3.6306838940222996, 0.3762913949270054, 0.5439881753546603, 0.7489991629811795, 1.367786474803364, 0.8055157457796492, 0.40545058009366347, 0.10369929978953055, 0.7253632750136628, 0.9035647768098533, 2.7581458138927886, 0.6340306336303874, 0.0275348491078362, 0.43733563413301674, 0.34302913866206625, -0.05823832790219527, 0.29395331895770577, 0.2747958016561462, 0.3114891537064354, 0.030983938890070825, 4.7228912586862375, 0.1908504262397911, 3.7626464596678604, 18.34766525498524]
+first_order_params = [0.4774624805879092, 0.05843421265200213, 0.42502933609895077, 1.937500278120203, 0.20322448582100944, 0.14756419685568525, 0.2766419092838432, 0.9929530707689391, 0.9841681095056906, 0.923343419978562, 0.16274783667130338, 0.3557712579539459, 0.9970783973686735, 0.9717754008456225, 0.5658263866494587, 0.7278499476479482, 1.874460198302088, 2.0544009957718496, 0.44440833534266255, 0.48981241371741174, 0.5362755314381931, 0.5468954390765319, 0.5771678165749812, 0.259728143546963, 0.6955359181934602, 1.5799585581993842, 2.221017576320655, 0.8207169625666761, 0.131488052623587, 0.4950407842696353, 0.41505306834180006, 0.4256739359042804, 0.6249281582968051, 0.3942336616630339, 0.22373053861710446, 0.024208936486008813, 1.9434876624452828, 0.18372215098207448, 7.565792057430609, 12.275148449396958]
+
+# optim kalman
+first_order_params = [0.3586519389177872, 0.05990423082138837, 0.36490539941041367, 1.1447384084894834, 0.12627151156518146, 0.08957178431021927, 0.18469513372524735, 0.9759235193659719, 0.8982187009649922, 0.9874734497395773, 0.06777201700885759, 0.41077059237084707, 0.8702512366248394, 0.9071670597891798, 0.614366852359337, 0.774148056037467, 6.565777038387218, 1.1232291625870816, 0.717826861174635, 0.6872046367118673, 2.062480864090124, 0.7439115311737982, 0.6918437575140366, 0.13793471455898668, 0.7527842323889318, 1.409046320325172, 2.5027237172145314, 0.8906201674529742, 0.05861191599970776, 0.4869606329406259, 0.19831872757031732, -0.23225594807668698, 0.2688996191020192, 0.42033969909180385, 0.08786013220003691, 0.028900650220074334, 3.369845869159988, 0.1827246020202797, 10.271531857063158, 10.908071879372178]
+
+# optim inversion
+first_order_params = [0.5106276515140549, 0.05594934598918483, 0.5139866029319221, 1.6603088960641923, 0.1940985075140035, 0.12300211694586954, 0.28801254084831807, 0.9964749807727908, 0.9785258734100093, 0.843772286914506, 0.11644208342880888, 0.32640375901016727, 0.9951487680800755, 0.9756852348030886, 0.7376560200408028, 0.806360986279305, 4.074694951667264, 2.000557186437432, 0.5277845330795315, 0.5044467879023459, -0.03830099298446077, 0.5964415119986256, 0.629156340779393, 0.32709354730694584, 0.705460688560748, 1.5458176723434498, 2.194671920264213, 0.8417966737919648, 0.13583180295232292, 0.4953083152363611, 0.4088022187397261, 0.5218726104866338, 0.5692409044349769, 0.34193532764656936, 0.15355744905444985, 0.02306018235309688, 2.669088419246719, 0.1855740113649244, 10.348018560219453, 7.6517443417065385]
+
+# pigeons 4 rounds inversion
+first_order_params = [0.5014466399855503, 0.07419326274720399, 0.5645997029611638, 1.6522461799352375, 0.21365429436020236, 0.11435206544102401, 0.2661217317431997, 0.9921016247879466, 0.9545077876072398, 0.8970040410831082, 0.19751105080177045, 0.4667390653550051, 0.9898210501991241, 0.932318426232251, 0.7103432731754312, 0.7326850030257863, 4.832706748267644, 1.9455381368960487, 0.5767156107433751, 0.6310493293816842, 1.3059276868329406, 0.6458357073194815, 0.656656270595884, 0.3306432288931331, 0.7094650091530825, 1.5260402178415406, 2.276906416637927, 0.8484658491300502, 0.15728897146021573, 0.4963320758443449, 0.6217278007069826, 0.24823420775857163, 0.5112266063407486, 0.32410918733560334, 0.16747669597802206, 0.023742165253191738, 2.7978849933714547, 0.18763561887326677, 10.295426708160868, 9.535963976689573]
+
+z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = first_order_params
+
+crdy = 0
+
+parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+
+plot_irf(Smets_Wouters_2007, parameters = parameters_combined, variables = [:ygap,:pinfobs,:robs], shocks = :ew)
+
+irfs_1st_order = get_irf(Smets_Wouters_2007, parameters = parameters_combined)
+
+second_order_params = [0.6647831723963108, 0.1696409521786583, 0.5580454054112424, 1.4107875417460551, 0.27150800318229096, 0.2982789062192042, 0.9608926135337186, 0.9968070538427887, 0.9355375595019946, 0.8857554713134486, 0.6671161668424413, 0.363490876566295, 0.9844516855340667, 0.9548251912875737, 0.2672038505621581, 0.4710818007355946, 2.3199691360451973, 1.647356911213051, 0.2681908246948425, 0.4216832168949589, -0.15640416813475932, 0.5091965632941383, 0.6795174040555909, 0.3819940049374918, 0.8953965508435049, 1.0811321641690619, 2.763652185541633, 0.8578346355200306, 0.08963808582038361, 0.5101854590802727, 0.4527575703228302, -0.8627011833961279, 0.5462134869630935, 0.1813725165517729, 0.25860912552471754, 0.02283530676171379, 2.256424512963501, 0.1922713275188999, 8.218707368321041, 5.906699475772892]
+
+
+z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = second_order_params
+
+crdy = 0
+
+parameters_combined_2nd = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+
+get_shocks(Smets_Wouters_2007)
+vars = [:ygap,:pinfobs,:robs]
+shck = get_shocks(Smets_Wouters_2007)[3]
+
+plot_irf(Smets_Wouters_2007, parameters = parameters_combined, variables = vars, shocks = shck, periods = 40)
+
+plot_irf(Smets_Wouters_2007, parameters = parameters_combined_2nd, variables = vars, shocks = shck, periods = 40)
+
+plot_irf(Smets_Wouters_2007, parameters = parameters_combined_2nd, algorithm = :pruned_second_order, variables = vars, shocks = shck, periods = 40)
+
+get_autocorr(Smets_Wouters_2007, parameters = parameters_combined)(vars,:)
+
+get_autocorr(Smets_Wouters_2007, parameters = parameters_combined_2nd, algorithm = :pruned_second_order)(vars,:)
+
+get_autocorr(Smets_Wouters_2007, parameters = parameters_combined_2nd)(vars,:)
+
+
+plot_irf(Smets_Wouters_2007, parameters = parameters_combined_2nd, algorithm = :pruned_second_order, variables = vars, shocks = shck, shock_size = 2, periods = 80)
+
+irfs_2nd_order = get_irf(Smets_Wouters_2007, parameters = parameters_combined_2nd, algorithm = :pruned_second_order, shocks = :em)
+
+
+irfs_1st_order([:ygap,:pinfobs,:robs],:,:ew)
+irfs_2nd_order([:ygap,:pinfobs,:robs],:,:ew)
+
+plot_solution(Smets_Wouters_2007, :dw, parameters = parameters_combined_2nd, algorithm = [:first_order, :pruned_second_order, :pruned_third_order], variables = vars, plot_attributes = Dict(:plot_title => "1st order parameter estimates"), save_plots = true, save_plots_format = :pdf)
+
+plot_solution(Smets_Wouters_2007, :dw, parameters = parameters_combined, algorithm = [:first_order, :pruned_second_order, :pruned_third_order], variables = vars, plot_attributes = Dict(:plot_title => "2nd order parameter estimates"), save_plots = true, save_plots_format = :pdf)
+
+
+# get shocks covariance
+shck_dcmp_1st = get_estimated_shocks(Smets_Wouters_2007, data, parameters = parameters_combined)
+shck_dcmp_1st_inv = get_estimated_shocks(Smets_Wouters_2007, data, parameters = parameters_combined, filter = :inversion)
+shck_dcmp_2nd = get_estimated_shocks(Smets_Wouters_2007, data, parameters = parameters_combined_2nd, algorithm = :pruned_second_order)
+
+using Statistics, StatsBase, LinearAlgebra
+cov_1st = Statistics.cov(shck_dcmp_1st')
+cov_1st_inv = Statistics.cov(shck_dcmp_1st_inv')
+cov_2nd = Statistics.cov(shck_dcmp_2nd')
+
+corr_1st = StatsBase.cor(shck_dcmp_1st')
+corr_2nd = StatsBase.cor(shck_dcmp_2nd')
+
+corr_2nd - corr_1st
+
+triu(corr_1st) - I(7) |> norm
+triu(corr_2nd) - I(7) |> norm
+
+diag(cov_2nd) - diag(cov_1st)
+
+autocor(shck_dcmp_1st')
+autocor(shck_dcmp_2nd')
+autocor(shck_dcmp_2nd').^2 .- autocor(shck_dcmp_1st').^2
+
+
+
+
+# estimate alternative Taylor rule
+
+include("../models/Smets_Wouters_2007_alt_tr.jl")
+
+fixed_parameters = Vector{Vector{Float64}}(undef,0)
+
+if priors == "original"
+    push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.parameters)])
+elseif priors ∈ ["all", "open"]
+    push!(fixed_parameters, Float64[])
+end
+
+if msrmt_err
+    if labor == "growth"
+        push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_labobs], Smets_Wouters_2007.parameters)])
+    elseif labor == "level"
+        push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_dlabobs], Smets_Wouters_2007.parameters)])
+    end
+end
+
+## Priors
+# Handling distributions with varying parameters using arraydist
+
+dists = [
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ea
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eb
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eg
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eqs
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_em
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_epinf
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ew
+    Beta(0.5, 0.2, μσ = true),        # crhoa
+    Beta(0.5, 0.2, μσ = true),        # crhob
+    Beta(0.5, 0.2, μσ = true),        # crhog
+    Beta(0.5, 0.2, μσ = true),        # crhoqs
+    Beta(0.5, 0.2, μσ = true),        # crhoms
+    Beta(0.5, 0.2, μσ = true),        # crhopinf
+    Beta(0.5, 0.2, μσ = true),        # crhow
+    Beta(0.5, 0.2, μσ = true),        # cmap
+    Beta(0.5, 0.2, μσ = true),        # cmaw
+    Gamma(4.0, 1.5, μσ = true),                  # csadjcost
+    Normal(1.50, 0.375),                  # csigma
+    Beta(0.7, 0.1, μσ = true),         # chabb
+    Beta(0.5, 0.1, μσ = true),           # cprobw
+    Normal(2.0, 0.75),                  # csigl
+    Beta(0.5, 0.10, μσ = true),          # cprobp
+    Beta(0.5, 0.15, μσ = true),         # cindw
+    Beta(0.5, 0.15, μσ = true),         # cindp
+    Beta(0.5, 0.15, μσ = true),      # czcap
+    Normal(1.25, 0.125),                  # cfc
+    Gamma(1.5, 0.25, μσ = true),                    # crpi
+
+
+    Gamma(1.5, 0.25, μσ = true),                    # crpi_1
+
+
+    Beta(0.75, 0.10, μσ = true),        # crr
+    Gamma(0.125, 0.05, μσ = true),                # cry
+    # Gamma(0.0001, 0.0000001, 0.0, 0.000001, μσ = true),                # crdy
+    Gamma(0.475, 0.025, μσ = true),         # constepinf
+    Gamma(0.25, 0.1, μσ = true),         # constebeta
+    Normal(0.0, 2.0),                  # constelab
+    Normal(0.3, 0.1),                    # ctrend
+    Normal(0.5, 0.25),                   # cgy
+    Beta(0.3, 0.05, μσ = true),                   # calfa
+    Beta(0.025, 0.005, μσ = true),     # ctou    = 0.025;       % depreciation rate; AER page 592
+    Normal(1.5, 1.0),                               # clandaw = 1.5;         % average wage markup
+    Beta(0.18, 0.01, μσ = true),          # cg      = 0.18;        % exogenous spending gdp ratio; AER page 592      
+    Gamma(10, 5, μσ = true),                        # curvp   = 10;          % Kimball curvature in the goods market; AER page 592
+    Gamma(10, 5, μσ = true)                        # curvw   = 10;          % Kimball curvature in the labor market; AER page 592
+]
+
+## Turing model definition
+# bounds
+# lo_bnds = vcat(zeros(7), zeros(7), zeros(18), -30, zeros(3), zeros(5))
+# up_bnds = vcat(fill(2, 7), fill(1, 7), fill(1, 2), 30, 10, fill(1, 2), 30, fill(1, 4), 10, 5, 1, 2, 2, 100, 100, 30, 5, 1, 1, 1, 10, 1, 100, 100)
+
+Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter, dists)
+    all_params ~ Turing.arraydist(dists)
+
+    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crpi_1, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = all_params
+
+    crdy = 0
+
+    parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crpi_1, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        llh = get_loglikelihood(m, data(observables), parameters_combined, 
+                                filter = filter,
+                                # verbose = true,
+                                # timer = timer,
+                                # presample_periods = 4, initial_covariance = :diagonal, 
+                                algorithm = algorithm)
+
+        # if !isfinite(llh) println(all_params) end
+
+        println(llh, all_params)
+        # println(llh)
+        
+        Turing.@addlogprob! llh
+    end
+end
+
+
+## Load initial parameters found to be useful from previous runs
+
+init_params = [0.6620354075195423, 0.10768250881329916, 0.48801304949362956, 1.770927378080611, 0.1955753320679856, 0.3197180356921326, 0.9551361886906241, 0.9977844890700551, 0.9691417991977467, 0.8728843954944048, 0.49659129506022714, 0.3584065887522079, 0.9873744130805314, 0.9806233170657974, 0.2489561763963097, 0.5660705500281242, 1.7180820317149463, 1.8431238402445613, 0.2202405755566067, 0.40841035895229333, -0.4669756850359026, 0.5204683928642624, 0.6718472817176422, 0.3103271326742966, 0.9084207817147026, 1.0741237658234042, 2.7460557201172926,      1.0,     0.8888957488237553, 0.10671758949937071, 0.5152602577303966, 0.6368125693076699, 0.054339645101056766, 0.5808583404523284, 0.22874506751012447, 0.2628140283514245, 0.024093997219398144, 1.7039197242733768, 0.19168547981814818, 5.572156222619091, 4.835252526546624]
+
+
+SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists)
+# init_params = vcat(init_params,100,fill(.25,7),fill(.5,7))
+LLH = Turing.logjoint(SW07_llh, (all_params = init_params,))
+# Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :pruned_second_order, fltr), (all_params = init_params,))
+# Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :first_order, :inversion), (all_params = init_params,))
+
+
+if smplr == "NUTS"
+    samps = @time Turing.sample(SW07_llh,
+                                # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
+                                NUTS(1000, 0.65, adtype = AutoZygote()),
+                                smpls;
+                                initial_params = isfinite(LLH) ? init_params : nothing,
+                                progress = true,
+                                callback = callback)
+
+    # InferenceReport.report(samps; max_moving_plot_iters = 0, view = false, render = true, exec_folder = "/home/cdsw")
+elseif smplr == "pigeons"
+    # generate a Pigeons log potential
+    sw07_lp = Pigeons.TuringLogPotential(SW07_llh)
+
+    const SW07_LP = typeof(sw07_lp)
+    
+    function Pigeons.initialization(target::SW07_LP, rng::AbstractRNG, _::Int64)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+        
+        result = DynamicPPL.initialize_parameters!!(result, init_params, DynamicPPL.SampleFromPrior(), target.model)
+
+        return result
+    end
+    
+    cd(dir_name)
+
+    pt = Pigeons.pigeons(target = sw07_lp, n_rounds = 0, n_chains = 1)
+
+    pt = Pigeons.pigeons(target = sw07_lp,
+                        checkpoint = true,
+                        record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
+                        multithreaded = true,
+                        n_chains = 1,
+                        n_rounds = 4)
+
+    cd("../..")
+
+    samps = MCMCChains.Chains(pt)
+end
+
+
+parameter_estimate_2nd_alt_tr = [0.46703613799952676, 0.0970637323762547, 0.4705410958495391, 1.9016371072698586, 0.2432226464179451, 0.1750315009266758, 0.3330626797013279, 0.9935818351222657, 0.9490623673873251, 0.928300917117412, 0.2768729540064991, 0.43399816647866435, 0.9895593048636122, 0.9633865756941201, 0.5383431524331415, 0.6145935340642136, 1.9670107635534284, 1.8948525349713992, 0.4553319441066076, 0.4679404575290818, 1.511028011056097, 0.500451272691932, 0.5411429471786284, 0.26396437605676026, 0.6234704424067485, 1.4774310401097466, 1.6302596407564334, 1.860511864615076, 0.8307397425369306, 0.12736827940616124, 0.49779262806024993, 0.41568982952639116, 0.04444323482576594, 0.5308672354606669, 0.3862068597138771, 0.20109471263081002, 0.02265794627768663, 1.9516854784758808, 0.18327783460307406, 10.15689954767147, 14.498373921711211]
+
+
+# find optimal weights
+using ForwardDiff, OptimizationNLopt, MacroModelling, StatsPlots
+using LinearAlgebra
+BLAS.set_num_threads(Threads.nthreads() ÷ 2)
+
+include("../models/Smets_Wouters_2007_alt_tr_ext.jl")
+
+algo = :pruned_second_order
+
+params = Dict([:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crpi_1, :crr, :cry, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa, :ctou, :clandaw, :cg, :curvp, :curvw,   :crdy] .=> vcat(parameter_estimate_2nd_alt_tr,0))
+
+SS(Smets_Wouters_2007, parameters = params, derivatives = false, algorithm = algo)
+
+SS(Smets_Wouters_2007, parameters = [:z_pinf => 0, :z_pinf_1 => 0 ], derivatives = false, algorithm = algo)
+
+optimal_taylor_coefficients = [Dict(get_parameters(Smets_Wouters_2007, values = true))[i] for i in ["crpi", "crpi_1", "cry", "crr"]]
+
+# taylor_coef_stds = [0.2739, 0.0113, 0.0467]
+taylor_coef_stds = [0.3148, 0.2817, 0.0280, 0.0370]
+
+function calculate_cb_loss(taylor_parameter_inputs,p; verbose = false)
+    loss_function_weights, regularisation = p
+
+    out = get_statistics(Smets_Wouters_2007,   
+                    taylor_parameter_inputs,
+                    parameters = [:crpi, :crpi_1, :cry, :crr],#, :crdy],
+                    variance = [:pinfobs, :ygap, :drobs],
+                    # algorithm = algo,
+                    algorithm = :first_order,
+                    verbose = verbose)
+
+    return out[:variance]' * loss_function_weights + sum(abs2, taylor_parameter_inputs) * regularisation
+end
+
+function find_weights(loss_function_weights_regularisation, optimal_taylor_coefficients)
+    loss_function_weights = loss_function_weights_regularisation[1:2]
+    regularisation = 1 / loss_function_weights_regularisation[3]
+    out = sum(abs2, ForwardDiff.gradient(x->calculate_cb_loss(x, (vcat(1,loss_function_weights), regularisation)), optimal_taylor_coefficients))
+    println(out)
+    return out
+end
+
+# find_weights(vcat(loss_function_wts, 1 / regularisation[1]), optimal_taylor_coefficients)
+
+# get_parameters(Smets_Wouters_2007, values = true)
+lbs = [0.0, 0.0, 0.0] # fill(0.0, 3)
+ubs = fill(1e6, 3)
+
+f = OptimizationFunction((x,p)-> find_weights(x,p), AutoForwardDiff())
+
+prob = OptimizationProblem(f, fill(0.5, 3), optimal_taylor_coefficients, ub = ubs, lb = lbs)
+
+sol = solve(prob, NLopt.LD_TNEWTON(), maxiters = 10000) # this seems to achieve best results
+
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+
+sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000)
+
+prob = OptimizationProblem(f, sol.u , optimal_taylor_coefficients, ub = ubs, lb = lbs)
+
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+
+sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000)
+
+find_weights(sol.u, optimal_taylor_coefficients)
+
+
+ForwardDiff.gradient(x->calculate_cb_loss(x, (vcat(1,sol.u[1:2]), 1 / sol.u[3])), optimal_taylor_coefficients)
+
+# do curves for different levels of uncertainty
+
+loss_function_weights = sol.u[1:2]
+# loss_function_weights = [0.1502497565908244, 0.01615466695779562]
+
+
+
+regularisation = 1 / sol.u[3]
+# regularisation = 1 / 71.22491290531232
+
+f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
+
+prob = OptimizationProblem(f, optimal_taylor_coefficients, (loss_function_weights, regularisation), ub = ubs, lb = lbs)
+
+Smets_Wouters_2007.parameter_values
+
+lbs = [eps(),eps(),eps(),eps()]
+ubs = [1e6, 1e6, 1e6, 1]
+
+stds =  [:z_pinf, :z_pinf_1]
+std_vals = [0.0, 0.0]
+
+k_range = [.5] # .45:.025:.55 # [.5] # 
+n_σ_range = 20
+coeff = zeros(length(k_range), length(stds), n_σ_range, 8);
+
+ii = 1
+for (nm,vl) in zip((stds),(std_vals))
+    for (l,k) in enumerate(k_range)
+        σ_range = range(0, .01, length = n_σ_range)
+
+        prob = OptimizationProblem(f, optimal_taylor_coefficients, (vcat(1, loss_function_weights), regularisation), ub = ubs, lb = lbs)
+
+        for (ll,σ) in enumerate(σ_range)
+            SS(Smets_Wouters_2007, parameters = nm => σ, derivatives = false)
+            # prob = OptimizationProblem(f, sol.u, regularisation * 100, ub = ubs, lb = lbs)
+            soll = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+            
+            coeff[l,ii,ll,:] = vcat(vcat(1, loss_function_weights),σ,soll.u)
+
+            println("$nm $σ $(soll.objective) $(soll.u)")
+        end
+
+        
+        SS(Smets_Wouters_2007, parameters = nm => vl, derivatives = false)
+        
+        # display(p)
+    end
+    
+    plots = []
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec(coeff[:,ii,:,8]), label = "", xlabel = "Std($nm)", ylabel = "crr", colorbar=false))
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,8]) .* coeff[:,ii,:,5]), label = "", xlabel = "Std($nm)", ylabel = "(1 - crr) * crpi", colorbar=false))
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,8]) .* coeff[:,ii,:,6]), label = "", xlabel = "Std($nm)", ylabel = "(1 - crr) * crpi_1", colorbar=false))
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,8]) .* coeff[:,ii,:,7]), label = "", xlabel = "Std($nm)", ylabel = "(1 - crr) * cry", colorbar=false))
+    
+    p = plot(plots...) # , plot_title = string(nm))
+    savefig(p,"OSR_2nd_$(nm).png")
+
+    ii += 1
+end
+
+
+
+
+# estimate alternative Taylor rule
+
+include("../models/Smets_Wouters_2007_alt_tr.jl")
+
+fixed_parameters = Vector{Vector{Float64}}(undef,0)
+
+if priors == "original"
+    push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.parameters)])
+elseif priors ∈ ["all", "open"]
+    push!(fixed_parameters, Float64[])
+end
+
+if msrmt_err
+    if labor == "growth"
+        push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_labobs], Smets_Wouters_2007.parameters)])
+    elseif labor == "level"
+        push!(fixed_parameters, Smets_Wouters_2007.parameter_values[indexin([:z_dlabobs], Smets_Wouters_2007.parameters)])
+    end
+end
+
+## Priors
+# Handling distributions with varying parameters using arraydist
+
+dists = [
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ea
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eb
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eg
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_eqs
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_em
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_epinf
+    Cauchy(0.0, 2.0, 0.0, 10.0),   # z_ew
+    Beta(0.5, 0.2, μσ = true),        # crhoa
+    Beta(0.5, 0.2, μσ = true),        # crhob
+    Beta(0.5, 0.2, μσ = true),        # crhog
+    Beta(0.5, 0.2, μσ = true),        # crhoqs
+    Beta(0.5, 0.2, μσ = true),        # crhoms
+    Beta(0.5, 0.2, μσ = true),        # crhopinf
+    Beta(0.5, 0.2, μσ = true),        # crhow
+    Beta(0.5, 0.2, μσ = true),        # cmap
+    Beta(0.5, 0.2, μσ = true),        # cmaw
+    Gamma(4.0, 1.5, μσ = true),                  # csadjcost
+    Normal(1.50, 0.375),                  # csigma
+    Beta(0.7, 0.1, μσ = true),         # chabb
+    Beta(0.5, 0.1, μσ = true),           # cprobw
+    Normal(2.0, 0.75),                  # csigl
+    Beta(0.5, 0.10, μσ = true),          # cprobp
+    Beta(0.5, 0.15, μσ = true),         # cindw
+    Beta(0.5, 0.15, μσ = true),         # cindp
+    Beta(0.5, 0.15, μσ = true),      # czcap
+    Normal(1.25, 0.125),                  # cfc
+    Gamma(1.5, 0.25, μσ = true),                    # crpi
+
+
+    Gamma(1.5, 0.25, μσ = true),                    # crpi_1
+
+
+    Beta(0.75, 0.10, μσ = true),        # crr
+    Gamma(0.125, 0.05, μσ = true),                # cry
+    # Gamma(0.0001, 0.0000001, 0.0, 0.000001, μσ = true),                # crdy
+    Gamma(0.475, 0.025, μσ = true),         # constepinf
+    Gamma(0.25, 0.1, μσ = true),         # constebeta
+    Normal(0.0, 2.0),                  # constelab
+    Normal(0.3, 0.1),                    # ctrend
+    Normal(0.5, 0.25),                   # cgy
+    Beta(0.3, 0.05, μσ = true),                   # calfa
+    Beta(0.025, 0.005, μσ = true),     # ctou    = 0.025;       % depreciation rate; AER page 592
+    Normal(1.5, 1.0),                               # clandaw = 1.5;         % average wage markup
+    Beta(0.18, 0.01, μσ = true),          # cg      = 0.18;        % exogenous spending gdp ratio; AER page 592      
+    Gamma(10, 5, μσ = true),                        # curvp   = 10;          % Kimball curvature in the goods market; AER page 592
+    Gamma(10, 5, μσ = true)                        # curvw   = 10;          % Kimball curvature in the labor market; AER page 592
+]
+
+## Turing model definition
+# bounds
+# lo_bnds = vcat(zeros(7), zeros(7), zeros(18), -30, zeros(3), zeros(5))
+# up_bnds = vcat(fill(2, 7), fill(1, 7), fill(1, 2), 30, 10, fill(1, 2), 30, fill(1, 4), 10, 5, 1, 2, 2, 100, 100, 30, 5, 1, 1, 1, 10, 1, 100, 100)
+
+Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_parameters, algorithm, filter, dists)
+    all_params ~ Turing.arraydist(dists)
+
+    z_ea, z_eb, z_eg, z_eqs, z_em, z_epinf, z_ew, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, csadjcost, csigma, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, cfc, crpi, crpi_1, crr, cry, constepinf, constebeta, constelab, ctrend, cgy, calfa, ctou, clandaw, cg, curvp, curvw = all_params
+
+    crdy = 0
+
+    parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crpi_1, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        llh = get_loglikelihood(m, data(observables), parameters_combined, 
+                                filter = filter,
+                                # verbose = true,
+                                # timer = timer,
+                                # presample_periods = 4, initial_covariance = :diagonal, 
+                                algorithm = algorithm)
+
+        # if !isfinite(llh) println(all_params) end
+
+        println(llh, all_params)
+        # println(llh)
+        
+        Turing.@addlogprob! llh
+    end
+end
+
+
+## Load initial parameters found to be useful from previous runs
+
+init_params = [0.6620354075195423, 0.10768250881329916, 0.48801304949362956, 1.770927378080611, 0.1955753320679856, 0.3197180356921326, 0.9551361886906241, 0.9977844890700551, 0.9691417991977467, 0.8728843954944048, 0.49659129506022714, 0.3584065887522079, 0.9873744130805314, 0.9806233170657974, 0.2489561763963097, 0.5660705500281242, 1.7180820317149463, 1.8431238402445613, 0.2202405755566067, 0.40841035895229333, -0.4669756850359026, 0.5204683928642624, 0.6718472817176422, 0.3103271326742966, 0.9084207817147026, 1.0741237658234042, 2.7460557201172926,      1.0,     0.8888957488237553, 0.10671758949937071, 0.5152602577303966, 0.6368125693076699, 0.054339645101056766, 0.5808583404523284, 0.22874506751012447, 0.2628140283514245, 0.024093997219398144, 1.7039197242733768, 0.19168547981814818, 5.572156222619091, 4.835252526546624]
+
+
+SW07_llh = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, algo, fltr, dists)
+# init_params = vcat(init_params,100,fill(.25,7),fill(.5,7))
+LLH = Turing.logjoint(SW07_llh, (all_params = init_params,))
+# Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :pruned_second_order, fltr), (all_params = init_params,))
+# Turing.logjoint(SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :first_order, :inversion), (all_params = init_params,))
+
+
+if smplr == "NUTS"
+    samps = @time Turing.sample(SW07_llh,
+                                # Turing.externalsampler(MicroCanonicalHMC.MCHMC(10_000,.01), adtype = AutoZygote()), # worse quality
+                                NUTS(1000, 0.65, adtype = AutoZygote()),
+                                smpls;
+                                initial_params = isfinite(LLH) ? init_params : nothing,
+                                progress = true,
+                                callback = callback)
+
+    # InferenceReport.report(samps; max_moving_plot_iters = 0, view = false, render = true, exec_folder = "/home/cdsw")
+elseif smplr == "pigeons"
+    # generate a Pigeons log potential
+    sw07_lp = Pigeons.TuringLogPotential(SW07_llh)
+
+    const SW07_LP = typeof(sw07_lp)
+    
+    function Pigeons.initialization(target::SW07_LP, rng::AbstractRNG, _::Int64)
+        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+        
+        result = DynamicPPL.initialize_parameters!!(result, init_params, DynamicPPL.SampleFromPrior(), target.model)
+
+        return result
+    end
+    
+    cd(dir_name)
+
+    pt = Pigeons.pigeons(target = sw07_lp, n_rounds = 0, n_chains = 1)
+
+    pt = Pigeons.pigeons(target = sw07_lp,
+                        checkpoint = true,
+                        record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default(); Pigeons.disk],
+                        multithreaded = true,
+                        n_chains = 1,
+                        n_rounds = 4)
+
+    cd("../..")
+
+    samps = MCMCChains.Chains(pt)
+end
+
+
+parameter_estimate_2nd_alt_tr = [0.46703613799952676, 0.0970637323762547, 0.4705410958495391, 1.9016371072698586, 0.2432226464179451, 0.1750315009266758, 0.3330626797013279, 0.9935818351222657, 0.9490623673873251, 0.928300917117412, 0.2768729540064991, 0.43399816647866435, 0.9895593048636122, 0.9633865756941201, 0.5383431524331415, 0.6145935340642136, 1.9670107635534284, 1.8948525349713992, 0.4553319441066076, 0.4679404575290818, 1.511028011056097, 0.500451272691932, 0.5411429471786284, 0.26396437605676026, 0.6234704424067485, 1.4774310401097466, 1.6302596407564334, 1.860511864615076, 0.8307397425369306, 0.12736827940616124, 0.49779262806024993, 0.41568982952639116, 0.04444323482576594, 0.5308672354606669, 0.3862068597138771, 0.20109471263081002, 0.02265794627768663, 1.9516854784758808, 0.18327783460307406, 10.15689954767147, 14.498373921711211]
+
+
+# find optimal weights
+using ForwardDiff, OptimizationNLopt, MacroModelling, StatsPlots
+using LinearAlgebra
+BLAS.set_num_threads(Threads.nthreads() ÷ 2)
+
+include("../models/Smets_Wouters_2007_alt_tr_ext.jl")
+
+algo = :pruned_second_order
+
+params = Dict([:z_ea, :z_eb, :z_eg, :z_eqs, :z_em, :z_epinf, :z_ew, :crhoa, :crhob, :crhog, :crhoqs, :crhoms, :crhopinf, :crhow, :cmap, :cmaw, :csadjcost, :csigma, :chabb, :cprobw, :csigl, :cprobp, :cindw, :cindp, :czcap, :cfc, :crpi, :crpi_1, :crr, :cry, :constepinf, :constebeta, :constelab, :ctrend, :cgy, :calfa, :ctou, :clandaw, :cg, :curvp, :curvw,   :crdy] .=> vcat(parameter_estimate_2nd_alt_tr,0))
+
+SS(Smets_Wouters_2007, parameters = params, derivatives = false, algorithm = algo)
+
+SS(Smets_Wouters_2007, parameters = [:z_pinf => 0, :z_pinf_1 => 0 ], derivatives = false, algorithm = algo)
+
+optimal_taylor_coefficients = [Dict(get_parameters(Smets_Wouters_2007, values = true))[i] for i in ["crpi", "crpi_1", "cry", "crr"]]
+
+# taylor_coef_stds = [0.2739, 0.0113, 0.0467]
+taylor_coef_stds = [0.3148, 0.2817, 0.0280, 0.0370]
+
+function calculate_cb_loss(taylor_parameter_inputs,p; verbose = false)
+    loss_function_weights, regularisation = p
+
+    out = get_statistics(Smets_Wouters_2007,   
+                    taylor_parameter_inputs,
+                    parameters = [:crpi, :crpi_1, :cry, :crr],#, :crdy],
+                    variance = [:pinfobs, :ygap, :drobs],
+                    # algorithm = algo,
+                    algorithm = :first_order,
+                    verbose = verbose)
+
+    return out[:variance]' * loss_function_weights + sum(abs2, taylor_parameter_inputs) * regularisation
+end
+
+function find_weights(loss_function_weights_regularisation, optimal_taylor_coefficients)
+    loss_function_weights = loss_function_weights_regularisation[1:2]
+    regularisation = 1 / loss_function_weights_regularisation[3]
+    out = sum(abs2, ForwardDiff.gradient(x->calculate_cb_loss(x, (vcat(1,loss_function_weights), regularisation)), optimal_taylor_coefficients))
+    println(out)
+    return out
+end
+
+# find_weights(vcat(loss_function_wts, 1 / regularisation[1]), optimal_taylor_coefficients)
+
+# get_parameters(Smets_Wouters_2007, values = true)
+lbs = [0.0, 0.0, 0.0] # fill(0.0, 3)
+ubs = fill(1e6, 3)
+
+f = OptimizationFunction((x,p)-> find_weights(x,p), AutoForwardDiff())
+
+prob = OptimizationProblem(f, fill(0.5, 3), optimal_taylor_coefficients, ub = ubs, lb = lbs)
+
+sol = solve(prob, NLopt.LD_TNEWTON(), maxiters = 10000) # this seems to achieve best results
+
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+
+sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000)
+
+prob = OptimizationProblem(f, sol.u , optimal_taylor_coefficients, ub = ubs, lb = lbs)
+
+sol = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+
+sol = solve(prob, NLopt.LN_NELDERMEAD(), maxiters = 10000)
+
+find_weights(sol.u, optimal_taylor_coefficients)
+
+
+ForwardDiff.gradient(x->calculate_cb_loss(x, (vcat(1,sol.u[1:2]), 1 / sol.u[3])), optimal_taylor_coefficients)
+
+# do curves for different levels of uncertainty
+
+loss_function_weights = sol.u[1:2]
+# loss_function_weights = [0.1502497565908244, 0.01615466695779562]
+
+
+
+regularisation = 1 / sol.u[3]
+# regularisation = 1 / 71.22491290531232
+
+f = OptimizationFunction(calculate_cb_loss, AutoForwardDiff())
+
+prob = OptimizationProblem(f, optimal_taylor_coefficients, (loss_function_weights, regularisation), ub = ubs, lb = lbs)
+
+Smets_Wouters_2007.parameter_values
+
+lbs = [eps(),eps(),eps(),eps()]
+ubs = [1e6, 1e6, 1e6, 1]
+
+stds =  [:z_pinf, :z_pinf_1]
+std_vals = [0.0, 0.0]
+
+k_range = [.5] # .45:.025:.55 # [.5] # 
+n_σ_range = 20
+coeff = zeros(length(k_range), length(stds), n_σ_range, 8);
+
+ii = 1
+for (nm,vl) in zip((stds),(std_vals))
+    for (l,k) in enumerate(k_range)
+        σ_range = range(0, .01, length = n_σ_range)
+
+        prob = OptimizationProblem(f, optimal_taylor_coefficients, (vcat(1, loss_function_weights), regularisation), ub = ubs, lb = lbs)
+
+        for (ll,σ) in enumerate(σ_range)
+            SS(Smets_Wouters_2007, parameters = nm => σ, derivatives = false)
+            # prob = OptimizationProblem(f, sol.u, regularisation * 100, ub = ubs, lb = lbs)
+            soll = solve(prob, NLopt.LD_LBFGS(), maxiters = 10000) # this seems to achieve best results
+            
+            coeff[l,ii,ll,:] = vcat(vcat(1, loss_function_weights),σ,soll.u)
+
+            println("$nm $σ $(soll.objective) $(soll.u)")
+        end
+
+        
+        SS(Smets_Wouters_2007, parameters = nm => vl, derivatives = false)
+        
+        # display(p)
+    end
+    
+    plots = []
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec(coeff[:,ii,:,8]), label = "", xlabel = "Std($nm)", ylabel = "crr", colorbar=false))
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,8]) .* coeff[:,ii,:,5]), label = "", xlabel = "Std($nm)", ylabel = "(1 - crr) * crpi", colorbar=false))
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,8]) .* coeff[:,ii,:,6]), label = "", xlabel = "Std($nm)", ylabel = "(1 - crr) * crpi_1", colorbar=false))
+    push!(plots, plot(vec(coeff[:,ii,:,4]), vec((1 .- coeff[:,ii,:,8]) .* coeff[:,ii,:,7]), label = "", xlabel = "Std($nm)", ylabel = "(1 - crr) * cry", colorbar=false))
+    
+    p = plot(plots...) # , plot_title = string(nm))
+    savefig(p,"OSR_2nd_$(nm).png")
+
+    ii += 1
+end
