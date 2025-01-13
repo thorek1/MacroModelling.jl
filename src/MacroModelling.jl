@@ -32,7 +32,7 @@ import Polyester
 import NLopt
 import Optim, LineSearches
 # import Zygote
-import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearAlgebra: mul!
 # import Octavian: matmul!
@@ -533,6 +533,18 @@ function write_obc_violation_equations(𝓂)
 end
 
 
+function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
+    while length(𝓂.NSSS_solver_cache) > 1
+        pop!(𝓂.NSSS_solver_cache)
+    end
+
+    𝓂.solution.outdated_NSSS = true
+    push!(𝓂.solution.outdated_algorithms, algorithm)
+    𝓂.solution.perturbation.qme_solution = zeros(0,0)
+    𝓂.solution.perturbation.second_order_solution = spzeros(0,0)
+    𝓂.solution.perturbation.third_order_solution = spzeros(0,0)
+end
+
 function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
                             ∂B::AbstractMatrix{R}, 
                             ∂X::AbstractSparseMatrix{R}, 
@@ -840,7 +852,9 @@ function choose_matrix_format(A::AbstractSparseMatrix{S};
                                 tol::AbstractFloat = eps()) where S <: Real
     droptol!(A, tol)
 
-    lennz = A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(A.A.nzval) : length(A.nzval)
+    # lennz = A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(A.A.nzval) : length(A.nzval)
+
+    lennz = nnz(A)
 
     if lennz / length(A) > density_threshold || length(A) < min_length
         return collect(A)
@@ -1098,7 +1112,7 @@ function compressed_kron³(a::AbstractMatrix{T};
     end
     # Initialize arrays to collect indices and values
     # Estimate an upper bound for non-zero entries to preallocate arrays
-    lennz = a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
+    lennz = nnz(a) # a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
 
     m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
     m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
@@ -4143,9 +4157,9 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-    # 𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-    𝐒₂ = sparse(𝐒₂ * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+    𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
 
     # end # timeit_debug
 
@@ -4461,9 +4475,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-    # 𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-    𝐒₂ = sparse(𝐒₂ * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+    𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
             
@@ -4482,9 +4496,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
-    # 𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
+    𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 
-    𝐒₃ = sparse(𝐒₃ * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+    𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 

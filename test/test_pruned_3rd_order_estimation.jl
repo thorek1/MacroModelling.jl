@@ -1,68 +1,86 @@
 using MacroModelling
 import Turing
 import Pigeons
-import Zygote
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
 
-include("../models/FS2000.jl")
+# estimate highly nonlinear model
 
 # load data
-dat = CSV.read("data/FS2000_data.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
-data = log.(data)
+dat = CSV.read("data/usmodel.csv", DataFrame)
+data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
 # declare observables
-observables = sort(Symbol.("log_".*names(dat)))
+observables = [:dy]#, :dinve, :labobs, :pinfobs, :dw, :robs]
 
+# Subsample from 1966Q1 - 2004Q4
 # subset observables in data
-data = data(observables,:)
+data = data(observables,75:230)
 
 
+include("models/Caldara_et_al_2012_estim.jl")
+
+
+# get_loglikelihood(Caldara_et_al_2012_estim, data, Caldara_et_al_2012_estim.parameter_values, algorithm = :pruned_third_order)
+
+# get_loglikelihood(Caldara_et_al_2012_estim, data, Caldara_et_al_2012_estim.parameter_values*0.99, algorithm = :pruned_third_order)
+
+
+# get_parameters(Caldara_et_al_2012_estim, values = true)
+
+# Handling distributions with varying parameters using arraydist
 dists = [
-    Beta(0.356, 0.02, μσ = true),           # alp
-    Beta(0.993, 0.002, μσ = true),          # bet
-    Normal(0.0085, 0.003),                  # gam
-    Normal(1.0002, 0.007),                  # mst
-    Beta(0.129, 0.223, μσ = true),          # rho
-    Beta(0.65, 0.05, μσ = true),            # psi
-    Beta(0.01, 0.005, μσ = true),           # del
-    InverseGamma(0.035449, Inf, μσ = true), # z_e_a
-    InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
+    Normal(0, 1),                           # dȳ
+    Normal(0, 1),                           # dc̄
+    Beta(0.95, 0.005, μσ = true),           # β
+    Beta(0.33, 0.05, μσ = true),            # ζ
+    Beta(0.02, 0.01, μσ = true),            # δ
+    Beta(0.75, 0.01, μσ = true),            # λ
+    Normal(1, .25),                         # ψ
+    InverseGamma(0.021, Inf, μσ = true),    # σ̄
+    InverseGamma(0.1, Inf, μσ = true),      # η
+    Beta(0.75, 0.02, μσ = true)             # ρ
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m, algorithm)
+Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = algorithm)
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
     end
 end
 
 
-Random.seed!(30)
+Random.seed!(3)
+
+# Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)
+
+# samps = @time sample(Caldara_et_al_2012_loglikelihood, PG(100), 10, progress = true)#, init_params = sol)
+
+# samps = sample(Caldara_et_al_2012_loglikelihood, IS(), 1000, progress = true)#, init_params = sol)
 
 n_samples = 500
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = Caldara_et_al_2012_estim.parameter_values)
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
+
 # generate a Pigeons log potential
-FS2000_pruned2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order))
+Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim))
 
-init_params = FS2000.parameter_values
+init_params = Caldara_et_al_2012_estim.parameter_values
 
-LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :second_order), (all_params = init_params,))
+LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim), (all_params = init_params,))
 
 if isfinite(LLH)
-    const FS2000_pruned2nd_LP = typeof(FS2000_pruned2nd_lp)
+    const Caldara_LP = typeof(Caldara_lp)
 
-    function Pigeons.initialization(target::FS2000_pruned2nd_LP, rng::AbstractRNG, _::Int64)
+    function Pigeons.initialization(target::Caldara_LP, rng::AbstractRNG, _::Int64)
         result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
         # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
         
@@ -71,17 +89,19 @@ if isfinite(LLH)
         return result
     end
 
-    pt = Pigeons.pigeons(target = FS2000_pruned2nd_lp, n_rounds = 0, n_chains = 1)
+    pt = Pigeons.pigeons(target = Caldara_lp, n_rounds = 0, n_chains = 1)
 else
+    pt = Pigeons.pigeons(target = Caldara_lp, n_rounds = 0, n_chains = 1)
+
     replica = pt.replicas[end]
     XMAX = deepcopy(replica.state)
-    LPmax = FS2000_pruned2nd_lp(XMAX)
+    LPmax = Caldara_lp(XMAX)
 
     i = 0
 
     while !isfinite(LPmax) && i < 1000
-        Pigeons.sample_iid!(FS2000_pruned2nd_lp, replica, pt.shared)
-        new_LP = FS2000_pruned2nd_lp(replica.state)
+        Pigeons.sample_iid!(Caldara_lp, replica, pt.shared)
+        new_LP = Caldara_lp(replica.state)
         if new_LP > LPmax
             global LPmax = new_LP
             global XMAX  = deepcopy(replica.state)
@@ -90,10 +110,10 @@ else
     end
 
     # define a specific initialization for this model
-    Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
+    Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(Caldara_et_al_2012_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
 end
 
-pt = @time Pigeons.pigeons(target = FS2000_pruned2nd_lp,
+pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
             n_rounds = 8,
@@ -102,113 +122,43 @@ pt = @time Pigeons.pigeons(target = FS2000_pruned2nd_lp,
 samps = MCMCChains.Chains(pt)
 
 
-println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
+println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 
 
-
-
-
-Random.seed!(30)
-
-# generate a Pigeons log potential
-FS2000_2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order))
-
-init_params = FS2000.parameter_values
-
-LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :second_order), (all_params = init_params,))
-
-if isfinite(LLH)
-    const FS2000_2nd_LP = typeof(FS2000_2nd_lp)
-
-    function Pigeons.initialization(target::FS2000_2nd_LP, rng::AbstractRNG, _::Int64)
-        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-        # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
-        
-        result = DynamicPPL.initialize_parameters!!(result, init_params, DynamicPPL.SampleFromPrior(), target.model)
-
-        return result
-    end
-
-    pt = Pigeons.pigeons(target = FS2000_2nd_lp, n_rounds = 0, n_chains = 1)
-else
-    replica = pt.replicas[end]
-    XMAX = deepcopy(replica.state)
-    LPmax = FS2000_2nd_lp(XMAX)
-
-    i = 0
-
-    while !isfinite(LPmax) && i < 1000
-        Pigeons.sample_iid!(FS2000_2nd_lp, replica, pt.shared)
-        new_LP = FS2000_2nd_lp(replica.state)
-        if new_LP > LPmax
-            global LPmax = new_LP
-            global XMAX  = deepcopy(replica.state)
-        end
-        global i += 1
-    end
-
-    # define a specific initialization for this model
-    Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
-end
-
-pt = @time Pigeons.pigeons(target = FS2000_2nd_lp,
-            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 1,
-            n_rounds = 9,
-            multithreaded = true)
-
-samps = MCMCChains.Chains(pt)
-
-
-println("Mean variable values (second order): $(mean(samps).nt.mean)")
-
-
-# # estimate highly nonlinear model
-
+# include("../models/FS2000.jl")
 
 # # load data
-# dat = CSV.read("data/usmodel.csv", DataFrame)
-# data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+# dat = CSV.read("data/FS2000_data.csv", DataFrame)
+# data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
+# data = log.(data)
 
 # # declare observables
-# observables = [:dy, :dc]#, :dinve, :labobs, :pinfobs, :dw, :robs]
+# observables = sort(Symbol.("log_".*names(dat)))
 
-# # Subsample from 1966Q1 - 2004Q4
 # # subset observables in data
-# data = data(observables,75:230)
+# data = data(observables,:)
 
 
-# include("models/Caldara_et_al_2012_estim.jl")
-
-
-# # get_loglikelihood(Caldara_et_al_2012_estim, data, Caldara_et_al_2012_estim.parameter_values, algorithm = :pruned_third_order)
-
-# # get_loglikelihood(Caldara_et_al_2012_estim, data, Caldara_et_al_2012_estim.parameter_values*0.99, algorithm = :pruned_third_order)
-
-
-# # get_parameters(Caldara_et_al_2012_estim, values = true)
-
-# Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
-#     dȳ  ~ Normal(0, 1)
-#     dc̄  ~ Normal(0, 1)
-#     β   ~ Beta(0.95, 0.005, μσ = true)
-#     ζ   ~ Beta(0.33, 0.05, μσ = true)
-#     δ   ~ Beta(0.02, 0.01, μσ = true)
-#     λ   ~ Beta(0.75, 0.01, μσ = true)
-#     ψ   ~ Normal(1, .25)#, μσ = true)
-#     σ̄   ~ InverseGamma(0.021, Inf, μσ = true)
-#     η   ~ InverseGamma(0.1, Inf, μσ = true)
-#     ρ   ~ Beta(0.75, 0.02, μσ = true)
-
-#     Turing.@addlogprob! get_loglikelihood(m, data, [dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ], algorithm = :pruned_third_order)
+# Turing.@model function FS2000_loglikelihood_function(data, m)
+#     alp     ~ Beta(0.356, 0.02, μσ = true)
+#     bet     ~ Beta(0.993, 0.002, μσ = true)
+#     gam     ~ Normal(0.0085, 0.003)
+#     mst     ~ Normal(1.0002, 0.007)
+#     rho     ~ Beta(0.129, 0.223, μσ = true)
+#     psi     ~ Beta(0.65, 0.05, μσ = true)
+#     del     ~ Beta(0.01, 0.005, μσ = true)
+#     z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
+#     z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
+#     # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
+#     Turing.@addlogprob! get_loglikelihood(m, data, [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m], algorithm = :pruned_second_order)
 # end
 
 
-# Random.seed!(3)
+# Random.seed!(30)
 
-# pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)),
+# pt = @time Pigeons.pigeons(target = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000)),
 #             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-#             n_chains = 1,
+#             n_chains = 2,
 #             n_rounds = 6,
 #             multithreaded = true)
 

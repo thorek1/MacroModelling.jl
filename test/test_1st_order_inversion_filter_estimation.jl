@@ -42,7 +42,7 @@ end
 
 n_samples = 1000
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, init_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 

@@ -1275,7 +1275,7 @@ function rrule(::typeof(calculate_third_order_solution),
             return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
         end
 
-        ∂C = choose_matrix_format(∂C, density_threshold = 1.0)
+        ∂C = choose_matrix_format(∂C, density_threshold = 1.0, min_length = 0)
 
         # end # timeit_debug
         # @timeit_debug timer "Step 0" begin
@@ -1283,14 +1283,14 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂A = ∂C * B' * 𝐒₃'
 
         # ∂B = 𝐒₃' * A' * ∂C
-        ∂B = choose_matrix_format(𝐒₃' * A' * ∂C, density_threshold = 1.0)
+        ∂B = choose_matrix_format(𝐒₃' * A' * ∂C, density_threshold = 1.0, min_length = 0)
 
         # end # timeit_debug
         # @timeit_debug timer "Step 1" begin
 
         # C = spinv * 𝐗₃
         # ∂𝐗₃ = spinv' * ∂C * M₃.𝐂₃'
-        ∂𝐗₃ = choose_matrix_format(spinv' * ∂C, density_threshold = 1.0)
+        ∂𝐗₃ = choose_matrix_format(spinv' * ∂C, density_threshold = 1.0, min_length = 0)
 
         ∂spinv += ∂C * 𝐗₃'
 

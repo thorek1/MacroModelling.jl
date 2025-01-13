@@ -4,6 +4,7 @@
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
 - [ ] prettify plotlyjs plots
+- [ ] fix findiff and zygote consistency for llh derivatives of inversion filter
 - [ ] add correlation and other moments to get statistics
 - [ ] get irf with parameters for higher order and make it zygote compatible
 - [ ] implement rrule for higher order moments

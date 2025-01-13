@@ -48,7 +48,7 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :third_order)
     end
 end
 
@@ -60,6 +60,14 @@ Random.seed!(3)
 # samps = @time sample(Caldara_et_al_2012_loglikelihood, PG(100), 10, progress = true)#, init_params = sol)
 
 # samps = sample(Caldara_et_al_2012_loglikelihood, IS(), 1000, progress = true)#, init_params = sol)
+
+n_samples = 500
+
+samps = @time sample(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim), NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = Caldara_et_al_2012_estim.parameter_values)
+
+println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+
+sample_nuts = mean(samps).nt.mean
 
 
 # generate a Pigeons log potential
@@ -109,7 +117,7 @@ pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
             n_rounds = 8,
-            multithreaded = true)
+            multithreaded = false)
 
 samps = MCMCChains.Chains(pt)
 
