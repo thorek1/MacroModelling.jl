@@ -800,7 +800,7 @@ function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}};
                                 min_length::Int = 1000,
                                 tol::AbstractFloat = eps()) where S <: Real
     if length(A) < 100
-        return collect(A)
+        return convert(Matrix, A)
     else
         return sparse(A)
     end
@@ -811,7 +811,7 @@ function choose_matrix_format(A::ℒ.Adjoint{S, <: DenseMatrix{S}};
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::AbstractFloat = eps()) where S <: Real
-    choose_matrix_format(collect(A), 
+    choose_matrix_format(convert(Matrix, A), 
                         density_threshold = density_threshold, 
                         min_length = min_length, 
                         tol = tol)
@@ -832,7 +832,7 @@ function choose_matrix_format(A::DenseMatrix{S};
                                 min_length::Int = 1000,
                                 tol::AbstractFloat = eps()) where S <: Real
     if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
-        a = sparse(collect(A))
+        a = sparse(A)
 
         droptol!(a, tol)
 
@@ -857,7 +857,7 @@ function choose_matrix_format(A::AbstractSparseMatrix{S};
     lennz = nnz(A)
 
     if lennz / length(A) > density_threshold || length(A) < min_length
-        return collect(A)
+        return convert(Matrix, A)
     else 
         if VERSION >= v"1.9"
             A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
@@ -1094,7 +1094,7 @@ function compressed_kron³(a::AbstractMatrix{T};
         â = copy(a)
         a = sparse(a)
     else
-        â = collect(a)  # Convert to dense matrix for faster access
+        â = convert(Matrix, a)  # Convert to dense matrix for faster access
     end
     # Get the number of rows and columns
     n_rows, n_cols = size(a)
@@ -5700,7 +5700,7 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     end
 
     𝓂.∂SS_equations_∂parameters = (funcs, sparse(∂SS_equations_∂parameters[1], ∂SS_equations_∂parameters[2], zeros(Float64,length(∂SS_equations_∂parameters[3])), length(eqs), length(pars)))
-
+println(𝓂.∂SS_equations_∂parameters)
     # 𝓂.∂SS_equations_∂parameters = write_sparse_derivatives_function(∂SS_equations_∂parameters[1], 
     #                                                                     ∂SS_equations_∂parameters[2], 
     #                                                                     ∂SS_equations_∂parameters[3],
