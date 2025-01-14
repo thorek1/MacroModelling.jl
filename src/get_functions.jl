@@ -82,7 +82,7 @@ function get_shock_decomposition(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
-                                lyapunov_algorithm::Symbol = :doubling)
+                                lyapunov_algorithm::Symbol = :doubling)::KeyedArray{Float64}
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,

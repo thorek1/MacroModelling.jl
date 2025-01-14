@@ -402,7 +402,7 @@ function transform(x::Vector{T}, option::Int, shift::AbstractFloat)::Vector{T} w
         return asinh.(asinh.(x .+ shift))
     elseif option == 1
         return asinh.(x .+ shift)
-    elseif option == 0
+    else # if option == 0
         return x .+ shift
     end
 end
@@ -416,7 +416,7 @@ function transform(x::Vector{T}, option::Int)::Vector{T} where T <: Real
         return asinh.(asinh.(x))
     elseif option == 1
         return asinh.(x)
-    elseif option == 0
+    else # if option == 0
         return x
     end
 end
@@ -430,7 +430,7 @@ function undo_transform(x::Vector{T}, option::Int, shift::AbstractFloat)::Vector
         return sinh.(sinh.(x)) .- shift
     elseif option == 1
         return sinh.(x) .- shift
-    elseif option == 0
+    else # if option == 0
         return x .- shift
     end
 end
@@ -444,7 +444,7 @@ function undo_transform(x::Vector{T}, option::Int)::Vector{T} where T <: Real
         return sinh.(sinh.(x))
     elseif option == 1
         return sinh.(x)
-    elseif option == 0
+    else # if option == 0
         return x
     end
 end

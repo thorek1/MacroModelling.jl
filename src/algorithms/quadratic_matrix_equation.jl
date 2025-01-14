@@ -83,7 +83,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
-                                        verbose::Bool = false) where R <: Real
+                                        verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: Real
     # @timeit_debug timer "Prepare indice" begin
    
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
@@ -124,7 +124,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         ℒ.schur!(D, E)
     catch
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, false, 0, 1.0
+        return A, 0, 1.0
     end
 
     eigenselect = abs.(schdcmp.β ./ schdcmp.α) .< 1
@@ -136,7 +136,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         ℒ.ordschur!(schdcmp, eigenselect)
     catch
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, false, 0, 1.0
+        return A, 0, 1.0
     end
 
     # end # timeit_debug
@@ -154,14 +154,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     
     if !ℒ.issuccess(Ẑ₁₁)
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, false, 0, 1.0
+        return A, 0, 1.0
     end
 
     Ŝ₁₁ = ℒ.lu!(S₁₁, check = false)
     
     if !ℒ.issuccess(Ŝ₁₁)
         if verbose println("Quadratic matrix equation solver: schur - converged: false") end
-        return A, false, 0, 1.0
+        return A, 0, 1.0
     end
 
     # end # timeit_debug

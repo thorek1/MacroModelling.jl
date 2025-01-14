@@ -14,7 +14,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 lyapunov_algorithm::Symbol = :doubling,
                                 tol::AbstractFloat = 1e-14,
                                 acceptance_tol::AbstractFloat = 1e-12,
-                                verbose::Bool = false)
+                                verbose::Bool = false)::Tuple{AbstractMatrix{Float64}, Bool}
                                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Solve lyapunov equation" begin
     # @timeit_debug timer "Choose matrix formats" begin
