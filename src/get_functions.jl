@@ -1919,7 +1919,9 @@ function get_solution(𝓂::ℳ,
 
         𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+        if !(typeof(𝐒₂) <: AbstractSparseMatrix)
+            𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+        end
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
@@ -1935,7 +1937,9 @@ function get_solution(𝓂::ℳ,
 
         𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+        if !(typeof(𝐒₂) <: AbstractSparseMatrix)
+            𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+        end
 
         ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
                 
@@ -1951,7 +1955,9 @@ function get_solution(𝓂::ℳ,
         
         𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 
-        𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+        if !(typeof(𝐒₃) <: AbstractSparseMatrix)
+            𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+        end
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
     else

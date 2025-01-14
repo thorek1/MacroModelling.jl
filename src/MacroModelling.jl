@@ -4159,7 +4159,9 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-    𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+    if !(typeof(𝐒₂) <: AbstractSparseMatrix)
+        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+    end
 
     # end # timeit_debug
 
@@ -4477,8 +4479,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-    𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
-
+    if !(typeof(𝐒₂) <: AbstractSparseMatrix)
+        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+    end
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
@@ -4498,7 +4501,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 
-    𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+    if !(typeof(𝐒₃) <: AbstractSparseMatrix)
+        𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+    end
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
