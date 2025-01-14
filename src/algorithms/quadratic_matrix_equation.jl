@@ -213,7 +213,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
-                                        max_iter::Int = 100) where R <: Real
+                                        max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where R <: Real
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
     # https://arxiv.org/abs/2212.09491
@@ -236,7 +236,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     B̂ = ℒ.lu!(B̄, check = false)
 
     if !ℒ.issuccess(B̂)
-        return A, false, 0, 1.0
+        return A, 0, 1.0
     end
 
     # Compute initial values X, Y, E, F
@@ -283,7 +283,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         fEI = ℒ.lu!(temp1, check = false)
 
         if !ℒ.issuccess(fEI)
-            return A, false, iter, 1.0
+            return A, iter, 1.0
         end
 
         # end # timeit_debug
@@ -310,7 +310,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         fFI = ℒ.lu!(temp2, check = false)
         
         if !ℒ.issuccess(fFI)
-            return A, false, iter, 1.0
+            return A, iter, 1.0
         end
 
         # end # timeit_debug
