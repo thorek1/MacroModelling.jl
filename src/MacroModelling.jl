@@ -832,7 +832,7 @@ function choose_matrix_format(A::DenseMatrix{S};
                                 min_length::Int = 1000,
                                 tol::AbstractFloat = eps()) where S <: Real
     if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
-        a = sparse(A)
+        a = convert(SparseMatrixCSC{S}, A)
 
         droptol!(a, tol)
 
