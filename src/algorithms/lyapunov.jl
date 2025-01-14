@@ -14,7 +14,7 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
                                 lyapunov_algorithm::Symbol = :doubling,
                                 tol::AbstractFloat = 1e-14,
                                 acceptance_tol::AbstractFloat = 1e-12,
-                                verbose::Bool = false)::Tuple{AbstractMatrix{Float64}, Bool}
+                                verbose::Bool = false)# ::Tuple{AbstractMatrix{Float64}, Bool}
                                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Solve lyapunov equation" begin
     # @timeit_debug timer "Choose matrix formats" begin
@@ -154,7 +154,7 @@ function solve_lyapunov_equation(A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},D
     𝐂 = try 
         MatrixEquations.lyapd(A, C)
     catch
-        return C, false, 0, 1.0
+        return C, 0, 1.0
     end
     
     # 𝐂¹ = A * 𝐂 * A' + C

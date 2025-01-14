@@ -3372,7 +3372,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         @error "No solution for these parameters."
-        return variables, shocks, [], decomposition
+        return variables, shocks, zeros(0,0), decomposition
     end
 
     state = zeros(T.nVars)
@@ -3390,7 +3390,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     if !solved 
         @error "No solution for these parameters."
-        return variables, shocks, [], decomposition
+        return variables, shocks, zeros(0,0), decomposition
     end
 
     precision_factor = 1.0
@@ -3438,7 +3438,7 @@ function filter_data_with_model(𝓂::ℳ,
 
         if !ℒ.issuccess(jacdecomp)
             @error "Inversion filter failed"
-            return variables, shocks, [], decomposition
+            return variables, shocks, zeros(0,0), decomposition
         end
 
         invjac = inv(jacdecomp)
@@ -3481,7 +3481,7 @@ function filter_data_with_model(𝓂::ℳ,
         decomposition[:, end - 1, i] .= decomposition[:, end, i] - sum(decomposition[:, 1:end-2, i], dims=2)
     end
     
-    return variables, shocks, [], decomposition
+    return variables, shocks, zeros(0,0), decomposition
 end
 
 
@@ -3503,7 +3503,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         @error "Could not find 2nd order stochastic steady state"
-        return variables, shocks, [], []
+        return variables, shocks, zeros(0,0), zeros(0,0)
     end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -3637,7 +3637,7 @@ function filter_data_with_model(𝓂::ℳ,
             #                             shock_independent)
                 if !matched
                     @error "Inversion filter failed at step $i"
-                    return variables, shocks, [], []
+                    return variables, shocks, zeros(0,0), zeros(0,0)
                 end 
             # end
         # end
@@ -3696,7 +3696,7 @@ function filter_data_with_model(𝓂::ℳ,
         state .= full_state[T.past_not_future_and_mixed_idx]
     end
 
-    return variables, shocks, [], []
+    return variables, shocks, zeros(0,0), zeros(0,0)
 end
 
 
@@ -3720,12 +3720,12 @@ function filter_data_with_model(𝓂::ℳ,
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         @error "No solution for these parameters."
-        return variables, shocks, [], decomposition
+        return variables, shocks, zeros(0,0), decomposition
     end
 
     if !converged
         @error "No solution for these parameters."
-        return variables, shocks, [], decomposition
+        return variables, shocks, zeros(0,0), decomposition
     end
 
     𝐒 = [𝐒₁, 𝐒₂]
@@ -3870,7 +3870,7 @@ function filter_data_with_model(𝓂::ℳ,
             #                             shock_independent)
                 if !matched
                     @error "Inversion filter failed at step $i"
-                    return variables, shocks, [], decomposition
+                    return variables, shocks, zeros(0,0), decomposition
                 end
             # end
         # end
@@ -3970,7 +3970,7 @@ function filter_data_with_model(𝓂::ℳ,
         decomposition[:, end - 1, i] .= decomposition[:, end, i] - sum(decomposition[:, 1:end - 2, i], dims = 2)
     end
 
-    return variables, shocks, [], decomposition
+    return variables, shocks, zeros(0,0), decomposition
 end
 
 function filter_data_with_model(𝓂::ℳ,
@@ -3992,7 +3992,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         @error "Could not find 3rd order stochastic steady state"
-        return variables, shocks, [], []
+        return variables, shocks, zeros(0,0), zeros(0,0)
     end
 
     𝐒 = [𝐒₁, 𝐒₂, 𝐒₃]
@@ -4195,7 +4195,7 @@ function filter_data_with_model(𝓂::ℳ,
         # end
         if !matched
             @error "Inversion filter failed at step $i"
-            return variables, shocks, [], []
+            return variables, shocks, zeros(0,0), zeros(0,0)
         end 
             # println("COBYLA: $matched; current x: $x")
             # if !matched
@@ -4279,7 +4279,7 @@ function filter_data_with_model(𝓂::ℳ,
         state .= full_state[T.past_not_future_and_mixed_idx]
     end
     
-    return variables, shocks, [], []
+    return variables, shocks, zeros(0,0), zeros(0,0)
 end
 
 
@@ -4303,7 +4303,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         @error "Could not find pruned 3rd order stochastic steady state"
-        return variables, shocks, [], []
+        return variables, shocks, zeros(0,0), zeros(0,0)
     end
 
     𝐒 = [𝐒₁, 𝐒₂, 𝐒₃]
@@ -4538,7 +4538,7 @@ function filter_data_with_model(𝓂::ℳ,
         # end
         if !matched
             @error "Inversion filter failed at step $i"
-            return variables, shocks, [], decomposition
+            return variables, shocks, zeros(0,0), decomposition
         end
             # println("COBYLA: $matched; current x: $x")
             # if !matched
@@ -4690,5 +4690,5 @@ function filter_data_with_model(𝓂::ℳ,
         decomposition[:,end - 1, i] .= decomposition[:, end, i] - sum(decomposition[:,1:end - 2, i], dims = 2)
     end
 
-    return variables, shocks, [], decomposition
+    return variables, shocks, zeros(0,0), decomposition
 end

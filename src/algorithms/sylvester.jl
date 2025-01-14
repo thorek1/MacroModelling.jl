@@ -17,7 +17,7 @@ function solve_sylvester_equation(A::M,
                                     sylvester_algorithm::Symbol = :doubling,
                                     acceptance_tol::AbstractFloat = 1e-10,
                                     tol::AbstractFloat = 1e-14,
-                                    verbose::Bool = false)::Tuple{AbstractMatrix{Float64}, Bool} where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
+                                    verbose::Bool = false) # ::Tuple{AbstractMatrix{Float64}, Bool} where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Choose matrix formats" begin
 
@@ -1008,7 +1008,7 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
     𝐂 = try 
         MatrixEquations.sylvd(-A, B, 𝐂¹)
     catch
-        return C, false, 0, 1.0
+        return C, 0, 1.0
     end
 
     # 𝐂¹ = A * 𝐂 * B + C
