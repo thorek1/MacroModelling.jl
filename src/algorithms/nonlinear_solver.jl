@@ -393,7 +393,7 @@ end
 
 
 # transformation of NSSS problem
-function transform(x::Vector{T}, option::Int, shift::AbstractFloat) where T <: Real
+function transform(x::Vector{T}, option::Int, shift::AbstractFloat)::Vector{T} where T <: Real
     if option == 4
         return asinh.(asinh.(asinh.(asinh.(x .+ shift))))
     elseif option == 3
@@ -407,7 +407,7 @@ function transform(x::Vector{T}, option::Int, shift::AbstractFloat) where T <: R
     end
 end
 
-function transform(x::Vector{T}, option::Int) where T <: Real
+function transform(x::Vector{T}, option::Int)::Vector{T} where T <: Real
     if option == 4
         return asinh.(asinh.(asinh.(asinh.(x))))
     elseif option == 3
@@ -421,7 +421,7 @@ function transform(x::Vector{T}, option::Int) where T <: Real
     end
 end
 
-function undo_transform(x::Vector{T}, option::Int, shift::AbstractFloat) where T <: Real
+function undo_transform(x::Vector{T}, option::Int, shift::AbstractFloat)::Vector{T} where T <: Real
     if option == 4
         return sinh.(sinh.(sinh.(sinh.(x)))) .- shift
     elseif option == 3
@@ -435,7 +435,7 @@ function undo_transform(x::Vector{T}, option::Int, shift::AbstractFloat) where T
     end
 end
 
-function undo_transform(x::Vector{T}, option::Int) where T <: Real
+function undo_transform(x::Vector{T}, option::Int)::Vector{T} where T <: Real
     if option == 4
         return sinh.(sinh.(sinh.(sinh.(x))))
     elseif option == 3
