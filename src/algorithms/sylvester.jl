@@ -565,14 +565,14 @@ function solve_sylvester_equation(  A::Matrix{Float64},
 end
 
 
-function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
-                                    B::Matrix{Float64},
-                                    C::Matrix{Float64},
+function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
+                                    B::Matrix{T},
+                                    C::Matrix{T},
                                     ::Val{:doubling};
-                                    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    initial_guess::AbstractMatrix{T} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{<:AbstractMatrix{T}, Bool} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012  On Smith-type iterative algorithms for the Stein matrix equation
     # guess_provided = true
 

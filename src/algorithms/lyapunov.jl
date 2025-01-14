@@ -9,12 +9,12 @@
 
 # solves: A * X * A' + C = X
 
-function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-                                C::AbstractMatrix{Float64};
+function solve_lyapunov_equation(A::AbstractMatrix{T},
+                                C::AbstractMatrix{T};
                                 lyapunov_algorithm::Symbol = :doubling,
                                 tol::AbstractFloat = 1e-14,
                                 acceptance_tol::AbstractFloat = 1e-12,
-                                verbose::Bool = false)# ::Tuple{AbstractMatrix{Float64}, Bool}
+                                verbose::Bool = false)::Tuple{<:AbstractMatrix{T}, Bool} where T <: AbstractFloat
                                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Solve lyapunov equation" begin
     # @timeit_debug timer "Choose matrix formats" begin
