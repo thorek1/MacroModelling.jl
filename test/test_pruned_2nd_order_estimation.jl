@@ -104,65 +104,6 @@ samps = MCMCChains.Chains(pt)
 
 println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
 
-
-
-
-
-Random.seed!(30)
-
-# generate a Pigeons log potential
-FS2000_2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order))
-
-init_params = FS2000.parameter_values
-
-LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :second_order), (all_params = init_params,))
-
-if isfinite(LLH)
-    const FS2000_2nd_LP = typeof(FS2000_2nd_lp)
-
-    function Pigeons.initialization(target::FS2000_2nd_LP, rng::AbstractRNG, _::Int64)
-        result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-        # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
-        
-        result = DynamicPPL.initialize_parameters!!(result, init_params, DynamicPPL.SampleFromPrior(), target.model)
-
-        return result
-    end
-
-    pt = Pigeons.pigeons(target = FS2000_2nd_lp, n_rounds = 0, n_chains = 1)
-else
-    replica = pt.replicas[end]
-    XMAX = deepcopy(replica.state)
-    LPmax = FS2000_2nd_lp(XMAX)
-
-    i = 0
-
-    while !isfinite(LPmax) && i < 1000
-        Pigeons.sample_iid!(FS2000_2nd_lp, replica, pt.shared)
-        new_LP = FS2000_2nd_lp(replica.state)
-        if new_LP > LPmax
-            global LPmax = new_LP
-            global XMAX  = deepcopy(replica.state)
-        end
-        global i += 1
-    end
-
-    # define a specific initialization for this model
-    Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
-end
-
-pt = @time Pigeons.pigeons(target = FS2000_2nd_lp,
-            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 1,
-            n_rounds = 9,
-            multithreaded = true)
-
-samps = MCMCChains.Chains(pt)
-
-
-println("Mean variable values (second order): $(mean(samps).nt.mean)")
-
-
 # # estimate highly nonlinear model
 
 
