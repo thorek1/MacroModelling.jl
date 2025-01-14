@@ -5700,7 +5700,7 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     end
 
     𝓂.∂SS_equations_∂parameters = (funcs, sparse(∂SS_equations_∂parameters[1], ∂SS_equations_∂parameters[2], zeros(Float64,length(∂SS_equations_∂parameters[3])), length(eqs), length(pars)))
-println(𝓂.∂SS_equations_∂parameters)
+
     # 𝓂.∂SS_equations_∂parameters = write_sparse_derivatives_function(∂SS_equations_∂parameters[1], 
     #                                                                     ∂SS_equations_∂parameters[2], 
     #                                                                     ∂SS_equations_∂parameters[3],
