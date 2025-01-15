@@ -191,21 +191,21 @@ end
 struct perturbation_solution
     solution_matrix::Matrix{Float64}
     state_update::Function
-    state_update_obc::Union{Function,Nothing}
+    state_update_obc::Function
 end
 
 struct second_order_perturbation_solution
     # solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
     state_update::Function
-    state_update_obc::Union{Function,Nothing}
+    state_update_obc::Function
 end
 
 struct third_order_perturbation_solution
     # solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
     state_update::Function
-    state_update_obc::Union{Function,Nothing}
+    state_update_obc::Function
 end
 
 mutable struct perturbation

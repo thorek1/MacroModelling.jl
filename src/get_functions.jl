@@ -82,7 +82,7 @@ function get_shock_decomposition(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
-                                lyapunov_algorithm::Symbol = :doubling)::KeyedArray{Float64}
+                                lyapunov_algorithm::Symbol = :doubling)::KeyedArray
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -224,7 +224,7 @@ function get_estimated_shocks(𝓂::ℳ,
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = :schur,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
-                            lyapunov_algorithm::Symbol = :doubling)
+                            lyapunov_algorithm::Symbol = :doubling)::KeyedArray
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -350,7 +350,7 @@ function get_estimated_variables(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
-                                lyapunov_algorithm::Symbol = :doubling)
+                                lyapunov_algorithm::Symbol = :doubling)::KeyedArray
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1108,7 +1108,7 @@ function get_irf(𝓂::ℳ;
                 tol::Tolerances = Tolerances(),
                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling,
-                lyapunov_algorithm::Symbol = :doubling)
+                lyapunov_algorithm::Symbol = :doubling)::KeyedArray
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1454,7 +1454,7 @@ function get_steady_state(𝓂::ℳ;
                             silent::Bool = false,
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = :schur,
-                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling)
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling)::KeyedArray
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1732,7 +1732,7 @@ function get_solution(𝓂::ℳ;
                         verbose::Bool = false,
                         tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling)
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling)::KeyedArray
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
