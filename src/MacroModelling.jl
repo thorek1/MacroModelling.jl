@@ -98,25 +98,31 @@ const ParameterType = Union{Nothing,
                             Vector{Float64} }
 
 
+using DispatchDoctor
+# @stable default_mode = "disable" begin
+
 # Imports
-include("common_docstrings.jl")
-include("options.jl")
-include("structures.jl")
-include("macros.jl")
+@stable default_mode = "disable" include("common_docstrings.jl")
+@stable default_mode = "disable" include("options.jl")
+@stable default_mode = "disable" include("structures.jl")
+@stable default_mode = "disable" include("macros.jl")
 include("get_functions.jl")
 include("dynare.jl")
-include("inspect.jl")
-include("moments.jl")
+@stable default_mode = "disable" include("inspect.jl")
+@stable default_mode = "disable" include("moments.jl")
 include("perturbation.jl")
 
 include("./algorithms/sylvester.jl")
 include("./algorithms/lyapunov.jl")
-include("./algorithms/nonlinear_solver.jl")
-include("./algorithms/quadratic_matrix_equation.jl")
+@stable default_mode = "disable" include("./algorithms/nonlinear_solver.jl")
+@stable default_mode = "disable" include("./algorithms/quadratic_matrix_equation.jl")
 
 include("./filter/find_shocks.jl")
 include("./filter/inversion.jl")
 include("./filter/kalman.jl")
+
+
+# end # DispatchDoctor
 
 function __init__()
     @require StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd" include("plotting.jl")
@@ -153,16 +159,40 @@ export irf, girf
 # export block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
 # export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
 
+@stable default_mode = "disable" begin
 
 # StatsFuns
-norminvcdf(p) = -erfcinv(2*p) * 1.4142135623730951
-norminv(p::Number) = norminvcdf(p)
-qnorm(p::Number) = norminvcdf(p)
-normlogpdf(z) = -(abs2(z) + 1.8378770664093453)/2
-normpdf(z) = exp(-abs2(z)/2) * 0.3989422804014327
-normcdf(z) = erfc(-z * 0.7071067811865475)/2
-pnorm(p::Number) = normcdf(p)
-dnorm(p::Number) = normpdf(p)
+function norminvcdf(p::T)::T where T  
+    -erfcinv(2*p) * 1.4142135623730951 
+end
+
+function norminv(p::T)::T where T <: Number  
+    norminvcdf(p) 
+end
+
+function qnorm(p::T)::T where T <: Number  
+    norminvcdf(p) 
+end
+
+function normlogpdf(z::T)::T where T  
+    -(abs2(z) + 1.8378770664093453)/2 
+end
+
+function normpdf(z::T)::T where T  
+    exp(-abs2(z)/2) * 0.3989422804014327 
+end
+
+function normcdf(z::T)::T where T  
+    erfc(-z * 0.7071067811865475)/2 
+end
+
+function pnorm(p::T)::T where T <: Number  
+    normcdf(p) 
+end
+
+function dnorm(p::T)::T where T <: Number  
+    normpdf(p) 
+end
 
 
 
@@ -1629,7 +1659,7 @@ function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
 end
 
 
-function count_ops(expr)
+function count_ops(expr)::Int
     op_count = 0
     postwalk(x -> begin
         if x isa Expr && x.head == :call
@@ -1775,7 +1805,7 @@ end
 Max = max
 Min = min
 
-function simplify(ex::Expr)
+function simplify(ex::Expr)::Union{Expr,Symbol,Int}
     ex_ss = convert_to_ss_equation(ex)
 
     for x in get_symbols(ex_ss)
@@ -1791,7 +1821,7 @@ function simplify(ex::Expr)
                     x, parsed)
 end
 
-function convert_to_ss_equation(eq::Expr)
+function convert_to_ss_equation(eq::Expr)::Expr
     postwalk(x -> 
         x isa Expr ? 
             x.head == :(=) ? 
@@ -1874,7 +1904,7 @@ replace_indices(x::String) = Symbol(replace(x, "{" => "◖", "}" => "◗"))
 
 replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{", "◗" => "}")
 
-function replace_indices(exxpr::Expr)
+function replace_indices(exxpr::Expr)::Expr
     postwalk(x -> begin
         x isa Symbol ?
             replace_indices(string(x)) :
@@ -1888,7 +1918,7 @@ end
 
 
 
-function write_out_for_loops(arg::Expr)
+function write_out_for_loops(arg::Expr)::Expr
     postwalk(x -> begin
                     x = flatten(unblock(x))
                     x isa Expr ?
@@ -1977,7 +2007,7 @@ end
 # end
 
 
-function parse_for_loops(equations_block)
+function parse_for_loops(equations_block)::Expr
     eqs = Expr[]
     for arg in equations_block.args
         if isa(arg,Expr)
@@ -2482,12 +2512,14 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
     push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
+
+    return nothing
 end
 
 
 
 
-function partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset; avoid_solve::Bool = false)
+function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incidence_matrix_subset; avoid_solve::Bool = false)::Tuple{Vector{T}, Vector{T}, Vector{E}, Vector{T}} where {E, T}
     for n in length(eqs_to_solve)-1:-1:2
         for eq_combo in combinations(1:length(eqs_to_solve), n)
             var_indices_to_select_from = findall([sum(incidence_matrix_subset[:,eq_combo],dims = 2)...] .> 0)
@@ -2518,6 +2550,8 @@ function partial_solve(eqs_to_solve, vars_to_solve, incidence_matrix_subset; avo
             end
         end
     end
+    
+    return (T[], T[], E[], T[])
 end
 
 
@@ -2918,6 +2952,8 @@ function write_ss_check_function!(𝓂::ℳ)
     end)
 
     𝓂.SS_check_func = @RuntimeGeneratedFunction(solve_exp)
+
+    return nothing
 end
 
 
@@ -3934,14 +3970,14 @@ function solve_ss(SS_optimizer::Function,
 end
 
 
-function block_solver(parameters_and_solved_vars::Vector{Float64}, 
+function block_solver(parameters_and_solved_vars::Vector{T}, 
                         n_block::Int, 
                         ss_solve_blocks::Function, 
                         # SS_optimizer, 
                         # f::OptimizationFunction, 
-                        guess_and_pars_solved_vars::Vector{Vector{Float64}}, 
-                        lbs::Vector{Float64}, 
-                        ubs::Vector{Float64},
+                        guess_and_pars_solved_vars::Vector{Vector{T}}, 
+                        lbs::Vector{T}, 
+                        ubs::Vector{T},
                         parameters::Vector{solver_parameters},
                         fail_fast_solvers_only::Bool,
                         cold_start::Bool,
@@ -3951,7 +3987,7 @@ function block_solver(parameters_and_solved_vars::Vector{Float64},
                         # timeout = 120,
                         # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
                         # verbose::Bool = false
-                        )
+                        )::Tuple{Vector{T},Tuple{T, Int}} where T <: AbstractFloat
 
     # tol = parameters[1].ftol
     # rtol = parameters[1].rel_xtol
@@ -5148,7 +5184,7 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
     return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐈₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
 end
 
-
+end # dispatch_doctor
 
 function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int},values::Vector{Symbolics.Num},nrows::Int,ncolumns::Int,::Val{:Symbolics})
     vals_expr = Symbolics.toexpr.(values)
@@ -5230,6 +5266,8 @@ function write_derivatives_function(values::Symbolics.Num, ::Val{:Symbolics})
 
     @RuntimeGeneratedFunction(:(𝔛 -> $vals_expr))
 end
+
+@stable default_mode = "disable" begin
 
 # TODO: check why this takes so much longer than previous implementation
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_exprs_per_func::Int = 1)
@@ -5750,6 +5788,7 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     #                                                                     length(eqs), 
     #                                                                     length(vars),
     #                                                                     Val(:string));
+    return nothing
 end
 
 function write_auxilliary_indices!(𝓂::ℳ)
@@ -5776,6 +5815,8 @@ function write_auxilliary_indices!(𝓂::ℳ)
     shocks_ss = zeros(length(dyn_exo))
 
     𝓂.solution.perturbation.auxilliary_indices = auxilliary_indices(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx, dyn_ss_idx, shocks_ss)
+
+    return nothing
 end
 
 write_parameters_input!(𝓂::ℳ, parameters::Nothing; verbose::Bool = true) = return parameters
@@ -5931,6 +5972,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
         end
     end
     if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
+
+    return nothing
 end
 
 
@@ -6077,6 +6120,8 @@ function create_timings_for_estimation!(𝓂::ℳ, observables::Vector{Symbol})
                 dynamic_order)
 
     push!(𝓂.estimation_helper, observables => T)
+
+    return nothing
 end
 
 
@@ -6201,7 +6246,7 @@ function rrule(::typeof(calculate_jacobian),
 end
 
 
-function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ) where {M,N}
+function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::SparseMatrixCSC{<: Real, Int} where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
@@ -7012,7 +7057,7 @@ end
 
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                     parameter_values::Vector{S}; 
-                                    opts::CalculationOptions = merge_calculation_options()) where S <: Float64
+                                    opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{S}, Tuple{S, Int}} where S <: AbstractFloat
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS" begin
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
@@ -7022,7 +7067,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             println("Failed to find NSSS") 
         end
 
-        return (SS_and_pars, (10, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        # return (SS_and_pars, (10.0, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # end # timeit_debug
@@ -7131,7 +7176,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-        return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
@@ -7171,7 +7216,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose println("Failed to find NSSS") end
-        return (SS_and_pars, (10, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (SS_and_pars, (10.0, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
@@ -7249,7 +7294,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
         if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
-        return (SS_and_pars, (10, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (SS_and_pars, (10.0, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
@@ -7418,6 +7463,8 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     return TT, SS_and_pars, 𝐒₁, [state], solved
 end
+
+end # dispatch_doctor
 
 # if VERSION >= v"1.9"
 #     @setup_workload begin
