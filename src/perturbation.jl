@@ -375,7 +375,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
                                             T::timings,
                                             initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())Union{Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}, Bool}, Tuple{SparseMatrixCSC{S}, Bool}} where S <: Real
+                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}, Bool}, Tuple{SparseMatrixCSC{S}, Bool}} where S <: Real
     # @timeit_debug timer "Calculate second order solution" begin
 
     # inspired by Levintal

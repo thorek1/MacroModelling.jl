@@ -62,7 +62,7 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 using Requires
 
 import Reexport
-Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey
+Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
 
@@ -6667,7 +6667,7 @@ function irf(state_update::Function,
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
-    negative_shock::Bool = false)
+    negative_shock::Bool = false)::KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int64},Vector{Symbol}}}
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -6906,39 +6906,43 @@ function girf(state_update::Function,
 end
 
 
-function parse_variables_input_to_index(variables::Union{Symbol_input,String_input}, T::timings)
-    
+function parse_variables_input_to_index(variables::Union{Symbol_input,String_input}, T::timings)::Union{UnitRange{Int}, Vector{Int}}
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
     if variables == :all_excluding_auxilliary_and_obc
-        return indexin(setdiff(T.var[.!contains.(string.(T.var),"ᵒᵇᶜ")],T.aux),sort(union(T.var,T.aux,T.exo_present)))
+        return Int.(indexin(setdiff(T.var[.!contains.(string.(T.var),"ᵒᵇᶜ")],T.aux),sort(union(T.var,T.aux,T.exo_present))))
         # return indexin(setdiff(setdiff(T.var,T.exo_present),T.aux),sort(union(T.var,T.aux,T.exo_present)))
     elseif variables == :all_excluding_obc
-        return indexin(T.var[.!contains.(string.(T.var),"ᵒᵇᶜ")],sort(union(T.var,T.aux,T.exo_present)))
+        return Int.(indexin(T.var[.!contains.(string.(T.var),"ᵒᵇᶜ")],sort(union(T.var,T.aux,T.exo_present))))
     elseif variables == :all
         return 1:length(union(T.var,T.aux,T.exo_present))
     elseif variables isa Matrix{Symbol}
         if length(setdiff(variables,T.var)) > 0
-            return @warn "Following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ")
+            @warn "Following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ")
+            return Int[]
         end
         return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(variables .== T.var,dims= 2))))
     elseif variables isa Vector{Symbol}
         if length(setdiff(variables,T.var)) > 0
-            return @warn "Following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ")
+            @warn "Following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ")
+            return Int[]
         end
         return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(reshape(variables,1,length(variables)) .== T.var,dims= 2))))
     elseif variables isa Tuple{Symbol,Vararg{Symbol}}
         if length(setdiff(variables,T.var)) > 0
-            return @warn "Following variables are not part of the model: " * join(string.(setdiff(Symbol.(collect(variables)),T.var)), ", ")
+            @warn "Following variables are not part of the model: " * join(string.(setdiff(Symbol.(collect(variables)),T.var)), ", ")
+            return Int[]
         end
         return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(reshape(collect(variables),1,length(variables)) .== T.var,dims= 2))))
     elseif variables isa Symbol
         if length(setdiff([variables],T.var)) > 0
-            return @warn "Following variable is not part of the model: " * join(string(setdiff([variables],T.var)[1]),", ")
+            @warn "Following variable is not part of the model: " * join(string(setdiff([variables],T.var)[1]),", ")
+            return Int[]
         end
         return getindex(1:length(T.var),variables .== T.var)
     else
-        return @warn "Invalid argument in variables"
+        @warn "Invalid argument in variables"
+        return Int[]
     end
 end
 
@@ -6989,9 +6993,9 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
     return shock_idx
 end
 
-# end # dispatch_doctor
+end # dispatch_doctor
 
-function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)#::Tuple{Function, Bool}
+function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
     if occasionally_binding_constraints
         if algorithm == :first_order
             state_update = 𝓂.solution.perturbation.first_order.state_update_obc
@@ -7039,7 +7043,7 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
     return state_update, pruning
 end
 
-# @stable default_mode = "disable" begin
+@stable default_mode = "disable" begin
 
 function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
     # reduce system
