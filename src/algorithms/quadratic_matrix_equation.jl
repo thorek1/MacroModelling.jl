@@ -83,7 +83,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
-                                        verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: Real
+                                        verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
     # @timeit_debug timer "Prepare indice" begin
    
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)

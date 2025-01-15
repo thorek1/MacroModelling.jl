@@ -1,5 +1,3 @@
-
-
 function levenberg_marquardt(f::Function, 
     initial_guess::Array{T,1}, 
     lower_bounds::Array{T,1}, 

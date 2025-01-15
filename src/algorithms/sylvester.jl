@@ -9,7 +9,7 @@
 # :speedmapping - slow
 
 # solves: A * X * B + C = X for X
-
+@stable default_mode = "disable" begin
 function solve_sylvester_equation(A::M,
                                     B::N,
                                     C::O;
@@ -226,6 +226,8 @@ function solve_sylvester_equation(A::M,
     return X, reached_tol < acceptance_tol
 end
 
+end # dispatch_doctor
+
 
 function rrule(::typeof(solve_sylvester_equation),
     A::M,
@@ -260,7 +262,7 @@ function rrule(::typeof(solve_sylvester_equation),
     return (P, solved), solve_sylvester_equation_pullback
 end
 
-
+@stable default_mode = "disable" begin
 
 function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
@@ -270,7 +272,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     acceptance_tol::AbstractFloat = 1e-10,
                                     tol::AbstractFloat = 1e-14,
                                     # timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false) where {Z,S,N}
+                                    verbose::Bool = false)::Tuple{<:AbstractMatrix{ℱ.Dual{Z,S,N}}, Int, Float64} where {Z,S,N}
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
     B̂ = ℱ.value.(B)
@@ -311,14 +313,14 @@ end
 
 
 
-function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
-                                    B::AbstractSparseMatrix{Float64},
-                                    C::AbstractSparseMatrix{Float64},
+function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
+                                    B::AbstractSparseMatrix{T},
+                                    C::AbstractSparseMatrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
     
@@ -378,14 +380,14 @@ end
 
 
 
-function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
-                                    B::AbstractSparseMatrix{Float64},
-                                    C::Matrix{Float64},
+function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
+                                    B::AbstractSparseMatrix{T},
+                                    C::Matrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012    
     # guess_provided = true
 
@@ -462,14 +464,14 @@ end
 
 
 
-function solve_sylvester_equation(  A::Matrix{Float64},
-                                    B::AbstractSparseMatrix{Float64},
-                                    C::Matrix{Float64},
+function solve_sylvester_equation(  A::Matrix{T},
+                                    B::AbstractSparseMatrix{T},
+                                    C::Matrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # @timeit_debug timer "Doubling solve" begin
     # @timeit_debug timer "Setup buffers" begin
@@ -572,7 +574,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     initial_guess::AbstractMatrix{T} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{<:AbstractMatrix{T}, Bool} where T <: AbstractFloat
+                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012  On Smith-type iterative algorithms for the Stein matrix equation
     # guess_provided = true
 
@@ -646,14 +648,14 @@ end
 
 
 
-function solve_sylvester_equation(  A::Matrix{Float64},
-                                    B::Matrix{Float64},
-                                    C::AbstractSparseMatrix{Float64},
+function solve_sylvester_equation(  A::Matrix{T},
+                                    B::Matrix{T},
+                                    C::AbstractSparseMatrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
 
@@ -728,14 +730,14 @@ end
 
 
 
-function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
-                                    B::Matrix{Float64},
-                                    C::AbstractSparseMatrix{Float64},
+function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
+                                    B::Matrix{T},
+                                    C::AbstractSparseMatrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
 
@@ -809,14 +811,14 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{Float64},
 end
 
 
-function solve_sylvester_equation(  A::Matrix{Float64},
-                                    B::AbstractSparseMatrix{Float64},
-                                    C::AbstractSparseMatrix{Float64},
+function solve_sylvester_equation(  A::Matrix{T},
+                                    B::AbstractSparseMatrix{T},
+                                    C::AbstractSparseMatrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
 
@@ -890,14 +892,14 @@ function solve_sylvester_equation(  A::Matrix{Float64},
 end
 
 
-function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                    B::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                    B::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                    C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # @timeit_debug timer "Setup buffers" begin
     
@@ -988,14 +990,14 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
 end
 
 
-function solve_sylvester_equation(A::DenseMatrix{Float64},
-                                    B::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                    C::DenseMatrix{Float64},
+function solve_sylvester_equation(A::DenseMatrix{T},
+                                    B::Union{ℒ.Adjoint{Float64, Matrix{T}}, DenseMatrix{T}},
+                                    C::DenseMatrix{T},
                                     ::Val{:bartels_stewart};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::AbstractFloat = 1e-14)                                 
+                                    tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # guess_provided = true
 
     if length(initial_guess) == 0
@@ -1029,14 +1031,14 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 end
 
 
-function solve_sylvester_equation(A::DenseMatrix{Float64},
-                                    B::AbstractMatrix{Float64},
-                                    C::DenseMatrix{Float64},
+function solve_sylvester_equation(A::DenseMatrix{T},
+                                    B::AbstractMatrix{T},
+                                    C::DenseMatrix{T},
                                     ::Val{:bicgstab};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
@@ -1149,14 +1151,14 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 end
 
 
-function solve_sylvester_equation(A::DenseMatrix{Float64},
-                                    B::AbstractMatrix{Float64},
-                                    C::DenseMatrix{Float64},
+function solve_sylvester_equation(A::DenseMatrix{T},
+                                    B::AbstractMatrix{T},
+                                    C::DenseMatrix{T},
                                     ::Val{:dqgmres};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
@@ -1255,14 +1257,14 @@ function solve_sylvester_equation(A::DenseMatrix{Float64},
 end
 
 
-function solve_sylvester_equation(A::DenseMatrix{Float64},
-                                    B::AbstractMatrix{Float64},
-                                    C::DenseMatrix{Float64},
+function solve_sylvester_equation(A::DenseMatrix{T},
+                                    B::AbstractMatrix{T},
+                                    C::DenseMatrix{T},
                                     ::Val{:gmres};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     # @timeit_debug timer "Preallocate matrices" begin
 
     # guess_provided = true
@@ -1471,3 +1473,5 @@ end
 
 #     return 𝐂, soll.maps, reached_tol
 # end
+
+end # dispatch_doctor
