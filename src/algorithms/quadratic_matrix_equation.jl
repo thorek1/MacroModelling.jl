@@ -6,6 +6,8 @@
 # Linear time iteration algorithm (:linear_time_iteration) [ -(A * X + B) \ C = X̂ ] - slow
 # Quadratic iteration algorithm (:quadratic_iteration) [ B \ A * X ^ 2 + B \ C = X̂ ] - very slow
 
+@stable default_mode = "disable" begin
+
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
                                         B::AbstractMatrix{R}, 
                                         C::AbstractMatrix{R}, 
@@ -563,3 +565,5 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         ℱ.Dual{Z}(v, p...) # Z is the tag
     end, size(X)), solved
 end
+
+end # dispatch_doctor

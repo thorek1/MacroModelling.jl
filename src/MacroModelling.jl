@@ -102,20 +102,20 @@ using DispatchDoctor
 # @stable default_mode = "disable" begin
 
 # Imports
-@stable default_mode = "disable" include("common_docstrings.jl")
-@stable default_mode = "disable" include("options.jl")
-@stable default_mode = "disable" include("structures.jl")
-@stable default_mode = "disable" include("macros.jl")
+include("common_docstrings.jl")
+include("options.jl")
+include("structures.jl")
+include("macros.jl")
 include("get_functions.jl")
 include("dynare.jl")
-@stable default_mode = "disable" include("inspect.jl")
-@stable default_mode = "disable" include("moments.jl")
+include("inspect.jl")
+include("moments.jl")
 include("perturbation.jl")
 
 include("./algorithms/sylvester.jl")
 include("./algorithms/lyapunov.jl")
-@stable default_mode = "disable" include("./algorithms/nonlinear_solver.jl")
-@stable default_mode = "disable" include("./algorithms/quadratic_matrix_equation.jl")
+include("./algorithms/nonlinear_solver.jl")
+include("./algorithms/quadratic_matrix_equation.jl")
 
 include("./filter/find_shocks.jl")
 include("./filter/inversion.jl")

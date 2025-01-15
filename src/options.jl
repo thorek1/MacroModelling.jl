@@ -28,7 +28,7 @@ struct CalculationOptions
     verbose::Bool
 end
 
-
+@stable default_mode = "disable" begin
 """
 $(SIGNATURES)
 Function to manually define tolerances for the solvers of various problems: non stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (qme).
@@ -95,6 +95,7 @@ function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol 
                                 verbose)
 end
 
+end # dispatch_doctor
 
 const default_plot_attributes = Dict(:size=>(700,500),
                                 :plot_titlefont => 10, 

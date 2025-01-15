@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 function levenberg_marquardt(f::Function, 
     initial_guess::Array{T,1}, 
     lower_bounds::Array{T,1}, 
@@ -446,3 +448,5 @@ function undo_transform(x::Vector{T}, option::Int)::Vector{T} where T <: Real
         return x
     end
 end
+
+end # dispatch_doctor

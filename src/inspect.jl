@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 get_symbols(ex::Symbol) = [ex]
 
 get_symbols(ex::Real) = [ex]
@@ -818,3 +820,4 @@ function get_jump_variables(𝓂::ℳ)
     𝓂.timings.future_not_past_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
+end # dispatch_doctor

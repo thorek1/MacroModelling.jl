@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
                                 opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
@@ -660,3 +662,5 @@ function calculate_third_order_moments(parameters::Vector{T},
     end
 
 end
+
+end # dispatch_doctor
