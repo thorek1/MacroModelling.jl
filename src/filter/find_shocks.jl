@@ -3,6 +3,7 @@
 # - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on optimality conditions (1e-7)
 # - SLSQP: relatively slow and not guaranteed to converge to global minimum
 
+@stable default_mode = "disable" begin
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
                     kron_buffer::Vector{Float64},
@@ -134,7 +135,7 @@ function find_shocks(::Val{:LagrangeNewton},
     return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
 end
 
-
+end # dispatch_doctor
 
 function rrule(::typeof(find_shocks),
                 ::Val{:LagrangeNewton},
@@ -198,6 +199,7 @@ end
 
 
 # TODO: forwarddiff for find_shocks
+@stable default_mode = "disable" begin
 
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
@@ -360,7 +362,7 @@ function find_shocks(::Val{:LagrangeNewton},
 end
 
 
-
+end # dispatch_doctor
 
 
 function rrule(::typeof(find_shocks),
@@ -429,7 +431,7 @@ function rrule(::typeof(find_shocks),
 end
 
 
-
+@stable default_mode = "disable" begin
 
 function find_shocks(::Val{:SLSQP},
                     initial_guess::Vector{Float64},
@@ -1238,3 +1240,4 @@ end
 #     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol
 # end
 
+end # dispatch_doctor
