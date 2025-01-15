@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 # Specialization for :kalman filter
 function calculate_loglikelihood(::Val{:kalman}, 
                                 algorithm, 
@@ -277,6 +279,7 @@ function run_kalman_iterations(A::Matrix{S},
     return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 end
 
+end # dispatch_doctor
 
 function rrule(::typeof(run_kalman_iterations), 
                     A, 
@@ -550,7 +553,7 @@ function rrule(::typeof(run_kalman_iterations),
     return llh, kalman_pullback
 end
 
-
+@stable default_mode = "disable" begin
 
 function filter_data_with_model(𝓂::ℳ,
     data_in_deviations::KeyedArray{Float64},
@@ -690,3 +693,4 @@ function filter_and_smooth(𝓂::ℳ,
     return μ̄, σ̄, ϵ̄, smooth_decomposition, μ[:, 2:end], σ, ϵ, filter_decomposition
 end
 
+end # dispatch_doctor

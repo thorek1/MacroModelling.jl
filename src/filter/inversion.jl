@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 # Specialization for :inversion filter
 function calculate_loglikelihood(::Val{:inversion}, 
                                 algorithm, observables, 
@@ -146,6 +148,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
     # return -(logabsdets + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
+end # dispatch_doctor
 
 ## TODO: redo this rrule based on the higher order ones. the accumulated matmul might not be necessary at all
 function rrule(::typeof(calculate_inversion_filter_loglikelihood), 
@@ -320,7 +323,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 end
 
 
-
+@stable default_mode = "disable" begin
 
 function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     state::Vector{Vector{Float64}}, 
@@ -553,7 +556,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
-
+end # dispatch_doctor
 
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ::Val{:pruned_second_order},
@@ -1013,7 +1016,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-
+@stable default_mode = "disable" begin
 
 
 function calculate_inversion_filter_loglikelihood(::Val{:second_order},
@@ -1239,7 +1242,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
-
+end # dispatch_doctor
 
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ::Val{:second_order},
@@ -1670,7 +1673,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 end
 
 
-
+@stable default_mode = "disable" begin
 
 function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     state::Vector{Vector{Float64}}, 
@@ -2023,7 +2026,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     return -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
 end
 
-
+end # dispatch_doctor
 
 
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
@@ -2574,7 +2577,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 end
 
 
-
+@stable default_mode = "disable" begin
 
 
 function calculate_inversion_filter_loglikelihood(::Val{:third_order},
@@ -2896,7 +2899,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
 end
 
 
-
+end # dispatch_doctor
 
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ::Val{:third_order},
@@ -3352,7 +3355,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 end
 
 
-
+@stable default_mode = "disable" begin
 
 function filter_data_with_model(𝓂::ℳ,
                                 data_in_deviations::KeyedArray{Float64},
@@ -4692,3 +4695,5 @@ function filter_data_with_model(𝓂::ℳ,
 
     return variables, shocks, zeros(0,0), decomposition
 end
+
+end # dispatch_doctor
