@@ -1,9 +1,9 @@
 @stable default_mode = "disable" begin
 
-function calculate_first_order_solution(∇₁::Matrix{Float64}; 
+function calculate_first_order_solution(∇₁::Matrix{R}; 
                                         T::timings, 
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{Float64}, Matrix{Float64}, Bool}
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
