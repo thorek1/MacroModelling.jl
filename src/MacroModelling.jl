@@ -6359,8 +6359,8 @@ end
 @stable default_mode = "disable" begin
 
 function calculate_third_order_derivatives(parameters::Vector{M}, 
-    SS_and_pars::Vector{N}, 
-    𝓂::ℳ) where {M,N} #; 
+                                            SS_and_pars::Vector{N}, 
+                                            𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N} #; 
     # timer::TimerOutput = TimerOutput()) where {M,N}
     # @timeit_debug timer "3rd order derivatives" begin
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
@@ -7224,7 +7224,7 @@ end
 
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
-                                opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z,S,N}
+                                opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
 
@@ -7232,7 +7232,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose println("Failed to find NSSS") end
-        return (SS_and_pars, (10.0, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return SS_and_pars, (10.0, iters) #, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
@@ -7310,7 +7310,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
         if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
-        return (SS_and_pars, (10.0, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return SS_and_pars, (10.0, iters)#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]

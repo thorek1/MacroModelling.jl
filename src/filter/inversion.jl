@@ -28,16 +28,16 @@ end
 
 
 function calculate_inversion_filter_loglikelihood(::Val{:first_order},
-                                                    state::Vector{Vector{Float64}}, 
-                                                    𝐒::Matrix{Float64}, 
-                                                    data_in_deviations::Matrix{Float64}, 
+                                                    state::Vector{Vector{R}}, 
+                                                    𝐒::Matrix{R}, 
+                                                    data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where R <: AbstractFloat
     # @timeit_debug timer "Inversion filter" begin    
     # first order
     state = copy(state[1])
@@ -326,16 +326,16 @@ end
 @stable default_mode = "disable" begin
 
 function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
-                                                    state::Vector{Vector{Float64}}, 
-                                                    𝐒::Vector{AbstractMatrix{Float64}}, 
-                                                    data_in_deviations::Matrix{Float64}, 
+                                                    state::Vector{Vector{R}}, 
+                                                    𝐒::Vector{AbstractMatrix{R}}, 
+                                                    data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where R <: AbstractFloat
     # @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
              
@@ -1020,16 +1020,16 @@ end
 
 
 function calculate_inversion_filter_loglikelihood(::Val{:second_order},
-                                                    state::Vector{Float64}, 
-                                                    𝐒::Vector{AbstractMatrix{Float64}}, 
-                                                    data_in_deviations::Matrix{Float64}, 
+                                                    state::Vector{R}, 
+                                                    𝐒::Vector{AbstractMatrix{R}}, 
+                                                    data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where R <: AbstractFloat
     # @timeit_debug timer "2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -1676,16 +1676,16 @@ end
 @stable default_mode = "disable" begin
 
 function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
-                                                    state::Vector{Vector{Float64}}, 
-                                                    𝐒::Vector{AbstractMatrix{Float64}}, 
-                                                    data_in_deviations::Matrix{Float64}, 
+                                                    state::Vector{Vector{R}}, 
+                                                    𝐒::Vector{AbstractMatrix{R}}, 
+                                                    data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings;
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton) 
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where R <: AbstractFloat
     # @timeit_debug timer "Inversion filter" begin
 
     precision_factor = 1.0
@@ -2581,16 +2581,16 @@ end
 
 
 function calculate_inversion_filter_loglikelihood(::Val{:third_order},
-                                                    state::Vector{Float64}, 
-                                                    𝐒::Vector{AbstractMatrix{Float64}}, 
-                                                    data_in_deviations::Matrix{Float64}, 
+                                                    state::Vector{R}, 
+                                                    𝐒::Vector{AbstractMatrix{R}}, 
+                                                    data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where R <: AbstractFloat
     # @timeit_debug timer "3rd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
