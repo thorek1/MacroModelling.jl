@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 function calculate_first_order_solution(∇₁::Matrix{Float64}; 
                                         T::timings, 
                                         opts::CalculationOptions = merge_calculation_options(),
@@ -113,6 +115,7 @@ function calculate_first_order_solution(∇₁::Matrix{Float64};
     return hcat(A, ∇ₑ), sol, true
 end
 
+end # dispatch_doctor
 
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{Float64};
@@ -271,6 +274,7 @@ function rrule(::typeof(calculate_first_order_solution),
     return (hcat(𝐒ᵗ, ∇̂ₑ), sol, solved), first_order_solution_pullback
 end
 
+@stable default_mode = "disable" begin
 
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
                                         T::timings, 
@@ -371,7 +375,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
                                             T::timings,
                                             initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())::Tuple{<: AbstractMatrix{S}, Bool} where S <: Real
+                                            opts::CalculationOptions = merge_calculation_options())::Tuple{<:AbstractMatrix{S}, Bool} where S <: Real
     # @timeit_debug timer "Calculate second order solution" begin
 
     # inspired by Levintal
@@ -478,18 +482,13 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     # 𝐒₂ = sparse(𝐒₂)
 
-    if !solved
-        return 𝐒₂, false
-    end
-
     # end # timeit_debug
     # end # timeit_debug
 
-    return 𝐒₂, true
+    return 𝐒₂, solved
 end
 
-
-
+end # dispatch_doctor
 
 function rrule(::typeof(calculate_second_order_solution), 
                     ∇₁::AbstractMatrix{<: Real}, #first order derivatives
@@ -749,7 +748,7 @@ function rrule(::typeof(calculate_second_order_solution),
     return (𝐒₂, solved), second_order_solution_pullback
 end
 
-
+@stable default_mode = "disable" begin
 
 function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
@@ -966,8 +965,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     return 𝐒₃, solved
 end
 
-
-
+end # dispatch_doctor
 
 function rrule(::typeof(calculate_third_order_solution), 
                 ∇₁::AbstractMatrix{<: Real}, #first order derivatives
