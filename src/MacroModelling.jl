@@ -7236,7 +7236,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose println("Failed to find NSSS") end
-        return SS_and_pars, (10.0, iters) #, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return ℱ.Dual{Z,S,N}.(SS_and_pars), (10.0, iters) #, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
@@ -7314,7 +7314,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
         if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
-        return SS_and_pars, (10.0, iters)#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return ℱ.Dual{Z,S,N}.(SS_and_pars), (10.0, iters)#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
