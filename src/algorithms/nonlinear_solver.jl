@@ -6,7 +6,7 @@ function levenberg_marquardt(f::Function,
     upper_bounds::Array{T,1},
     parameters::solver_parameters;
     tol::Tolerances = Tolerances()
-    ) where {T <: AbstractFloat}
+    )::Tuple{Vector{T}, Tuple{Int, Int, T, T}} where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
     xtol = tol.NSSS_xtol
@@ -219,7 +219,7 @@ function newton(f::Function,
     upper_bounds::Array{T,1},
     parameters::solver_parameters;
     tol::Tolerances = Tolerances()
-    ) where {T <: AbstractFloat}
+    )::Tuple{Vector{T}, Tuple{Int, Int, T, T}} where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
     xtol = tol.NSSS_xtol
