@@ -39,9 +39,9 @@ end
 function calculate_mean(parameters::Vector{T}, 
                         𝓂::ℳ; 
                         algorithm = :pruned_second_order, 
-                        opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{T}, 
+                        opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{T}, Bool} where T <: Real
                         # Matrix{T}, Matrix{T}, AbstractSparseMatrix{T}, AbstractSparseMatrix{T}, 
-                        Bool} where T <: Real
+                        
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Theoretical mean available only for first order, pruned second and pruned third order perturbation solutions."
 
