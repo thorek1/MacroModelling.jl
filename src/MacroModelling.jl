@@ -3889,18 +3889,18 @@ end
 
 function solve_ss(SS_optimizer::Function,
                     ss_solve_blocks::Function,
-                    parameters_and_solved_vars::Vector{Float64},
-                    closest_parameters_and_solved_vars::Vector{Float64},
-                    lbs::Vector{Float64},
-                    ubs::Vector{Float64},
+                    parameters_and_solved_vars::Vector{T},
+                    closest_parameters_and_solved_vars::Vector{T},
+                    lbs::Vector{T},
+                    ubs::Vector{T},
                     tol::Tolerances,
                     total_iters::Vector{Int},
                     n_block::Int,
                     verbose::Bool,
-                    guess::Vector{Float64},
+                    guess::Vector{T},
                     solver_params::solver_parameters,
                     extended_problem::Bool,
-                    separate_starting_value::Union{Bool,Float64})
+                    separate_starting_value::Union{Bool,T})::Tuple{Vector{T}, Vector{Int}, T, T} where T <: AbstractFloat
     xtol = tol.NSSS_xtol
     ftol = tol.NSSS_ftol
     rel_xtol = tol.NSSS_rel_xtol
@@ -4139,7 +4139,7 @@ end
 function calculate_second_order_stochastic_steady_state(parameters::Vector{M}, 
                                                         𝓂::ℳ; 
                                                         opts::CalculationOptions = merge_calculation_options(),
-                                                        pruning::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M 
+                                                        pruning::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}} where M 
                                                         # timer::TimerOutput = TimerOutput(),
                                                         # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     # @timeit_debug timer "Calculate NSSS" begin
@@ -4388,7 +4388,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     end, size(x̂)), isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2, x̂, rtol = tol)
 end
 
-
+end # dispatch_doctor
 
 function rrule(::typeof(calculate_second_order_stochastic_steady_state),
                                                         ::Val{:newton}, 
@@ -4466,7 +4466,7 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     return (x, solved), second_order_stochastic_steady_state_pullback
 end
 
-
+@stable default_mode = "disable" begin
 
 function calculate_third_order_stochastic_steady_state( parameters::Vector{M}, 
                                                         𝓂::ℳ; 
@@ -4725,8 +4725,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     end, size(x̂)), isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
 end
 
-
-
+end # dispatch_doctor
 
 function rrule(::typeof(calculate_third_order_stochastic_steady_state),
                                                         ::Val{:newton}, 
@@ -4797,6 +4796,7 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     return (x, solved), third_order_stochastic_steady_state_pullback
 end
 
+@stable default_mode = "disable" begin
 
 function solve!(𝓂::ℳ; 
                 parameters::ParameterType = nothing, 
@@ -6187,6 +6187,7 @@ function calculate_jacobian(parameters::Vector{M},
     return 𝓂.model_jacobian[3]
 end
 
+end # dispatch_doctor
 
 function rrule(::typeof(calculate_jacobian), 
                 parameters, 
@@ -6247,6 +6248,7 @@ function rrule(::typeof(calculate_jacobian),
     return jacobian, calculate_jacobian_pullback
 end
 
+@stable default_mode = "disable" begin
 
 function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::SparseMatrixCSC{<: Real, Int} where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
@@ -6320,6 +6322,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     # sparse!(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 end
 
+end # disptach_doctor
 
 function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
     hessian = calculate_hessian(parameters, SS_and_pars, 𝓂)
@@ -6353,6 +6356,7 @@ function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
     return hessian, calculate_hessian_pullback
 end
 
+@stable default_mode = "disable" begin
 
 function calculate_third_order_derivatives(parameters::Vector{M}, 
     SS_and_pars::Vector{N}, 
@@ -6438,6 +6442,7 @@ function calculate_third_order_derivatives(parameters::Vector{M},
     # sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 end
 
+end # dispatch_doctor
 
 function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_pars, 𝓂) # ;
     # timer::TimerOutput = TimerOutput())
@@ -6484,6 +6489,7 @@ function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_p
     return third_order_derivatives, calculate_third_order_derivatives_pullback
 end
 
+@stable default_mode = "disable" begin
 
 function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = eps()) where {Z,S,N}
     nrows = length(V)
@@ -7076,6 +7082,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     return SS_and_pars, (solution_error, iters)
 end
 
+end # dispatch_doctor
 
 function rrule(::typeof(get_NSSS_and_parameters), 
                 𝓂, 
@@ -7203,14 +7210,12 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
 end
-    
 
-
-
+@stable default_mode = "disable" begin
 
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
-                                opts::CalculationOptions = merge_calculation_options()) where {Z,S,N}
+                                opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{<:AbstractFloat, Int}} where {Z,S,N}
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
 
