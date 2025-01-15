@@ -67,3 +67,4 @@ intermediate
 *.eps
 *.html
 *.json
+LocalPreferences.toml

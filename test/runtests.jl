@@ -1,4 +1,7 @@
 # using Revise
+using Preferences: set_preferences!
+set_preferences!("MacroModelling", "dispatch_doctor_mode" => "error")
+set_preferences!("MacroModelling", "dispatch_doctor_union_limit" => 3)
 using Test
 using MacroModelling
 import MacroModelling: clear_solution_caches!
