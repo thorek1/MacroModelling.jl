@@ -375,7 +375,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
                                             T::timings,
                                             initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())::Tuple{<:AbstractMatrix{S}, Bool} where S <: Real
+                                            opts::CalculationOptions = merge_calculation_options())::Tuple{SparseMatrixCSC{S}, Bool} where S <: Real
     # @timeit_debug timer "Calculate second order solution" begin
 
     # inspired by Levintal
@@ -750,16 +750,16 @@ end
 
 @stable default_mode = "disable" begin
 
-function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first order derivatives
-                                            ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
-                                            ∇₃::SparseMatrixCSC{<: Real}, #third order derivatives
-                                            𝑺₁::AbstractMatrix{<: Real}, #first order solution
-                                            𝐒₂::SparseMatrixCSC{<: Real}, #second order solution
+function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
+                                            ∇₂::SparseMatrixCSC{S}, #second order derivatives
+                                            ∇₃::SparseMatrixCSC{S}, #third order derivatives
+                                            𝑺₁::AbstractMatrix{S}, #first order solution
+                                            𝐒₂::SparseMatrixCSC{S}, #second order solution
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
-                                            initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())
+                                            initial_guess::AbstractMatrix{S} = zeros(0,0),
+                                            opts::CalculationOptions = merge_calculation_options())::Tuple{SparseMatrixCSC{S}, Bool} where S <: Real
 
     # @timeit_debug timer "Calculate third order solution" begin
     # inspired by Levintal
@@ -800,7 +800,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
         if opts.verbose println("Second order solution: inversion failed") end
-        return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return (∇₁₊𝐒₁➕∇₁₀, solved)#, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
         
     # spinv = inv(∇₁₊𝐒₁➕∇₁₀)
@@ -948,9 +948,9 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{<: Real}, #first 
     #                                             timer = timer)
     # end
 
-    if !solved
-        return 𝐒₃, solved
-    end
+    # if !solved
+    #     return 𝐒₃, solved
+    # end
 
     # # end # timeit_debug
     # @timeit_debug timer "Post-process" begin

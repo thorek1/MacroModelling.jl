@@ -6989,8 +6989,9 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
     return shock_idx
 end
 
+end # dispatch_doctor
 
-function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)#::Tuple{<:Function, Bool}
+function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
     if occasionally_binding_constraints
         if algorithm == :first_order
             state_update = 𝓂.solution.perturbation.first_order.state_update_obc
@@ -7030,7 +7031,7 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
     return state_update, pruning
 end
 
-
+@stable default_mode = "disable" begin
 
 function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
     # reduce system
