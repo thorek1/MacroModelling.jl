@@ -1,5 +1,5 @@
 import LaTeXStrings
-
+@stable default_mode = "disable" begin
 """
 ```
 gr_backend()
@@ -1829,3 +1829,5 @@ function plot_conditional_forecast(𝓂::ℳ,
     return return_plots
 
 end
+
+end # dispatch_doctor
