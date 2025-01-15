@@ -1,3 +1,4 @@
+@stable default_mode = "disable" begin
 """
 $(SIGNATURES)
 Convenience wrapper for the truncated Beta distribution.
@@ -145,3 +146,5 @@ function Cauchy(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real)
 end
 
 Cauchy(x,y) = Turing.Cauchy(x,y)
+
+end # dispatch_doctor
