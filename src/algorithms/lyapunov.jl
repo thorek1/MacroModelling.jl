@@ -8,6 +8,7 @@
 # :speedmapping - slow and very precise
 
 # solves: A * X * A' + C = X
+@stable default_mode = "disable" begin
 
 function solve_lyapunov_equation(A::AbstractMatrix{T},
                                 C::AbstractMatrix{T};
@@ -77,6 +78,8 @@ function solve_lyapunov_equation(A::AbstractMatrix{T},
     return X, reached_tol < acceptance_tol
 end
 
+end # dispatch_doctor
+
 function rrule(::typeof(solve_lyapunov_equation),
                 A::AbstractMatrix{Float64},
                 C::AbstractMatrix{Float64};
@@ -103,7 +106,7 @@ function rrule(::typeof(solve_lyapunov_equation),
     return (P, solved), solve_lyapunov_equation_pullback
 end
 
-
+@stable default_mode = "disable" begin
 
 function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}};
@@ -111,7 +114,7 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     tol::AbstractFloat = 1e-14,
                                     acceptance_tol::AbstractFloat = 1e-12,
                                     # timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false) where {Z,S,N}
+                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
     Ĉ = ℱ.value.(C)
@@ -146,11 +149,11 @@ end
 
 
 
-function solve_lyapunov_equation(A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                ::Val{:bartels_stewart};
-                                # timer::TimerOutput = TimerOutput(),
-                                tol::AbstractFloat = 1e-14)
+function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                    C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                    ::Val{:bartels_stewart};
+                                    # timer::TimerOutput = TimerOutput(),
+                                    tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     𝐂 = try 
         MatrixEquations.lyapd(A, C)
     catch
@@ -174,11 +177,11 @@ end
 
 
 
-function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
-                                    C::AbstractSparseMatrix{Float64},
+function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
+                                    C::AbstractSparseMatrix{T},
                                     ::Val{:doubling};
                                     # timer::TimerOutput = TimerOutput(),
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
     𝐂  = copy(C)
     𝐀  = copy(A)
 
@@ -221,11 +224,11 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
 end
 
 
-function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                    C::AbstractSparseMatrix{Float64},
+function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                    C::AbstractSparseMatrix{T},
                                     ::Val{:doubling};
                                     # timer::TimerOutput = TimerOutput(),
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
     𝐂  = copy(C)
     𝐀  = copy(A)
 
@@ -271,11 +274,11 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}
 end
 
 
-function solve_lyapunov_equation(   A::AbstractSparseMatrix{Float64},
-                                    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
+                                    C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                     ::Val{:doubling};
                                     # timer::TimerOutput = TimerOutput(),
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     𝐂  = copy(C)
     𝐀  = copy(A)
     𝐂A = collect(𝐀)    
@@ -333,11 +336,11 @@ end
 
 
 
-function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
-                                    C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                    C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                     ::Val{:doubling};
                                     # timer::TimerOutput = TimerOutput(),
-                                    tol::Float64 = 1e-14)
+                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     𝐂  = copy(C)
     𝐂¹ = copy(C)
     𝐀  = copy(A)
@@ -390,11 +393,11 @@ end
 
 
 
-function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-                                C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+function solve_lyapunov_equation(A::AbstractMatrix{T},
+                                C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                 ::Val{:bicgstab};
                                 # timer::TimerOutput = TimerOutput(),
-                                tol::Float64 = 1e-14)
+                                tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     tmp̄ = similar(C)
     𝐗 = similar(C)
 
@@ -430,11 +433,11 @@ function solve_lyapunov_equation(A::AbstractMatrix{Float64},
 end
 
 
-function solve_lyapunov_equation(A::AbstractMatrix{Float64},
-                                C::Union{ℒ.Adjoint{Float64,Matrix{Float64}},DenseMatrix{Float64}},
+function solve_lyapunov_equation(A::AbstractMatrix{T},
+                                C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                 ::Val{:gmres};
                                 # timer::TimerOutput = TimerOutput(),
-                                tol::Float64 = 1e-14)
+                                tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     tmp̄ = similar(C)
     𝐗 = similar(C)
 
@@ -546,3 +549,5 @@ end
 
 #     return 𝐂, soll.maps, reached_tol
 # end
+
+end # dispatch_doctor
