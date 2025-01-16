@@ -828,41 +828,57 @@ end
 function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps())::Union{Matrix{S}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
+                                tol::AbstractFloat = eps(),
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
     if length(A) < 100
-        return convert(Matrix, A)
+        a = convert(Matrix, A)
     else
-        return A |> sparse |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        if multithreaded
+            a = A |> sparse |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        else
+            a = A |> sparse
+        end
     end
+
+    return a
 end
 
 
 function choose_matrix_format(A::ℒ.Adjoint{S, <: DenseMatrix{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps())::Union{Matrix{S}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
-    choose_matrix_format(convert(Matrix, A), 
+                                tol::AbstractFloat = eps(),
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
+    choose_matrix_format(convert(typeof(A'),A), 
                         density_threshold = density_threshold, 
                         min_length = min_length, 
+                        multithreaded = multithreaded,
                         tol = tol)
 end
 
 function choose_matrix_format(A::ℒ.Adjoint{S, <: AbstractSparseMatrix{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps())::Union{Matrix{S}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
-    choose_matrix_format(sparse(A) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC, 
+                                tol::AbstractFloat = eps(),
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
+    choose_matrix_format(convert(typeof(A'),A), 
                         density_threshold = density_threshold, 
                         min_length = min_length, 
+                        multithreaded = multithreaded,
                         tol = tol)
 end
 
 function choose_matrix_format(A::DenseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps())::Union{Matrix{S}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
+                                tol::AbstractFloat = eps(),
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
     if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
-        a = A |> sparse |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        if multithreaded
+            a = A |> sparse |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        else
+            a = A |> sparse
+        end
 
         droptol!(a, tol)
     else
@@ -875,18 +891,27 @@ end
 function choose_matrix_format(A::AbstractSparseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps())::Union{Matrix{S}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
+                                tol::AbstractFloat = eps(),
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
     droptol!(A, tol)
 
     lennz = nnz(A)
 
     if lennz / length(A) > density_threshold || length(A) < min_length
         a = convert(Matrix, A)
-    else 
-        if A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC
-            a = A
+    else
+        if multithreaded
+            if A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC
+                a = A
+            else
+                a = A |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+            end
         else
-            a = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
+            if A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC
+                a = A.A
+            else
+                a = A
+            end
         end
     end
 
@@ -4192,7 +4217,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
     if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-        𝐒₂ = sparse(𝐒₂) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
     end
 
     # end # timeit_debug
@@ -4260,12 +4285,12 @@ end
 
 
 function calculate_second_order_stochastic_steady_state(::Val{:newton}, 
-                                                        𝐒₁::Matrix{Float64}, 
-                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
-                                                        x::Vector{Float64},
+                                                        𝐒₁::Matrix{R}, 
+                                                        𝐒₂::AbstractSparseMatrix{R}, 
+                                                        x::Vector{R},
                                                         𝓂::ℳ;
                                                         # timer::TimerOutput = TimerOutput(),
-                                                        tol::AbstractFloat = 1e-14)
+                                                        tol::AbstractFloat = 1e-14) where R <: AbstractFloat
     # @timeit_debug timer "Setup matrices" begin
 
     nᵉ = 𝓂.timings.nExo
@@ -4323,7 +4348,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
                                                         x::Vector{ℱ.Dual{Z,S,N}},
                                                         𝓂::ℳ;
                                                         # timer::TimerOutput = TimerOutput(),
-                                                        tol::AbstractFloat = 1e-14) where {Z,S,N}
+                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
 
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
@@ -4342,6 +4367,8 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     B = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
     B̂ = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
  
+    ∂x̄  = zeros(S, length(x̂), N)
+    
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     for i in 1:max_iters
@@ -4350,7 +4377,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
         if !ℒ.issuccess(∂x̂)
-            return x, false
+            break
         end
         
         Δx = ∂x̂ \ (A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 - x̂)
@@ -4363,25 +4390,27 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
         ℒ.axpy!(-1, Δx, x̂)
     end
 
-    ∂x = zeros(length(x̂), N)
-    
-    for i in 1:N
-        ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
-        ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
+    solved = isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2, x̂, rtol = tol)
 
-        ∂A = ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-        ∂B̂ = ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    if solved
+        for i in 1:N
+            ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
+            ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
 
-        tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2
+            ∂A = ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+            ∂B̂ = ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
 
-        TMP = A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
+            tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2
 
-        ∂x[:,i] = -TMP \ tmp
+            TMP = A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
+
+            ∂x̄[:,i] = -TMP \ tmp
+        end
     end
     
-    return reshape(map(x̂, eachrow(∂x)) do v, p
+    return reshape(map(x̂, eachrow(∂x̄)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(x̂)), isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2, x̂, rtol = tol)
+    end, size(x̂)), solved
 end
 
 end # dispatch_doctor
@@ -4512,7 +4541,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
     if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-        𝐒₂ = sparse(𝐒₂) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
     end
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
             
@@ -4534,7 +4563,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 
     if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-        𝐒₃ = sparse(𝐒₃) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+        𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
     end
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
@@ -4651,7 +4680,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
                                                         𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
                                                         x::Vector{ℱ.Dual{Z,S,N}},
                                                         𝓂::ℳ;
-                                                        tol::AbstractFloat = 1e-14) where {Z,S,N}
+                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
 # TODO: check whether this works with SParseMatrices
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
@@ -4677,6 +4706,8 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     C = 𝐒₃̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
     Ĉ = 𝐒₃̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
 
+    ∂x̄  = zeros(S, length(x̂), N)
+    
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     for i in 1:max_iters
@@ -4685,7 +4716,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
         if !ℒ.issuccess(∂x̂)
-            return x, false
+            break
         end
         
         Δx = ∂x̂ \ (A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6 - x̂)
@@ -4698,27 +4729,29 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
         ℒ.axpy!(-1, Δx, x̂)
     end
 
-    ∂x = zeros(length(x̂), N)
+    solved = isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
     
-    for i in 1:N
-        ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
-        ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
-        ∂𝐒₃ = ℱ.partials.(𝐒₃, i)
+    if solved
+        for i in 1:N
+            ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
+            ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
+            ∂𝐒₃ = ℱ.partials.(𝐒₃, i)
 
-        ∂A = ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-        ∂B̂ = ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-        ∂Ĉ = ∂𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+            ∂A = ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+            ∂B̂ = ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+            ∂Ĉ = ∂𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
 
-        tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + ∂Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6
+            tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + ∂Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6
 
-        TMP = A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
+            TMP = A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
 
-        ∂x[:,i] = -TMP \ tmp
+            ∂x̄[:,i] = -TMP \ tmp
+        end
     end
     
-    return reshape(map(x̂, eachrow(∂x)) do v, p
+    return reshape(map(x̂, eachrow(∂x̄)) do v, p
         ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(x̂)), isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
+    end, size(x̂)), solved
 end
 
 end # dispatch_doctor

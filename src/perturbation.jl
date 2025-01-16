@@ -369,13 +369,13 @@ end
 
 
 
-function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
+function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             𝑺₁::AbstractMatrix{S},#first order solution
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
                                             T::timings,
-                                            initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())::Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}, Bool} where S <: Real
+                                            initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
     # @timeit_debug timer "Calculate second order solution" begin
 
     # inspired by Levintal
@@ -480,7 +480,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     # 𝐒₂ *= M₂.𝐔₂
 
-    # 𝐒₂ = sparse(𝐒₂)
+    𝐒₂ = choose_matrix_format(𝐒₂, multithreaded = false)
 
     # end # timeit_debug
     # end # timeit_debug
@@ -758,8 +758,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices;  # aux matrices third order
                                             T::timings,
-                                            initial_guess::AbstractMatrix{S} = zeros(0,0),
-                                            opts::CalculationOptions = merge_calculation_options())::Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}, Bool} where S <: Real
+                                            initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
 
     # @timeit_debug timer "Calculate third order solution" begin
     # inspired by Levintal
@@ -957,7 +957,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     # 𝐒₃ *= M₃.𝐔₃
 
-    # 𝐒₃ = sparse(𝐒₃)
+    𝐒₃ = choose_matrix_format(𝐒₃, multithreaded = false)
 
     # end # timeit_debug
     # end # timeit_debug

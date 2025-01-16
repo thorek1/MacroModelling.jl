@@ -49,91 +49,93 @@ function calculate_mean(parameters::Vector{T},
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
-    if algorithm == :first_order || solution_error > opts.tol.NSSS_acceptance_tol
-        return SS_and_pars[1:𝓂.timings.nVars], solution_error < opts.tol.NSSS_acceptance_tol
-    end
+    if algorithm == :first_order
+        mean_of_variables = SS_and_pars[1:𝓂.timings.nVars]
 
-    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
-    
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
+        solved = solution_error < opts.tol.NSSS_acceptance_tol
+    else
+        ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
+        
+        𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                            T = 𝓂.timings, 
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution, 
+                                                            opts = opts)
+        
+        if !solved 
+            mean_of_variables = SS_and_pars[1:𝓂.timings.nVars]
+        else
+            𝓂.solution.perturbation.qme_solution = qme_sol
+
+            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+            
+            𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
+                                                        𝓂.solution.perturbation.second_order_auxilliary_matrices; 
                                                         T = 𝓂.timings, 
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                         opts = opts)
-    
-    if !solved 
-        return SS_and_pars[1:𝓂.timings.nVars], false
+
+            if !solved 
+                mean_of_variables = SS_and_pars[1:𝓂.timings.nVars]
+            else
+                if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+
+                𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+
+                if !(typeof(𝐒₂) <: AbstractSparseMatrix)
+                    𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+                end
+
+                nᵉ = 𝓂.timings.nExo
+                nˢ = 𝓂.timings.nPast_not_future_and_mixed
+
+                s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
+                e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
+                v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
+                
+                kron_states     = ℒ.kron(s_in_s⁺, s_in_s⁺)
+                kron_shocks     = ℒ.kron(e_in_s⁺, e_in_s⁺)
+                kron_volatility = ℒ.kron(v_in_s⁺, v_in_s⁺)
+
+                # first order
+                states_to_variables¹ = sparse(𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed])
+
+                states_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, 1:𝓂.timings.nPast_not_future_and_mixed]
+                shocks_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+
+                # second order
+                states_to_variables²        = 𝐒₂[:, kron_states]
+                shocks_to_variables²        = 𝐒₂[:, kron_shocks]
+                volatility_to_variables²    = 𝐒₂[:, kron_volatility]
+
+                states_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_states] |> collect
+                shocks_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_shocks]
+                volatility_to_states²   = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_volatility]
+
+                kron_states_to_states¹ = ℒ.kron(states_to_states¹, states_to_states¹) |> collect
+                kron_shocks_to_states¹ = ℒ.kron(shocks_to_states¹, shocks_to_states¹)
+
+                n_sts = 𝓂.timings.nPast_not_future_and_mixed
+
+                # Set up in pruned state transition matrices
+                pruned_states_to_pruned_states = [  states_to_states¹       zeros(T,n_sts, n_sts)   zeros(T,n_sts, n_sts^2)
+                                                    zeros(T,n_sts, n_sts)   states_to_states¹       states_to_states² / 2
+                                                    zeros(T,n_sts^2, 2 * n_sts)                     kron_states_to_states¹   ]
+
+                pruned_states_to_variables = [states_to_variables¹  states_to_variables¹  states_to_variables² / 2]
+
+                pruned_states_vol_and_shock_effect = [  zeros(T,n_sts) 
+                                                        vec(volatility_to_states²) / 2 + shocks_to_states² / 2 * vec(ℒ.I(𝓂.timings.nExo))
+                                                        kron_shocks_to_states¹ * vec(ℒ.I(𝓂.timings.nExo))]
+
+                variables_vol_and_shock_effect = (vec(volatility_to_variables²) + shocks_to_variables² * vec(ℒ.I(𝓂.timings.nExo))) / 2
+
+                ## First-order moments, ie mean of variables
+                mean_of_pruned_states   = (ℒ.I - pruned_states_to_pruned_states) \ pruned_states_vol_and_shock_effect
+                mean_of_variables   = SS_and_pars[1:𝓂.timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
+            end
+        end
     end
 
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
-
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
-    
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                𝓂.solution.perturbation.second_order_auxilliary_matrices; 
-                                                T = 𝓂.timings, 
-                                                opts = opts)
-
-    if !solved2
-        return SS_and_pars[1:𝓂.timings.nVars], false
-    end
-
-    if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
-
-    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
-
-    if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-        𝐒₂ = sparse(𝐒₂) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
-    end
-
-    nᵉ = 𝓂.timings.nExo
-    nˢ = 𝓂.timings.nPast_not_future_and_mixed
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
-    v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
-    
-    kron_states     = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    kron_shocks     = ℒ.kron(e_in_s⁺, e_in_s⁺)
-    kron_volatility = ℒ.kron(v_in_s⁺, v_in_s⁺)
-
-    # first order
-    states_to_variables¹ = sparse(𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed])
-
-    states_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, 1:𝓂.timings.nPast_not_future_and_mixed]
-    shocks_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
-
-    # second order
-    states_to_variables²        = 𝐒₂[:, kron_states]
-    shocks_to_variables²        = 𝐒₂[:, kron_shocks]
-    volatility_to_variables²    = 𝐒₂[:, kron_volatility]
-
-    states_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_states] |> collect
-    shocks_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_shocks]
-    volatility_to_states²   = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_volatility]
-
-    kron_states_to_states¹ = ℒ.kron(states_to_states¹, states_to_states¹) |> collect
-    kron_shocks_to_states¹ = ℒ.kron(shocks_to_states¹, shocks_to_states¹)
-
-    n_sts = 𝓂.timings.nPast_not_future_and_mixed
-
-    # Set up in pruned state transition matrices
-    pruned_states_to_pruned_states = [  states_to_states¹       zeros(T,n_sts, n_sts)   zeros(T,n_sts, n_sts^2)
-                                        zeros(T,n_sts, n_sts)   states_to_states¹       states_to_states² / 2
-                                        zeros(T,n_sts^2, 2 * n_sts)                     kron_states_to_states¹   ]
-
-    pruned_states_to_variables = [states_to_variables¹  states_to_variables¹  states_to_variables² / 2]
-
-    pruned_states_vol_and_shock_effect = [  zeros(T,n_sts) 
-                                            vec(volatility_to_states²) / 2 + shocks_to_states² / 2 * vec(ℒ.I(𝓂.timings.nExo))
-                                            kron_shocks_to_states¹ * vec(ℒ.I(𝓂.timings.nExo))]
-
-    variables_vol_and_shock_effect = (vec(volatility_to_variables²) + shocks_to_variables² * vec(ℒ.I(𝓂.timings.nExo))) / 2
-
-    ## First-order moments, ie mean of variables
-    mean_of_pruned_states   = (ℒ.I - pruned_states_to_pruned_states) \ pruned_states_vol_and_shock_effect
-    mean_of_variables   = SS_and_pars[1:𝓂.timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
-    
-    return mean_of_variables, true
+    return mean_of_variables, solved
     # return mean_of_variables, 𝐒₁, ∇₁, 𝐒₂, ∇₂, true
 end
 
@@ -195,7 +197,7 @@ function calculate_second_order_moments(
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
     if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-        𝐒₂ = sparse(𝐒₂) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
     end
 
     s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
@@ -307,7 +309,7 @@ function calculate_second_order_moments(
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
     if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-        𝐒₂ = sparse(𝐒₂) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
     end
 
     s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
@@ -425,7 +427,7 @@ function calculate_third_order_moments(parameters::Vector{T},
     𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 
     if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-        𝐒₃ = sparse(𝐒₃) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+        𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
     end
     
     orders = determine_efficient_order(𝐒₁, 𝓂.timings, observables, tol = opts.tol.dependencies_tol)

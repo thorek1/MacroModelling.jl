@@ -272,7 +272,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     acceptance_tol::AbstractFloat = 1e-10,
                                     tol::AbstractFloat = 1e-14,
                                     # timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false)::Tuple{<:AbstractMatrix{ℱ.Dual{Z,S,N}}, Int, Float64} where {Z,S,N}
+                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
     B̂ = ℱ.value.(B)
@@ -288,7 +288,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     B̃ = copy(B̂)
     C̃ = copy(Ĉ)
     
-    P̃ = zeros(length(P̂), N)
+    P̃ = zeros(S, length(P̂), N)
     
     for i in 1:N
         Ã .= ℱ.partials.(A, i)
