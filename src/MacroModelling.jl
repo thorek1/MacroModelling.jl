@@ -32,7 +32,7 @@ import Polyester
 import NLopt
 import Optim, LineSearches
 # import Zygote
-import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearAlgebra: mul!
 # import Octavian: matmul!
@@ -828,8 +828,8 @@ end
 function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps(),
-                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
+                                tol::R = eps(),
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     if length(A) < 100
         a = convert(Matrix, A)
     else
@@ -847,8 +847,8 @@ end
 function choose_matrix_format(A::ℒ.Adjoint{S, <: DenseMatrix{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps(),
-                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
+                                tol::R = eps(),
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     choose_matrix_format(convert(typeof(A'),A), 
                         density_threshold = density_threshold, 
                         min_length = min_length, 
@@ -859,8 +859,8 @@ end
 function choose_matrix_format(A::ℒ.Adjoint{S, <: AbstractSparseMatrix{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps(),
-                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
+                                tol::R = eps(),
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     choose_matrix_format(convert(typeof(A'),A), 
                         density_threshold = density_threshold, 
                         min_length = min_length, 
@@ -871,18 +871,18 @@ end
 function choose_matrix_format(A::DenseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps(),
-                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
+                                tol::R = eps(),
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
         if multithreaded
-            a = A |> sparse |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+            a = sparse(A) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+            droptol!(a, tol)
         else
-            a = A |> sparse
+            a = convert(SparseMatrixCSC{S}, A)
+            droptol!(a, tol)
         end
-
-        droptol!(a, tol)
     else
-        a = A
+        a = convert(Matrix, A)
     end
 
     return a
@@ -891,8 +891,8 @@ end
 function choose_matrix_format(A::AbstractSparseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps(),
-                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
+                                tol::R = eps(),
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     droptol!(A, tol)
 
     lennz = nnz(A)
@@ -1571,7 +1571,7 @@ function bivariate_moment(moment::Vector{Int}, rho::Int)::Int
 end
 
 
-function product_moments(V, ii, nu)
+function product_moments(V, ii, nu)::Int
     s = sum(nu)
 
     if s == 0
@@ -1664,7 +1664,7 @@ function multiplicate(p::Int, order::Int)
 end
 
 
-function generateSumVectors(vectorLength::Int, totalSum::Int)
+function generateSumVectors(vectorLength::Int, totalSum::Int)::Union{Vector{Int}, Vector{ℒ.Adjoint{Int, Vector{Int}}}}
     # Base case: if vectorLength is 1, return totalSum
     if vectorLength == 1
         return [totalSum]
@@ -4216,7 +4216,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-    if !(typeof(𝐒₂) <: AbstractSparseMatrix)
+    if !issparse(𝐒₂)
         𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
     end
 
@@ -4242,7 +4242,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
-    SSSstates = tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx]
+    SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx])
 
     if pruning
         state = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
@@ -4540,7 +4540,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
-    if !(typeof(𝐒₂) <: AbstractSparseMatrix)
+    if !issparse(𝐒₂)
         𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
     end
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
@@ -4562,7 +4562,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 
-    if !(typeof(𝐒₃) <: AbstractSparseMatrix)
+    if !issparse(𝐒₃)
         𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
     end
 
@@ -4579,7 +4579,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
-    SSSstates = tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx]
+    SSSstates = collect(tmp \ (𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2)[𝓂.timings.past_not_future_and_mixed_idx])
 
     if pruning
         state = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
@@ -4597,7 +4597,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
         Ĉ = 𝐒₃[:,kron_s⁺_s⁺_s⁺]
     
-        SSSstates, converged = calculate_third_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, 𝐒₃, collect(SSSstates), 𝓂)
+        SSSstates, converged = calculate_third_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, 𝐒₃, SSSstates, 𝓂)
         
         if !converged
             if opts.verbose println("SSS not found") end
@@ -6555,7 +6555,7 @@ function irf(state_update::Function,
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
-    negative_shock::Bool = false)
+    negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -6822,7 +6822,7 @@ function girf(state_update::Function,
     shock_size::Real = 1,
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
-    draws::Int = 50)
+    draws::Int = 50)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
