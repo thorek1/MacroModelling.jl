@@ -828,11 +828,11 @@ end
 function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps()) where S <: Real
+                                tol::AbstractFloat = eps())::Union{Matrix{S}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
     if length(A) < 100
         return convert(Matrix, A)
     else
-        return sparse(A)
+        return A |> sparse |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
     end
 end
 
@@ -840,7 +840,7 @@ end
 function choose_matrix_format(A::ℒ.Adjoint{S, <: DenseMatrix{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps()) where S <: Real
+                                tol::AbstractFloat = eps())::Union{Matrix{S}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
     choose_matrix_format(convert(Matrix, A), 
                         density_threshold = density_threshold, 
                         min_length = min_length, 
@@ -850,8 +850,8 @@ end
 function choose_matrix_format(A::ℒ.Adjoint{S, <: AbstractSparseMatrix{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps()) where S <: Real
-    choose_matrix_format(sparse(A), 
+                                tol::AbstractFloat = eps())::Union{Matrix{S}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
+    choose_matrix_format(sparse(A) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC, 
                         density_threshold = density_threshold, 
                         min_length = min_length, 
                         tol = tol)
@@ -860,41 +860,37 @@ end
 function choose_matrix_format(A::DenseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps()) where S <: Real
+                                tol::AbstractFloat = eps())::Union{Matrix{S}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
     if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
-        a = convert(SparseMatrixCSC{S}, A)
+        a = A |> sparse |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         droptol!(a, tol)
-
-        if VERSION >= v"1.9"
-            a = ThreadedSparseArrays.ThreadedSparseMatrixCSC(a)
-        end
-
-        return a
+    else
+        a = A
     end
 
-    return A
+    return a
 end
 
 function choose_matrix_format(A::AbstractSparseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::AbstractFloat = eps()) where S <: Real
+                                tol::AbstractFloat = eps())::Union{Matrix{S}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where S <: Real
     droptol!(A, tol)
-
-    # lennz = A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(A.A.nzval) : length(A.nzval)
 
     lennz = nnz(A)
 
     if lennz / length(A) > density_threshold || length(A) < min_length
-        return convert(Matrix, A)
+        a = convert(Matrix, A)
     else 
-        if VERSION >= v"1.9"
-            A = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
+        if A isa ThreadedSparseArrays.ThreadedSparseMatrixCSC
+            a = A
+        else
+            a = ThreadedSparseArrays.ThreadedSparseMatrixCSC(A)
         end
-
-        return A
     end
+
+    return a
 end
 
 function mat_mult_kron(A::AbstractSparseMatrix{R},
