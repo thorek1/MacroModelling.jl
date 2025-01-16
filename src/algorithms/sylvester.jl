@@ -655,7 +655,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{<:AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+                                    tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
                                     # see doi:10.1016/j.aml.2009.01.012
     # guess_provided = true
 
