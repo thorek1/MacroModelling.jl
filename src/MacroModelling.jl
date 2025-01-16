@@ -6667,7 +6667,7 @@ function irf(state_update::Function,
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
-    negative_shock::Bool = false)::KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int64},Vector{Symbol}}}
+    negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
