@@ -82,7 +82,7 @@ function calculate_mean(parameters::Vector{T},
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
     if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+        𝐒₂ = sparse(𝐒₂) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
     end
 
     nᵉ = 𝓂.timings.nExo
@@ -195,7 +195,7 @@ function calculate_second_order_moments(
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
     if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+        𝐒₂ = sparse(𝐒₂) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
     end
 
     s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
@@ -307,7 +307,7 @@ function calculate_second_order_moments(
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
 
     if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+        𝐒₂ = sparse(𝐒₂) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
     end
 
     s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
@@ -425,7 +425,7 @@ function calculate_third_order_moments(parameters::Vector{T},
     𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 
     if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-        𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+        𝐒₃ = sparse(𝐒₃) |> ThreadedSparseArrays.ThreadedSparseMatrixCSC # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
     end
     
     orders = determine_efficient_order(𝐒₁, 𝓂.timings, observables, tol = opts.tol.dependencies_tol)
