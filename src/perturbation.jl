@@ -369,7 +369,7 @@ end
 
 
 
-function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
+function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             𝑺₁::AbstractMatrix{S},#first order solution
                                             M₂::second_order_auxilliary_matrices;  # aux matrices
