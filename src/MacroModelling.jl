@@ -7124,7 +7124,7 @@ end
 
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                     parameter_values::Vector{S}; 
-                                    opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{S}, Tuple{S, Int}} where S <: AbstractFloat
+                                    opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS" begin
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
