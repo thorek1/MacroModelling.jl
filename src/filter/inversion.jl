@@ -1766,7 +1766,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)#, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
 
     𝐒³⁻ᵛ = 𝐒[3][cond_var_idx,var_vol³_idxs]
-    𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs]
+    𝐒³⁻ᵉ² = 𝐒[3][cond_var_idx,shockvar³2_idxs] |> collect
     𝐒³⁻ᵉ = 𝐒[3][cond_var_idx,shockvar³_idxs]
     𝐒³ᵉ  = 𝐒[3][cond_var_idx,shock³_idxs]
     𝐒⁻³  = 𝐒[3][T.past_not_future_and_mixed_idx,:]
@@ -1780,6 +1780,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     state[2] = state[2][T.past_not_future_and_mixed_idx]
     state[3] = state[3][T.past_not_future_and_mixed_idx]
 
+    𝐒ⁱ = copy(𝐒¹ᵉ)
+
     kron_buffer = zeros(T.nExo^2)
 
     kron_buffer² = zeros(T.nExo^3)
@@ -1791,19 +1793,25 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     kron_buffer2 = ℒ.kron(J, zeros(T.nExo))
 
     kron_buffer3 = ℒ.kron(J, kron_buffer)
-
+    
     kron_buffer4 = ℒ.kron(ℒ.kron(J, J), zeros(T.nExo))
+
+    kron_buffer2s = ℒ.kron(J, state[1])
+
+    kron_buffer2sv = ℒ.kron(J, vcat(1,state[1]))
+
+    kron_buffer3sv = ℒ.kron(kron_buffer2sv, vcat(1,state[1]))
+    
+    state¹⁻ = state[1]
+
+    state²⁻ = state[2]#[T.past_not_future_and_mixed_idx]
+
+    state³⁻ = state[3]#[T.past_not_future_and_mixed_idx]
 
     # @timeit_debug timer "Loop" begin
 
     for i in axes(data_in_deviations,2)
-        state¹⁻ = state[1]
-
         state¹⁻_vol = vcat(state¹⁻, 1)
-
-        state²⁻ = state[2]#[T.past_not_future_and_mixed_idx]
-
-        state³⁻ = state[3]#[T.past_not_future_and_mixed_idx]
 
         shock_independent = copy(data_in_deviations[:,i])
 
@@ -1818,9 +1826,25 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         ℒ.mul!(shock_independent, 𝐒²⁻, ℒ.kron(state¹⁻, state²⁻), -1, 1)
         
         ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
-
-        𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(ℒ.I(T.nExo), state²⁻) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(ℒ.I(T.nExo), state¹⁻_vol), state¹⁻_vol) / 2
+        
+        # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(J, state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(J, state²⁻) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(J, state¹⁻_vol), state¹⁻_vol) / 2
+        
+        ℒ.kron!(kron_buffer2s, J, state²⁻)
     
+        ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵛᵉ, kron_buffer2s)
+
+        ℒ.kron!(kron_buffer2sv, J, state¹⁻_vol)
+    
+        ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵉ, kron_buffer2sv, 1, 1)
+
+        ℒ.kron!(kron_buffer2sv, J, state¹⁻_vol)
+    
+        ℒ.kron!(kron_buffer3sv, kron_buffer2sv, state¹⁻_vol)
+        
+        ℒ.mul!(𝐒ⁱ, 𝐒³⁻ᵉ², kron_buffer3sv, 1/2, 1)
+
+        ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ)
+
         𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
 
         𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
@@ -2004,10 +2028,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
             end
         end
 
-        aug_state₁ = [state[1]; 1; x]
-        aug_state₁̂ = [state[1]; 0; x]
-        aug_state₂ = [state[2]; 0; zero(x)]
-        aug_state₃ = [state[3]; 0; zero(x)]
+        aug_state₁ = [state¹⁻; 1; x]
+        aug_state₁̂ = [state¹⁻; 0; x]
+        aug_state₂ = [state²⁻; 0; zero(x)]
+        aug_state₃ = [state³⁻; 0; zero(x)]
         
         kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
 
@@ -2016,7 +2040,19 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         
         # println(ℒ.norm(x))
 
-        state = [𝐒⁻¹ * aug_state₁, 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * kron_aug_state₁ / 2, 𝐒⁻¹ * aug_state₃ + 𝐒⁻² * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒⁻³ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+        # state[1] = 𝐒⁻¹ * aug_state₁
+        # state[2] = 𝐒⁻¹ * aug_state₂ + 𝐒⁻² * kron_aug_state₁ / 2
+        # state[3] = 𝐒⁻¹ * aug_state₃ + 𝐒⁻² * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒⁻³ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6
+        
+        ℒ.mul!(state¹⁻, 𝐒⁻¹, aug_state₁)
+
+        ℒ.mul!(state²⁻, 𝐒⁻¹, aug_state₂)
+        ℒ.mul!(state²⁻, 𝐒⁻², kron_aug_state₁, 1/2, 1)
+
+        ℒ.mul!(state³⁻, 𝐒⁻¹, aug_state₃)
+        ℒ.mul!(state³⁻, 𝐒⁻², ℒ.kron(aug_state₁̂, aug_state₂), 1, 1)
+        ℒ.mul!(state³⁻, 𝐒⁻³, ℒ.kron(kron_aug_state₁,aug_state₁), 1/6, 1)
+
     end
 
     # end # timeit_debug

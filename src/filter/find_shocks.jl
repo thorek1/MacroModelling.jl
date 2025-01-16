@@ -267,8 +267,9 @@ function find_shocks(::Val{:LagrangeNewton},
         copyto!(fxλ, size(𝐒ⁱ,2) + 1, x̂, 1, size(shock_independent,1))
         # fXλ = [(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
                 # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]
-
-        ℒ.kron!(kron_buffer4, II, x)
+        
+        x_kron_II!(kron_buffer4, x)
+        # ℒ.kron!(kron_buffer4, II, x)
         ℒ.mul!(tmp2, 𝐒ⁱ³ᵉ, kron_buffer4)
         ℒ.mul!(tmp, tmp2', λ)
         ℒ.mul!(tmp, 𝐒ⁱ²ᵉ', λ, 2, 6)
