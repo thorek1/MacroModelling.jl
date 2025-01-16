@@ -28,6 +28,7 @@ backend = 𝒟.AutoForwardDiff()
 # 𝒷 = 𝒜.ForwardDiffBackend
 # 𝒷 = Diffractor.DiffractorForwardBackend
 
+import LoopVectorization: @turbo
 import Polyester
 import NLopt
 import Optim, LineSearches
@@ -1127,7 +1128,7 @@ function compressed_kron³(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
                     colmask::Vector{Int} = Int[],
                     # timer::TimerOutput = TimerOutput(),
-                    tol::AbstractFloat= eps()) where T <: Real
+                    tol::AbstractFloat = eps()) where T <: Real
     # @timeit_debug timer "Compressed 3rd kronecker power" begin
           
     # @timeit_debug timer "Preallocation" begin
@@ -1196,6 +1197,9 @@ function compressed_kron³(a::AbstractMatrix{T};
     # Polyester.@batch threadlocal=(Vector{Int}(), Vector{Int}(), Vector{T}()) for i1 in ui
     # Polyester.@batch minbatch = 10 for i1 in ui
     # Threads.@threads for i1 in ui
+    norowmask = length(rowmask) == 0
+    nocolmask = length(colmask) == 0
+
     for i1 in ui
         for j1 in ui
             if j1 ≤ i1
@@ -1204,7 +1208,7 @@ function compressed_kron³(a::AbstractMatrix{T};
 
                         row = (i1-1) * i1 * (i1+1) ÷ 6 + (j1-1) * j1 ÷ 2 + k1
 
-                        if length(rowmask) == 0 || (length(rowmask) > 0 && row in rowmask)
+                        if norowmask || row in rowmask
                             for i2 in uj
                                 for j2 in uj
                                     if j2 ≤ i2
@@ -1213,18 +1217,28 @@ function compressed_kron³(a::AbstractMatrix{T};
 
                                                 col = (i2-1) * i2 * (i2+1) ÷ 6 + (j2-1) * j2 ÷ 2 + k2
 
-                                                if length(colmask) == 0 || (length(colmask) > 0 && col in colmask)
+                                                if nocolmask || col in colmask
                                                     # @timeit_debug timer "Multiplication" begin
+                                                    @inbounds aii = â[i1, i2]
+                                                    @inbounds aij = â[i1, j2]
+                                                    @inbounds aik = â[i1, k2]
+                                                    @inbounds aji = â[j1, i2]
+                                                    @inbounds ajj = â[j1, j2]
+                                                    @inbounds ajk = â[j1, k2]
+                                                    @inbounds aki = â[k1, i2]
+                                                    @inbounds akj = â[k1, j2]
+                                                    @inbounds akk = â[k1, k2]
 
                                                     # Compute the six unique products
-                                                    val = 0.0
-                                                    @inbounds val += â[i1, i2] * â[j1, j2] * â[k1, k2]
-                                                    @inbounds val += â[i1, j2] * â[j1, i2] * â[k1, k2]
-                                                    @inbounds val += â[i1, k2] * â[j1, j2] * â[k1, i2]
-                                                    @inbounds val += â[i1, j2] * â[j1, k2] * â[k1, i2]
-                                                    @inbounds val += â[i1, k2] * â[j1, i2] * â[k1, j2]
-                                                    @inbounds val += â[i1, i2] * â[j1, k2] * â[k1, j2]
+                                                    # val = 0.0
+                                                    # val += aii * ajj * akk
+                                                    # val += aij * aji * akk
+                                                    # val += aik * ajj * aki
+                                                    # val += aij * ajk * aki
+                                                    # val += aik * aji * akj
+                                                    # val += aii * ajk * akj
 
+                                                    val = aii * (ajj * akk + ajk * akj) + aij * (aji * akk + ajk * aki) + aik * (aji * akj + ajj * aki)
                                                     # end # timeit_debug
 
                                                     # @timeit_debug timer "Save in vector" begin
@@ -1303,18 +1317,10 @@ function compressed_kron³(a::AbstractMatrix{T};
     # end # timeit_debug
 
     # Create the sparse matrix from the collected indices and values
-    if VERSION >= v"1.10"
-        if a_is_adjoint
-            return sparse!(J, I, V, m3_cols, m3_rows)
-        else
-            return sparse!(I, J, V, m3_rows, m3_cols)
-        end
+    if a_is_adjoint
+        return sparse!(J, I, V, m3_cols, m3_rows)
     else
-        if a_is_adjoint
-            return sparse(J, I, V, m3_cols, m3_rows)
-        else
-            return sparse(I, J, V, m3_rows, m3_cols)
-        end
+        return sparse!(I, J, V, m3_rows, m3_cols)
     end
 end
 
@@ -1376,11 +1382,7 @@ function kron³(A::AbstractSparseMatrix{T}, M₃::third_order_auxilliary_matrice
     end
     
     # Create the sparse matrix from the collected indices and values
-    if VERSION >= v"1.10"
-        return sparse!(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
-    else
-        return sparse(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
-    end
+    return sparse!(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
 end
 
 function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},
@@ -1545,6 +1547,19 @@ function get_and_check_observables(𝓂::ℳ, data::KeyedArray{Float64})::Vector
     sort!(observables_symbols)
     
     return observables_symbols
+end
+
+function x_kron_II!(buffer::Matrix{T}, x::Vector{T}) where T
+    n = length(x)
+
+    @assert size(buffer, 1) == n^3 "Buffer must have n^2 rows."
+    @assert size(buffer, 2) == n^2 "Buffer must have n columns."
+
+    @turbo for j in 1:n^2
+         for i in 1:n
+            buffer[(j - 1) * n + i, j] = x[i]
+        end
+    end
 end
 
 function bivariate_moment(moment::Vector{Int}, rho::Int)::Int
@@ -1925,7 +1940,7 @@ replace_indices(x::String) = Symbol(replace(x, "{" => "◖", "}" => "◗"))
 
 replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{", "◗" => "}")
 
-function replace_indices(exxpr::Expr)::Expr
+function replace_indices(exxpr::Expr)::Union{Expr,Symbol}
     postwalk(x -> begin
         x isa Symbol ?
             replace_indices(string(x)) :
