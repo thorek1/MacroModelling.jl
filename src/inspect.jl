@@ -72,7 +72,7 @@ get_equations(RBC)
  "Δk_4q[0] = log(k[0]) - log(k[-4])"
 ```
 """
-function get_equations(𝓂::ℳ)
+function get_equations(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.original_equations), "◖" => "{", "◗" => "}")
 end
 
@@ -127,7 +127,7 @@ get_steady_state_equations(RBC)
  "Δk_4q - 0"
 ```
 """
-function get_steady_state_equations(𝓂::ℳ)
+function get_steady_state_equations(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.ss_aux_equations), "◖" => "{", "◗" => "}")
 end
 
@@ -185,7 +185,7 @@ get_dynamic_equations(RBC)
  "Δk_4q[0] - (log(k[0]) - log(kᴸ⁽⁻³⁾[-1]))"
 ```
 """
-function get_dynamic_equations(𝓂::ℳ)
+function get_dynamic_equations(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.dyn_equations), "◖" => "{", "◗" => "}", "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")
 end
 
@@ -232,7 +232,7 @@ get_calibration_equations(RBC)
  "k / (q * 4) - capital_to_output"
 ```
 """
-function get_calibration_equations(𝓂::ℳ)
+function get_calibration_equations(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.calibration_equations), "◖" => "{", "◗" => "}")
 end
 
@@ -285,7 +285,7 @@ get_parameters(RBC)
  "β"
 ```
 """
-function get_parameters(𝓂::ℳ; values::Bool = false)
+function get_parameters(𝓂::ℳ; values::Bool = false)::Union{Vector{Pair{String, Float64}},Vector{String}}
     if values
         return replace.(string.(𝓂.parameters), "◖" => "{", "◗" => "}") .=> 𝓂.parameter_values
     else
@@ -335,7 +335,7 @@ get_calibrated_parameters(RBC)
  "δ"
 ```
 """
-function get_calibrated_parameters(𝓂::ℳ; values::Bool = false)
+function get_calibrated_parameters(𝓂::ℳ; values::Bool = false)::Union{Vector{Pair{String, Float64}},Vector{String}}
     if values
         return replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}") .=> 𝓂.solution.non_stochastic_steady_state[𝓂.timings.nVars + 1:end]
     else
@@ -390,7 +390,7 @@ get_parameters_in_equations(RBC)
  "σ{δ}"
 ```
 """
-function get_parameters_in_equations(𝓂::ℳ)
+function get_parameters_in_equations(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.parameters_in_equations), "◖" => "{", "◗" => "}")# |> sort
 end
 
@@ -433,7 +433,7 @@ get_parameters_defined_by_parameters(RBC)
  "α"
 ```
 """
-function get_parameters_defined_by_parameters(𝓂::ℳ)
+function get_parameters_defined_by_parameters(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.parameters_as_function_of_parameters), "◖" => "{", "◗" => "}")# |> sort
 end
 
@@ -476,7 +476,7 @@ get_parameters_defining_parameters(RBC)
  "alpha"
 ```
 """
-function get_parameters_defining_parameters(𝓂::ℳ)
+function get_parameters_defining_parameters(𝓂::ℳ)::Vector{String}
     replace.(string.(setdiff(𝓂.parameters, 𝓂.calibration_equations_parameters, 𝓂.parameters_in_equations, 𝓂.calibration_equations_parameters, 𝓂.parameters_as_function_of_parameters, reduce(union, 𝓂.par_calib_list, init = []))), "◖" => "{", "◗" => "}")# |> sort
 end
 
@@ -519,7 +519,7 @@ get_calibration_equation_parameters(RBC)
  "capital_to_output"
 ```
 """
-function get_calibration_equation_parameters(𝓂::ℳ)
+function get_calibration_equation_parameters(𝓂::ℳ)::Vector{String}
     reduce(union, 𝓂.par_calib_list, init = []) |> collect |> sort  .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
@@ -570,7 +570,7 @@ get_variables(RBC)
  "Δk_4q"
 ```
 """
-function get_variables(𝓂::ℳ)
+function get_variables(𝓂::ℳ)::Vector{String}
     setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations), init = []), union(𝓂.parameters_in_equations,𝓂.➕_vars)) |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
@@ -616,7 +616,7 @@ get_nonnegativity_auxilliary_variables(RBC)
  "➕₂"
 ```
 """
-function get_nonnegativity_auxilliary_variables(𝓂::ℳ)
+function get_nonnegativity_auxilliary_variables(𝓂::ℳ)::Vector{String}
     𝓂.➕_vars |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
@@ -663,7 +663,7 @@ get_dynamic_auxilliary_variables(RBC)
  "kᴸ⁽⁻¹⁾"
 ```
 """
-function get_dynamic_auxilliary_variables(𝓂::ℳ)
+function get_dynamic_auxilliary_variables(𝓂::ℳ)::Vector{String}
     𝓂.aux |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
@@ -712,7 +712,7 @@ get_shocks(RBC)
  "eps{δ}"
 ```
 """
-function get_shocks(𝓂::ℳ)
+function get_shocks(𝓂::ℳ)::Vector{String}
     𝓂.exo |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
@@ -768,7 +768,7 @@ get_state_variables(RBC)
  "z{δ}"
 ```
 """
-function get_state_variables(𝓂::ℳ)
+function get_state_variables(𝓂::ℳ)::Vector{String}
     𝓂.timings.past_not_future_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
@@ -816,7 +816,7 @@ get_jump_variables(RBC)
  "z{δ}"
 ```
 """
-function get_jump_variables(𝓂::ℳ)
+function get_jump_variables(𝓂::ℳ)::Vector{String}
     𝓂.timings.future_not_past_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
