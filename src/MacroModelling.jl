@@ -364,9 +364,11 @@ function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, 
     end
 
     res .= 𝓂.obc_violation_function(X, p)
+
+	return nothing
 end
 
-function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
+function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
     if length(grad) > 0
         grad .= 2 .* X
     end
