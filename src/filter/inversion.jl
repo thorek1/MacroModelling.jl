@@ -1782,11 +1782,13 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     𝐒ⁱ = copy(𝐒¹ᵉ)
 
+    jacc = copy(𝐒¹ᵉ)
+
     kron_buffer = zeros(T.nExo^2)
 
     kron_buffer² = zeros(T.nExo^3)
 
-    II = sparse(ℒ.I(T.nExo^2))
+    II = ℒ.I(T.nExo^2)
     
     J = ℒ.I(T.nExo)
 
@@ -1794,14 +1796,26 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     kron_buffer3 = ℒ.kron(J, kron_buffer)
     
-    kron_buffer4 = ℒ.kron(ℒ.kron(J, J), zeros(T.nExo))
+    kron_buffer4 = ℒ.kron(II, zeros(T.nExo))
+
+    kron_buffer4sv = ℒ.kron(II, vcat(1,state[1]))
 
     kron_buffer2s = ℒ.kron(J, state[1])
 
     kron_buffer2sv = ℒ.kron(J, vcat(1,state[1]))
 
+    kron_buffer2ss = ℒ.kron(state[1], state[1])
+
+    kron_buffer2svsv = ℒ.kron(vcat(1,state[1]), vcat(1,state[1]))
+
+    kron_buffer3svsv = ℒ.kron(kron_buffer2svsv, vcat(1,state[1]))
+
     kron_buffer3sv = ℒ.kron(kron_buffer2sv, vcat(1,state[1]))
     
+    kron_aug_state₁ = zeros((T.nPast_not_future_and_mixed + 1 + T.nExo)^2)
+    
+    kron_kron_aug_state₁ = zeros((T.nPast_not_future_and_mixed + 1 + T.nExo)^3)
+
     state¹⁻ = state[1]
 
     state²⁻ = state[2]#[T.past_not_future_and_mixed_idx]
@@ -1810,6 +1824,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     # @timeit_debug timer "Loop" begin
 
+    𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
+
+    init_guess = zeros(size(𝐒ⁱ, 2))
+    
     for i in axes(data_in_deviations,2)
         state¹⁻_vol = vcat(state¹⁻, 1)
 
@@ -1821,11 +1839,17 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
         ℒ.mul!(shock_independent, 𝐒¹⁻, state³⁻, -1, 1)
 
-        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, ℒ.kron(state¹⁻_vol, state¹⁻_vol), -1/2, 1)
-        
-        ℒ.mul!(shock_independent, 𝐒²⁻, ℒ.kron(state¹⁻, state²⁻), -1, 1)
-        
-        ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, ℒ.kron(state¹⁻_vol, ℒ.kron(state¹⁻_vol, state¹⁻_vol)), -1/6, 1)   
+        ℒ.kron!(kron_buffer2svsv, state¹⁻_vol, state¹⁻_vol)
+
+        ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_buffer2svsv, -1/2, 1)
+
+        ℒ.kron!(kron_buffer2ss, state¹⁻, state²⁻)
+
+        ℒ.mul!(shock_independent, 𝐒²⁻, kron_buffer2ss, -1, 1)
+
+        ℒ.kron!(kron_buffer3svsv, kron_buffer2svsv, state¹⁻_vol)
+
+        ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kron_buffer3svsv, -1/6, 1)   
         
         # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(J, state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(J, state²⁻) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(J, state¹⁻_vol), state¹⁻_vol) / 2
         
@@ -1845,14 +1869,13 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
         ℒ.axpy!(1, 𝐒¹ᵉ, 𝐒ⁱ)
 
-        𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state¹⁻_vol) / 2
+        x_kron_II!(kron_buffer4sv, state¹⁻_vol)
 
-        𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
+        𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * kron_buffer4sv / 2
 
         # x, jacc, matchd = find_shocks(Val(:fixed_point), state isa Vector{Float64} ? [state] : state, 𝐒, data_in_deviations[:,i], observables, T)
 
-        init_guess = zeros(size(𝐒ⁱ, 2))
-
+        init_guess *= 0
 
         # x² , matched = find_shocks(Val(filter_algorithm), 
         #                         init_guess,
@@ -2010,8 +2033,18 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         # elseif mat2
         #     println("COBYLA: $(ℒ.norm(x3-x) / max(ℒ.norm(x3), ℒ.norm(x))), $(ℒ.norm(x3)-ℒ.norm(x))")
         # end
+        
+        ℒ.kron!(kron_buffer2, J, x)
 
-        jacc = -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(T.nExo), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), ℒ.kron(x, x)))
+        ℒ.kron!(kron_buffer3, kron_buffer2, x)
+
+        ℒ.mul!(jacc, 𝐒ⁱ²ᵉ, kron_buffer2)
+
+        ℒ.mul!(jacc, 𝐒ⁱ³ᵉ, kron_buffer3, 3, 2)
+
+        ℒ.axpby!(-1, 𝐒ⁱ, -1, jacc)
+
+        # jacc = -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * kron_buffer2 + 3 * 𝐒ⁱ³ᵉ * kron_buffer3)
 
         if i > presample_periods
             # due to change of variables: jacobian determinant adjustment
@@ -2033,8 +2066,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         aug_state₂ = [state²⁻; 0; zero(x)]
         aug_state₃ = [state³⁻; 0; zero(x)]
         
-        kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+        # kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+        ℒ.kron!(kron_aug_state₁, aug_state₁, aug_state₁)
 
+        ℒ.kron!(kron_kron_aug_state₁, kron_aug_state₁, aug_state₁)
         # res = 𝐒[1][cond_var_idx,:] * aug_state₁   +   𝐒[1][cond_var_idx,:] * aug_state₂ + 𝐒[2][cond_var_idx,:] * kron_aug_state₁ / 2   +   𝐒[1][cond_var_idx,:] * aug_state₃ + 𝐒[2][cond_var_idx,:] * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒[3][cond_var_idx,:] * ℒ.kron(kron_aug_state₁,aug_state₁) / 6 - data_in_deviations[:,i]
         # println("Match with data: $res")
         
@@ -2050,9 +2085,11 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         ℒ.mul!(state²⁻, 𝐒⁻², kron_aug_state₁, 1/2, 1)
 
         ℒ.mul!(state³⁻, 𝐒⁻¹, aug_state₃)
-        ℒ.mul!(state³⁻, 𝐒⁻², ℒ.kron(aug_state₁̂, aug_state₂), 1, 1)
-        ℒ.mul!(state³⁻, 𝐒⁻³, ℒ.kron(kron_aug_state₁,aug_state₁), 1/6, 1)
 
+        ℒ.kron!(kron_aug_state₁, aug_state₁̂, aug_state₂)
+        
+        ℒ.mul!(state³⁻, 𝐒⁻², kron_aug_state₁, 1, 1)
+        ℒ.mul!(state³⁻, 𝐒⁻³, kron_kron_aug_state₁, 1/6, 1)
     end
 
     # end # timeit_debug
