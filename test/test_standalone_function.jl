@@ -86,13 +86,14 @@ T = T)
 second_order_solution = sparse(second_order_solution * RBC_CME.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
 
 third_order_solution, solved3 = calculate_third_order_solution(∇₁, 
-∇₂, 
-∇₃,
-first_order_solution, 
-second_order_solution, 
-RBC_CME.solution.perturbation.second_order_auxilliary_matrices, 
-RBC_CME.solution.perturbation.third_order_auxilliary_matrices; 
-T = T)
+                                                            ∇₂, 
+                                                            ∇₃,
+                                                            first_order_solution, 
+                                                            second_order_solution, 
+                                                            RBC_CME.solution.perturbation.second_order_auxilliary_matrices, 
+                                                            RBC_CME.solution.perturbation.third_order_auxilliary_matrices, 
+                                                            RBC_CME.caches; 
+                                                            T = T)
 
 # third_order_solution *= RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 

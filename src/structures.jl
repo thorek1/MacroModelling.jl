@@ -208,6 +208,11 @@ struct third_order_perturbation_solution
     state_update_obc::Function
 end
 
+mutable struct caches
+    tmpkron1::SparseMatrixCSC
+    tmpkron2::SparseMatrixCSC
+end
+
 mutable struct perturbation
     first_order::perturbation_solution
     second_order::second_order_perturbation_solution
@@ -394,6 +399,8 @@ mutable struct ℳ
     model_third_order_derivatives_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
 
     timings::timings
+
+    caches::caches
 
     obc_violation_equations::Vector{Expr}
     # obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}

@@ -4565,7 +4565,8 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
             
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
-                                                𝓂.solution.perturbation.third_order_auxilliary_matrices; 
+                                                𝓂.solution.perturbation.third_order_auxilliary_matrices,
+                                                𝓂.caches; 
                                                 T = 𝓂.timings, 
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 # timer = timer, 

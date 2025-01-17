@@ -1946,7 +1946,8 @@ function get_solution(𝓂::ℳ,
         𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
                                                     𝐒₁, 𝐒₂, 
                                                     𝓂.solution.perturbation.second_order_auxilliary_matrices, 
-                                                    𝓂.solution.perturbation.third_order_auxilliary_matrices; 
+                                                    𝓂.solution.perturbation.third_order_auxilliary_matrices,
+                                                    𝓂.caches; 
                                                     initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                     T = 𝓂.timings, 
                                                     opts = opts)

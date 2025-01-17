@@ -395,7 +395,8 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
-                                                𝓂.solution.perturbation.third_order_auxilliary_matrices; 
+                                                𝓂.solution.perturbation.third_order_auxilliary_matrices,
+                                                𝓂.caches; 
                                                 T = 𝓂.timings, 
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 opts = opts)
@@ -646,7 +647,8 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
-                                                𝓂.solution.perturbation.third_order_auxilliary_matrices; 
+                                                𝓂.solution.perturbation.third_order_auxilliary_matrices,
+                                                𝓂.caches; 
                                                 T = 𝓂.timings, 
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 opts = opts)
