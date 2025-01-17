@@ -890,12 +890,10 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     𝐒₂₋╱𝟎 = [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
 
     # @timeit_debug timer "Step 1" begin
-    out2 = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎) # this help
+    out2 = ∇₂ * ℂ.tmpkron1 * ℂ.tmpkron2 # this help
 
     # end # timeit_debug
     # @timeit_debug timer "Step 2" begin
-
-    out2 .+= ∇₂ * ℂ.tmpkron1 * ℂ.tmpkron2# |> findnz
 
     # end # timeit_debug  
     # @timeit_debug timer "Step 3" begin
@@ -904,6 +902,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     # end # timeit_debug
     # @timeit_debug timer "Step 4" begin
+
+    out2 .+= mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)# |> findnz
 
     # out2 += ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
     out2 .+= mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔))# |> findnz
