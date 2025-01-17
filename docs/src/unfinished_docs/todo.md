@@ -3,6 +3,8 @@
 ## High priority
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
+- [ ] write non allocating version of steady state functions
+- [ ] cache sparse kron, sylvester solution, and compressed kron in order to avoid allocs; check sparse kron! call
 - [ ] prettify plotlyjs plots
 - [ ] fix findiff and zygote consistency for llh derivatives of inversion filter
 - [ ] add correlation and other moments to get statistics
