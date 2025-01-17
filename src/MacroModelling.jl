@@ -829,7 +829,7 @@ end
 function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::R = eps(),
+                                tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     if length(A) < 100
         a = convert(Matrix, A)
@@ -848,7 +848,7 @@ end
 function choose_matrix_format(A::ℒ.Adjoint{S, <: DenseMatrix{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::R = eps(),
+                                tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     choose_matrix_format(convert(typeof(A'),A), 
                         density_threshold = density_threshold, 
@@ -860,7 +860,7 @@ end
 function choose_matrix_format(A::ℒ.Adjoint{S, <: AbstractSparseMatrix{S}}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::R = eps(),
+                                tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     choose_matrix_format(convert(typeof(A'),A), 
                         density_threshold = density_threshold, 
@@ -872,7 +872,7 @@ end
 function choose_matrix_format(A::DenseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::R = eps(),
+                                tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     if sum(abs.(A) .> tol) / length(A) < density_threshold && length(A) > min_length
         if multithreaded
@@ -892,7 +892,7 @@ end
 function choose_matrix_format(A::AbstractSparseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
-                                tol::R = eps(),
+                                tol::R = 1e-14,
                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
     droptol!(A, tol)
 
@@ -1169,7 +1169,7 @@ function compressed_kron³(a::AbstractMatrix{T};
     m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
     m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
 
-    m3_exp = length(colmask) > 0 || length(rowmask) > 0 ? 1 : 3
+    m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 1 : 3
 
     estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp * 1.5, 10000))
     
@@ -1551,11 +1551,12 @@ end
 
 function x_kron_II!(buffer::Matrix{T}, x::Vector{T}) where T
     n = length(x)
+    m = size(buffer,2)
 
-    @assert size(buffer, 1) == n^3 "Buffer must have n^2 rows."
-    @assert size(buffer, 2) == n^2 "Buffer must have n columns."
+    # @assert size(buffer, 1) == n^3 "Buffer must have n^2 rows."
+    # @assert size(buffer, 2) == n^2 "Buffer must have n columns."
 
-    @turbo for j in 1:n^2
+    @turbo for j in 1:m
          for i in 1:n
             buffer[(j - 1) * n + i, j] = x[i]
         end

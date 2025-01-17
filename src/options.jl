@@ -13,6 +13,8 @@ struct Tolerances
     lyapunov_tol::AbstractFloat
     lyapunov_acceptance_tol::AbstractFloat
 
+    droptol::AbstractFloat
+
     dependencies_tol::AbstractFloat
 end
 
@@ -48,6 +50,8 @@ Function to manually define tolerances for the solvers of various problems: non 
 - `lyapunov_tol` [Default: `1e-14`, Type: `AbstractFloat`]: Tolerance for Lyapunov equation solver.
 - `lyapunov_acceptance_tol` [Default: `1e-12`, Type: `AbstractFloat`]: Acceptance tolerance for Lyapunov equation solver.
 
+- `droptol` [Default: `1e-14`, Type: `AbstractFloat`]: Tolerance below which matrix entries are considered 0.
+
 - `dependencies_tol` [Default: `1e-12`, Type: `AbstractFloat`]: tolerance for the effect of a variable on the variable of interest when isolating part of the system for calculating covariance related statistics
 """
 function Tolerances(;NSSS_acceptance_tol::AbstractFloat = 1e-12,
@@ -64,6 +68,8 @@ function Tolerances(;NSSS_acceptance_tol::AbstractFloat = 1e-12,
                     lyapunov_tol::AbstractFloat = 1e-14,
                     lyapunov_acceptance_tol::AbstractFloat = 1e-12,
 
+                    droptol::AbstractFloat = 1e-14,
+
                     dependencies_tol::AbstractFloat = 1e-12)
     
     return Tolerances(NSSS_acceptance_tol,
@@ -76,6 +82,7 @@ function Tolerances(;NSSS_acceptance_tol::AbstractFloat = 1e-12,
                         sylvester_acceptance_tol,
                         lyapunov_tol,
                         lyapunov_acceptance_tol,
+                        droptol,
                         dependencies_tol)
 end
 
