@@ -1171,10 +1171,10 @@ function compressed_kron³(a::AbstractMatrix{T};
     m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
     m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
 
-    m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 1 : 3
+    m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 2.5 : 3.1
 
-    estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp * 1.5, 10000))
-    
+    estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp * 1.3, 10000))
+
     I = Vector{Int}(undef, estimated_nnz)
     J = Vector{Int}(undef, estimated_nnz)
     V = Vector{T}(undef, estimated_nnz)
@@ -1272,7 +1272,7 @@ function compressed_kron³(a::AbstractMatrix{T};
                                                         # V[k[]] = val / divisor 
 
                                                         if k > estimated_nnz
-                                                            estimated_nnz = floor(Int, estimated_nnz * 1.2)
+                                                            estimated_nnz = floor(Int, estimated_nnz * 1.1)
                                                             resize!(I, estimated_nnz)
                                                             resize!(J, estimated_nnz)
                                                             resize!(V, estimated_nnz)
