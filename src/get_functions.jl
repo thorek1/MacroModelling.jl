@@ -1557,7 +1557,7 @@ function get_steady_state(𝓂::ℳ;
                     #             SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose, pruning = true)
                     #             [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     #         end, 𝓂.parameter_values[param_idx])[1]
-                    dSSS = 𝒟.jacobian(x-> begin SSS= calculate_third_order_stochastic_steady_state(x, 𝓂, opts = opts, pruning = true)
+                    dSSS = 𝒟.jacobian(x-> begin SSS = calculate_third_order_stochastic_steady_state(x, 𝓂, opts = opts, pruning = true)
                                         return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
                     end, backend, 𝓂.parameter_values)[:,param_idx]
 
