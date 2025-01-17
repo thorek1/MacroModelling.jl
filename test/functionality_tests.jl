@@ -817,7 +817,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     deriv_for = ForwardDiff.jacobian(x->get_irf(m, x, initial_state = initial_state)[:,1,1], parameter_values)
 
                     for i in 1:100        
-                        local deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(length(m.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3), 
+                        local deriv_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3), 
                                                                     x -> begin 
                                                                         clear_solution_caches!(m, algorithm)
     
@@ -1040,7 +1040,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             for i in 1:100
-                local deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.forward_fdm(length(m.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
+                local deriv4_fin = FiniteDifferences.jacobian(FiniteDifferences.central_fdm(length(m.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3),
                                                             x -> begin 
                                                                 clear_solution_caches!(m, algorithm)
                                                                 
