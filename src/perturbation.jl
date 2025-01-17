@@ -756,7 +756,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             𝑺₁::AbstractMatrix{S}, #first order solution
                                             𝐒₂::SparseMatrixCSC{S}, #second order solution
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
-                                            M₃::third_order_auxilliary_matrices;  # aux matrices third order
+                                            M₃::third_order_auxilliary_matrices,   # aux matrices third order
+                                            ℂ::caches;
                                             T::timings,
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
@@ -872,8 +873,17 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
-    tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-    tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
+    if length(ℂ.tmpkron1) > 0
+        ℒ.kron!(ℂ.tmpkron1, 𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
+    else
+        ℂ.tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
+    end
+
+    if length(ℂ.tmpkron2) > 0
+        ℒ.kron!(ℂ.tmpkron2, M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
+    else
+        ℂ.tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
+    end
     
     ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
@@ -885,12 +895,12 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # @timeit_debug timer "Step 2" begin
 
-    out2 += ∇₂ * tmpkron1 * tmpkron2# |> findnz
+    out2 += ∇₂ * ℂ.tmpkron1 * ℂ.tmpkron2# |> findnz
 
     # end # timeit_debug  
     # @timeit_debug timer "Step 3" begin
 
-    out2 += ∇₂ * tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ# |> findnz
+    out2 += ∇₂ * ℂ.tmpkron1 * M₃.𝐏₁ₗ * ℂ.tmpkron2 * M₃.𝐏₁ᵣ# |> findnz
 
     # end # timeit_debug
     # @timeit_debug timer "Step 4" begin
@@ -974,7 +984,8 @@ function rrule(::typeof(calculate_third_order_solution),
                 𝑺₁::AbstractMatrix{<: Real}, #first order solution
                 𝐒₂::SparseMatrixCSC{<: Real}, #second order solution
                 M₂::second_order_auxilliary_matrices,  # aux matrices second order
-                M₃::third_order_auxilliary_matrices;  # aux matrices third order
+                M₃::third_order_auxilliary_matrices,   # aux matrices third order
+                ℂ::caches;
                 T::timings,
                 initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                 opts::CalculationOptions = merge_calculation_options())    
@@ -1091,8 +1102,17 @@ function rrule(::typeof(calculate_third_order_solution),
 
     𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10)
 
-    tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-    tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
+    if length(ℂ.tmpkron1) > 0
+        ℒ.kron!(ℂ.tmpkron1, 𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
+    else
+        ℂ.tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
+    end
+
+    if length(ℂ.tmpkron2) > 0
+        ℒ.kron!(ℂ.tmpkron2, M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
+    else
+        ℂ.tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
+    end
     
     ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10)
 
@@ -1109,12 +1129,12 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Step 2" begin
 
-    out2 += ∇₂ * tmpkron1 * tmpkron2# |> findnz
+    out2 += ∇₂ * ℂ.tmpkron1 * ℂ.tmpkron2# |> findnz
 
     # end # timeit_debug  
     # @timeit_debug timer "Step 3" begin
 
-    out2 += ∇₂ * tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ# |> findnz
+    out2 += ∇₂ * ℂ.tmpkron1 * M₃.𝐏₁ₗ * ℂ.tmpkron2 * M₃.𝐏₁ᵣ# |> findnz
 
     # end # timeit_debug
     # @timeit_debug timer "Step 4" begin
@@ -1211,9 +1231,9 @@ function rrule(::typeof(calculate_third_order_solution),
 
     ∇₂t = choose_matrix_format(∇₂')# , density_threshold = 1.0)
 
-    tmpkron1t = choose_matrix_format(tmpkron1')# , density_threshold = 1.0)
+    tmpkron1t = choose_matrix_format(ℂ.tmpkron1')# , density_threshold = 1.0)
     
-    tmpkron2t = choose_matrix_format(tmpkron2')# , density_threshold = 1.0)
+    tmpkron2t = choose_matrix_format(ℂ.tmpkron2')# , density_threshold = 1.0)
     
     tmpkron22t = choose_matrix_format(tmpkron22')# , density_threshold = 1.0)
     
