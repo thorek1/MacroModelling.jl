@@ -1181,11 +1181,22 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    𝐂¹  = A * initial_guess * B + C - initial_guess 
-    # 𝐂¹  = copy(C)
+    # 𝐂¹  = A * initial_guess * B + C - initial_guess 
+    𝐂¹ = copy(C)
 
-    tmp̄ = similar(C)
-    𝐗 = similar(C)
+    tmp̄ = zero(C)
+    𝐗 = zero(C)
+    # end # timeit_debug  
+
+    ℒ.mul!(𝐗, initial_guess, B)
+    ℒ.mul!(tmp̄, A, 𝐗)
+    ℒ.axpy!(1, C, tmp̄)
+
+    # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
+
+    ℒ.axpy!(-1, initial_guess, tmp̄)
+
+    copyto!(𝐂¹, tmp̄)
     # end # timeit_debug   
 
     function sylvester!(sol,𝐱)
@@ -1287,11 +1298,22 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    𝐂¹  = A * initial_guess * B + C - initial_guess 
-    # 𝐂¹  = copy(C)
+    # 𝐂¹  = A * initial_guess * B + C - initial_guess 
+    𝐂¹ = copy(C)
 
-    tmp̄ = similar(C)
-    𝐗 = similar(C)
+    tmp̄ = zero(C)
+    𝐗 = zero(C)
+    # end # timeit_debug  
+
+    ℒ.mul!(𝐗, initial_guess, B)
+    ℒ.mul!(tmp̄, A, 𝐗)
+    ℒ.axpy!(1, C, tmp̄)
+
+    # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
+
+    ℒ.axpy!(-1, initial_guess, tmp̄)
+
+    copyto!(𝐂¹, tmp̄)
     # end # timeit_debug   
 
     function sylvester!(sol,𝐱)
