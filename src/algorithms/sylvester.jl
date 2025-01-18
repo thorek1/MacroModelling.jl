@@ -1048,12 +1048,25 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
-    # 𝐂¹ = copy(C)
+    # 𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
+    # println(ℒ.norm(𝐂¹))
+    𝐂¹ = copy(C)
 
     tmp̄ = zero(C)
     𝐗 = zero(C)
     # end # timeit_debug  
+
+    ℒ.mul!(𝐗, initial_guess, B)
+    ℒ.mul!(tmp̄, A, 𝐗)
+    ℒ.axpy!(1, C, tmp̄)
+
+    # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
+
+    ℒ.axpy!(-1, initial_guess, tmp̄)
+
+    copyto!(𝐂¹, tmp̄)
+
+    # println(ℒ.norm(𝐂¹))
 
     # idxs = findall(abs.(C) .> eps()) # this does not work since the problem is incomplete
 
