@@ -1072,10 +1072,12 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     end
 
     if sparse
-        return sparse!(rows,cols,vals,size(A,1),n_colB*n_colC)   
+        out = sparse!(rows, cols, vals, size(A, 1), n_colB * n_colC)   
     else
-        return choose_matrix_format(X)
+        out = choose_matrix_format(X)
     end
+    
+    return out
 end
 
 
@@ -1133,7 +1135,8 @@ function compressed_kron³(a::AbstractMatrix{T};
                     rowmask::Vector{Int} = Int[],
                     colmask::Vector{Int} = Int[],
                     # timer::TimerOutput = TimerOutput(),
-                    tol::AbstractFloat = eps()) where T <: Real
+                    tol::AbstractFloat = eps(),
+                    preallocate::Bool = true) where T <: Real
     # @timeit_debug timer "Compressed 3rd kronecker power" begin
           
     # @timeit_debug timer "Preallocation" begin
@@ -1178,9 +1181,15 @@ function compressed_kron³(a::AbstractMatrix{T};
 
     estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp * 1.3, 10000))
 
-    I = Vector{Int}(undef, estimated_nnz)
-    J = Vector{Int}(undef, estimated_nnz)
-    V = Vector{T}(undef, estimated_nnz)
+    if preallocate
+        I = Vector{Int}(undef, estimated_nnz)
+        J = Vector{Int}(undef, estimated_nnz)
+        V = Vector{T}(undef, estimated_nnz)
+    else
+        I = Int[]
+        J = Int[]
+        V = T[]
+    end
 
     # k = Threads.Atomic{Int}(0)  # Counter for non-zero entries
     # k̄ = Threads.Atomic{Int}(0)  # effectively slower than the non-threaded version
@@ -1250,7 +1259,6 @@ function compressed_kron³(a::AbstractMatrix{T};
                                                         
                                                     # Only add non-zero values to the sparse matrix
                                                     if abs(val) > tol
-                                                        k += 1 
                                                         # Threads.atomic_add!(k, 1)
                                                         # Threads.atomic_max!(k̄, k[])
 
@@ -1274,16 +1282,24 @@ function compressed_kron³(a::AbstractMatrix{T};
                                                         # J[k[]] = col
                                                         # V[k[]] = val / divisor 
 
-                                                        if k > estimated_nnz
-                                                            estimated_nnz = floor(Int, estimated_nnz * 1.1)
-                                                            resize!(I, estimated_nnz)
-                                                            resize!(J, estimated_nnz)
-                                                            resize!(V, estimated_nnz)
-                                                        end
+                                                        if preallocate
+                                                            k += 1
 
-                                                        I[k] = row
-                                                        J[k] = col
-                                                        V[k] = val / divisor 
+                                                            if k > estimated_nnz
+                                                                estimated_nnz = floor(Int, estimated_nnz * 1.1)
+                                                                resize!(I, estimated_nnz)
+                                                                resize!(J, estimated_nnz)
+                                                                resize!(V, estimated_nnz)
+                                                            end
+
+                                                            I[k] = row
+                                                            J[k] = col
+                                                            V[k] = val / divisor 
+                                                        else
+                                                            push!(I, row)
+                                                            push!(J, col)
+                                                            push!(V, val / divisor)
+                                                        end
                                                     end
 
                                                     # end # timeit_debug
@@ -1313,20 +1329,24 @@ function compressed_kron³(a::AbstractMatrix{T};
     # # Resize the index and value arrays to the actual number of entries
     # resize!(I, k̄[])
     # resize!(J, k̄[])
-    # resize!(V, k̄[])    
-    resize!(I, k)
-    resize!(J, k)
-    resize!(V, k)
+    # resize!(V, k̄[]) 
+    if preallocate   
+        resize!(I, k)
+        resize!(J, k)
+        resize!(V, k)
+    end
 
     # end # timeit_debug
     # end # timeit_debug
 
     # Create the sparse matrix from the collected indices and values
     if a_is_adjoint
-        return sparse!(J, I, V, m3_cols, m3_rows)
+        out = sparse!(J, I, V, m3_cols, m3_rows)
     else
-        return sparse!(I, J, V, m3_rows, m3_cols)
+        out = sparse!(I, J, V, m3_rows, m3_cols)
     end
+
+    return out
 end
 
 
