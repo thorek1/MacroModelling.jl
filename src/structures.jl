@@ -209,8 +209,10 @@ struct third_order_perturbation_solution
 end
 
 mutable struct caches
+    tmpkron0::SparseMatrixCSC
     tmpkron1::SparseMatrixCSC
     tmpkron2::SparseMatrixCSC
+    tmpkron22::SparseMatrixCSC
 end
 
 mutable struct perturbation

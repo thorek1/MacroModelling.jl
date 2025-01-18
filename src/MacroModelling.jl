@@ -1030,18 +1030,21 @@ end
 
 function mat_mult_kron(A::AbstractSparseMatrix{R},
                         B::AbstractMatrix{T},
-                        C::AbstractMatrix{T}) where {R <: Real, T <: Real}
+                        C::AbstractMatrix{T};
+                        sparse::Bool = false) where {R <: Real, T <: Real}
     n_rowB = size(B,1)
     n_colB = size(B,2)
 
     n_rowC = size(C,1)
     n_colC = size(C,2)
 
-    X = zeros(T, size(A,1), n_colB * n_colC)
-
-    # vals = T[]
-    # rows = Int[]
-    # cols = Int[]
+    if sparse
+        vals = T[]
+        rows = Int[]
+        cols = Int[]
+    else
+        X = zeros(T, size(A,1), n_colB * n_colC)
+    end
 
     Ā = zeros(T, n_rowC, n_rowB)
     ĀB = zeros(T, n_rowC, n_colB)
@@ -1055,24 +1058,24 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         mul!(ĀB, Ā, B)
         mul!(CĀB, C', ĀB)
         
-        @views copyto!(X[row,:], CĀB)
+        if sparse
+            for (i,v) in enumerate(CĀB)
+                if abs(v) > eps()
+                    push!(rows, row)
+                    push!(cols, i)
+                    push!(vals, v)
+                end
+            end
+        else
+            @views copyto!(X[row,:], CĀB)
+        end
     end
 
-    return choose_matrix_format(X)
-    #     for (i,v) in enumerate(CĀB)
-    #         if abs(v) > eps()
-    #             push!(rows, row)
-    #             push!(cols, i)
-    #             push!(vals, v)
-    #         end
-    #     end
-    # end
-
-    # if VERSION >= v"1.10"
-    #     return sparse!(rows,cols,vals,size(A,1),n_colB*n_colC)   
-    # else
-    #     return sparse(rows,cols,vals,size(A,1),n_colB*n_colC)   
-    # end
+    if sparse
+        return sparse!(rows,cols,vals,size(A,1),n_colB*n_colC)   
+    else
+        return choose_matrix_format(X)
+    end
 end
 
 
