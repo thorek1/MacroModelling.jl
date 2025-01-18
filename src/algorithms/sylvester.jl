@@ -1148,7 +1148,13 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
     𝐗 += initial_guess
 
-    reached_tol = ℒ.norm(A * 𝐗 * B + C - 𝐗) / max(ℒ.norm(𝐗), ℒ.norm(C))
+    ℒ.mul!(tmp̄, 𝐗, B)
+    ℒ.mul!(𝐂¹, A, tmp̄)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐗, 𝐂¹)
+    
+    reached_tol = ℒ.norm(𝐂¹) / max(ℒ.norm(𝐗), ℒ.norm(C))
+    # reached_tol = ℒ.norm(A * 𝐗 * B + C - 𝐗) / max(ℒ.norm(𝐗), ℒ.norm(C))
 
     # end # timeit_debug
     
@@ -1269,7 +1275,13 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     𝐗 += initial_guess
 
-    reached_tol = ℒ.norm(A * 𝐗 * B + C - 𝐗) / max(ℒ.norm(𝐗), ℒ.norm(C))
+    ℒ.mul!(tmp̄, 𝐗, B)
+    ℒ.mul!(𝐂¹, A, tmp̄)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐗, 𝐂¹)
+    
+    reached_tol = ℒ.norm(𝐂¹) / max(ℒ.norm(𝐗), ℒ.norm(C))
+    # reached_tol = ℒ.norm(A * 𝐗 * B + C - 𝐗) / max(ℒ.norm(𝐗), ℒ.norm(C))
 
     # end # timeit_debug
     
@@ -1386,7 +1398,13 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     𝐗 += initial_guess
 
-    reached_tol = ℒ.norm(A * 𝐗 * B + C - 𝐗) / max(ℒ.norm(𝐗), ℒ.norm(C))
+    ℒ.mul!(tmp̄, 𝐗, B)
+    ℒ.mul!(𝐂¹, A, tmp̄)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐗, 𝐂¹)
+    
+    reached_tol = ℒ.norm(𝐂¹) / max(ℒ.norm(𝐗), ℒ.norm(C))
+    # reached_tol = ℒ.norm(A * 𝐗 * B + C - 𝐗) / max(ℒ.norm(𝐗), ℒ.norm(C))
 
     # end # timeit_debug
     
