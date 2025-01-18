@@ -835,12 +835,12 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "Mult" begin
 
     B *= M₃.𝐂₃
-    B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol)
+    B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
 
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
     # B += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)), M₃.𝐂₃) # slower than direct compression
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol)#, timer = timer)
+    B .+= compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol)#, timer = timer)
 
     # end # timeit_debug
     # end # timeit_debug
@@ -866,7 +866,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
 
-    𝐗₃ = 𝐔∇₃ * tmpkron + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
+    𝐗₃ = 𝐔∇₃ * tmpkron .+ 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron * M₃.𝐏₁ᵣ̃ .+ 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron * M₃.𝐏₂ᵣ̃
     
     # end # timeit_debug
     # @timeit_debug timer "∇₂ & ∇₁₊" begin
@@ -919,7 +919,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # @timeit_debug timer "Mult" begin
 
-    𝐗₃ += out2 * M₃.𝐏
+    𝐗₃ .+= out2 * M₃.𝐏
 
     𝐗₃ *= M₃.𝐂₃
 
@@ -928,7 +928,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "3rd Kronecker power" begin
 
     # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
-    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), tol = opts.tol.droptol) #, timer = timer)
+    𝐗₃ .+= ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), tol = opts.tol.droptol) #, timer = timer)
     
     # end # timeit_debug
     # @timeit_debug timer "Mult 2" begin
