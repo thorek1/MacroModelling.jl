@@ -990,17 +990,17 @@ end
 end # dispatch_doctor
 
 function rrule(::typeof(calculate_third_order_solution), 
-                ∇₁::AbstractMatrix{<: Real}, #first order derivatives
-                ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
-                ∇₃::SparseMatrixCSC{<: Real}, #third order derivatives
-                𝑺₁::AbstractMatrix{<: Real}, #first order solution
-                𝐒₂::SparseMatrixCSC{<: Real}, #second order solution
+                ∇₁::AbstractMatrix{S}, #first order derivatives
+                ∇₂::SparseMatrixCSC{S}, #second order derivatives
+                ∇₃::SparseMatrixCSC{S}, #third order derivatives
+                𝑺₁::AbstractMatrix{S}, #first order solution
+                𝐒₂::SparseMatrixCSC{S}, #second order solution
                 M₂::second_order_auxilliary_matrices,  # aux matrices second order
                 M₃::third_order_auxilliary_matrices,   # aux matrices third order
                 ℂ::caches;
                 T::timings,
                 initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                opts::CalculationOptions = merge_calculation_options())    
+                opts::CalculationOptions = merge_calculation_options()) where S <: AbstractFloat 
 
     # @timeit_debug timer "Third order solution - forward" begin
     # inspired by Levintal
@@ -1112,9 +1112,9 @@ function rrule(::typeof(calculate_third_order_solution),
     end
 
     if length(ℂ.tmpkron22) > 0 && eltype(ℂ.tmpkron22) == S
-        ℒ.kron!(ℂ.tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0 * M₂.𝛔)
+        ℒ.kron!(ℂ.tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
     else
-        ℂ.tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0 * M₂.𝛔)
+        ℂ.tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
     end
 
     𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
