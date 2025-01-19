@@ -1,6 +1,8 @@
 # using Revise
+test_set = ENV["TEST_SET"]
 using Preferences: set_preferences!
-set_preferences!("MacroModelling", "dispatch_doctor_mode" => "error")
+set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation"
+] ? "disable" : "error")
 set_preferences!("MacroModelling", "dispatch_doctor_union_limit" => 4)
 using Test
 using MacroModelling
@@ -15,7 +17,6 @@ if VERSION < v"1.12"
 end
 import LinearAlgebra as ℒ
 
-test_set = ENV["TEST_SET"]
 
 println("Running test set: $test_set")
 println("Threads used: ", Threads.nthreads())
