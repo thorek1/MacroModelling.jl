@@ -723,7 +723,13 @@ macro model(𝓂,ex...)
     ℂ = caches( spzeros(0,0),
                 spzeros(0,0),
                 spzeros(0,0),
-                spzeros(0,0))
+                spzeros(0,0),
+                GmresSolver(0,0,0,Vector{Float64}),
+                DqgmresSolver(0,0,0,Vector{Float64}),
+                BicgstabSolver(0,0,Vector{Float64}),
+                GmresSolver(0,0,0,Vector{Float64}),
+                DqgmresSolver(0,0,0,Vector{Float64}),
+                BicgstabSolver(0,0,Vector{Float64}))
 
     T = timings(present_only,
                 future_not_past,

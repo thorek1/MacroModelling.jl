@@ -43,6 +43,7 @@ import Combinatorics: combinations
 import BlockTriangularForm
 import Subscripts: super, sub
 import Krylov
+import Krylov: GmresSolver, DqgmresSolver, BicgstabSolver
 import LinearOperators
 import DataStructures: CircularBuffer
 # import SpeedMapping: speedmapping
@@ -104,7 +105,7 @@ using DispatchDoctor
 
 # Imports
 include("common_docstrings.jl")
-include("options.jl")
+include("options_and_caches.jl")
 include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")

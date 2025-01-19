@@ -1,3 +1,29 @@
+mutable struct caches
+    tmpkron0::SparseMatrixCSC
+    tmpkron1::SparseMatrixCSC
+    tmpkron2::SparseMatrixCSC
+    tmpkron22::SparseMatrixCSC
+    gmres_sylvester²::GmresSolver
+    dqgmres_sylvester²::DqgmresSolver
+    bicgstab_sylvester²::BicgstabSolver
+    gmres_sylvester³::GmresSolver
+    dqgmres_sylvester³::DqgmresSolver
+    bicgstab_sylvester³::BicgstabSolver
+end
+
+function Caches()
+    caches( spzeros(0,0),
+            spzeros(0,0),
+            spzeros(0,0),
+            spzeros(0,0),
+            GmresSolver(0,0,0,Vector{Float64}),
+            DqgmresSolver(0,0,0,Vector{Float64}),
+            BicgstabSolver(0,0,Vector{Float64}),
+            GmresSolver(0,0,0,Vector{Float64}),
+            DqgmresSolver(0,0,0,Vector{Float64}),
+            BicgstabSolver(0,0,Vector{Float64}))
+end
+
 struct Tolerances
     NSSS_acceptance_tol::AbstractFloat
     NSSS_xtol::AbstractFloat

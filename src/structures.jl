@@ -208,12 +208,6 @@ struct third_order_perturbation_solution
     state_update_obc::Function
 end
 
-mutable struct caches
-    tmpkron0::SparseMatrixCSC
-    tmpkron1::SparseMatrixCSC
-    tmpkron2::SparseMatrixCSC
-    tmpkron22::SparseMatrixCSC
-end
 
 mutable struct perturbation
     first_order::perturbation_solution
