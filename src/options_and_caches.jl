@@ -1,28 +1,57 @@
-mutable struct caches
+
+mutable struct krylov_caches
+    gmres::GmresSolver
+    dqgmres::DqgmresSolver
+    bicgstab::BicgstabSolver
+end
+
+mutable struct sylvester_caches
+    tmp::Matrix
+    𝐗::Matrix
+    𝐂::Matrix
+    krylov_caches::krylov_caches
+end
+
+mutable struct higher_order_caches
     tmpkron0::SparseMatrixCSC
     tmpkron1::SparseMatrixCSC
     tmpkron2::SparseMatrixCSC
     tmpkron22::SparseMatrixCSC
-    gmres_sylvester²::GmresSolver
-    dqgmres_sylvester²::DqgmresSolver
-    bicgstab_sylvester²::BicgstabSolver
-    gmres_sylvester³::GmresSolver
-    dqgmres_sylvester³::DqgmresSolver
-    bicgstab_sylvester³::BicgstabSolver
+    sylvester_caches::sylvester_caches
+end
+
+mutable struct caches
+    second_order_caches::higher_order_caches
+    third_order_caches::higher_order_caches
+end
+
+
+function Krylov_caches()
+    krylov_caches(  GmresSolver(0,0,0,Vector{Float64}),
+                    DqgmresSolver(0,0,0,Vector{Float64}),
+                    BicgstabSolver(0,0,Vector{Float64}))
+end
+
+function Sylvester_caches()
+    sylvester_caches(   zeros(0,0),
+                        zeros(0,0),
+                        zeros(0,0),
+                        Krylov_caches())
+end
+
+function Higher_order_caches()
+    higher_order_caches(spzeros(0,0),
+                        spzeros(0,0),
+                        spzeros(0,0),
+                        spzeros(0,0),
+                        Sylvester_caches())
 end
 
 function Caches()
-    caches( spzeros(0,0),
-            spzeros(0,0),
-            spzeros(0,0),
-            spzeros(0,0),
-            GmresSolver(0,0,0,Vector{Float64}),
-            DqgmresSolver(0,0,0,Vector{Float64}),
-            BicgstabSolver(0,0,Vector{Float64}),
-            GmresSolver(0,0,0,Vector{Float64}),
-            DqgmresSolver(0,0,0,Vector{Float64}),
-            BicgstabSolver(0,0,Vector{Float64}))
+    caches( Higher_order_caches(),
+            Higher_order_caches())
 end
+
 
 struct Tolerances
     NSSS_acceptance_tol::AbstractFloat

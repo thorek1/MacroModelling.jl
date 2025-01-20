@@ -17,6 +17,7 @@ function solve_sylvester_equation(A::M,
                                     sylvester_algorithm::Symbol = :doubling,
                                     acceptance_tol::AbstractFloat = 1e-10,
                                     tol::AbstractFloat = 1e-14,
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     verbose::Bool = false)::Union{Tuple{Matrix{Float64}, Bool}, Tuple{ThreadedSparseArrays.ThreadedSparseMatrixCSC{Float64, Int, SparseMatrixCSC{Float64, Int}}, Bool}} where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Choose matrix formats" begin
@@ -60,6 +61,7 @@ function solve_sylvester_equation(A::M,
     x, i, reached_tol = solve_sylvester_equation(a, b, c, Val(sylvester_algorithm), 
                                                         initial_guess = initial_guess, 
                                                         tol = tol,
+                                                        𝕊ℂ = 𝕊ℂ,
                                                         # timer = timer, 
                                                         verbose = verbose)
 
@@ -78,6 +80,7 @@ function solve_sylvester_equation(A::M,
                                                             Val(:bartels_stewart), 
                                                             initial_guess = zeros(0,0), 
                                                             tol = tol, 
+                                                            𝕊ℂ = 𝕊ℂ,
                                                             # timer = timer, 
                                                             verbose = verbose)
 
@@ -95,6 +98,7 @@ function solve_sylvester_equation(A::M,
                                                             Val(:dqgmres), 
                                                             initial_guess = x, 
                                                             tol = tol, 
+                                                            𝕊ℂ = 𝕊ℂ,
                                                             # timer = timer, 
                                                             verbose = verbose)
         if Reached_tol < reached_tol
@@ -116,6 +120,7 @@ function solve_sylvester_equation(A::M,
                                                             Val(:gmres), 
                                                             initial_guess = zeros(0,0), 
                                                             tol = tol, 
+                                                            𝕊ℂ = 𝕊ℂ,
                                                             # timer = timer, 
                                                             verbose = verbose)
 
@@ -133,6 +138,7 @@ function solve_sylvester_equation(A::M,
                                                             Val(:dqgmres), 
                                                             initial_guess = x, 
                                                             tol = tol, 
+                                                            𝕊ℂ = 𝕊ℂ,
                                                             # timer = timer, 
                                                             verbose = verbose)
         if Reached_tol < reached_tol
@@ -154,6 +160,7 @@ function solve_sylvester_equation(A::M,
                                                             Val(:doubling), 
                                                             initial_guess = zeros(0,0), 
                                                             tol = tol, 
+                                                            𝕊ℂ = 𝕊ℂ,
                                                             # timer = timer, 
                                                             verbose = verbose)
 
@@ -237,18 +244,24 @@ function rrule(::typeof(solve_sylvester_equation),
     sylvester_algorithm::Symbol = :doubling,
     acceptance_tol::AbstractFloat = 1e-10,
     tol::AbstractFloat = 1e-14,
+    𝕊ℂ::sylvester_caches = Sylvester_caches(),
     # timer::TimerOutput = TimerOutput(),
     verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
 
     P, solved = solve_sylvester_equation(A, B, C, 
                                         sylvester_algorithm = sylvester_algorithm, 
                                         tol = tol, 
+                                        𝕊ℂ = 𝕊ℂ,
                                         verbose = verbose, 
                                         initial_guess = initial_guess)
 
     # pullback
     function solve_sylvester_equation_pullback(∂P)
-        ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
+        ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 
+                                            sylvester_algorithm = sylvester_algorithm, 
+                                            tol = tol, 
+                                            𝕊ℂ = 𝕊ℂ,
+                                            verbose = verbose)
 
         solved = solved && slvd
 
@@ -270,6 +283,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
                                     sylvester_algorithm::Symbol = :doubling,
                                     acceptance_tol::AbstractFloat = 1e-10,
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     tol::AbstractFloat = 1e-14,
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
@@ -281,6 +295,7 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, 
                                         sylvester_algorithm = sylvester_algorithm, 
                                         tol = tol, 
+                                        𝕊ℂ = 𝕊ℂ,
                                         verbose = verbose, 
                                         initial_guess = initial_guess)
 
@@ -299,7 +314,11 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
         
         if ℒ.norm(X) < eps() continue end
 
-        P, slvd = solve_sylvester_equation(Â, B̂, X, sylvester_algorithm = sylvester_algorithm, tol = tol, verbose = verbose)
+        P, slvd = solve_sylvester_equation(Â, B̂, X, 
+                                            sylvester_algorithm = sylvester_algorithm, 
+                                            𝕊ℂ = 𝕊ℂ,
+                                            tol = tol, 
+                                            verbose = verbose)
 
         solved = solved && slvd
 
@@ -318,6 +337,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     C::AbstractSparseMatrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
@@ -385,6 +405,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     C::Matrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -469,6 +490,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     C::Matrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -572,6 +594,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     C::Matrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{T} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -653,6 +676,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     C::AbstractSparseMatrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -735,6 +759,7 @@ function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
                                     C::AbstractSparseMatrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -816,6 +841,7 @@ function solve_sylvester_equation(  A::Matrix{T},
                                     C::AbstractSparseMatrix{T},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -897,6 +923,7 @@ function solve_sylvester_equation(  A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
                                     ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -995,6 +1022,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     C::DenseMatrix{T},
                                     ::Val{:bartels_stewart};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -1005,8 +1033,16 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
       
-    𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
+    # 𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
+    𝐂¹ = zero(C)
+    tmp̄ = zero(C)
     
+    ℒ.mul!(tmp̄, initial_guess, B)
+    ℒ.mul!(𝐂¹, A, tmp̄)
+    ℒ.axpy!(1, C, 𝐂¹)
+
+    ℒ.axpy!(-1, initial_guess, 𝐂¹)
+
     𝐂 = try 
         MatrixEquations.sylvd(-A, B, 𝐂¹)
     catch
@@ -1021,7 +1057,13 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     𝐂 += initial_guess
 
-    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
+    ℒ.mul!(tmp̄, 𝐂, B)
+    ℒ.mul!(𝐂¹, A, tmp̄)
+    ℒ.axpy!(1, C, 𝐂¹)
+    ℒ.axpy!(-1, 𝐂, 𝐂¹)
+    
+    reached_tol = ℒ.norm(𝐂¹) / max(ℒ.norm(𝐂), ℒ.norm(C))
+    # reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
 
     # if reached_tol > tol
     #     println("Sylvester: sylvester $reached_tol")
@@ -1036,6 +1078,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     C::DenseMatrix{T},
                                     ::Val{:bicgstab};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -1050,10 +1093,23 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     # 𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
     # println(ℒ.norm(𝐂¹))
-    𝐂¹ = copy(C)
 
-    tmp̄ = zero(C)
-    𝐗 = zero(C)
+    if length(𝕊ℂ.tmp) == 0
+        𝕊ℂ.tmp = zero(C)
+    end
+
+    if length(𝕊ℂ.𝐗) == 0
+        𝕊ℂ.𝐗 = zero(C)
+    end
+    
+    if length(𝕊ℂ.𝐂) == 0
+        𝕊ℂ.𝐂 = zero(C)
+    end
+    
+    𝐂¹ = 𝕊ℂ.𝐂
+    tmp̄ = 𝕊ℂ.tmp
+    𝐗 = 𝕊ℂ.𝐗 
+
     # end # timeit_debug  
 
     ℒ.mul!(𝐗, initial_guess, B)
@@ -1119,34 +1175,39 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, preconditioner!)
 
+    if 𝕊ℂ.krylov_caches.bicgstab.m == 0
+        𝕊ℂ.krylov_caches.bicgstab =  BicgstabSolver(length(C), length(C), Vector{T})
+    end
     # @timeit_debug timer "BICGSTAB solve" begin
     # if length(init) == 0
         # 𝐂, info = Krylov.bicgstab(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
-        𝐂, info = Krylov.bicgstab(sylvester, [vec(𝐂¹);], 
-                                    # [vec(initial_guess);], 
-                                    itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
-                                    timemax = 10.0,
-                                    rtol = tol, 
-                                    atol = tol)#, M = precond)
+        # 𝐂, info = Krylov.bicgstab(sylvester, [vec(𝕊ℂ.𝐂);], 
+        Krylov.bicgstab!(   𝕊ℂ.krylov_caches.bicgstab,
+                            sylvester, [vec(𝐂¹);], 
+                            # [vec(initial_guess);], 
+                            itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
+                            timemax = 10.0,
+                            rtol = tol, 
+                            atol = tol)#, M = precond)
     # else
     #     𝐂, info = Krylov.bicgstab(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
     # end # timeit_debug
-    
+
     # @timeit_debug timer "Postprocess" begin
 
-    # @inbounds 𝐗[idxs] = 𝐂
-    copyto!(𝐗, 𝐂)
+    # # @inbounds 𝕊ℂ.𝐗[idxs] = 𝐂
+    copyto!(𝐗, 𝕊ℂ.krylov_caches.bicgstab.x)
 
-    ℒ.mul!(tmp̄, A, 𝐗 * B)
-    ℒ.axpy!(1, C, tmp̄)
+    # ℒ.mul!(tmp̄, A, 𝐗 * B)
+    # ℒ.axpy!(1, C, tmp̄)
 
     # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
 
-    ℒ.axpy!(-1, 𝐗, tmp̄)
+    # ℒ.axpy!(-1, 𝐗, tmp̄)
 
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
-    𝐗 += initial_guess
+    𝐗 += initial_guess # problematic with copyto! above. cant be axpy!
 
     ℒ.mul!(tmp̄, 𝐗, B)
     ℒ.mul!(𝐂¹, A, tmp̄)
@@ -1165,8 +1226,12 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # if reached_tol > tol
     #     println("Sylvester: bicgstab $reached_tol")
     # end
+    
+    # iter = info.niter
+    iter = 𝕊ℂ.krylov_caches.bicgstab.stats.niter
 
-    return 𝐗, info.niter, reached_tol
+    # return 𝕊ℂ.𝐗, iter, reached_tol
+    return 𝐗, iter, reached_tol
 end
 
 
@@ -1175,6 +1240,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     C::DenseMatrix{T},
                                     ::Val{:dqgmres};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -1187,11 +1253,25 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    # 𝐂¹  = A * initial_guess * B + C - initial_guess 
-    𝐂¹ = copy(C)
+    # 𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
+    # println(ℒ.norm(𝐂¹))
 
-    tmp̄ = zero(C)
-    𝐗 = zero(C)
+    if length(𝕊ℂ.tmp) == 0
+        𝕊ℂ.tmp = zero(C)
+    end
+
+    if length(𝕊ℂ.𝐗) == 0
+        𝕊ℂ.𝐗 = zero(C)
+    end
+    
+    if length(𝕊ℂ.𝐂) == 0
+        𝕊ℂ.𝐂 = zero(C)
+    end
+    
+    𝐂¹ = 𝕊ℂ.𝐂
+    tmp̄ = 𝕊ℂ.tmp
+    𝐗 = 𝕊ℂ.𝐗 
+
     # end # timeit_debug  
 
     ℒ.mul!(𝐗, initial_guess, B)
@@ -1203,10 +1283,14 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     ℒ.axpy!(-1, initial_guess, tmp̄)
 
     copyto!(𝐂¹, tmp̄)
-    # end # timeit_debug   
+
+    # println(ℒ.norm(𝐂¹))
+
+    # idxs = findall(abs.(C) .> eps()) # this does not work since the problem is incomplete
 
     function sylvester!(sol,𝐱)
         # @timeit_debug timer "Copy1" begin
+        # @inbounds 𝐗[idxs] = 𝐱
         copyto!(𝐗, 𝐱)
         # end # timeit_debug
         # 𝐗 = @view reshape(𝐱, size(𝐗))
@@ -1219,21 +1303,26 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         # ℒ.axpby!(-1, tmp̄, 1, 𝐗)
         # end # timeit_debug
         # @timeit_debug timer "Copy2" begin
+        # @inbounds @views copyto!(sol, 𝐗[idxs])
         copyto!(sol, 𝐗)
         # end # timeit_debug
         # sol = @view reshape(𝐗, size(sol))
     end
 
+    # sylvester = LinearOperators.LinearOperator(Float64, length(idxs), length(idxs), true, true, sylvester!)
     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
     
+    # unclear if this helps in most cases
     # # ==== Preconditioner Setup ====
-    # # Approximate the diagonal of the Sylvester operator J = A ⊗ B + I
-    # # For AXB - X, the diagonal can be approximated as diag(A) * diag(B) + 1
-    # diag_J_matrix = ℒ.diag(B) * ℒ.diag(A)' .+ 1.0
-    # diag_J = vec(diag_J_matrix)  # Vector of length 39,270
+    # # Approximate the diagonal of the Sylvester operator J = A ⊗ B - I
+    # # For AXB - X, the diagonal can be approximated as diag(A) * diag(B) - 1
+    # diag_J_matrix = ℒ.diag(B) * ℒ.diag(A)' .+ 1
+    # diag_J_matrix .+= ℒ.norm(C)
+    # # println(ℒ.norm(C))
+    # diag_J = vec(diag_J_matrix)
 
     # # # To avoid division by zero, set a minimum threshold
-    # # diag_J = max.(abs.(diag_J), 1e-12)
+    # # diag_J = max.(abs.(diag_J), 1e-6)
 
     # # Compute the inverse of the diagonal preconditioner
     # inv_diag_J = 1.0 ./ diag_J
@@ -1241,39 +1330,46 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # # println(length(inv_diag_J))
     # # Define the preconditioner as a LinearOperator
     # function preconditioner!(y, x)
+    #     # ℒ.ldiv!(y, 1e4, x)
     #     # ℒ.mul!(y, inv_diag_J, x)
-    #     @. y = inv_diag_J .* x
+    #     @. y = inv_diag_J * x
     # end
 
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, preconditioner!)
 
+    if 𝕊ℂ.krylov_caches.dqgmres.m == 0
+        𝕊ℂ.krylov_caches.dqgmres =  DqgmresSolver(length(C), length(C), 20, Vector{T})
+    end
     # @timeit_debug timer "DQGMRES solve" begin
     # if length(init) == 0
-        𝐂, info = Krylov.dqgmres(sylvester, [vec(𝐂¹);], 
-                                # [vec(initial_guess);], # start value helps
-                                itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
-                                timemax = 10.0,
-                                rtol = tol, 
-                                atol = tol)#, M = precond)
+        # 𝐂, info = Krylov.dqgmres(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
+        # 𝐂, info = Krylov.dqgmres(sylvester, [vec(𝕊ℂ.𝐂);], 
+        Krylov.dqgmres!(𝕊ℂ.krylov_caches.dqgmres,
+                        sylvester, [vec(𝐂¹);], 
+                        # [vec(initial_guess);], 
+                        itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
+                        timemax = 10.0,
+                        rtol = tol, 
+                        atol = tol)#, M = precond)
     # else
-    #     𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)#, restart = true, M = precond)
+    #     𝐂, info = Krylov.dqgmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
     # end # timeit_debug
 
     # @timeit_debug timer "Postprocess" begin
 
-    copyto!(𝐗, 𝐂)
+    # # @inbounds 𝕊ℂ.𝐗[idxs] = 𝐂
+    copyto!(𝐗, 𝕊ℂ.krylov_caches.dqgmres.x)
 
-    ℒ.mul!(tmp̄, A, 𝐗 * B)
-    ℒ.axpy!(1, C, tmp̄)
+    # ℒ.mul!(tmp̄, A, 𝐗 * B)
+    # ℒ.axpy!(1, C, tmp̄)
 
     # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
 
-    ℒ.axpy!(-1, 𝐗, tmp̄)
+    # ℒ.axpy!(-1, 𝐗, tmp̄)
 
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
-
-    𝐗 += initial_guess
+    𝐗 += initial_guess # problematic with copyto! above. cant be axpy!
 
     ℒ.mul!(tmp̄, 𝐗, B)
     ℒ.mul!(𝐂¹, A, tmp̄)
@@ -1285,11 +1381,19 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     # end # timeit_debug
     
+    if !(typeof(C) <: DenseMatrix)
+        𝐗 = choose_matrix_format(𝐗, density_threshold = 1.0)
+    end
+
     # if reached_tol > tol
     #     println("Sylvester: dqgmres $reached_tol")
     # end
+    
+    # iter = info.niter
+    iter = 𝕊ℂ.krylov_caches.dqgmres.stats.niter
 
-    return 𝐗, info.niter, reached_tol
+    # return 𝕊ℂ.𝐗, iter, reached_tol
+    return 𝐗, iter, reached_tol
 end
 
 
@@ -1298,6 +1402,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
                                     C::DenseMatrix{T},
                                     ::Val{:gmres};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
@@ -1310,11 +1415,25 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         initial_guess = zero(C)
     end
 
-    # 𝐂¹  = A * initial_guess * B + C - initial_guess 
-    𝐂¹ = copy(C)
+    # 𝐂¹  = A * initial_guess * B + C - initial_guess #copy(C)
+    # println(ℒ.norm(𝐂¹))
 
-    tmp̄ = zero(C)
-    𝐗 = zero(C)
+    if length(𝕊ℂ.tmp) == 0
+        𝕊ℂ.tmp = zero(C)
+    end
+
+    if length(𝕊ℂ.𝐗) == 0
+        𝕊ℂ.𝐗 = zero(C)
+    end
+    
+    if length(𝕊ℂ.𝐂) == 0
+        𝕊ℂ.𝐂 = zero(C)
+    end
+    
+    𝐂¹ = 𝕊ℂ.𝐂
+    tmp̄ = 𝕊ℂ.tmp
+    𝐗 = 𝕊ℂ.𝐗 
+
     # end # timeit_debug  
 
     ℒ.mul!(𝐗, initial_guess, B)
@@ -1326,10 +1445,14 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     ℒ.axpy!(-1, initial_guess, tmp̄)
 
     copyto!(𝐂¹, tmp̄)
-    # end # timeit_debug   
+
+    # println(ℒ.norm(𝐂¹))
+
+    # idxs = findall(abs.(C) .> eps()) # this does not work since the problem is incomplete
 
     function sylvester!(sol,𝐱)
         # @timeit_debug timer "Copy1" begin
+        # @inbounds 𝐗[idxs] = 𝐱
         copyto!(𝐗, 𝐱)
         # end # timeit_debug
         # 𝐗 = @view reshape(𝐱, size(𝐗))
@@ -1342,21 +1465,26 @@ function solve_sylvester_equation(A::DenseMatrix{T},
         # ℒ.axpby!(-1, tmp̄, 1, 𝐗)
         # end # timeit_debug
         # @timeit_debug timer "Copy2" begin
+        # @inbounds @views copyto!(sol, 𝐗[idxs])
         copyto!(sol, 𝐗)
         # end # timeit_debug
         # sol = @view reshape(𝐗, size(sol))
     end
 
+    # sylvester = LinearOperators.LinearOperator(Float64, length(idxs), length(idxs), true, true, sylvester!)
     sylvester = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, sylvester!)
     
+    # unclear if this helps in most cases
     # # ==== Preconditioner Setup ====
-    # # Approximate the diagonal of the Sylvester operator J = A ⊗ B + I
-    # # For AXB - X, the diagonal can be approximated as diag(A) * diag(B) + 1
-    # diag_J_matrix = ℒ.diag(B) * ℒ.diag(A)' .+ 1.0
-    # diag_J = vec(diag_J_matrix)  # Vector of length 39,270
+    # # Approximate the diagonal of the Sylvester operator J = A ⊗ B - I
+    # # For AXB - X, the diagonal can be approximated as diag(A) * diag(B) - 1
+    # diag_J_matrix = ℒ.diag(B) * ℒ.diag(A)' .+ 1
+    # diag_J_matrix .+= ℒ.norm(C)
+    # # println(ℒ.norm(C))
+    # diag_J = vec(diag_J_matrix)
 
     # # # To avoid division by zero, set a minimum threshold
-    # # diag_J = max.(abs.(diag_J), 1e-12)
+    # # diag_J = max.(abs.(diag_J), 1e-6)
 
     # # Compute the inverse of the diagonal preconditioner
     # inv_diag_J = 1.0 ./ diag_J
@@ -1364,39 +1492,46 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # # println(length(inv_diag_J))
     # # Define the preconditioner as a LinearOperator
     # function preconditioner!(y, x)
+    #     # ℒ.ldiv!(y, 1e4, x)
     #     # ℒ.mul!(y, inv_diag_J, x)
-    #     @. y = inv_diag_J .* x
+    #     @. y = inv_diag_J * x
     # end
 
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, preconditioner!)
-    
+
+    if 𝕊ℂ.krylov_caches.gmres.m == 0
+        𝕊ℂ.krylov_caches.gmres =  GmresSolver(length(C), length(C), 20, Vector{T})
+    end
     # @timeit_debug timer "GMRES solve" begin
     # if length(init) == 0
-        𝐂, info = Krylov.gmres(sylvester, [vec(𝐂¹);], 
-                                # [vec(initial_guess);], # start value helps
-                                itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
-                                timemax = 10.0,
-                                rtol = tol, 
-                                atol = tol)#, M = precond)
+        # 𝐂, info = Krylov.gmres(sylvester, C[idxs], rtol = tol / 10, atol = tol / 10)#, M = precond)
+        # 𝐂, info = Krylov.gmres(sylvester, [vec(𝕊ℂ.𝐂);], 
+        Krylov.gmres!(𝕊ℂ.krylov_caches.gmres,
+                        sylvester, [vec(𝐂¹);], 
+                        # [vec(initial_guess);], 
+                        itmax = min(5000,max(500,Int(round(sqrt(length(𝐂¹)*10))))),
+                        timemax = 10.0,
+                        rtol = tol, 
+                        atol = tol)#, M = precond)
     # else
-    #     𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)#, restart = true, M = precond)
+    #     𝐂, info = Krylov.gmres(sylvester, [vec(C);], [vec(init);], rtol = tol / 10)
     # end
     # end # timeit_debug
 
     # @timeit_debug timer "Postprocess" begin
 
-    copyto!(𝐗, 𝐂)
+    # # @inbounds 𝕊ℂ.𝐗[idxs] = 𝐂
+    copyto!(𝐗, 𝕊ℂ.krylov_caches.gmres.x)
 
-    ℒ.mul!(tmp̄, A, 𝐗 * B)
-    ℒ.axpy!(1, C, tmp̄)
+    # ℒ.mul!(tmp̄, A, 𝐗 * B)
+    # ℒ.axpy!(1, C, tmp̄)
 
     # denom = max(ℒ.norm(𝐗), ℒ.norm(tmp̄))
 
-    ℒ.axpy!(-1, 𝐗, tmp̄)
+    # ℒ.axpy!(-1, 𝐗, tmp̄)
 
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
-
-    𝐗 += initial_guess
+    𝐗 += initial_guess # problematic with copyto! above. cant be axpy!
 
     ℒ.mul!(tmp̄, 𝐗, B)
     ℒ.mul!(𝐂¹, A, tmp̄)
@@ -1408,11 +1543,19 @@ function solve_sylvester_equation(A::DenseMatrix{T},
 
     # end # timeit_debug
     
+    if !(typeof(C) <: DenseMatrix)
+        𝐗 = choose_matrix_format(𝐗, density_threshold = 1.0)
+    end
+
     # if reached_tol > tol
     #     println("Sylvester: gmres $reached_tol")
     # end
+    
+    # iter = info.niter
+    iter = 𝕊ℂ.krylov_caches.gmres.stats.niter
 
-    return 𝐗, info.niter, reached_tol
+    # return 𝕊ℂ.𝐗, iter, reached_tol
+    return 𝐗, iter, reached_tol
 end
 
 

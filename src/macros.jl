@@ -720,16 +720,7 @@ macro model(𝓂,ex...)
 
     @assert !any(isnothing, past_not_future_and_mixed_idx) "The following variables appear in the past only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
 
-    ℂ = caches( spzeros(0,0),
-                spzeros(0,0),
-                spzeros(0,0),
-                spzeros(0,0),
-                GmresSolver(0,0,0,Vector{Float64}),
-                DqgmresSolver(0,0,0,Vector{Float64}),
-                BicgstabSolver(0,0,Vector{Float64}),
-                GmresSolver(0,0,0,Vector{Float64}),
-                DqgmresSolver(0,0,0,Vector{Float64}),
-                BicgstabSolver(0,0,Vector{Float64}))
+    ℂ = Caches()
 
     T = timings(present_only,
                 future_not_past,

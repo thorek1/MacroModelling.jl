@@ -4248,7 +4248,8 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate second order solution" begin
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices; 
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices,
+                                                    𝓂.caches.second_order_caches; 
                                                     T = 𝓂.timings, 
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     # timer = timer,
@@ -4567,7 +4568,8 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                    𝓂.solution.perturbation.second_order_auxilliary_matrices; 
+                                                    𝓂.solution.perturbation.second_order_auxilliary_matrices,
+                                                    𝓂.caches.second_order_caches;
                                                     T = 𝓂.timings,
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     # timer = timer,
@@ -4590,7 +4592,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
                                                 𝓂.solution.perturbation.third_order_auxilliary_matrices,
-                                                𝓂.caches; 
+                                                𝓂.caches.third_order_caches; 
                                                 T = 𝓂.timings, 
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 # timer = timer, 

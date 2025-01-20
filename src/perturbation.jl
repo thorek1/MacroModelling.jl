@@ -372,7 +372,8 @@ end
 function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             𝑺₁::AbstractMatrix{S},#first order solution
-                                            M₂::second_order_auxilliary_matrices;  # aux matrices
+                                            M₂::second_order_auxilliary_matrices,   # aux matrices
+                                            ℂ::higher_order_caches;
                                             T::timings,
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
@@ -458,6 +459,7 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
                                             tol = opts.tol.sylvester_tol,
+                                            𝕊ℂ = ℂ.sylvester_caches,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
 
@@ -494,7 +496,8 @@ function rrule(::typeof(calculate_second_order_solution),
                     ∇₁::AbstractMatrix{<: Real}, #first order derivatives
                     ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
                     𝑺₁::AbstractMatrix{<: Real},#first order solution
-                    M₂::second_order_auxilliary_matrices;  # aux matrices
+                    M₂::second_order_auxilliary_matrices,   # aux matrices
+                    ℂ::higher_order_caches;
                     T::timings,
                     initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                     opts::CalculationOptions = merge_calculation_options())
@@ -574,6 +577,7 @@ function rrule(::typeof(calculate_second_order_solution),
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm²,
                                             tol = opts.tol.sylvester_tol,
+                                            𝕊ℂ = ℂ.sylvester_caches,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
 
@@ -623,6 +627,7 @@ function rrule(::typeof(calculate_second_order_solution),
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
                                                 tol = opts.tol.sylvester_tol,
+                                                𝕊ℂ = ℂ.sylvester_caches,
                                                 acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
         
@@ -757,7 +762,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             𝐒₂::SparseMatrixCSC{S}, #second order solution
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices,   # aux matrices third order
-                                            ℂ::caches;
+                                            ℂ::higher_order_caches;
                                             T::timings,
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
@@ -955,6 +960,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
                                             tol = opts.tol.sylvester_tol,
+                                            𝕊ℂ = ℂ.sylvester_caches,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
     
@@ -997,7 +1003,7 @@ function rrule(::typeof(calculate_third_order_solution),
                 𝐒₂::SparseMatrixCSC{S}, #second order solution
                 M₂::second_order_auxilliary_matrices,  # aux matrices second order
                 M₃::third_order_auxilliary_matrices,   # aux matrices third order
-                ℂ::caches;
+                ℂ::higher_order_caches;
                 T::timings,
                 initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                 opts::CalculationOptions = merge_calculation_options()) where S <: AbstractFloat 
@@ -1200,6 +1206,7 @@ function rrule(::typeof(calculate_third_order_solution),
                                             initial_guess = initial_guess,
                                             sylvester_algorithm = opts.sylvester_algorithm³,
                                             tol = opts.tol.sylvester_tol,
+                                            𝕊ℂ = ℂ.sylvester_caches,
                                             acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                             verbose = opts.verbose) # timer = timer)
     
@@ -1310,6 +1317,7 @@ function rrule(::typeof(calculate_third_order_solution),
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₃,
                                                 sylvester_algorithm = opts.sylvester_algorithm³,
                                                 tol = opts.tol.sylvester_tol,
+                                                𝕊ℂ = ℂ.sylvester_caches,
                                                 acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
 
