@@ -1032,7 +1032,7 @@ end
 function mat_mult_kron(A::AbstractSparseMatrix{R},
                         B::AbstractMatrix{T},
                         C::AbstractMatrix{T};
-                        sparse_preallocation::Tuple{Vector{Int},Vector{Int},Vector{T}} = (Int[],Int[],T[]),
+                        sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         sparse::Bool = false) where {R <: Real, T <: Real}
     n_rowB = size(B,1)
     n_colB = size(B,2)
@@ -1113,7 +1113,18 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         resize!(J, k)
         resize!(V, k)
 
-        out = sparse!(I, J, V, size(A, 1), n_colB * n_colC)   
+        klasttouch = sparse_preallocation[4] # Vector{Ti}(undef, n)
+        csrrowptr  = sparse_preallocation[5] # Vector{Ti}(undef, m + 1)
+        csrcolval  = sparse_preallocation[6] # Vector{Ti}(undef, length(I))
+        csrnzval   = sparse_preallocation[7] # Vector{Tv}(undef, length(I))
+
+        resize!(klasttouch, n_colB * n_colC)
+        resize!(csrrowptr, size(A, 1) + 1)
+        resize!(csrcolval, length(I))
+        resize!(csrnzval, length(I))
+
+        out = sparse!(I, J, V, size(A, 1), n_colB * n_colC, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+        # out = sparse!(I, J, V, size(A, 1), n_colB * n_colC)   
     else
         out = choose_matrix_format(X)
     end
@@ -1177,7 +1188,7 @@ function compressed_kron³(a::AbstractMatrix{T};
                     colmask::Vector{Int} = Int[],
                     # timer::TimerOutput = TimerOutput(),
                     tol::AbstractFloat = eps(),
-                    sparse_preallocation::Tuple{Vector{Int},Vector{Int},Vector{T}} = (Int[],Int[],T[])) where T <: Real
+                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
     # @timeit_debug timer "Compressed 3rd kronecker power" begin
           
     # @timeit_debug timer "Preallocation" begin
@@ -1218,10 +1229,10 @@ function compressed_kron³(a::AbstractMatrix{T};
     m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
     m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
 
-    m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 2 : 3
+    m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 3 : 4
 
     if length(sparse_preallocation[1]) == 0
-        estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp * 1.5, 10000))
+        estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp, 10000))
 
         resize!(sparse_preallocation[1], estimated_nnz)
         resize!(sparse_preallocation[2], estimated_nnz)
@@ -1244,7 +1255,6 @@ function compressed_kron³(a::AbstractMatrix{T};
     # k̄ = Threads.Atomic{Int}(0)  # effectively slower than the non-threaded version
 
     k = 0
-    α = .1 # speed of Vector increase
 
     # end # timeit_debug
 
@@ -1336,7 +1346,8 @@ function compressed_kron³(a::AbstractMatrix{T};
                                                         k += 1
 
                                                         if k > estimated_nnz
-                                                            estimated_nnz += min(m3_cols * m3_rows, max(10000, Int(ceil((α - 1) * estimated_nnz + (1 - α) * m3_cols * m3_rows))))
+                                                            estimated_nnz += Int(ceil(max(1000, estimated_nnz * .1)))
+                                                            estimated_nnz = min(m3_cols * m3_rows, estimated_nnz)
                                                             resize!(I, estimated_nnz)
                                                             resize!(J, estimated_nnz)
                                                             resize!(V, estimated_nnz)
@@ -1384,9 +1395,31 @@ function compressed_kron³(a::AbstractMatrix{T};
 
     # Create the sparse matrix from the collected indices and values
     if a_is_adjoint
-        out = sparse!(J, I, V, m3_cols, m3_rows)
+        klasttouch = sparse_preallocation[4] # Vector{Ti}(undef, n)
+        csrrowptr  = sparse_preallocation[5] # Vector{Ti}(undef, m + 1)
+        csrcolval  = sparse_preallocation[6] # Vector{Ti}(undef, length(I))
+        csrnzval   = sparse_preallocation[7] # Vector{Tv}(undef, length(I))
+
+        resize!(klasttouch, m3_rows)
+        resize!(csrrowptr, m3_cols + 1)
+        resize!(csrcolval, length(J))
+        resize!(csrnzval, length(J))
+
+        out = sparse!(J, I, V, m3_cols, m3_rows, +, klasttouch, csrrowptr, csrcolval, csrnzval, J, I, V)
+        # out = sparse!(J, I, V, m3_cols, m3_rows)
     else
-        out = sparse!(I, J, V, m3_rows, m3_cols)
+        klasttouch = sparse_preallocation[4] # Vector{Ti}(undef, n)
+        csrrowptr  = sparse_preallocation[5] # Vector{Ti}(undef, m + 1)
+        csrcolval  = sparse_preallocation[6] # Vector{Ti}(undef, length(I))
+        csrnzval   = sparse_preallocation[7] # Vector{Tv}(undef, length(I))
+
+        resize!(klasttouch, m3_cols)
+        resize!(csrrowptr, m3_rows + 1)
+        resize!(csrcolval, length(I))
+        resize!(csrnzval, length(I))
+
+        out = sparse!(I, J, V, m3_rows, m3_cols, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+        # out = sparse!(I, J, V, m3_rows, m3_cols)
     end
 
     return out
