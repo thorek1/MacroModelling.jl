@@ -74,11 +74,10 @@ T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :
 
 first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁; T = T)# |> Matrix{Float32}
 
-second_order_solution, solved2 = calculate_second_order_solution(∇₁, 
-∇₂, 
-first_order_solution, 
-RBC_CME.solution.perturbation.second_order_auxilliary_matrices; 
-T = T)
+second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, 
+                                                                RBC_CME.solution.perturbation.second_order_auxilliary_matrices,
+                                                                RBC_CME.caches.second_order_caches; 
+                                                                T = T)
 
 
 # second_order_solution *= RBC_CME.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
@@ -92,7 +91,7 @@ third_order_solution, solved3 = calculate_third_order_solution(∇₁,
                                                             second_order_solution, 
                                                             RBC_CME.solution.perturbation.second_order_auxilliary_matrices, 
                                                             RBC_CME.solution.perturbation.third_order_auxilliary_matrices, 
-                                                            RBC_CME.caches; 
+                                                            RBC_CME.caches.third_order_caches; 
                                                             T = T)
 
 # third_order_solution *= RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
