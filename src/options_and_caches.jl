@@ -1,28 +1,33 @@
 
-mutable struct krylov_caches
-    gmres::GmresSolver
-    dqgmres::DqgmresSolver
-    bicgstab::BicgstabSolver
+mutable struct krylov_caches{F <: AbstractFloat}
+    gmres::GmresSolver{F,F,Vector{F}}
+    dqgmres::DqgmresSolver{F,F,Vector{F}}
+    bicgstab::BicgstabSolver{F,F,Vector{F}}
 end
 
-mutable struct sylvester_caches
-    tmp::Matrix
-    𝐗::Matrix
-    𝐂::Matrix
-    krylov_caches::krylov_caches
+mutable struct sylvester_caches{F <: AbstractFloat}
+    tmp::Matrix{F}
+    𝐗::Matrix{F}
+    𝐂::Matrix{F}
+    krylov_caches::krylov_caches{F}
 end
 
-mutable struct higher_order_caches
-    tmpkron0::SparseMatrixCSC
-    tmpkron1::SparseMatrixCSC
-    tmpkron2::SparseMatrixCSC
-    tmpkron22::SparseMatrixCSC
-    sylvester_caches::sylvester_caches
+mutable struct higher_order_caches{F <: AbstractFloat}
+    tmpkron0::SparseMatrixCSC{F, Int}
+    tmpkron1::SparseMatrixCSC{F, Int}
+    tmpkron2::SparseMatrixCSC{F, Int}
+    tmpkron22::SparseMatrixCSC{F, Int}
+    tmp_sparse_prealloc1::Tuple{Vector{Int}, Vector{Int}, Vector{F}}
+    tmp_sparse_prealloc2::Tuple{Vector{Int}, Vector{Int}, Vector{F}}
+    tmp_sparse_prealloc3::Tuple{Vector{Int}, Vector{Int}, Vector{F}}
+    tmp_sparse_prealloc4::Tuple{Vector{Int}, Vector{Int}, Vector{F}}
+    tmp_sparse_prealloc5::Tuple{Vector{Int}, Vector{Int}, Vector{F}}
+    sylvester_caches::sylvester_caches{F}
 end
 
-mutable struct caches
-    second_order_caches::higher_order_caches
-    third_order_caches::higher_order_caches
+mutable struct caches{F <: AbstractFloat}
+    second_order_caches::higher_order_caches{F}
+    third_order_caches::higher_order_caches{F}
 end
 
 
@@ -44,6 +49,11 @@ function Higher_order_caches()
                         spzeros(0,0),
                         spzeros(0,0),
                         spzeros(0,0),
+                        (Int[],Int[],Float64[]),
+                        (Int[],Int[],Float64[]),
+                        (Int[],Int[],Float64[]),
+                        (Int[],Int[],Float64[]),
+                        (Int[],Int[],Float64[]),
                         Sylvester_caches())
 end
 

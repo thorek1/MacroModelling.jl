@@ -1032,6 +1032,7 @@ end
 function mat_mult_kron(A::AbstractSparseMatrix{R},
                         B::AbstractMatrix{T},
                         C::AbstractMatrix{T};
+                        sparse_preallocation::Tuple{Vector{Int},Vector{Int},Vector{T}} = (Int[],Int[],T[]),
                         sparse::Bool = false) where {R <: Real, T <: Real}
     n_rowB = size(B,1)
     n_colB = size(B,2)
@@ -1040,9 +1041,31 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     n_colC = size(C,2)
 
     if sparse
-        vals = T[]
-        rows = Int[]
-        cols = Int[]
+        nnzA = nnz(A)
+        nnzB = sum(abs.(B) .> eps())
+        nnzC = sum(abs.(C) .> eps())
+
+        p = nnzA * nnzB * nnzC / (length(A) * length(B) * length(C))
+        
+        if length(sparse_preallocation[1]) == 0
+            estimated_nnz = Int(ceil((1-(1-p)^size(A,1))*size(A,1) * n_colB * n_colC))
+
+            resize!(sparse_preallocation[1], estimated_nnz)
+            resize!(sparse_preallocation[2], estimated_nnz)
+            resize!(sparse_preallocation[3], estimated_nnz)
+
+            I = sparse_preallocation[1]
+            J = sparse_preallocation[2]
+            V = sparse_preallocation[3]
+        else
+            estimated_nnz = length(sparse_preallocation[3])
+
+            resize!(sparse_preallocation[1], estimated_nnz)
+
+            I = sparse_preallocation[1]
+            J = sparse_preallocation[2]
+            V = sparse_preallocation[3]
+        end
     else
         X = zeros(T, size(A,1), n_colB * n_colC)
     end
@@ -1053,6 +1076,9 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
 
     rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
 
+    α = .7 # speed of Vector increase
+    k = 0
+
     # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
     @inbounds for row in rv |> unique
         @views copyto!(Ā, A[row, :])
@@ -1062,9 +1088,19 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
         if sparse
             for (i,v) in enumerate(CĀB)
                 if abs(v) > eps()
-                    push!(rows, row)
-                    push!(cols, i)
-                    push!(vals, v)
+                    k += 1
+
+                    if k > estimated_nnz
+                        estimated_nnz += min(size(A,1) * n_colB * n_colC, max(10000, Int(ceil((α - 1) * estimated_nnz + (1 - α) * size(A,1) * n_colB * n_colC))))
+                        
+                        resize!(I, estimated_nnz)
+                        resize!(J, estimated_nnz)
+                        resize!(V, estimated_nnz)
+                    end
+
+                    I[k] = row
+                    J[k] = i
+                    V[k] = v
                 end
             end
         else
@@ -1073,7 +1109,11 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     end
 
     if sparse
-        out = sparse!(rows, cols, vals, size(A, 1), n_colB * n_colC)   
+        resize!(I, k)
+        resize!(J, k)
+        resize!(V, k)
+
+        out = sparse!(I, J, V, size(A, 1), n_colB * n_colC)   
     else
         out = choose_matrix_format(X)
     end
@@ -1137,7 +1177,7 @@ function compressed_kron³(a::AbstractMatrix{T};
                     colmask::Vector{Int} = Int[],
                     # timer::TimerOutput = TimerOutput(),
                     tol::AbstractFloat = eps(),
-                    preallocate::Bool = true) where T <: Real
+                    sparse_preallocation::Tuple{Vector{Int},Vector{Int},Vector{T}} = (Int[],Int[],T[])) where T <: Real
     # @timeit_debug timer "Compressed 3rd kronecker power" begin
           
     # @timeit_debug timer "Preallocation" begin
@@ -1166,9 +1206,9 @@ function compressed_kron³(a::AbstractMatrix{T};
 
     if rowmask == Int[0] || colmask == Int[0]
         if a_is_adjoint
-            return sparse(Int[], Int[], T[], m3_cols, m3_rows)
+            return spzeros(T, m3_cols, m3_rows)
         else
-            return sparse(Int[], Int[], T[], m3_rows, m3_cols)
+            return spzeros(T, m3_rows, m3_cols)
         end
     end
     # Initialize arrays to collect indices and values
@@ -1178,23 +1218,33 @@ function compressed_kron³(a::AbstractMatrix{T};
     m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
     m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
 
-    m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 2.5 : 3.1
+    m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 2 : 3
 
-    estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp * 1.3, 10000))
+    if length(sparse_preallocation[1]) == 0
+        estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp * 1.5, 10000))
 
-    if preallocate
-        I = Vector{Int}(undef, estimated_nnz)
-        J = Vector{Int}(undef, estimated_nnz)
-        V = Vector{T}(undef, estimated_nnz)
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+
+        I = sparse_preallocation[1]
+        J = sparse_preallocation[2]
+        V = sparse_preallocation[3]
     else
-        I = Int[]
-        J = Int[]
-        V = T[]
+        estimated_nnz = length(sparse_preallocation[3])
+
+        resize!(sparse_preallocation[1], estimated_nnz)
+
+        I = sparse_preallocation[1]
+        J = sparse_preallocation[2]
+        V = sparse_preallocation[3]
     end
 
     # k = Threads.Atomic{Int}(0)  # Counter for non-zero entries
     # k̄ = Threads.Atomic{Int}(0)  # effectively slower than the non-threaded version
+
     k = 0
+    α = .1 # speed of Vector increase
 
     # end # timeit_debug
 
@@ -1283,24 +1333,18 @@ function compressed_kron³(a::AbstractMatrix{T};
                                                         # J[k[]] = col
                                                         # V[k[]] = val / divisor 
 
-                                                        if preallocate
-                                                            k += 1
+                                                        k += 1
 
-                                                            if k > estimated_nnz
-                                                                estimated_nnz = floor(Int, estimated_nnz * 1.1)
-                                                                resize!(I, estimated_nnz)
-                                                                resize!(J, estimated_nnz)
-                                                                resize!(V, estimated_nnz)
-                                                            end
-
-                                                            I[k] = row
-                                                            J[k] = col
-                                                            V[k] = val / divisor 
-                                                        else
-                                                            push!(I, row)
-                                                            push!(J, col)
-                                                            push!(V, val / divisor)
+                                                        if k > estimated_nnz
+                                                            estimated_nnz += min(m3_cols * m3_rows, max(10000, Int(ceil((α - 1) * estimated_nnz + (1 - α) * m3_cols * m3_rows))))
+                                                            resize!(I, estimated_nnz)
+                                                            resize!(J, estimated_nnz)
+                                                            resize!(V, estimated_nnz)
                                                         end
+
+                                                        I[k] = row
+                                                        J[k] = col
+                                                        V[k] = val / divisor 
                                                     end
 
                                                     # end # timeit_debug
@@ -1331,11 +1375,9 @@ function compressed_kron³(a::AbstractMatrix{T};
     # resize!(I, k̄[])
     # resize!(J, k̄[])
     # resize!(V, k̄[]) 
-    if preallocate   
-        resize!(I, k)
-        resize!(J, k)
-        resize!(V, k)
-    end
+    resize!(I, k)
+    resize!(J, k)
+    resize!(V, k)
 
     # end # timeit_debug
     # end # timeit_debug
