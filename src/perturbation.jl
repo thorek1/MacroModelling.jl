@@ -115,7 +115,7 @@ function calculate_first_order_solution(∇₁::Matrix{R};
     return hcat(A, ∇ₑ), sol, true
 end
 
-end # dispatch_doctor
+end # dispatch_doctor 
 
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{Float64};
@@ -846,7 +846,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "3rd Kronecker power" begin
     # B += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)), M₃.𝐂₃) # slower than direct compression
     if !(eltype(ℂ.tmp_sparse_prealloc1[3]) == S)
-        ℂ.tmp_sparse_prealloc1 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+        ℂ.tmp_sparse_prealloc1 = Higher_order_caches(T = S, S = Float64)
     end
 
     B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
@@ -925,13 +925,13 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "Step 4" begin
 
     if !(eltype(ℂ.tmp_sparse_prealloc2[3]) == S)
-        ℂ.tmp_sparse_prealloc2 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+        ℂ.tmp_sparse_prealloc2 = Higher_order_caches(T = S, S = Float64)
     end
 
     out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)# |> findnz
 
     if !(eltype(ℂ.tmp_sparse_prealloc3[3]) == S)
-        ℂ.tmp_sparse_prealloc3 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+        ℂ.tmp_sparse_prealloc3 = Higher_order_caches(T = S, S = Float64)
     end
     # out2 += ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
     out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔), sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)# |> findnz
@@ -943,7 +943,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
         # out2 += ∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
 
     if !(eltype(ℂ.tmp_sparse_prealloc4[3]) == S)
-        ℂ.tmp_sparse_prealloc4 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+        ℂ.tmp_sparse_prealloc4 = Higher_order_caches(T = S, S = Float64)
     end
 
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol)
@@ -961,7 +961,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # @timeit_debug timer "3rd Kronecker power" begin
 
     if !(eltype(ℂ.tmp_sparse_prealloc5[3]) == S)
-        ℂ.tmp_sparse_prealloc5 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+        ℂ.tmp_sparse_prealloc5 = Higher_order_caches(T = S, S = Float64)
     end
 
     # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
@@ -1108,7 +1108,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # @timeit_debug timer "3rd Kronecker power" begin
 
     if !(eltype(ℂ.tmp_sparse_prealloc1[3]) == S)
-        ℂ.tmp_sparse_prealloc1 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+        ℂ.tmp_sparse_prealloc1 = Higher_order_caches(T = S, S = Float64)
     end
 
     B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
@@ -1189,7 +1189,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # @timeit_debug timer "Step 4" begin
 
     if !(eltype(ℂ.tmp_sparse_prealloc2[3]) == S)
-        ℂ.tmp_sparse_prealloc2 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+        ℂ.tmp_sparse_prealloc2 = Higher_order_caches(T = S, S = Float64)
     end
 
     out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)# |> findnz
@@ -1227,7 +1227,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # @timeit_debug timer "3rd Kronecker power aux" begin
        
     if !(eltype(ℂ.tmp_sparse_prealloc3[3]) == S)
-        ℂ.tmp_sparse_prealloc3 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+        ℂ.tmp_sparse_prealloc3 = Higher_order_caches(T = S, S = Float64)
     end
 
     # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
@@ -1482,7 +1482,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # @timeit_debug timer "Step 5" begin
                
         if !(eltype(ℂ.tmp_sparse_prealloc4[3]) == S)
-            ℂ.tmp_sparse_prealloc4 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+            ℂ.tmp_sparse_prealloc4 = Higher_order_caches(T = S, S = Float64)
         end
 
         # this is very slow

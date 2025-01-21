@@ -55,7 +55,7 @@ import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mp
 # using NamedArrays
 # using AxisKeys
 
-import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent, @thunk
+import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent, @thunk, ProjectTo, unthunk
 import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
@@ -1182,6 +1182,76 @@ function mat_mult_kron(A::DenseMatrix{R},
     # else
     #     return sparse(rows,cols,vals,size(A,1),n_colB*n_colC)   
     # end
+end
+
+function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {T <: Real, F <: AbstractFloat}
+    if !(eltype(ℂ.tmp_sparse_prealloc6[3]) == T)
+        ℂ.tmp_sparse_prealloc6 = Higher_order_caches(T = T, S = F)
+    end
+
+    I           = ℂ.tmp_sparse_prealloc6[1]
+    J           = ℂ.tmp_sparse_prealloc6[2]
+    V           = ℂ.tmp_sparse_prealloc6[3]
+
+    klasttouch  = ℂ.tmp_sparse_prealloc6[4] # Vector{Ti}(undef, n)
+    csrrowptr   = ℂ.tmp_sparse_prealloc6[5] # Vector{Ti}(undef, m + 1)
+    csrcolval   = ℂ.tmp_sparse_prealloc6[6] # Vector{Ti}(undef, length(I))
+    csrnzval    = ℂ.tmp_sparse_prealloc6[7] # Vector{Tv}(undef, length(I))
+
+    resize!(I, length(Ŝ))
+    resize!(J, length(Ŝ))
+    resize!(V, length(Ŝ))
+    resize!(klasttouch, length(Ŝ))
+
+    copyto!(V,Ŝ) # this is key to reduce allocations
+
+    klasttouch .= abs.(V) .> eps() # this is key to reduce allocations
+
+    m, n = size(Ŝ)
+
+    idx_redux = 0
+    @inbounds for (idx,val) in enumerate(klasttouch)
+        if val == 1
+            idx_redux += 1
+            j, i = divrem(idx - 1, m)
+            I[idx_redux] = i + 1
+            J[idx_redux] = j + 1
+            klasttouch[idx_redux] = idx
+        end
+    end
+
+    resize!(I, idx_redux)
+    resize!(J, idx_redux)
+    resize!(V, idx_redux)
+    resize!(klasttouch, idx_redux)
+
+    V = Ŝ[klasttouch]
+
+    resize!(klasttouch, n)
+    resize!(csrrowptr, m + 1)
+    resize!(csrcolval, idx_redux)
+    resize!(csrnzval, idx_redux)
+
+    out = sparse!(I, J, V, m, n, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+
+    return out
+end
+
+function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {T <: Real, F <: AbstractFloat}
+    project_Ŝ = ProjectTo(Ŝ)
+
+    function sparse_preallocated_pullback(Ω̄)
+        ΔΩ = unthunk(Ω̄)
+        ΔŜ = project_Ŝ(ΔΩ)
+        return NoTangent(), ΔŜ, NoTangent()
+    end
+
+    return sparse_preallocated!(Ŝ, ℂ = ℂ), sparse_preallocated_pullback
+end
+
+
+function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {Z,S,N,T <: Real, F <: AbstractFloat}
+    sparse(Ŝ)
 end
 
 
@@ -4691,54 +4761,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     Ŝ = 𝓂.caches.third_order_caches.Ŝ
 
-    if !(eltype(𝓂.caches.third_order_caches.tmp_sparse_prealloc6[3]) == M)
-        𝓂.caches.third_order_caches.tmp_sparse_prealloc6 = (Int[], Int[], M[], Int[], Int[], Int[], M[])
-    end
-
-    I           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[1]
-    J           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[2]
-    V           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[3]
-
-    klasttouch  = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[4] # Vector{Ti}(undef, n)
-    csrrowptr   = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[5] # Vector{Ti}(undef, m + 1)
-    csrcolval   = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[6] # Vector{Ti}(undef, length(I))
-    csrnzval    = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[7] # Vector{Tv}(undef, length(I))
-
-    resize!(I, length(Ŝ))
-    resize!(J, length(Ŝ))
-    resize!(V, length(Ŝ))
-    resize!(klasttouch, length(Ŝ))
-
-    copyto!(V,Ŝ) # this is key to reduce allocations
-
-    klasttouch .= abs.(V) .> eps() # this is key to reduce allocations
-
-    m, n = size(Ŝ)
-
-    idx_redux = 0
-    @inbounds for (idx,val) in enumerate(klasttouch)
-        if val == 1
-            idx_redux += 1
-            j, i = divrem(idx - 1, m)
-            I[idx_redux] = i + 1
-            J[idx_redux] = j + 1
-            klasttouch[idx_redux] = idx
-        end
-    end
-
-    resize!(I, idx_redux)
-    resize!(J, idx_redux)
-    resize!(V, idx_redux)
-    resize!(klasttouch, idx_redux)
-
-    V = Ŝ[klasttouch]
-
-    resize!(klasttouch, n)
-    resize!(csrrowptr, m + 1)
-    resize!(csrcolval, idx_redux)
-    resize!(csrnzval, idx_redux)
-
-    𝐒₃ = sparse!(I, J, V, m, n, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+    𝐒₃ = sparse_preallocated!(Ŝ, ℂ = 𝓂.caches.third_order_caches)
     # 𝐒₃ = sparse(Ŝ) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
