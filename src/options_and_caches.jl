@@ -22,6 +22,7 @@ mutable struct higher_order_caches{F <: AbstractFloat}
     tmp_sparse_prealloc3::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc4::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc5::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
+    tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     sylvester_caches::sylvester_caches{F}
 end
 
@@ -49,6 +50,7 @@ function Higher_order_caches()
                         spzeros(0,0),
                         spzeros(0,0),
                         spzeros(0,0),
+                        (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[]),
                         (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[]),
                         (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[]),
                         (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[]),

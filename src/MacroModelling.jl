@@ -577,6 +577,8 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     𝓂.solution.perturbation.qme_solution = zeros(0,0)
     𝓂.solution.perturbation.second_order_solution = spzeros(0,0)
     𝓂.solution.perturbation.third_order_solution = spzeros(0,0)
+
+    return nothing
 end
 
 function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
@@ -4683,7 +4685,49 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
 
     if !issparse(𝐒₃)
-        𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+        I           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[1]
+        J           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[2]
+        V           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[3]
+
+        klasttouch  = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[4] # Vector{Ti}(undef, n)
+        csrrowptr   = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[5] # Vector{Ti}(undef, m + 1)
+        csrcolval   = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[6] # Vector{Ti}(undef, length(I))
+        csrnzval    = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[7] # Vector{Tv}(undef, length(I))
+
+        resize!(I, length(𝐒₃))
+        resize!(J, length(𝐒₃))
+        resize!(V, length(𝐒₃))
+        resize!(klasttouch, length(𝐒₃))
+
+        # copyto!(V, 𝐒₃)
+
+        m = size(𝐒₃, 1)
+
+        idx_redux = 0
+        @inbounds for idx in eachindex(𝐒₃)
+            if abs(𝐒₃[idx]) > eps()
+                idx_redux += 1
+                j, i = divrem(idx - 1, m)
+                I[idx_redux] = i + 1
+                J[idx_redux] = j + 1
+                klasttouch[idx_redux] = idx
+            end
+        end
+
+        resize!(I, idx_redux)
+        resize!(J, idx_redux)
+        resize!(V, idx_redux)
+        resize!(klasttouch, idx_redux)
+
+        V = 𝐒₃[klasttouch]
+
+        resize!(klasttouch, size(𝐒₃, 2))
+        resize!(csrrowptr, size(𝐒₃, 1) + 1)
+        resize!(csrcolval, idx_redux)
+        resize!(csrnzval, idx_redux)
+
+        𝐒₃ = sparse!(I, J, V, size(𝐒₃, 1), size(𝐒₃, 2), +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+        # 𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
     end
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
