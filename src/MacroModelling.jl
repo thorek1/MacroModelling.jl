@@ -224,6 +224,24 @@ check_for_dynamic_variables(ex::Int) = false
 check_for_dynamic_variables(ex::Float64) = false
 check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋₁₎",string(ex))
 
+function rrule( ::typeof(mul!),
+                C::AbstractMatrix,
+                A::AbstractVecOrMat,
+                B::AbstractVecOrMat)
+    project_A = ProjectTo(A)
+    project_B = ProjectTo(B)
+
+    function times_pullback(ȳ)
+        Ȳ = unthunk(ȳ)
+        dA = @thunk(project_A(Ȳ * B'))
+        dB = @thunk(project_B(A' * Ȳ))
+        return NoTangent(), NoTangent(), dA, dB
+    end
+
+    return mul!(C,A,B), times_pullback
+end
+
+
 function check_for_dynamic_variables(ex::Expr)
     dynamic_indicator = Bool[]
 
@@ -4396,7 +4414,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     # @timeit_debug timer "Calculate second order solution" begin
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxilliary_matrices,
-                                                    𝓂.caches.second_order_caches; 
+                                                    𝓂.caches; 
                                                     T = 𝓂.timings, 
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     # timer = timer,
@@ -4716,7 +4734,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
                                                     𝓂.solution.perturbation.second_order_auxilliary_matrices,
-                                                    𝓂.caches.second_order_caches;
+                                                    𝓂.caches;
                                                     T = 𝓂.timings,
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     # timer = timer,
@@ -4739,7 +4757,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
                                                 𝓂.solution.perturbation.third_order_auxilliary_matrices,
-                                                𝓂.caches.third_order_caches; 
+                                                𝓂.caches; 
                                                 T = 𝓂.timings, 
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 # timer = timer, 
@@ -4752,7 +4770,6 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
-    # 𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
     if length(𝓂.caches.third_order_caches.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.caches.third_order_caches.Ŝ))
         𝓂.caches.third_order_caches.Ŝ = 𝐒₃ * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
     else
@@ -4762,6 +4779,10 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     Ŝ = 𝓂.caches.third_order_caches.Ŝ
 
     𝐒₃ = sparse_preallocated!(Ŝ, ℂ = 𝓂.caches.third_order_caches)
+    
+    # 𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
+    # 𝐒₃ = sparse_preallocated!(𝐒₃, ℂ = 𝓂.caches.third_order_caches)
+    
     # 𝐒₃ = sparse(Ŝ) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]

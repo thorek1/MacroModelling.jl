@@ -70,7 +70,7 @@ function calculate_mean(parameters::Vector{T},
             
             𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
                                                         𝓂.solution.perturbation.second_order_auxilliary_matrices,
-                                                        𝓂.caches.second_order_caches; 
+                                                        𝓂.caches; 
                                                         T = 𝓂.timings, 
                                                         opts = opts)
 
@@ -179,7 +179,7 @@ function calculate_second_order_moments(parameters::Vector{R},
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices,
-                                                𝓂.caches.second_order_caches; 
+                                                𝓂.caches; 
                                                 T = 𝓂.timings, 
                                                 opts = opts)
 
@@ -289,7 +289,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
     𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices,
-                                                𝓂.caches.second_order_caches; 
+                                                𝓂.caches; 
                                                 T = 𝓂.timings, 
                                                 opts = opts)
 
@@ -399,7 +399,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
                                                 𝓂.solution.perturbation.third_order_auxilliary_matrices,
-                                                𝓂.caches.third_order_caches; 
+                                                𝓂.caches; 
                                                 T = 𝓂.timings, 
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 opts = opts)
@@ -651,7 +651,7 @@ function calculate_third_order_moments(parameters::Vector{T},
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
                                                 𝓂.solution.perturbation.second_order_auxilliary_matrices, 
                                                 𝓂.solution.perturbation.third_order_auxilliary_matrices,
-                                                𝓂.caches.third_order_caches; 
+                                                𝓂.caches; 
                                                 T = 𝓂.timings, 
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 opts = opts)

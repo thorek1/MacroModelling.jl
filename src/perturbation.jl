@@ -373,10 +373,14 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             𝑺₁::AbstractMatrix{S},#first order solution
                                             M₂::second_order_auxilliary_matrices,   # aux matrices
-                                            ℂ::higher_order_caches;
+                                            ℂC::caches;
                                             T::timings,
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
+    if !(eltype(ℂC.second_order_caches.Ŝ) == S)
+        ℂC.second_order_caches = Higher_order_caches(T = S)
+    end
+    ℂ = ℂC.second_order_caches
     # @timeit_debug timer "Calculate second order solution" begin
 
     # inspired by Levintal
@@ -493,14 +497,18 @@ end
 end # dispatch_doctor
 
 function rrule(::typeof(calculate_second_order_solution), 
-                    ∇₁::AbstractMatrix{<: Real}, #first order derivatives
-                    ∇₂::SparseMatrixCSC{<: Real}, #second order derivatives
-                    𝑺₁::AbstractMatrix{<: Real},#first order solution
+                    ∇₁::AbstractMatrix{S}, #first order derivatives
+                    ∇₂::SparseMatrixCSC{S}, #second order derivatives
+                    𝑺₁::AbstractMatrix{S},#first order solution
                     M₂::second_order_auxilliary_matrices,   # aux matrices
-                    ℂ::higher_order_caches;
+                    ℂC::caches;
                     T::timings,
-                    initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                    opts::CalculationOptions = merge_calculation_options())
+                    initial_guess::AbstractMatrix{R} = zeros(0,0),
+                    opts::CalculationOptions = merge_calculation_options()) where {S <: Real, R <: Real}
+    if !(eltype(ℂC.second_order_caches.Ŝ) == S)
+        ℂC.second_order_caches = Higher_order_caches(T = S)
+    end
+    ℂ = ℂC.second_order_caches
     # @timeit_debug timer "Second order solution - forward" begin
     # inspired by Levintal
 
@@ -762,10 +770,14 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             𝐒₂::SparseMatrixCSC{S}, #second order solution
                                             M₂::second_order_auxilliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxilliary_matrices,   # aux matrices third order
-                                            ℂ::higher_order_caches;
+                                            ℂC::caches;
                                             T::timings,
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
+    if !(eltype(ℂC.third_order_caches.Ŝ) == S)
+        ℂC.third_order_caches = Higher_order_caches(T = S)
+    end
+    ℂ = ℂC.third_order_caches
 
     # @timeit_debug timer "Calculate third order solution" begin
     # inspired by Levintal
@@ -845,9 +857,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
     # B += mat_mult_kron(M₃.𝐔₃, collect(𝐒₁₋╱𝟏ₑ), collect(ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ)), M₃.𝐂₃) # slower than direct compression
-    if !(eltype(ℂ.tmp_sparse_prealloc1[3]) == S)
-        ℂ.tmp_sparse_prealloc1 = Higher_order_caches(T = S, S = Float64)
-    end
 
     B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
 
@@ -924,15 +933,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # @timeit_debug timer "Step 4" begin
 
-    if !(eltype(ℂ.tmp_sparse_prealloc2[3]) == S)
-        ℂ.tmp_sparse_prealloc2 = Higher_order_caches(T = S, S = Float64)
-    end
-
     out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)# |> findnz
 
-    if !(eltype(ℂ.tmp_sparse_prealloc3[3]) == S)
-        ℂ.tmp_sparse_prealloc3 = Higher_order_caches(T = S, S = Float64)
-    end
     # out2 += ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
     out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, collect(𝐒₂₊╱𝟎 * M₂.𝛔), sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc3)# |> findnz
 
@@ -941,10 +943,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
         # out2 += ∇₁₊ * mat_mult_kron(𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
         # out2 += mat_mult_kron(∇₁₊ * 𝐒₂, collect(𝐒₁₋╱𝟏ₑ), collect(𝐒₂₋╱𝟎))
         # out2 += ∇₁₊ * 𝐒₂ * ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
-
-    if !(eltype(ℂ.tmp_sparse_prealloc4[3]) == S)
-        ℂ.tmp_sparse_prealloc4 = Higher_order_caches(T = S, S = Float64)
-    end
 
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol)
     out2 += ∇₁₊ * mat_mult_kron(𝐒₂, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc4)
@@ -959,10 +957,6 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
     # end # timeit_debug
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
-
-    if !(eltype(ℂ.tmp_sparse_prealloc5[3]) == S)
-        ℂ.tmp_sparse_prealloc5 = Higher_order_caches(T = S, S = Float64)
-    end
 
     # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
     𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc5) #, timer = timer)
@@ -1023,10 +1017,14 @@ function rrule(::typeof(calculate_third_order_solution),
                 𝐒₂::SparseMatrixCSC{S}, #second order solution
                 M₂::second_order_auxilliary_matrices,  # aux matrices second order
                 M₃::third_order_auxilliary_matrices,   # aux matrices third order
-                ℂ::higher_order_caches;
+                ℂC::caches;
                 T::timings,
                 initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                 opts::CalculationOptions = merge_calculation_options()) where S <: AbstractFloat 
+    if !(eltype(ℂC.third_order_caches.Ŝ) == S)
+        ℂC.third_order_caches = Higher_order_caches(T = S)
+    end
+    ℂ = ℂC.third_order_caches
 
     # @timeit_debug timer "Third order solution - forward" begin
     # inspired by Levintal
@@ -1107,10 +1105,6 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
 
-    if !(eltype(ℂ.tmp_sparse_prealloc1[3]) == S)
-        ℂ.tmp_sparse_prealloc1 = Higher_order_caches(T = S, S = Float64)
-    end
-
     B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
 
     # end # timeit_debug
@@ -1188,10 +1182,6 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Step 4" begin
 
-    if !(eltype(ℂ.tmp_sparse_prealloc2[3]) == S)
-        ℂ.tmp_sparse_prealloc2 = Higher_order_caches(T = S, S = Float64)
-    end
-
     out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)# |> findnz
 
     # out2 += ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
@@ -1225,10 +1215,6 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power aux" begin
-       
-    if !(eltype(ℂ.tmp_sparse_prealloc3[3]) == S)
-        ℂ.tmp_sparse_prealloc3 = Higher_order_caches(T = S, S = Float64)
-    end
 
     # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
     𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc3) #, timer = timer)
@@ -1480,10 +1466,6 @@ function rrule(::typeof(calculate_third_order_solution),
         
         # end # timeit_debug
         # @timeit_debug timer "Step 5" begin
-               
-        if !(eltype(ℂ.tmp_sparse_prealloc4[3]) == S)
-            ℂ.tmp_sparse_prealloc4 = Higher_order_caches(T = S, S = Float64)
-        end
 
         # this is very slow
         ∂∇₃ += ∂𝐗₃ * compressed_kron³(aux', rowmask = unique(findnz(∂𝐗₃)[2]), sparse_preallocation = ℂ.tmp_sparse_prealloc4) # , timer = timer)

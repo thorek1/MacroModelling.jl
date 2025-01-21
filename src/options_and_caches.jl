@@ -29,9 +29,9 @@ mutable struct higher_order_caches{F <: Real, G <: AbstractFloat}
     sylvester_caches::sylvester_caches{F, G}
 end
 
-mutable struct caches{F <: Real, G <: AbstractFloat}
-    second_order_caches::higher_order_caches{F, G}
-    third_order_caches::higher_order_caches{F, G}
+mutable struct caches#{F <: Real, G <: AbstractFloat}
+    second_order_caches::higher_order_caches#{F, G}
+    third_order_caches::higher_order_caches#{F, G}
 end
 
 

@@ -1911,7 +1911,7 @@ function get_solution(𝓂::ℳ,
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
                                                     𝓂.solution.perturbation.second_order_auxilliary_matrices,
-                                                    𝓂.caches.second_order_caches; 
+                                                    𝓂.caches; 
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     T = 𝓂.timings, 
                                                     opts = opts)
@@ -1930,7 +1930,7 @@ function get_solution(𝓂::ℳ,
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
                                                     𝓂.solution.perturbation.second_order_auxilliary_matrices,
-                                                    𝓂.caches.second_order_caches; 
+                                                    𝓂.caches; 
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     T = 𝓂.timings, 
                                                     opts = opts)
@@ -1949,7 +1949,7 @@ function get_solution(𝓂::ℳ,
                                                     𝐒₁, 𝐒₂, 
                                                     𝓂.solution.perturbation.second_order_auxilliary_matrices, 
                                                     𝓂.solution.perturbation.third_order_auxilliary_matrices,
-                                                    𝓂.caches.third_order_caches; 
+                                                    𝓂.caches; 
                                                     initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                     T = 𝓂.timings, 
                                                     opts = opts)
