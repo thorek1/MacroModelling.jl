@@ -4682,53 +4682,59 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
-    𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
-
-    if !issparse(𝐒₃)
-        I           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[1]
-        J           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[2]
-        V           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[3]
-
-        klasttouch  = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[4] # Vector{Ti}(undef, n)
-        csrrowptr   = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[5] # Vector{Ti}(undef, m + 1)
-        csrcolval   = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[6] # Vector{Ti}(undef, length(I))
-        csrnzval    = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[7] # Vector{Tv}(undef, length(I))
-
-        resize!(I, length(𝐒₃))
-        resize!(J, length(𝐒₃))
-        resize!(V, length(𝐒₃))
-        resize!(klasttouch, length(𝐒₃))
-
-        # copyto!(V, 𝐒₃)
-
-        m = size(𝐒₃, 1)
-
-        idx_redux = 0
-        @inbounds for idx in eachindex(𝐒₃)
-            if abs(𝐒₃[idx]) > eps()
-                idx_redux += 1
-                j, i = divrem(idx - 1, m)
-                I[idx_redux] = i + 1
-                J[idx_redux] = j + 1
-                klasttouch[idx_redux] = idx
-            end
-        end
-
-        resize!(I, idx_redux)
-        resize!(J, idx_redux)
-        resize!(V, idx_redux)
-        resize!(klasttouch, idx_redux)
-
-        V = 𝐒₃[klasttouch]
-
-        resize!(klasttouch, size(𝐒₃, 2))
-        resize!(csrrowptr, size(𝐒₃, 1) + 1)
-        resize!(csrcolval, idx_redux)
-        resize!(csrnzval, idx_redux)
-
-        𝐒₃ = sparse!(I, J, V, size(𝐒₃, 1), size(𝐒₃, 2), +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
-        # 𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+    Ŝ = 𝓂.caches.third_order_caches.Ŝ
+    # 𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
+    if length(Ŝ) == 0 || !(eltype(𝐒₃) == eltype(Ŝ))
+        Ŝ = 𝐒₃ * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
+    else
+        ℒ.mul!(Ŝ, 𝐒₃, 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
     end
+
+    I           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[1]
+    J           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[2]
+    V           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[3]
+
+    klasttouch  = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[4] # Vector{Ti}(undef, n)
+    csrrowptr   = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[5] # Vector{Ti}(undef, m + 1)
+    csrcolval   = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[6] # Vector{Ti}(undef, length(I))
+    csrnzval    = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[7] # Vector{Tv}(undef, length(I))
+
+    resize!(I, length(Ŝ))
+    resize!(J, length(Ŝ))
+    resize!(V, length(Ŝ))
+    resize!(klasttouch, length(Ŝ))
+
+    copyto!(V,Ŝ) # this is key to reduce allocations
+
+    klasttouch .= abs.(V) .> eps() # this is key to reduce allocations
+
+    m, n = size(Ŝ)
+
+    idx_redux = 0
+    @inbounds for (idx,val) in enumerate(klasttouch)
+        if val == 1
+            idx_redux += 1
+            j, i = divrem(idx - 1, m)
+            I[idx_redux] = i + 1
+            J[idx_redux] = j + 1
+            klasttouch[idx_redux] = idx
+        end
+    end
+
+    resize!(I, idx_redux)
+    resize!(J, idx_redux)
+    resize!(V, idx_redux)
+    resize!(klasttouch, idx_redux)
+
+    V = Ŝ[klasttouch]
+
+    resize!(klasttouch, n)
+    resize!(csrrowptr, m + 1)
+    resize!(csrcolval, idx_redux)
+    resize!(csrnzval, idx_redux)
+
+    𝐒₃ = sparse!(I, J, V, m, n, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
+    # 𝐒₃ = sparse(Ŝ) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 

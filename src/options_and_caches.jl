@@ -1,18 +1,18 @@
 
-mutable struct krylov_caches{F <: AbstractFloat}
-    gmres::GmresSolver{F,F,Vector{F}}
-    dqgmres::DqgmresSolver{F,F,Vector{F}}
-    bicgstab::BicgstabSolver{F,F,Vector{F}}
+mutable struct krylov_caches{G <: AbstractFloat}
+    gmres::GmresSolver{G,G,Vector{G}}
+    dqgmres::DqgmresSolver{G,G,Vector{G}}
+    bicgstab::BicgstabSolver{G,G,Vector{G}}
 end
 
-mutable struct sylvester_caches{F <: AbstractFloat}
+mutable struct sylvester_caches{F <: Real, G <: AbstractFloat}
     tmp::Matrix{F}
     𝐗::Matrix{F}
     𝐂::Matrix{F}
-    krylov_caches::krylov_caches{F}
+    krylov_caches::krylov_caches{G}
 end
 
-mutable struct higher_order_caches{F <: AbstractFloat}
+mutable struct higher_order_caches{F <: Real, G <: AbstractFloat}
     tmpkron0::SparseMatrixCSC{F, Int}
     tmpkron1::SparseMatrixCSC{F, Int}
     tmpkron2::SparseMatrixCSC{F, Int}
@@ -23,45 +23,47 @@ mutable struct higher_order_caches{F <: AbstractFloat}
     tmp_sparse_prealloc4::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc5::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
-    sylvester_caches::sylvester_caches{F}
+    Ŝ::Matrix{F}
+    sylvester_caches::sylvester_caches{F, G}
 end
 
-mutable struct caches{F <: AbstractFloat}
-    second_order_caches::higher_order_caches{F}
-    third_order_caches::higher_order_caches{F}
+mutable struct caches{F <: Real, G <: AbstractFloat}
+    second_order_caches::higher_order_caches{F, G}
+    third_order_caches::higher_order_caches{F, G}
 end
 
 
-function Krylov_caches()
-    krylov_caches(  GmresSolver(0,0,0,Vector{Float64}),
-                    DqgmresSolver(0,0,0,Vector{Float64}),
-                    BicgstabSolver(0,0,Vector{Float64}))
+function Krylov_caches(;S::Type = Float64)
+    krylov_caches(  GmresSolver(0,0,0,Vector{S}),
+                    DqgmresSolver(0,0,0,Vector{S}),
+                    BicgstabSolver(0,0,Vector{S}))
 end
 
-function Sylvester_caches()
-    sylvester_caches(   zeros(0,0),
-                        zeros(0,0),
-                        zeros(0,0),
-                        Krylov_caches())
+function Sylvester_caches(;T::Type = Float64, S::Type = Float64)
+    sylvester_caches(   zeros(T,0,0),
+                        zeros(T,0,0),
+                        zeros(T,0,0),
+                        Krylov_caches(S = S))
 end
 
-function Higher_order_caches()
-    higher_order_caches(spzeros(0,0),
-                        spzeros(0,0),
-                        spzeros(0,0),
-                        spzeros(0,0),
-                        (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[]),
-                        (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[]),
-                        (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[]),
-                        (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[]),
-                        (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[]),
-                        (Int[], Int[], Float64[], Int[], Int[], Int[], Float64[]),
-                        Sylvester_caches())
+function Higher_order_caches(;T::Type = Float64, S::Type = Float64)
+    higher_order_caches(spzeros(T,0,0),
+                        spzeros(T,0,0),
+                        spzeros(T,0,0),
+                        spzeros(T,0,0),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                        zeros(T,0,0),
+                        Sylvester_caches(T = T, S = S))
 end
 
-function Caches()
-    caches( Higher_order_caches(),
-            Higher_order_caches())
+function Caches(;T::Type = Float64, S::Type = Float64)
+    caches( Higher_order_caches(T = T, S = S),
+            Higher_order_caches(T = T, S = S))
 end
 
 
