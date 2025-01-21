@@ -15,6 +15,8 @@ end
 mutable struct higher_order_caches{F <: Real, G <: AbstractFloat}
     tmpkron0::SparseMatrixCSC{F, Int}
     tmpkron1::SparseMatrixCSC{F, Int}
+    tmpkron11::SparseMatrixCSC{F, Int}
+    tmpkron12::SparseMatrixCSC{F, Int}
     tmpkron2::SparseMatrixCSC{F, Int}
     tmpkron22::SparseMatrixCSC{F, Int}
     tmp_sparse_prealloc1::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
@@ -48,6 +50,8 @@ end
 
 function Higher_order_caches(;T::Type = Float64, S::Type = Float64)
     higher_order_caches(spzeros(T,0,0),
+                        spzeros(T,0,0),
+                        spzeros(T,0,0),
                         spzeros(T,0,0),
                         spzeros(T,0,0),
                         spzeros(T,0,0),

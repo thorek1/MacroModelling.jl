@@ -1080,7 +1080,7 @@ function rrule(::typeof(calculate_third_order_solution),
     A = spinv * ∇₁₊
 
     # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
-    tmpkron = choose_matrix_format(ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔), density_threshold = 1.0)
+    tmpkron = choose_matrix_format(ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔), density_threshold = 1.0, tol = opts.tol.droptol)
     kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)
     
     # @timeit_debug timer "Setup B" begin
@@ -1102,12 +1102,16 @@ function rrule(::typeof(calculate_third_order_solution),
     # @timeit_debug timer "Mult" begin
 
     B *= M₃.𝐂₃
-    B = choose_matrix_format(M₃.𝐔₃ * B)
+    B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
 
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power" begin
 
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ) # , timer = timer)
+    if !(eltype(ℂ.tmp_sparse_prealloc1[3]) == S)
+        ℂ.tmp_sparse_prealloc1 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+    end
+
+    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
 
     # end # timeit_debug
     # end # timeit_debug
@@ -1118,7 +1122,7 @@ function rrule(::typeof(calculate_third_order_solution),
             𝐒₂
             zeros(n₋ + nₑ, nₑ₋^2)];
             
-    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10)
+    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10, tol = opts.tol.droptol)
         
     𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:] 
             zeros(n₋ + n + nₑ, nₑ₋^2)];
@@ -1150,7 +1154,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "∇₂ & ∇₁₊" begin
 
-    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10)
+    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
     if length(ℂ.tmpkron1) > 0 && eltype(ℂ.tmpkron1) == S
         ℒ.kron!(ℂ.tmpkron1, 𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
@@ -1164,22 +1168,17 @@ function rrule(::typeof(calculate_third_order_solution),
         ℂ.tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
     end
     
-    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10)
+    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
     𝐒₂₋╱𝟎 = [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
 
-    𝐒₂₋╱𝟎 = choose_matrix_format(𝐒₂₋╱𝟎, density_threshold = 1.0, min_length = 10)
+    𝐒₂₋╱𝟎 = choose_matrix_format(𝐒₂₋╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
     # @timeit_debug timer "Step 1" begin
-
-    # tmpkron10 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎)
-    # out2 = ∇₂ * tmpkron10
-    out2 = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎) # this help  
+    out2 = ∇₂ * ℂ.tmpkron1 * ℂ.tmpkron2 # this help
 
     # end # timeit_debug
     # @timeit_debug timer "Step 2" begin
-
-    out2 += ∇₂ * ℂ.tmpkron1 * ℂ.tmpkron2# |> findnz
 
     # end # timeit_debug  
     # @timeit_debug timer "Step 3" begin
@@ -1189,16 +1188,33 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Step 4" begin
 
+    if !(eltype(ℂ.tmp_sparse_prealloc2[3]) == S)
+        ℂ.tmp_sparse_prealloc2 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+    end
+
+    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)# |> findnz
+
+    # out2 += ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
     𝐒₂₊╱𝟎𝛔 = 𝐒₂₊╱𝟎 * M₂.𝛔
-    tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
+    
+    if length(ℂ.tmpkron11) > 0 && eltype(ℂ.tmpkron11) == S
+        ℒ.kron!(ℂ.tmpkron11, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
+    else
+        ℂ.tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
+    end
     out2 += ∇₂ * tmpkron11# |> findnz
 
     # end # timeit_debug
     # @timeit_debug timer "Step 5" begin
 
-    tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol)
+    if length(ℂ.tmpkron12) > 0 && eltype(ℂ.tmpkron12) == S
+        ℒ.kron!(ℂ.tmpkron12, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
+    else
+        ℂ.tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
+    end
     out2 += ∇₁₊ * 𝐒₂ * tmpkron12
-    
+
     # end # timeit_debug
     # @timeit_debug timer "Mult" begin
 
@@ -1209,9 +1225,14 @@ function rrule(::typeof(calculate_third_order_solution),
     # end # timeit_debug
     # end # timeit_debug
     # @timeit_debug timer "3rd Kronecker power aux" begin
+       
+    if !(eltype(ℂ.tmp_sparse_prealloc3[3]) == S)
+        ℂ.tmp_sparse_prealloc3 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+    end
 
-    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2])) # , timer = timer)
-    𝐗₃ = choose_matrix_format(𝐗₃, density_threshold = 1.0, min_length = 10)
+    # 𝐗₃ += mat_mult_kron(∇₃, collect(aux), collect(ℒ.kron(aux, aux)), M₃.𝐂₃) # slower than direct compression
+    𝐗₃ += ∇₃ * compressed_kron³(aux, rowmask = unique(findnz(∇₃)[2]), tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc3) #, timer = timer)
+    𝐗₃ = choose_matrix_format(𝐗₃, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
     # end # timeit_debug
     # @timeit_debug timer "Mult 2" begin
@@ -1246,7 +1267,7 @@ function rrule(::typeof(calculate_third_order_solution),
         return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
     end
 
-    𝐒₃ = choose_matrix_format(𝐒₃, density_threshold = 1.0, min_length = 10)
+    𝐒₃ = choose_matrix_format(𝐒₃, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
 
     # # end # timeit_debug
 
@@ -1459,9 +1480,13 @@ function rrule(::typeof(calculate_third_order_solution),
         
         # end # timeit_debug
         # @timeit_debug timer "Step 5" begin
-            
+               
+        if !(eltype(ℂ.tmp_sparse_prealloc4[3]) == S)
+            ℂ.tmp_sparse_prealloc4 = (Int[], Int[], S[], Int[], Int[], Int[], S[])
+        end
+
         # this is very slow
-        ∂∇₃ += ∂𝐗₃ * compressed_kron³(aux', rowmask = unique(findnz(∂𝐗₃)[2])) # , timer = timer)
+        ∂∇₃ += ∂𝐗₃ * compressed_kron³(aux', rowmask = unique(findnz(∂𝐗₃)[2]), sparse_preallocation = ℂ.tmp_sparse_prealloc4) # , timer = timer)
         # ∂∇₃ += ∂𝐗₃ * ℒ.kron(aux', aux', aux')
         
         # end # timeit_debug
