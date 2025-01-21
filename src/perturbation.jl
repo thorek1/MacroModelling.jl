@@ -1202,7 +1202,7 @@ function rrule(::typeof(calculate_third_order_solution),
     else
         ℂ.tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
     end
-    out2 += ∇₂ * tmpkron11# |> findnz
+    out2 += ∇₂ * ℂ.tmpkron11# |> findnz
 
     # end # timeit_debug
     # @timeit_debug timer "Step 5" begin
@@ -1213,7 +1213,7 @@ function rrule(::typeof(calculate_third_order_solution),
     else
         ℂ.tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
     end
-    out2 += ∇₁₊ * 𝐒₂ * tmpkron12
+    out2 += ∇₁₊ * 𝐒₂ * ℂ.tmpkron12
 
     # end # timeit_debug
     # @timeit_debug timer "Mult" begin
@@ -1309,7 +1309,7 @@ function rrule(::typeof(calculate_third_order_solution),
     
     tmpkron22t = choose_matrix_format(ℂ.tmpkron22')# , density_threshold = 1.0)
     
-    tmpkron12t = choose_matrix_format(tmpkron12')# , density_threshold = 1.0)
+    tmpkron12t = choose_matrix_format(ℂ.tmpkron12')# , density_threshold = 1.0)
     
     𝐒₂t = choose_matrix_format(𝐒₂', density_threshold = 1.0) # this must be sparse otherwise tests fail
     
@@ -1389,27 +1389,27 @@ function rrule(::typeof(calculate_third_order_solution),
         # + (𝐔∇₃ * tmpkron22 
         # + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * tmpkron22 * M₃.𝐏₁ᵣ̃ 
         # + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * tmpkron22 * M₃.𝐏₂ᵣ̃
-        # + ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏
-        # + ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏) * M₃.𝐂₃
+        # + ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + ℂ.tmpkron11) * M₃.𝐏
+        # + ∇₁₊ * 𝐒₂ * ℂ.tmpkron12 * M₃.𝐏) * M₃.𝐂₃
 
-        # ∇₁₊ * 𝐒₂ * tmpkron12 * M₃.𝐏 * M₃.𝐂₃
+        # ∇₁₊ * 𝐒₂ * ℂ.tmpkron12 * M₃.𝐏 * M₃.𝐂₃
         ∂∇₁₊ += ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron12t * 𝐒₂t
         ∂𝐒₂ += ∇₁₊' * ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron12t
         ∂tmpkron12 = 𝐒₂t * ∇₁₊' * ∂𝐗₃ * 𝐂₃t * 𝐏t
 
-        # tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
+        # ℂ.tmpkron12 = ℒ.kron(𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
         fill_kron_adjoint!(∂𝐒₁₋╱𝟏ₑ, ∂𝐒₂₋╱𝟎, ∂tmpkron12, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
         
         # end # timeit_debug
         # @timeit_debug timer "Step 2" begin
         
-        # ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + tmpkron11) * M₃.𝐏 * M₃.𝐂₃
+        # ∇₂ * (tmpkron10 + tmpkron1 * tmpkron2 + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ + ℂ.tmpkron11) * M₃.𝐏 * M₃.𝐂₃
         #improve this
         # ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * (
         #    tmpkron10
         #  + tmpkron1 * tmpkron2
         #  + tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ
-        #  + tmpkron11
+        #  + ℂ.tmpkron11
         #  )'
 
         ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron10t
@@ -1420,7 +1420,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * (tmpkron1 * M₃.𝐏₁ₗ * tmpkron2 * M₃.𝐏₁ᵣ)'
         ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * M₃.𝐏₁ᵣ' * tmpkron2t * M₃.𝐏₁ₗ' * tmpkron1t
 
-        ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * tmpkron11'
+        ∂∇₂ += ∂𝐗₃ * 𝐂₃t * 𝐏t * ℂ.tmpkron11'
 
         ∂tmpkron10 = ∇₂t * ∂𝐗₃ * 𝐂₃t * 𝐏t
 
