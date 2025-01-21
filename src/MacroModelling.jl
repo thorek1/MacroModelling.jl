@@ -35,7 +35,7 @@ import Optim, LineSearches
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
-import LinearAlgebra: mul!
+# import LinearAlgebra: mul!
 # import Octavian: matmul!
 # import TriangularSolve as TS
 # import ComponentArrays as 𝒞
@@ -224,7 +224,9 @@ check_for_dynamic_variables(ex::Int) = false
 check_for_dynamic_variables(ex::Float64) = false
 check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋₁₎",string(ex))
 
-function rrule( ::typeof(mul!),
+mul_reverse_AD!(C,A,B) = ℒ.mul!(C,A,B)
+
+function rrule( ::typeof(mul_reverse_AD!),
                 C::AbstractMatrix,
                 A::AbstractVecOrMat,
                 B::AbstractVecOrMat)
@@ -238,7 +240,7 @@ function rrule( ::typeof(mul!),
         return NoTangent(), NoTangent(), dA, dB
     end
 
-    return mul!(C,A,B), times_pullback
+    return ℒ.mul!(C,A,B), times_pullback
 end
 
 
@@ -964,19 +966,19 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     vCĀB = zeros(T, n_colB * n_colC)
     # vCĀBD = zeros(size(D,2))
 
-    rv = A isa SparseMatrixCSC ? A.rowval : A.A.rowval
+    rv = unique(A isa SparseMatrixCSC ? A.rowval : A.A.rowval)
 
     # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
-    @inbounds for row in rv |> unique
+    @inbounds for row in rv
         @views copyto!(Ā, A[row, :])
-        mul!(ĀB, Ā, B)
-        mul!(CĀB, C', ĀB)
+        ℒ.mul!(ĀB, Ā, B)
+        ℒ.mul!(CĀB, C', ĀB)
         copyto!(vCĀB, CĀB)
-        @views mul!(X[row,:], D', vCĀB)
+        @views ℒ.mul!(X[row,:], D', vCĀB)
     end
 
     return choose_matrix_format(X)
-    #     mul!(vCĀBD, D', vCĀB)
+    #     ℒ.mul!(vCĀBD, D', vCĀB)
 
     #     for (i,v) in enumerate(vCĀBD)
     #         if abs(v) > eps()
@@ -1023,15 +1025,15 @@ function mat_mult_kron(A::DenseMatrix{R},
     r = 1
     @inbounds for row in eachrow(A)
         @views copyto!(Ā, row)
-        mul!(ĀB, Ā, B)
-        mul!(CĀB, C', ĀB)
+        ℒ.mul!(ĀB, Ā, B)
+        ℒ.mul!(CĀB, C', ĀB)
         copyto!(vCĀB, CĀB)
-        @views mul!(X[row,:], D', vCĀB)
+        @views ℒ.mul!(X[row,:], D', vCĀB)
         r += 1
     end
 
     return choose_matrix_format(X)
-    #     mul!(vCĀBD, D', vCĀB)
+    #     ℒ.mul!(vCĀBD, D', vCĀB)
 
     #     for (i,v) in enumerate(vCĀBD)
     #         if abs(v) > eps()
@@ -1102,8 +1104,8 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     # Polyester.@batch threadlocal = (Vector{T}(), Vector{Int}(), Vector{Int}()) for row in rv |> unique
     @inbounds for row in rv |> unique
         @views copyto!(Ā, A[row, :])
-        mul!(ĀB, Ā, B)
-        mul!(CĀB, C', ĀB)
+        ℒ.mul!(ĀB, Ā, B)
+        ℒ.mul!(CĀB, C', ĀB)
         
         if sparse
             for (i,v) in enumerate(CĀB)
@@ -1178,8 +1180,8 @@ function mat_mult_kron(A::DenseMatrix{R},
     r = 1
     @inbounds for row in eachrow(A)
         @views copyto!(Ā, row)
-        mul!(ĀB, Ā, B)
-        mul!(CĀB, C', ĀB)
+        ℒ.mul!(ĀB, Ā, B)
+        ℒ.mul!(CĀB, C', ĀB)
         
         @views copyto!(X[r,:], CĀB)
         r += 1
@@ -4773,7 +4775,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     if length(𝓂.caches.third_order_caches.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.caches.third_order_caches.Ŝ))
         𝓂.caches.third_order_caches.Ŝ = 𝐒₃ * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
     else
-        ℒ.mul!(𝓂.caches.third_order_caches.Ŝ, 𝐒₃, 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+        mul_reverse_AD!(𝓂.caches.third_order_caches.Ŝ, 𝐒₃, 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
     end
 
     Ŝ = 𝓂.caches.third_order_caches.Ŝ

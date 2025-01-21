@@ -146,8 +146,8 @@ function run_kalman_iterations(A::Matrix{S},
         ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
         # v = data_in_deviations[:, t] - z
 
-        mul!(Ctmp, C, P) # use Octavian.jl
-        mul!(F, Ctmp, C')
+        ℒ.mul!(Ctmp, C, P) # use Octavian.jl
+        ℒ.mul!(F, Ctmp, C')
         # F = C * P * C'
 
         # @timeit_debug timer "LU factorisation" begin
@@ -177,9 +177,9 @@ function run_kalman_iterations(A::Matrix{S},
             # loglik += log(Fdet) + v' * invF * v###
         end
 
-        # mul!(Ktmp, P, C')
-        # mul!(K, Ktmp, invF)
-        mul!(K, P, C')
+        # ℒ.mul!(Ktmp, P, C')
+        # ℒ.mul!(K, Ktmp, invF)
+        ℒ.mul!(K, P, C')
         ℒ.rdiv!(K, luF)
         # K = P * Ct / luF
         # K = P * C' * invF
@@ -187,21 +187,21 @@ function run_kalman_iterations(A::Matrix{S},
         # end # timeit_debug
         # @timeit_debug timer "Matmul" begin
 
-        mul!(tmp, K, C)
-        mul!(Ptmp, tmp, P)
+        ℒ.mul!(tmp, K, C)
+        ℒ.mul!(Ptmp, tmp, P)
         ℒ.axpy!(-1, Ptmp, P)
 
-        mul!(Ptmp, A, P)
-        mul!(P, Ptmp, A')
+        ℒ.mul!(Ptmp, A, P)
+        ℒ.mul!(P, Ptmp, A')
         ℒ.axpy!(1, 𝐁, P)
         # P = A * (P - K * C * P) * A' + 𝐁
 
-        mul!(u, K, z, 1, 1)
-        mul!(utmp, A, u)
+        ℒ.mul!(u, K, z, 1, 1)
+        ℒ.mul!(utmp, A, u)
         u .= utmp
         # u = A * (u + K * v)
 
-        mul!(z, C, u)
+        ℒ.mul!(z, C, u)
         # z = C * u
 
         # end # timeit_debug
@@ -330,10 +330,10 @@ function rrule(::typeof(run_kalman_iterations),
         v[t] .= data_in_deviations[:, t-1] .- z#[t-1]
 
         # CP[t] .= C * P̄[t-1]
-        mul!(CP[t], C, P̄)#[t-1])
+        ℒ.mul!(CP[t], C, P̄)#[t-1])
     
         # F[t] .= CP[t] * C'
-        mul!(F, CP[t], C')
+        ℒ.mul!(F, CP[t], C')
     
         luF = RF.lu(F, check = false)
     
@@ -358,27 +358,27 @@ function rrule(::typeof(run_kalman_iterations),
         end
 
         # K[t] .= P̄[t-1] * C' * invF[t]
-        mul!(PCtmp, P̄, C')
-        mul!(K[t], PCtmp, invF[t])
+        ℒ.mul!(PCtmp, P̄, C')
+        ℒ.mul!(K[t], PCtmp, invF[t])
 
         # P[t] .= P̄[t-1] - K[t] * CP[t]
-        mul!(P[t], K[t], CP[t], -1, 0)
+        ℒ.mul!(P[t], K[t], CP[t], -1, 0)
         P[t] .+= P̄
     
         # P̄[t] .= A * P[t] * A' + 𝐁
-        mul!(temp_N_N, P[t], A')
-        mul!(P̄, A, temp_N_N)
+        ℒ.mul!(temp_N_N, P[t], A')
+        ℒ.mul!(P̄, A, temp_N_N)
         P̄ .+= 𝐁
 
         # u[t] .= K[t] * v[t] + ū[t-1]
-        mul!(u[t], K[t], v[t])
+        ℒ.mul!(u[t], K[t], v[t])
         u[t] .+= ū
         
         # ū[t] .= A * u[t]
-        mul!(ū, A, u[t])
+        ℒ.mul!(ū, A, u[t])
 
         # z[t] .= C * ū[t]
-        mul!(z, C, ū)
+        ℒ.mul!(z, C, ū)
     end
 
     llh = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
@@ -413,9 +413,9 @@ function rrule(::typeof(run_kalman_iterations),
                 # ∂llh∂F
                 # loglik += logdet(F[t]) + v[t]' * invF[t] * v[t]
                 # ∂F = invF[t]' - invF[t]' * v[t] * v[t]' * invF[t]'
-                mul!(∂F, v[t], v[t]')
-                mul!(invF[1], invF[t]', ∂F) # using invF[1] as temporary storage
-                mul!(∂F, invF[1], invF[t]')
+                ℒ.mul!(∂F, v[t], v[t]')
+                ℒ.mul!(invF[1], invF[t]', ∂F) # using invF[1] as temporary storage
+                ℒ.mul!(∂F, invF[1], invF[t]')
                 ℒ.axpby!(1, invF[t]', -1, ∂F)
         
                 # ∂llh∂ū
@@ -425,8 +425,8 @@ function rrule(::typeof(run_kalman_iterations),
                 copy!(invF[1], invF[t]' .+ invF[t])
                 # copy!(invF[1], invF[t]) # using invF[1] as temporary storage
                 # ℒ.axpy!(1, invF[t]', invF[1]) # using invF[1] as temporary storage
-                mul!(∂v, invF[1], v[t])
-                # mul!(∂ū∂v, C', v[1])
+                ℒ.mul!(∂v, invF[1], v[t])
+                # ℒ.mul!(∂ū∂v, C', v[1])
             else
                 ℒ.rmul!(∂F, 0)
                 ℒ.rmul!(∂v, 0)
@@ -436,28 +436,28 @@ function rrule(::typeof(run_kalman_iterations),
             # F[t] .= C * P̄[t-1] * C'
             # ∂P += C' * (∂F + ∂Faccum) * C
             ℒ.axpy!(1, ∂Faccum, ∂F)
-            mul!(PCtmp, C', ∂F) 
-            mul!(∂P, PCtmp, C, 1, 1) 
+            ℒ.mul!(PCtmp, C', ∂F) 
+            ℒ.mul!(∂P, PCtmp, C, 1, 1) 
         
             # ∂ū∂P
             # K[t] .= P̄[t-1] * C' * invF[t]
             # u[t] .= K[t] * v[t] + ū[t-1]
             # ū[t] .= A * u[t]
             # ∂P += A' * ∂ū * v[t]' * invF[t]' * C
-            mul!(CP[1], invF[t]', C) # using CP[1] as temporary storage
-            mul!(PCtmp, ∂ū , v[t]')
-            mul!(P[1], PCtmp , CP[1]) # using P[1] as temporary storage
-            mul!(∂P, A', P[1], 1, 1) 
+            ℒ.mul!(CP[1], invF[t]', C) # using CP[1] as temporary storage
+            ℒ.mul!(PCtmp, ∂ū , v[t]')
+            ℒ.mul!(P[1], PCtmp , CP[1]) # using P[1] as temporary storage
+            ℒ.mul!(∂P, A', P[1], 1, 1) 
         
             # ∂ū∂data
             # v[t] .= data_in_deviations[:, t-1] .- z
             # z[t] .= C * ū[t]
             # ∂data_in_deviations[:,t-1] = -C * ∂ū
-            mul!(u[1], A', ∂ū)
-            mul!(v[1], K[t]', u[1]) # using v[1] as temporary storage
+            ℒ.mul!(u[1], A', ∂ū)
+            ℒ.mul!(v[1], K[t]', u[1]) # using v[1] as temporary storage
             ℒ.axpy!(1, ∂v, v[1])
             ∂data_in_deviations[:,t-1] .= v[1]
-            # mul!(∂data_in_deviations[:,t-1], C, ∂ū, -1, 0) # cannot assign to columns in matrix, must be whole matrix 
+            # ℒ.mul!(∂data_in_deviations[:,t-1], C, ∂ū, -1, 0) # cannot assign to columns in matrix, must be whole matrix 
 
             # ∂ū∂ū
             # z[t] .= C * ū[t]
@@ -467,10 +467,10 @@ function rrule(::typeof(run_kalman_iterations),
             # ū[t] .= A * u[t]
             # step to next iteration
             # ∂ū = A' * ∂ū - C' * K[t]' * A' * ∂ū
-            mul!(u[1], A', ∂ū) # using u[1] as temporary storage
-            mul!(v[1], K[t]', u[1]) # using v[1] as temporary storage
-            mul!(∂ū, C', v[1])
-            mul!(u[1], C', v[1], -1, 1)
+            ℒ.mul!(u[1], A', ∂ū) # using u[1] as temporary storage
+            ℒ.mul!(v[1], K[t]', u[1]) # using v[1] as temporary storage
+            ℒ.mul!(∂ū, C', v[1])
+            ℒ.mul!(u[1], C', v[1], -1, 1)
             copy!(∂ū, u[1])
         
             # ∂llh∂ū
@@ -478,22 +478,22 @@ function rrule(::typeof(run_kalman_iterations),
             # v[t] .= data_in_deviations[:, t-1] .- z
             # z[t] .= C * ū[t]
             # ∂ū -= ∂ū∂v
-            mul!(u[1], C', ∂v) # using u[1] as temporary storage
+            ℒ.mul!(u[1], C', ∂v) # using u[1] as temporary storage
             ℒ.axpy!(-1, u[1], ∂ū)
         
             if t > 2
                 # ∂ū∂A
                 # ū[t] .= A * u[t]
                 # ∂A += ∂ū * u[t-1]'
-                mul!(∂A, ∂ū, u[t-1]', 1, 1)
+                ℒ.mul!(∂A, ∂ū, u[t-1]', 1, 1)
         
                 # ∂P̄∂A and ∂P̄∂𝐁
                 # P̄[t] .= A * P[t] * A' + 𝐁
                 # ∂A += ∂P * A * P[t-1]' + ∂P' * A * P[t-1]
-                mul!(P[1], A, P[t-1]')
-                mul!(Ptmp ,∂P, P[1])
-                mul!(P[1], A, P[t-1])
-                mul!(Ptmp ,∂P', P[1], 1, 1)
+                ℒ.mul!(P[1], A, P[t-1]')
+                ℒ.mul!(Ptmp ,∂P, P[1])
+                ℒ.mul!(P[1], A, P[t-1])
+                ℒ.mul!(Ptmp ,∂P', P[1], 1, 1)
                 ℒ.axpy!(1, Ptmp, ∂A)
         
                 # ∂𝐁 += ∂P
@@ -504,37 +504,37 @@ function rrule(::typeof(run_kalman_iterations),
                 # P̄[t] .= A * P[t] * A' + 𝐁
                 # step to next iteration
                 # ∂P = A' * ∂P * A
-                mul!(P[1], ∂P, A) # using P[1] as temporary storage
-                mul!(∂P, A', P[1])
+                ℒ.mul!(P[1], ∂P, A) # using P[1] as temporary storage
+                ℒ.mul!(∂P, A', P[1])
         
                 # ∂P̄∂P
                 # K[t] .= P̄[t-1] * C' * invF[t]
                 # P[t] .= P̄[t-1] - K[t] * CP[t]
                 # ∂P -= C' * K[t-1]' * ∂P + ∂P * K[t-1] * C 
-                mul!(PCtmp, ∂P, K[t-1])
-                mul!(CP[1], K[t-1]', ∂P) # using CP[1] as temporary storage
-                mul!(∂P, PCtmp, C, -1, 1)
-                mul!(∂P, C', CP[1], -1, 1)
+                ℒ.mul!(PCtmp, ∂P, K[t-1])
+                ℒ.mul!(CP[1], K[t-1]', ∂P) # using CP[1] as temporary storage
+                ℒ.mul!(∂P, PCtmp, C, -1, 1)
+                ℒ.mul!(∂P, C', CP[1], -1, 1)
         
                 # ∂ū∂F
                 # K[t] .= P̄[t-1] * C' * invF[t]
                 # u[t] .= K[t] * v[t] + ū[t-1]
                 # ū[t] .= A * u[t]
                 # ∂Faccum = -invF[t-1]' * CP[t-1] * A' * ∂ū * v[t-1]' * invF[t-1]'
-                mul!(u[1], A', ∂ū) # using u[1] as temporary storage
-                mul!(v[1], CP[t-1], u[1]) # using v[1] as temporary storage
-                mul!(vtmp, invF[t-1]', v[1], -1, 0)
-                mul!(invF[1], vtmp, v[t-1]') # using invF[1] as temporary storage
-                mul!(∂Faccum, invF[1], invF[t-1]')
+                ℒ.mul!(u[1], A', ∂ū) # using u[1] as temporary storage
+                ℒ.mul!(v[1], CP[t-1], u[1]) # using v[1] as temporary storage
+                ℒ.mul!(vtmp, invF[t-1]', v[1], -1, 0)
+                ℒ.mul!(invF[1], vtmp, v[t-1]') # using invF[1] as temporary storage
+                ℒ.mul!(∂Faccum, invF[1], invF[t-1]')
         
                 # ∂P∂F
                 # K[t] .= P̄[t-1] * C' * invF[t]
                 # P[t] .= P̄[t-1] - K[t] * CP[t]
                 # ∂Faccum -= invF[t-1]' * CP[t-1] * ∂P * CP[t-1]' * invF[t-1]'
-                mul!(CP[1], invF[t-1]', CP[t-1]) # using CP[1] as temporary storage
-                mul!(PCtmp, CP[t-1]', invF[t-1]')
-                mul!(K[1], ∂P, PCtmp) # using K[1] as temporary storage
-                mul!(∂Faccum, CP[1], K[1], -1, 1)
+                ℒ.mul!(CP[1], invF[t-1]', CP[t-1]) # using CP[1] as temporary storage
+                ℒ.mul!(PCtmp, CP[t-1]', invF[t-1]')
+                ℒ.mul!(K[1], ∂P, PCtmp) # using K[1] as temporary storage
+                ℒ.mul!(∂Faccum, CP[1], K[1], -1, 1)
         
             end
         end

@@ -299,9 +299,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                         
                         copyto!(tmp3, length(t⁻) + 1, x[tt], 1, T.nExo)
 
-                        mul!(tmp1,  x[t], tmp3')
+                        ℒ.mul!(tmp1,  x[t], tmp3')
 
-                        mul!(∂𝐒t⁻,  ∂Stmp[t-tt], tmp1, 1, 1)
+                        ℒ.mul!(∂𝐒t⁻,  ∂Stmp[t-tt], tmp1, 1, 1)
                         
                     end
                 end

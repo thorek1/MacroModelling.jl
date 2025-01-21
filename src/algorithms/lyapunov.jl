@@ -241,7 +241,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     for i in 1:max_iter
         𝐂¹ = 𝐀 * 𝐂 * 𝐀' + 𝐂
 
-        mul!(𝐀², 𝐀, 𝐀)
+        ℒ.mul!(𝐀², 𝐀, 𝐀)
         copyto!(𝐀, 𝐀²)
 
         # droptol!(𝐀, eps())
@@ -290,8 +290,8 @@ function solve_lyapunov_equation(   A::AbstractSparseMatrix{T},
 
     for i in 1:max_iter
         # 𝐂¹ .= 𝐀 * 𝐂 * 𝐀' + 𝐂
-        mul!(𝐂A, 𝐂, 𝐀')
-        mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
+        ℒ.mul!(𝐂A, 𝐂, 𝐀')
+        ℒ.mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
 
         # 𝐀 *= 𝐀
         𝐀 = 𝐀^2 # faster than A *= A
@@ -353,10 +353,10 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
     iters = max_iter
 
     for i in 1:max_iter
-        mul!(𝐂A, 𝐂, 𝐀')
-        mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
+        ℒ.mul!(𝐂A, 𝐂, 𝐀')
+        ℒ.mul!(𝐂¹, 𝐀, 𝐂A, 1, 1)
 
-        mul!(𝐀², 𝐀, 𝐀)
+        ℒ.mul!(𝐀², 𝐀, 𝐀)
         copyto!(𝐀, 𝐀²)
         
         if i % 2 == 0
