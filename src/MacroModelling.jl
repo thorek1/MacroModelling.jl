@@ -4682,12 +4682,17 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
-    Ŝ = 𝓂.caches.third_order_caches.Ŝ
     # 𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
-    if length(Ŝ) == 0 || !(eltype(𝐒₃) == eltype(Ŝ))
-        Ŝ = 𝐒₃ * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
+    if length(𝓂.caches.third_order_caches.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.caches.third_order_caches.Ŝ))
+        𝓂.caches.third_order_caches.Ŝ = 𝐒₃ * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
     else
-        ℒ.mul!(Ŝ, 𝐒₃, 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+        ℒ.mul!(𝓂.caches.third_order_caches.Ŝ, 𝐒₃, 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+    end
+
+    Ŝ = 𝓂.caches.third_order_caches.Ŝ
+
+    if !(eltype(𝓂.caches.third_order_caches.tmp_sparse_prealloc6[3]) == M)
+        𝓂.caches.third_order_caches.tmp_sparse_prealloc6 = (Int[], Int[], M[], Int[], Int[], Int[], M[])
     end
 
     I           = 𝓂.caches.third_order_caches.tmp_sparse_prealloc6[1]
