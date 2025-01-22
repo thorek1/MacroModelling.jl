@@ -75,7 +75,7 @@ mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihoo
                                                 # show_trace = true,
                                                 initial_params = mode_estimateNM.values)
 
-init_params = mode_estimateLBFGS.values
+init_params = mode_estimateLBFGS.values |> collect
 
 
 println("Mode variable values (L-BFGS): $init_params")
