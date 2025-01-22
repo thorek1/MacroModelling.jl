@@ -61,12 +61,22 @@ Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(dat
 
 # samps = sample(Caldara_et_al_2012_loglikelihood, IS(), 1000, progress = true)#, init_params = sol)
 
-mode_estimate = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
-                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                                adtype = Turing.AutoZygote(),
+
+mode_estimateNM = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
+                                                Optim.NelderMead(),
+                                                iterations = 100,
+                                                # show_trace = true,
                                                 initial_params = Caldara_et_al_2012_estim.parameter_values)
 
-init_params = mode_estimate.values
+mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
+                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                                adtype = Turing.AutoZygote(),
+                                                iterations = 100,
+                                                # show_trace = true,
+                                                initial_params = mode_estimateNM.values)
+
+init_params = mode_estimateLBFGS.values
+
 
 println("Mode variable values (L-BFGS): $init_params")
 
