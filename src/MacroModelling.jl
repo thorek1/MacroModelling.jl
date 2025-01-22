@@ -1531,7 +1531,8 @@ function kron³(A::AbstractSparseMatrix{T}, M₃::third_order_auxilliary_matrice
 
     lk = ReentrantLock()
 
-    Polyester.@batch for i in 1:nvals
+    # Polyester.@batch for i in 1:nvals
+    for i in 1:nvals
         for j in 1:nvals
             for k in 1:nvals
                 r1, c1, v1 = rows[i], cols[i], vals[i]
@@ -5700,7 +5701,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
             else
-                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+                for i in 1:min(min_n_funcs, length(vals))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
 
                     indices = length(indices) == 1 ? indices[1] : indices
@@ -5730,7 +5732,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(first_order, 1:length(first_order), Val(:string)))
             else
-                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(first_order))
+                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(first_order))
+                for i in 1:min(min_n_funcs, length(first_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
 
                     indices = length(indices) == 1 ? indices[1] : indices
@@ -5768,7 +5771,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(second_order[perm_vals], 1:length(second_order), Val(:string)))
             else
-                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(second_order))
+                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(second_order))
+                for i in 1:min(min_n_funcs, length(second_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
             
                     indices = length(indices) == 1 ? indices[1] : indices
@@ -5811,7 +5815,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         if min_n_funcs == 1
             push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
         else
-            Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+            # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+            for i in 1:min(min_n_funcs, length(vals))
                 indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
 
                 indices = length(indices) == 1 ? indices[1] : indices
@@ -5849,7 +5854,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(third_order[perm_vals], 1:length(third_order), Val(:string)))
             else
-                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(third_order))
+                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(third_order))
+                for i in 1:min(min_n_funcs, length(third_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
             
                     if length(indices) == 1
@@ -5894,7 +5900,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         if min_n_funcs == 1
             push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
         else
-            Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+            # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+            for i in 1:min(min_n_funcs, length(vals))
                 indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
 
                 indices = length(indices) == 1 ? indices[1] : indices
@@ -5976,7 +5983,8 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     if min_n_funcs == 1
         push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3], 1:length(∂SS_equations_∂parameters[3]), Val(:string)))
     else
-        Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂parameters[3]))
+        # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂parameters[3]))
+        for i in 1:min(min_n_funcs, length(∂SS_equations_∂parameters[3]))
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂parameters[3]) : i * max_exprs_per_func)
 
             indices = length(indices) == 1 ? indices[1] : indices
@@ -6014,7 +6022,8 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
     if min_n_funcs == 1
         push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3], 1:length(∂SS_equations_∂SS_and_pars[3]), Val(:string)))
     else
-        Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂SS_and_pars[3]))
+        # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂SS_and_pars[3]))
+        for i in 1:min(min_n_funcs, length(∂SS_equations_∂SS_and_pars[3]))
             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂SS_and_pars[3]) : i * max_exprs_per_func)
 
             indices = length(indices) == 1 ? indices[1] : indices
@@ -6411,7 +6420,8 @@ function calculate_jacobian(parameters::Vector{M},
 
     # @timeit_debug timer "Loop" begin
 
-    Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian[1]
+    # Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian[1]
+    for f in 𝓂.model_jacobian[1]
     # for f in 𝓂.model_jacobian[1]
         # val, idx = f(X)#::Tuple{<: Real, Int}
         out = f(X)#::Tuple{Vector{<: Real}, UnitRange{Int64}}
@@ -6468,7 +6478,8 @@ function rrule(::typeof(calculate_jacobian),
 
         # @timeit_debug timer "Loop" begin
 
-        Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
+        # Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
+        for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
             out = f(X)
 
             # begin
@@ -6538,7 +6549,8 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
 
     # lk = ReentrantLock()
 
-    Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian[1]
+    # Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian[1]
+    for f in 𝓂.model_hessian[1]
         out = f(X)
         
         # begin
@@ -6586,7 +6598,8 @@ function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
 
         vals = zeros(Float64, length(𝓂.model_hessian_SS_and_pars_vars[1]))
 
-        Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian_SS_and_pars_vars[1]
+        # Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian_SS_and_pars_vars[1]
+        for f in 𝓂.model_hessian_SS_and_pars_vars[1]
             out = f(X)
             
             @inbounds vals[out[2]] = out[1]
@@ -6653,7 +6666,8 @@ function calculate_third_order_derivatives(parameters::Vector{M},
 
     # @timeit_debug timer "Loop" begin
 
-    Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives[1]
+    # Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives[1]
+    for f in 𝓂.model_third_order_derivatives[1]
         out = f(X)
         
         # begin
@@ -6710,7 +6724,8 @@ function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_p
         
         # @timeit_debug timer "Loop" begin
     
-        Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives_SS_and_pars_vars[1]
+        # Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives_SS_and_pars_vars[1]
+        for f in 𝓂.model_third_order_derivatives_SS_and_pars_vars[1]
             out = f(X)
             
             @inbounds vals[out[2]] = out[1]
@@ -7391,7 +7406,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # @timeit_debug timer "Loop - parameter derivatives" begin
 
-    Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
+    # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
+    for f in 𝓂.∂SS_equations_∂parameters[1]
         out = f(X)
         
         # begin
@@ -7422,7 +7438,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # @timeit_debug timer "Loop - NSSS derivatives" begin
 
-    Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+    # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+    for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
         out = f(X)
         
         # begin
@@ -7516,7 +7533,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         # lk = ReentrantLock()
 
-        Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
+        # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
+        for f in 𝓂.∂SS_equations_∂parameters[1]
             out = f(X)
             
             # begin
@@ -7543,7 +7561,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         # lk = ReentrantLock()
 
-        Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+        # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+        for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
             out = f(X)
             
             # begin
