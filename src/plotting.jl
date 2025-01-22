@@ -1347,7 +1347,7 @@ function plot_solution(𝓂::ℳ,
             if a == :pruned_second_order
                 initial_state = [state_selector * x, -SSS_delta]
             elseif a == :pruned_third_order
-                initial_state = [state_selector * x, -SSS_delta, zeros(length(all_states))]
+                initial_state = [state_selector * x, -SSS_delta, zero(SSS_delta)]
             else
                 initial_state = collect(relevant_SS_dictionnary[a]) .+ state_selector * x
             end
