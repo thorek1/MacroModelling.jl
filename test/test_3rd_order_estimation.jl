@@ -9,7 +9,7 @@ import DynamicPPL
 # estimate highly nonlinear model
 
 # load data
-dat = CSV.read("test/data/usmodel.csv", DataFrame)
+dat = CSV.read("data/usmodel.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
 
 # declare observables
