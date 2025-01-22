@@ -63,7 +63,7 @@ Random.seed!(3)
 
 n_samples = 100
 
-samps = @time sample(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim), NUTS(250,adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = Caldara_et_al_2012_estim.parameter_values)
+samps = @time sample(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim), NUTS(250, 0.65, adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = Caldara_et_al_2012_estim.parameter_values)
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
