@@ -55,15 +55,24 @@ end
 
 Random.seed!(3)
 
-# Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)
+Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)
 
 # samps = @time sample(Caldara_et_al_2012_loglikelihood, PG(100), 10, progress = true)#, init_params = sol)
 
 # samps = sample(Caldara_et_al_2012_loglikelihood, IS(), 1000, progress = true)#, init_params = sol)
 
+mode_estimate = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
+                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
+                                                adtype = AutoZygote(),
+                                                initial_params = Caldara_et_al_2012_estim.parameter_values)
+
+init_params = mode_estimate.values
+
+println("Mode variable values (L-BFGS): $init_params")
+
 n_samples = 100
 
-samps = @time sample(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim), NUTS(250, 0.65, adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = Caldara_et_al_2012_estim.parameter_values)
+samps = sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = init_params)
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
@@ -72,8 +81,6 @@ sample_nuts = mean(samps).nt.mean
 
 # generate a Pigeons log potential
 Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim))
-
-init_params = Caldara_et_al_2012_estim.parameter_values
 
 LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim), (all_params = init_params,))
 
