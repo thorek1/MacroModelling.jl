@@ -19,6 +19,9 @@ In case of pruned second and pruned third order perturbation algorithms the deco
 - $TOLERANCES®
 - $VERBOSE®
 
+# Returns
+- `KeyedArray` with variables in rows, shocks in columns, and periods as the third dimension.
+
 # Examples
 ```jldoctest
 using MacroModelling
@@ -181,6 +184,9 @@ Return the estimated shocks based on the inversion filter (depending on the `fil
 - $TOLERANCES®
 - $VERBOSE®
 
+# Returns
+- `KeyedArray` with shocks in rows, and periods in columns.
+
 # Examples
 ```jldoctest
 using MacroModelling
@@ -303,6 +309,9 @@ Return the estimated variables (in levels by default, see `levels` keyword argum
 - $TOLERANCES®
 - $VERBOSE®
 
+# Returns
+- `KeyedArray` with variables in rows, and periods in columns.
+
 # Examples
 ```jldoctest
 using MacroModelling
@@ -420,6 +429,9 @@ Return the standard deviations of the Kalman smoother or filter (depending on th
 - $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
+
+# Returns
+- `KeyedArray` with standard deviations in rows, and periods in columns.
 
 # Examples
 ```jldoctest
@@ -1035,7 +1047,7 @@ end
 
 """
 $(SIGNATURES)
-Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedArray. By default (see `levels`), the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state).
+Return impulse response functions (IRFs) of the model in a 3-dimensional `KeyedArray`. By default (see `levels`), the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state).
 
 # Arguments
 - $MODEL®
@@ -1047,7 +1059,7 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedAr
 - $SHOCKS®
 - $NEGATIVE_SHOCK®
 - $GENERALISED_IRF®
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
+- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is not relevant for generalised IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in deviations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and `initial_state` is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
 - $LEVELS®
 - $SHOCK_SIZE®
 - $IGNORE_OBC®
@@ -1056,6 +1068,9 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional KeyedAr
 - $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
+
+# Returns
+- `KeyedArray` with variables in rows, shocks in columns, and periods as the third dimension.
 
 # Examples
 ```jldoctest
@@ -1676,7 +1691,7 @@ ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 $(SIGNATURES)
-Return the solution of the model. In the linear case it returns the linearised solution and the non stochastic steady state (NSSS) of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables, shocks, and perturbation parameter (:Volatility) in the case of higher order solutions as the other dimensions.
+Return the solution of the model. In the linear case it returns the linearised solution and the non stochastic steady state (NSSS) of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables, shocks, and perturbation parameter (:Volatility) as the other dimensions.
 
 The values of the output represent the NSSS in the case of a linear solution and below it the effect that deviations from the NSSS of the respective past states, shocks, and perturbation parameter have (perturbation parameter = 1) on the present value (NSSS deviation) of the model variables.
 
