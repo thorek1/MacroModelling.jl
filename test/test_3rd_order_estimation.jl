@@ -63,7 +63,7 @@ Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(dat
 
 mode_estimate = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
                                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                                adtype = AutoZygote(),
+                                                adtype = Turing.AutoZygote(),
                                                 initial_params = Caldara_et_al_2012_estim.parameter_values)
 
 init_params = mode_estimate.values
