@@ -224,7 +224,9 @@ check_for_dynamic_variables(ex::Int) = false
 check_for_dynamic_variables(ex::Float64) = false
 check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋₁₎",string(ex))
 
-mul_reverse_AD!(C,A,B) = ℒ.mul!(C,A,B)
+function mul_reverse_AD!(C::AbstractMatrix,A::AbstractVecOrMat,B::AbstractVecOrMat)
+    ℒ.mul!(C,A,B)
+end
 
 function rrule( ::typeof(mul_reverse_AD!),
                 C::AbstractMatrix,
