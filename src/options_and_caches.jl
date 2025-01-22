@@ -5,10 +5,10 @@ mutable struct krylov_caches{G <: AbstractFloat}
     bicgstab::BicgstabSolver{G,G,Vector{G}}
 end
 
-mutable struct sylvester_caches{F <: Real, G <: AbstractFloat}
-    tmp::Matrix{F}
-    𝐗::Matrix{F}
-    𝐂::Matrix{F}
+mutable struct sylvester_caches{G <: AbstractFloat}
+    tmp::Matrix{G}
+    𝐗::Matrix{G}
+    𝐂::Matrix{G}
     krylov_caches::krylov_caches{G}
 end
 
@@ -26,7 +26,7 @@ mutable struct higher_order_caches{F <: Real, G <: AbstractFloat}
     tmp_sparse_prealloc5::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     Ŝ::Matrix{F}
-    sylvester_caches::sylvester_caches{F, G}
+    sylvester_caches::sylvester_caches{G}
 end
 
 mutable struct caches#{F <: Real, G <: AbstractFloat}
@@ -41,10 +41,10 @@ function Krylov_caches(;S::Type = Float64)
                     BicgstabSolver(0,0,Vector{S}))
 end
 
-function Sylvester_caches(;T::Type = Float64, S::Type = Float64)
-    sylvester_caches(   zeros(T,0,0),
-                        zeros(T,0,0),
-                        zeros(T,0,0),
+function Sylvester_caches(;S::Type = Float64)
+    sylvester_caches(   zeros(S,0,0),
+                        zeros(S,0,0),
+                        zeros(S,0,0),
                         Krylov_caches(S = S))
 end
 
@@ -62,7 +62,7 @@ function Higher_order_caches(;T::Type = Float64, S::Type = Float64)
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                         zeros(T,0,0),
-                        Sylvester_caches(T = T, S = S))
+                        Sylvester_caches(S = S))
 end
 
 function Caches(;T::Type = Float64, S::Type = Float64)
