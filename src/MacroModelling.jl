@@ -228,6 +228,8 @@ function mul_reverse_AD!(C::AbstractMatrix,A::AbstractVecOrMat,B::AbstractVecOrM
     ℒ.mul!(C,A,B)
 end
 
+end # dispatch_doctor
+
 function rrule( ::typeof(mul_reverse_AD!),
                 C::AbstractMatrix,
                 A::AbstractVecOrMat,
@@ -245,6 +247,7 @@ function rrule( ::typeof(mul_reverse_AD!),
     return ℒ.mul!(C,A,B), times_pullback
 end
 
+@stable default_mode = "disable" begin
 
 function check_for_dynamic_variables(ex::Expr)
     dynamic_indicator = Bool[]
@@ -1259,6 +1262,8 @@ function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Hi
     return out
 end
 
+end # dispatch_doctor
+
 function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {T <: Real, F <: AbstractFloat}
     project_Ŝ = ProjectTo(Ŝ)
 
@@ -1271,6 +1276,7 @@ function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order
     return sparse_preallocated!(Ŝ, ℂ = ℂ), sparse_preallocated_pullback
 end
 
+@stable default_mode = "disable" begin
 
 function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {Z,S,N,T <: Real, F <: AbstractFloat}
     sparse(Ŝ)
@@ -6586,7 +6592,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     # sparse!(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 end
 
-end # disptach_doctor
+end # dispatch_doctor
 
 function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
     hessian = calculate_hessian(parameters, SS_and_pars, 𝓂)
