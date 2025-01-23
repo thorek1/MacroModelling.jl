@@ -227,15 +227,15 @@ check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋�
 end # dispatch_doctor
 
 function mul_reverse_AD!(   C::Matrix{S},
-                            A::M,
-                            B::N) where {S <: Real, M <: AbstractMatrix{S}, N <: AbstractMatrix{S}}
+                            A::AbstractMatrix{M},
+                            B::AbstractMatrix{N}) where {S <: Real, M <: Real, N <: Real}
     ℒ.mul!(C,A,B)
 end
 
 function rrule( ::typeof(mul_reverse_AD!),
                 C::Matrix{S},
-                A::M,
-                B::N) where {S <: Real, M <: AbstractMatrix{S}, N <: AbstractMatrix{S}}
+                A::AbstractMatrix{M},
+                B::AbstractMatrix{N}) where {S <: Real, M <: Real, N <: Real}
     project_A = ProjectTo(A)
     project_B = ProjectTo(B)
 
