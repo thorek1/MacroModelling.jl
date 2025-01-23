@@ -224,11 +224,11 @@ check_for_dynamic_variables(ex::Int) = false
 check_for_dynamic_variables(ex::Float64) = false
 check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋₁₎",string(ex))
 
+end # dispatch_doctor
+
 function mul_reverse_AD!(C::AbstractMatrix,A::AbstractVecOrMat,B::AbstractVecOrMat)
     ℒ.mul!(C,A,B)
 end
-
-end # dispatch_doctor
 
 function rrule( ::typeof(mul_reverse_AD!),
                 C::AbstractMatrix,
@@ -1555,18 +1555,18 @@ function kron³(A::AbstractSparseMatrix{T}, M₃::third_order_auxilliary_matrice
 
                     key = (row_idx, col_idx)
 
-                    begin
-                        lock(lk)
-                        try
+                    # begin
+                    #     lock(lk)
+                    #     try
                             if haskey(result_dict, key)
                                 result_dict[key] += v1 * v2 * v3
                             else
                                 result_dict[key] = v1 * v2 * v3
                             end
-                        finally
-                            unlock(lk)
-                        end
-                    end
+                    #     finally
+                    #         unlock(lk)
+                    #     end
+                    # end
                 end
             end
         end
@@ -5715,14 +5715,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
                     func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
 
-                    begin
-                        lock(lk)
-                        try
+                    # begin
+                    #     lock(lk)
+                    #     try
                             push!(funcs, func)
-                        finally
-                            unlock(lk)
-                        end
-                    end
+                    #     finally
+                    #         unlock(lk)
+                    #     end
+                    # end
                 end
             end
 
@@ -5746,14 +5746,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
                     func = write_derivatives_function(first_order[indices], indices, Val(:string))
 
-                    begin
-                        lock(lk)
-                        try
+                    # begin
+                    #     lock(lk)
+                    #     try
                             push!(funcs, func)
-                        finally
-                            unlock(lk)
-                        end
-                    end
+                    #     finally
+                    #         unlock(lk)
+                    #     end
+                    # end
                 end
             end
 
@@ -5785,14 +5785,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
                     func = write_derivatives_function(second_order[perm_vals][indices], indices, Val(:string))
 
-                    begin
-                        lock(lk)
-                        try
+                    # begin
+                    #     lock(lk)
+                    #     try
                             push!(funcs, func)
-                        finally
-                            unlock(lk)
-                        end
-                    end
+                    #     finally
+                    #         unlock(lk)
+                    #     end
+                    # end
                 end
             end
 
@@ -5829,14 +5829,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
                 func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
 
-                begin
-                    lock(lk)
-                    try
+                # begin
+                #     lock(lk)
+                #     try
                         push!(funcs, func)
-                    finally
-                        unlock(lk)
-                    end
-                end
+                #     finally
+                #         unlock(lk)
+                #     end
+                # end
             end
         end
 
@@ -5870,14 +5870,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
                     func = write_derivatives_function(third_order[perm_vals][indices], indices, Val(:string))
 
-                    begin
-                        lock(lk)
-                        try
+                    # begin
+                    #     lock(lk)
+                    #     try
                             push!(funcs, func)
-                        finally
-                            unlock(lk)
-                        end
-                    end
+                    #     finally
+                    #         unlock(lk)
+                    #     end
+                    # end
                 end
             end
 
@@ -5914,14 +5914,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
                 func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
 
-                begin
-                    lock(lk)
-                    try
+                # begin
+                #     lock(lk)
+                #     try
                         push!(funcs, func)
-                    finally
-                        unlock(lk)
-                    end
-                end
+                #     finally
+                #         unlock(lk)
+                #     end
+                # end
             end
         end
 
@@ -5997,14 +5997,14 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
 
             func = write_derivatives_function(∂SS_equations_∂parameters[3][indices], indices, Val(:string))
 
-            begin
-                lock(lk)
-                try
+            # begin
+            #     lock(lk)
+            #     try
                     push!(funcs, func)
-                finally
-                    unlock(lk)
-                end
-            end
+            #     finally
+            #         unlock(lk)
+            #     end
+            # end
         end
     end
 
@@ -6036,14 +6036,14 @@ function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int =
 
             func = write_derivatives_function(∂SS_equations_∂SS_and_pars[3][indices], indices, Val(:string))
 
-            begin
-                lock(lk)
-                try
+            # begin
+            #     lock(lk)
+            #     try
                     push!(funcs, func)
-                finally
-                    unlock(lk)
-                end
-            end
+            #     finally
+            #         unlock(lk)
+            #     end
+            # end
         end
     end
 
