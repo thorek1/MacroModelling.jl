@@ -1,6 +1,6 @@
 """
 $(SIGNATURES)
-Return the shock decomposition in absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state) based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`. 
+Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`. 
 
 In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
 
@@ -524,7 +524,7 @@ end
 
 """
 $(SIGNATURES)
-Return the conditional forecast given restrictions on endogenous variables and shocks (optional). By default, the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state; see `levels` for details). A constrained minimisation problem is solved to find the combination of shocks with the smallest squared magnitude fulfilling the conditions.
+Return the conditional forecast given restrictions on endogenous variables and shocks (optional). By default, the values represent absolute deviations from the relevant steady state (see `levels` for details). The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. A constrained minimisation problem is solved to find the combination of shocks with the smallest squared magnitude fulfilling the conditions.
 
 # Arguments
 - $MODEL®
@@ -535,7 +535,7 @@ Return the conditional forecast given restrictions on endogenous variables and s
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
 - $VARIABLES®
-- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
+- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state substracted.
 - $LEVELS®
 - $ALGORITHM®
 - $QME®
@@ -1061,7 +1061,7 @@ end
 
 """
 $(SIGNATURES)
-Return impulse response functions (IRFs) of the model. By default, the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state; see `levels` for details).
+Return impulse response functions (IRFs) of the model. By default, the values represent absolute deviations from the relevant steady state (see `levels` for details). The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions.
 
 # Arguments
 - $MODEL®
@@ -1440,7 +1440,7 @@ Return the (non-stochastic) steady state, calibrated parameters, and derivatives
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with variables in rows. The columns show the (non stochastic) steady state and parameters for which derivatives are taken. 
+- `KeyedArray` with variables in rows. The columns show the (non-stochastic) steady state and parameters for which derivatives are taken. 
 
 # Examples
 ```jldoctest
@@ -1707,7 +1707,7 @@ ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 $(SIGNATURES)
-Return the solution of the model. In the linear case it returns the the non stochastic steady state (NSSS) followed by the linearised solution of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables, shocks, and perturbation parameter (:Volatility) as the other dimensions.
+Return the solution of the model. In the linear case it returns the the non-stochastic steady state (NSSS) followed by the linearised solution of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables, shocks, and perturbation parameter (:Volatility) as the other dimensions.
 
 The values of the output represent the NSSS in the case of a linear solution and below it the effect that deviations from the NSSS of the respective past states, shocks, and perturbation parameter have (perturbation parameter = 1) on the present value (NSSS deviation) of the model variables.
 
@@ -3166,7 +3166,7 @@ get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or pruned third order perturbation solution. By default returns a `Dict` with: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
+Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or pruned third order perturbation solution. By default returns a `Dict` with: non stochastic steady state (NSSS), and standard deviations, but can also return variances, and covariance matrix.
 Function to use when differentiating model moments with repect to parameters.
 
 # Arguments

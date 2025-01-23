@@ -22,12 +22,12 @@ plotlyjs_backend = StatsPlots.plotlyjs
 
 """
 $(SIGNATURES)
-Plot model estimates of the variables given the data. The default plot shows the estimated variables, shocks, and the data to estimate the former.
-The left axis shows the level, and the right the deviation from the reference steady state. The horizontal black line indicates the non stochastic steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+Plot model estimates of the variables given the data. The default plot shows the estimated variables, shocks, and the data underlying the estimates. The estimates are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model.
 
-In case `shock_decomposition = true`, then the plot shows the variables, shocks, and data in absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state) as a stacked bar chart per period. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model.
+The left axis shows the level, and the right the deviation from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks, and number of pages per shock.
+In case `shock_decomposition = true`, the plot shows the variables, shocks, and data in absolute deviations from the relevant steady state as a stacked bar chart per period.
 
-In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
+For higher order perturbation solutions the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
 
 # Arguments
 - $MODEL®
@@ -56,6 +56,9 @@ In case of pruned second and pruned third order perturbation algorithms the deco
 - $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
 
 # Examples
 ```julia
@@ -421,7 +424,7 @@ plot_shock_decomposition(args...; kwargs...) =  plot_model_estimates(args...; kw
 $(SIGNATURES)
 Plot impulse response functions (IRFs) of the model.
 
-The left axis shows the level, and the right the deviation from the reference steady state. Linear solutions have the non stochastic steady state as reference other solution the stochastic steady state. The horizontal black line indicates the reference steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+The left axis shows the level, and the right axis the deviation from the relevant steady state. The non-stochastic steady state is relevant for first order solutions and the stochastic steady state for higher order solutions. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
 
 # Arguments
 - $MODEL®
@@ -430,23 +433,26 @@ The left axis shows the level, and the right the deviation from the reference st
 - $SHOCKS®
 - $VARIABLES®
 - $PARAMETERS®
+- $ALGORITHM®
+- $SHOCK_SIZE®
+- $NEGATIVE_SHOCK®
+- $GENERALISED_IRF®
+- $INITIAL_STATE®
+- $IGNORE_OBC®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
 - $SAVE_PLOTS_PATH®
 - $PLOTS_PER_PAGE®
-- $ALGORITHM®
-- $SHOCK_SIZE®
-- $NEGATIVE_SHOCK®
-- $GENERALISED_IRF®
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
-- $IGNORE_OBC®
 - $PLOT_ATTRIBUTES®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
 
 # Examples
 ```julia
@@ -924,6 +930,9 @@ The vertical axis shows the share of the shocks variance contribution, and horiz
 - $TOLERANCES®
 - $VERBOSE®
 
+# Returns
+- `Vector{Plot}` of individual plots
+
 # Examples
 ```julia
 using MacroModelling, StatsPlots
@@ -1138,6 +1147,9 @@ In the case of pruned higher order solutions there are as many (latent) state ve
 - $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
 
 # Examples
 ```julia
@@ -1466,20 +1478,20 @@ end
 
 """
 $(SIGNATURES)
-Plot conditional forecast given restrictions on endogenous variables and shocks (optional) of the model. The algorithm finds the combinations of shocks with the smallest magnitude to match the conditions and plots both the endogenous variables and shocks.
+Plot the conditional forecast given restrictions on endogenous variables and shocks (optional). By default, the values represent absolute deviations from the relevant steady state (see `levels` for details). The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. A constrained minimisation problem is solved to find the combination of shocks with the smallest squared magnitude fulfilling the conditions.
 
-The left axis shows the level, and the right axis the deviation from the (non) stochastic steady state, depending on the solution algorithm (e.g. higher order perturbation algorithms will show the stochastic steady state). Variable names are above the subplots, conditioned values are marked, and the title provides information about the model, and number of pages.
+The left axis shows the level, and the right axis the deviation from the relevant steady state. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
 
 # Arguments
 - $MODEL®
 - $CONDITIONS®
 # Keyword Arguments
 - $SHOCK_CONDITIONS®
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
+- $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
 - $VARIABLES®
-- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
+- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state substracted.
 - $ALGORITHM®
 - $LEVELS®
 - $SHOW_PLOTS®
@@ -1493,6 +1505,9 @@ The left axis shows the level, and the right axis the deviation from the (non) s
 - $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
 
 # Examples
 ```julia
