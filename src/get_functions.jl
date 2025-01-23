@@ -524,25 +524,28 @@ end
 
 """
 $(SIGNATURES)
-Return the conditional forecast given restrictions on endogenous variables and shocks (optional) in a 2-dimensional array. By default (see `levels`), the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state). A constrained minimisation problem is solved to find the combinations of shocks with the smallest magnitude to match the conditions.
+Return the conditional forecast given restrictions on endogenous variables and shocks (optional). By default, the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state; see `levels` for details). A constrained minimisation problem is solved to find the combination of shocks with the smallest squared magnitude fulfilling the conditions.
 
 # Arguments
 - $MODEL®
 - $CONDITIONS®
 # Keyword Arguments
 - $SHOCK_CONDITIONS®
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
+- $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
 - $VARIABLES®
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
-- $ALGORITHM®
 - $LEVELS®
+- $ALGORITHM®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
+
+# Returns
+- `KeyedArray` with variables  and shocks in rows, and periods in columns.
 
 # Examples
 ```jldoctest
@@ -903,7 +906,7 @@ Function to use when differentiating IRFs with repect to parameters.
 - $VARIABLES®
 - $SHOCKS®
 - $NEGATIVE_SHOCK®
-- $INITIAL_STATE®
+- $INITIAL_STATE®1
 - $LEVELS®
 - $QME®
 - $TOLERANCES®
@@ -995,6 +998,10 @@ function get_irf(𝓂::ℳ,
 
     reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
+    if (solution_error > tol.NSSS_acceptance_tol) || isnan(solution_error)
+        return zeros(S,0,0,0)
+    end
+
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)# |> Matrix
 								
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁; 
@@ -1002,7 +1009,11 @@ function get_irf(𝓂::ℳ,
                                                             opts = opts,
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution)
     
-    if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    if solved 
+        𝓂.solution.perturbation.qme_solution = qme_sol
+    else
+        return zeros(S,0,0,0)
+    end
 
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
 
@@ -1059,7 +1070,7 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional `KeyedA
 - $SHOCKS®
 - $NEGATIVE_SHOCK®
 - $GENERALISED_IRF®
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is not relevant for generalised IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in deviations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and `initial_state` is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
+- $INITIAL_STATE®
 - $LEVELS®
 - $SHOCK_SIZE®
 - $IGNORE_OBC®
