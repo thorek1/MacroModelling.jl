@@ -895,7 +895,7 @@ end
 
 """
 $(SIGNATURES)
-Return impulse response functions (IRFs) of the model in a 3-dimensional array.
+Return impulse response functions (IRFs) of the model.
 Function to use when differentiating IRFs with repect to parameters.
 
 # Arguments
@@ -911,6 +911,9 @@ Function to use when differentiating IRFs with repect to parameters.
 - $QME®
 - $TOLERANCES®
 - $VERBOSE®
+
+# Returns
+- `Array{<:AbstractFloat, 3}` with variables in rows, periods in columns, and shocks as the third dimension.
 
 # Examples
 ```jldoctest
@@ -1058,7 +1061,7 @@ end
 
 """
 $(SIGNATURES)
-Return impulse response functions (IRFs) of the model in a 3-dimensional `KeyedArray`. By default (see `levels`), the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state).
+Return impulse response functions (IRFs) of the model. By default, the values represent absolute deviations from the relevant steady state (e.g. higher order perturbation algorithms are relative to the stochastic steady state; see `levels` for details).
 
 # Arguments
 - $MODEL®
@@ -1081,7 +1084,7 @@ Return impulse response functions (IRFs) of the model in a 3-dimensional `KeyedA
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with variables in rows, shocks in columns, and periods as the third dimension.
+- `KeyedArray` with variables in rows, periods in columns, and shocks as the third dimension.
 
 # Examples
 ```jldoctest
@@ -1420,23 +1423,25 @@ get_girf(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., generalised_irf = tru
 
 """
 $(SIGNATURES)
-Return the (non stochastic) steady state, calibrated parameters, and derivatives with respect to model parameters.
+Return the (non-stochastic) steady state, calibrated parameters, and derivatives with respect to model parameters.
 
 # Arguments
 - $MODEL®
 # Keyword Arguments
 - $PARAMETERS®
 - $DERIVATIVES®
-- `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation
-- $ALGORITHM®
 - $PARAMETER_DERIVATIVES®
-- `return_variables_only` [Defaut: `false`, Type: `Bool`]: return only variables and not calibrated parameters
+- `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation if no other higher order perturbation algorithm is provided in `algorithm`.
+- `return_variables_only` [Defaut: `false`, Type: `Bool`]: return only variables and not calibrated parameters.
+- $ALGORITHM®
 - $QME®
 - $SYLVESTER®
 - $TOLERANCES®
 - $VERBOSE®
 
-The columns show the (non stochastic) steady state and parameters for which derivatives are taken. The rows show the variables and calibrated parameters.
+# Returns
+- `KeyedArray` with variables in rows. The columns show the (non stochastic) steady state and parameters for which derivatives are taken. 
+
 # Examples
 ```jldoctest
 using MacroModelling
@@ -1702,7 +1707,7 @@ ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 $(SIGNATURES)
-Return the solution of the model. In the linear case it returns the linearised solution and the non stochastic steady state (NSSS) of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables, shocks, and perturbation parameter (:Volatility) as the other dimensions.
+Return the solution of the model. In the linear case it returns the the non stochastic steady state (NSSS) followed by the linearised solution of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables, shocks, and perturbation parameter (:Volatility) as the other dimensions.
 
 The values of the output represent the NSSS in the case of a linear solution and below it the effect that deviations from the NSSS of the respective past states, shocks, and perturbation parameter have (perturbation parameter = 1) on the present value (NSSS deviation) of the model variables.
 
@@ -1716,8 +1721,8 @@ The values of the output represent the NSSS in the case of a linear solution and
 - $TOLERANCES®
 - $VERBOSE®
 
-The returned `KeyedArray` shows as columns the endogenous variables inlcuding the auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows and other dimensions (depending on the chosen perturbation order) include the NSSS for the linear case only, followed by the states, and exogenous shocks. 
-Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
+# Returns
+- `KeyedArray` shows as columns the endogenous variables inlcuding the auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows and other dimensions (depending on the chosen perturbation order) include the NSSS for the linear case only, followed by the states, and exogenous shocks. Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
 
 # Examples
 ```jldoctest
@@ -1876,6 +1881,52 @@ get_perturbation_solution(args...; kwargs...) = get_solution(args...; kwargs...)
 
 
 
+"""
+$(SIGNATURES)
+Return the components of the solution of the model: non-stochastic steady state (NSSS), and solution martrices corresponding to the order of the solution. Note that all returned objects have the variables in rows and the solution matrices have as columns the state variables followed by the perturbation/volatility parameter for higher order solution matrices and lastly the exogenous shocks. Higher order perturbation matrices are sparse and have the Kronecker product of the forementioned elements as columns. The last element, a Boolean indicates whether the solution is numerically accurate.
+Function to use when differentiating IRFs with repect to parameters.
+
+# Arguments
+- $MODEL®
+- $PARAMETERS®
+# Keyword Arguments
+- $ALGORITHM®
+- $QME®
+- $SYLVESTER®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `Tuple` consisting of a `Vector` containing the NSSS, followed by a `Matrix` containing the first order solution matrix. In case of higher order solutions, `SparseMatrixCSC` represent the higher order solution matrices. The last element is a `Bool` indicating the correctness of the solution provided.
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+get_solution(RBC, RBC.parameter_values)
+# output
+([5.936252888048724, 47.39025414828808, 6.884057971014486, 0.0], 
+ [0.09579643002421227 0.1349373930517757 0.006746869652588215; 
+  0.9568351489231555 1.241874201151121 0.06209371005755664; 
+  0.07263157894736819 1.376811594202897 0.06884057971014486; 
+  0.0 0.19999999999999998 0.01], true)
+```
+"""
 function get_solution(𝓂::ℳ, 
                         parameters::Vector{S}; 
                         algorithm::Symbol = :first_order, 
@@ -2010,6 +2061,9 @@ Return the conditional variance decomposition of endogenous variables with regar
 - $TOLERANCES®
 - $VERBOSE®
 
+# Returns
+- `KeyedArray` with variables in rows, shocks in columns, and periods as the third dimension.
+
 # Examples
 ```jldoctest part1
 using MacroModelling
@@ -2107,7 +2161,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     
     sort!(periods)
 
-    maxperiods = Int(maximum(periods[isfinite.(periods)]))
+    maxperiods = periods == [Inf] ? 0 : Int(maximum(periods[isfinite.(periods)]))
 
     var_container = zeros(size(𝑺₁)[1], 𝓂.timings.nExo, length(periods))
 
@@ -2190,6 +2244,9 @@ Return the variance decomposition of endogenous variables with regards to the sh
 - $TOLERANCES®
 - $VERBOSE®
 
+# Returns
+- `KeyedArray` with variables in rows, and shocks in columns.
+
 # Examples
 ```jldoctest part1
 using MacroModelling
@@ -2234,7 +2291,7 @@ And data, 7×2 Matrix{Float64}:
 ```
 """
 function get_variance_decomposition(𝓂::ℳ; 
-                                    parameters::ParameterType = nothing,  
+                                    parameters::ParameterType = nothing,
                                     verbose::Bool = false,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = :schur,
@@ -2252,7 +2309,7 @@ function get_variance_decomposition(𝓂::ℳ;
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                             T = 𝓂.timings, 
-                                                            opts = opts,
+            opts = opts, 
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
@@ -2322,6 +2379,9 @@ Return the correlations of endogenous variables using the first, pruned second, 
 - $SYLVESTER®
 - $TOLERANCES®
 - $VERBOSE®
+
+# Returns
+- `KeyedArray` with variables in rows and columns.
 
 # Examples
 ```jldoctest part1
@@ -2433,6 +2493,9 @@ Return the autocorrelations of endogenous variables using the first, pruned seco
 - $TOLERANCES®
 - $VERBOSE®
 
+# Returns
+- `KeyedArray` with variables in rows and autocorrelation periods in columns.
+
 # Examples
 ```jldoctest part1
 using MacroModelling
@@ -2456,7 +2519,7 @@ get_autocorrelation(RBC)
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 4-element Vector{Symbol}
-→   Autocorrelation_orders ∈ 5-element UnitRange{Int64}
+→   Autocorrelation_periods ∈ 5-element UnitRange{Int64}
 And data, 4×5 Matrix{Float64}:
         (1)         (2)         (3)         (4)         (5)
   (:c)    0.966974    0.927263    0.887643    0.849409    0.812761
@@ -2529,7 +2592,7 @@ function get_autocorrelation(𝓂::ℳ;
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_orders = autocorrelation_periods)
+    KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_periods = autocorrelation_periods)
 end
 
 """
@@ -2548,7 +2611,7 @@ autocorr = get_autocorrelation
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non stochastic steady state (SS), and standard deviations, but can optionally return variances, and covariance matrix.
+Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non stochastic steady state (NSSS), and standard deviations, but can optionally return variances, and covariance matrix. Derivatives of the moments (except for covariance) can also be provided by setting `derivatives` to `true`.
 
 # Arguments
 - $MODEL®
@@ -2570,7 +2633,7 @@ Return the first and second moments of endogenous variables using the first, pru
 - $VERBOSE®
 
 # Returns
-- A `Dict{Symbol,KeyedArray}` containing the selected moments.
+- `Dict{Symbol,KeyedArray}` containing the selected moments. All moments have variables as rows and the moment as the first column followed by partial derivatives wrt parameters.
 
 # Examples
 ```jldoctest part1
@@ -2681,7 +2744,7 @@ function get_moments(𝓂::ℳ;
 
         param_idx = indexin([parameter_derivatives], 𝓂.parameters)
         length_par = 1
-    elseif length(parameter_derivatives) > 1
+    elseif length(parameter_derivatives) ≥ 1
         for p in vec(collect(parameter_derivatives))
             @assert p ∈ 𝓂.parameters string(p) * " is not part of the free model parameters."
         end
@@ -3103,15 +3166,15 @@ get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or third order perturbation solution. By default returns a `Dict` with: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
+Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or pruned third order perturbation solution. By default returns a `Dict` with: non stochastic steady state (SS), and standard deviations, but can also return variances, and covariance matrix.
 Function to use when differentiating model moments with repect to parameters.
 
 # Arguments
 - $MODEL®
-- `parameter_values` [Type: `Vector`]: Parameter values.
+- `parameter_values` [Type: `Vector`]: Parameter values. If `parameter_names` is not explicitly defined, `parameter_values` are assumed to correspond to the parameters and the order of the parameters declared in the `@parameters` block.
 # Keyword Arguments
-- `parameters` [Type: `Vector{Symbol}`]: Corresponding names of parameters values.
-- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the SS of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
+- `parameters` [Type: `Vector{Symbol}`]: Corresponding names in the same order as `parameter_values`.
+- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the NSSS of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
 - `mean` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the mean of selected variables (the mean for the linearised solution is the NSSS). Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
 - `standard_deviation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the standard deviation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
 - `variance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the variance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
@@ -3124,6 +3187,9 @@ Function to use when differentiating model moments with repect to parameters.
 - $SYLVESTER®
 - $TOLERANCES®
 - $VERBOSE®
+
+# Returns
+- `Dict` with the name of the statistics and the corresponding vectors (NSSS, mean, standard deviation, variance) or matrices (covariance, autocorrelation).
 
 # Examples
 ```jldoctest
@@ -3306,9 +3372,9 @@ function get_statistics(𝓂,
         ret[:variance] = solved ? varrs[var_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(var_var_idx) ? 0 : length(var_var_idx))
     end
     if !(covariance == Symbol[])
-        covar_dcmp_sp = sparse(ℒ.triu(covar_dcmp))
+        covar_dcmp_sp = (ℒ.triu(covar_dcmp))
 
-        droptol!(covar_dcmp_sp,eps(Float64))
+        # droptol!(covar_dcmp_sp,eps(Float64))
 
         # push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
         ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
@@ -3344,6 +3410,9 @@ This function is differentiable (so far for the Kalman filter only) and can be u
 - $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
+
+# Returns
+- `<:AbstractFloat` loglikelihood 
 
 # Examples
 ```jldoctest
@@ -3474,7 +3543,7 @@ Calculate the residuals of the non-stochastic steady state equations of the mode
 - $VERBOSE®
 
 # Returns
-- A KeyedArray containing the absolute values of the residuals of the non-stochastic steady state equations.
+- `KeyedArray` containing the absolute values of the residuals of the non-stochastic steady state equations.
 
 # Examples
 ```jldoctest

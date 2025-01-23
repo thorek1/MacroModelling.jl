@@ -30,10 +30,13 @@ end
 
 """
 $(SIGNATURES)
-Return the equations of the model. In case programmatic model writing was used this function returns the parsed equations (see loop over shocks in example).
+Return the equations of the model. In case programmatic model writing was used this function returns the parsed equations (see loop over shocks in `Examples`).
 
 # Arguments
 - $MODEL®
+
+# Returns
+- `Vector{String}` of the parsed equations. 
 
 # Examples
 ```jldoctest
@@ -87,6 +90,9 @@ Note that the ouput assumes the equations are equal to 0. As in, `-z{δ} * ρ{δ
 
 # Arguments
 - $MODEL®
+
+# Returns
+- `Vector{String}` of the NSSS equations. 
 
 # Examples
 ```jldoctest
@@ -142,6 +148,9 @@ Note that the ouput assumes the equations are equal to 0. As in, `kᴸ⁽⁻¹�
 
 # Arguments
 - $MODEL®
+
+# Returns
+- `Vector{String}` of the dynamic model equations. 
 
 # Examples
 ```jldoctest
@@ -201,6 +210,9 @@ Note that the ouput assumes the equations are equal to 0. As in, `k / (q * 4) - 
 # Arguments
 - $MODEL®
 
+# Returns
+- `Vector{String}` of the calibration equations. 
+
 # Examples
 ```jldoctest
 using MacroModelling
@@ -241,12 +253,15 @@ end
 $(SIGNATURES)
 Returns the parameters (and optionally the values) which have an impact on the model dynamics but do not depend on other parameters and are not determined by calibration equations. 
 
-In case programmatic model writing was used this function returns the parsed parameters (see `σ` in example).
+In case programmatic model writing was used this function returns the parsed parameters (see `σ` in `Examples`).
 
 # Arguments
 - $MODEL®
 # Keyword Arguments
-- `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names
+- `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names.
+
+# Returns
+- `Vector{String}` of the parameters or `Vector{Pair{String, Float64}}` of parameters and values if `values` is set to `true`.
 
 # Examples
 ```jldoctest
@@ -301,8 +316,10 @@ Returns the parameters (and optionally the values) which are determined by a cal
 # Arguments
 - $MODEL®
 # Keyword Arguments
-- `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names
+- `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names.
 
+# Returns
+- `Vector{String}` of the calibrated parameters or `Vector{Pair{String, Float64}}` of the calibrated parameters and values if `values` is set to `true`.
 
 # Examples
 ```jldoctest
@@ -348,10 +365,13 @@ end
 $(SIGNATURES)
 Returns the parameters contained in the model equations. Note that these parameters might be determined by other parameters or calibration equations defined in the `@parameters` block.
 
-In case programmatic model writing was used this function returns the parsed parameters (see `σ` in example).
+In case programmatic model writing was used this function returns the parsed parameters (see `σ` in `Examples`).
 
 # Arguments
 - $MODEL®
+
+# Returns
+- `Vector{String}` of the parameters.
 
 # Examples
 ```jldoctest
@@ -397,10 +417,13 @@ end
 
 """
 $(SIGNATURES)
-Returns the parameters which are defined by other parameters which are not necessarily used in the equations of the model (see `α` in example).
+Returns the parameters which are defined by other parameters which are not necessarily used in the equations of the model (see `α` in `Examples`).
 
 # Arguments
 - $MODEL®
+
+# Returns
+- `Vector{String}` of the parameters.
 
 # Examples
 ```jldoctest
@@ -440,10 +463,13 @@ end
 
 """
 $(SIGNATURES)
-Returns the parameters which define other parameters in the `@parameters` block which are not necessarily used in the equations of the model (see `alpha` in example).
+Returns the parameters which define other parameters in the `@parameters` block which are not necessarily used in the equations of the model (see `alpha` in `Examples`).
 
 # Arguments
 - $MODEL®
+
+# Returns
+- `Vector{String}` of the parameters.
 
 # Examples
 ```jldoctest
@@ -483,10 +509,13 @@ end
 
 """
 $(SIGNATURES)
-Returns the parameters used in calibration equations which are not used in the equations of the model (see `capital_to_output` in example).
+Returns the parameters used in calibration equations which are not used in the equations of the model (see `capital_to_output` in `Examples`).
 
 # Arguments
 - $MODEL®
+
+# Returns
+- `Vector{String}` of the parameters.
 
 # Examples
 ```jldoctest
@@ -528,10 +557,13 @@ end
 $(SIGNATURES)
 Returns the variables of the model without timing subscripts and not including auxilliary variables.
 
-In case programmatic model writing was used this function returns the parsed variables (see `z` in example).
+In case programmatic model writing was used this function returns the parsed variables (see `z` in `Examples`).
 
 # Arguments
 - $MODEL®
+
+# Returns
+- `Vector{String}` of the variables.
 
 # Examples
 ```jldoctest
@@ -584,6 +616,9 @@ See `get_steady_state_equations` for more details on the auxilliary variables an
 # Arguments
 - $MODEL®
 
+# Returns
+- `Vector{String}` of the auxilliary parameters.
+
 # Examples
 ```jldoctest
 using MacroModelling
@@ -629,6 +664,9 @@ See `get_dynamic_equations` for more details on the auxilliary variables and equ
 
 # Arguments
 - $MODEL®
+
+# Returns
+- `Vector{String}` of the auxilliary parameters.
 
 # Examples
 ```jldoctest
@@ -677,6 +715,9 @@ In case programmatic model writing was used this function returns the parsed var
 
 # Arguments
 - $MODEL®
+
+# Returns
+- `Vector{String}` of the exogenous shocks.
 
 # Examples
 ```jldoctest
@@ -728,6 +769,9 @@ In case programmatic model writing was used this function returns the parsed var
 # Arguments
 - $MODEL®
 
+# Returns
+- `Vector{String}` of the state variables.
+
 # Examples
 ```jldoctest
 using MacroModelling
@@ -776,12 +820,15 @@ end
 
 """
 $(SIGNATURES)
-Returns the jump variables of the model. Jumper variables occur in the future and not in the past or occur in all three: past, present, and future.
+Returns the jump variables of the model. Jump variables occur in the future and not in the past or occur in all three: past, present, and future.
 
 In case programmatic model writing was used this function returns the parsed variables (see `z` in example).
 
 # Arguments
 - $MODEL®
+
+# Returns
+- `Vector{String}` of the jump variables.
 
 # Examples
 ```jldoctest
