@@ -7230,7 +7230,7 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
     elseif shocks == :all_excluding_obc
         shock_idx = findall(.!contains.(string.(T.exo),"ᵒᵇᶜ"))
     elseif shocks == :none
-        shock_idx = 1
+        shock_idx = Int64[]
     elseif shocks == :simulate
         shock_idx = 1
     elseif shocks isa Matrix{Symbol}
