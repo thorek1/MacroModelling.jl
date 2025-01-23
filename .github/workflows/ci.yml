@@ -60,7 +60,7 @@ jobs:
             arch: x64
             test_set: "plots_1"
           - version: '1'
-            os: macOS-latest
+            os: ubuntu-latest
             arch: x64
             test_set: "plots_2"
           - version: '1'
