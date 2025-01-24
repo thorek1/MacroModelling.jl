@@ -3378,11 +3378,11 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                     for a in atoms push!(atoms_in_equations, Symbol(a)) end
                     
-                    for (k, vars) in enumerate(vars_to_solve)
+                    for vars in vars_to_solve
                         push!(𝓂.solved_vars,Symbol(vars))
-                        push!(𝓂.solved_vals,Meta.parse(string(soll[k]))) #using convert(Expr,x) leads to ugly expressions
+                        push!(𝓂.solved_vals,Meta.parse(string(soll[vars]))) #using convert(Expr,x) leads to ugly expressions
 
-                        push!(atoms_in_equations_list, Set(Symbol.(soll[k].atoms())))
+                        push!(atoms_in_equations_list, Set(Symbol.(soll[vars].atoms())))
                         push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
                     end
                 end
