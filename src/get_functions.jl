@@ -4,6 +4,8 @@ Return the shock decomposition in absolute deviations from the relevant steady s
 
 In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
 
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
+
 # Arguments
 - $MODEL®
 - $DATA®
@@ -169,6 +171,8 @@ end
 $(SIGNATURES)
 Return the estimated shocks based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
+
 # Arguments
 - $MODEL®
 - $DATA®
@@ -292,6 +296,8 @@ end
 """
 $(SIGNATURES)
 Return the estimated variables (in levels by default, see `levels` keyword argument) based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
 
 # Arguments
 - $MODEL®
@@ -418,6 +424,8 @@ end
 $(SIGNATURES)
 Return the standard deviations of the Kalman smoother or filter (depending on the `smooth` keyword argument) estimates of the model variables based on the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
+
 # Arguments
 - $MODEL®
 - $DATA®
@@ -526,6 +534,8 @@ end
 $(SIGNATURES)
 Return the conditional forecast given restrictions on endogenous variables and shocks (optional). By default, the values represent absolute deviations from the relevant steady state (see `levels` for details). The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. A constrained minimisation problem is solved to find the combination of shocks with the smallest squared magnitude fulfilling the conditions.
 
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
+
 # Arguments
 - $MODEL®
 - $CONDITIONS®
@@ -561,7 +571,6 @@ using SparseArrays, AxisKeys
     z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
-
 
 @parameters RBC_CME begin
     alpha = .157
@@ -898,6 +907,8 @@ $(SIGNATURES)
 Return impulse response functions (IRFs) of the model.
 Function to use when differentiating IRFs with repect to parameters.
 
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
+
 # Arguments
 - $MODEL®
 - $PARAMETER_VALUES®
@@ -1062,6 +1073,8 @@ end
 """
 $(SIGNATURES)
 Return impulse response functions (IRFs) of the model. By default, the values represent absolute deviations from the relevant steady state (see `levels` for details). The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions.
+
+If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
 
 # Arguments
 - $MODEL®
@@ -2051,6 +2064,8 @@ end
 $(SIGNATURES)
 Return the conditional variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
 
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
+
 # Arguments
 - $MODEL®
 # Keyword Arguments
@@ -2077,7 +2092,6 @@ using MacroModelling
     z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
-
 
 @parameters RBC_CME begin
     alpha = .157
@@ -2235,6 +2249,8 @@ fevd = get_conditional_variance_decomposition
 $(SIGNATURES)
 Return the variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
 
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
+
 # Arguments
 - $MODEL®
 # Keyword Arguments
@@ -2260,7 +2276,6 @@ using MacroModelling
     z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
     A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
 end
-
 
 @parameters RBC_CME begin
     alpha = .157
@@ -2368,6 +2383,8 @@ get_var_decomp = get_variance_decomposition
 """
 $(SIGNATURES)
 Return the correlations of endogenous variables using the first, pruned second, or pruned third order perturbation solution. 
+
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
 
 # Arguments
 - $MODEL®
@@ -2480,6 +2497,8 @@ corr = get_correlation
 """
 $(SIGNATURES)
 Return the autocorrelations of endogenous variables using the first, pruned second, or pruned third order perturbation solution. 
+
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
 
 # Arguments
 - $MODEL®
@@ -2612,6 +2631,8 @@ autocorr = get_autocorrelation
 """
 $(SIGNATURES)
 Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non stochastic steady state (NSSS), and standard deviations, but can optionally return variances, and covariance matrix. Derivatives of the moments (except for covariance) can also be provided by setting `derivatives` to `true`.
+
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
 
 # Arguments
 - $MODEL®
@@ -3169,6 +3190,8 @@ $(SIGNATURES)
 Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or pruned third order perturbation solution. By default returns a `Dict` with: non stochastic steady state (NSSS), and standard deviations, but can also return variances, and covariance matrix.
 Function to use when differentiating model moments with repect to parameters.
 
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
+
 # Arguments
 - $MODEL®
 - `parameter_values` [Type: `Vector`]: Parameter values. If `parameter_names` is not explicitly defined, `parameter_values` are assumed to correspond to the parameters and the order of the parameters declared in the `@parameters` block.
@@ -3395,6 +3418,8 @@ $(SIGNATURES)
 Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). In case of a nonlinear solution algorithm the inversion filter will be used. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns.
 
 This function is differentiable (so far for the Kalman filter only) and can be used in gradient based sampling or optimisation.
+
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
 
 # Arguments
 - $MODEL®

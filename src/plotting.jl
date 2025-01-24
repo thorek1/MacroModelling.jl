@@ -29,6 +29,8 @@ In case `shock_decomposition = true`, the plot shows the variables, shocks, and 
 
 For higher order perturbation solutions the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
 
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
+
 # Arguments
 - $MODEL®
 - $DATA®
@@ -425,6 +427,8 @@ $(SIGNATURES)
 Plot impulse response functions (IRFs) of the model.
 
 The left axis shows the level, and the right axis the deviation from the relevant steady state. The non-stochastic steady state is relevant for first order solutions and the stochastic steady state for higher order solutions. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+
+If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
 
 # Arguments
 - $MODEL®
@@ -911,6 +915,8 @@ Plot conditional variance decomposition of the model.
 
 The vertical axis shows the share of the shocks variance contribution, and horizontal axis the period of the variance decomposition. The stacked bars represent each shocks variance contribution at a specific time horizon.
 
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
+
 # Arguments
 - $MODEL®
 # Keyword Arguments
@@ -1125,6 +1131,8 @@ Plot the solution of the model (mapping of past states to present variables) aro
 The relevant steady state is plotted along with the mapping from the chosen past state to one present variable per plot. All other (non-chosen) states remain in the relevant steady state.
 
 In the case of pruned higher order solutions there are as many (latent) state vectors as the perturbation order. The first and third order baseline state vectors are the non stochastic steady state and the second order baseline state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order baseline state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of inifitely many possible mappings.
+
+If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
 
 # Arguments
 - $MODEL®
@@ -1481,6 +1489,8 @@ $(SIGNATURES)
 Plot the conditional forecast given restrictions on endogenous variables and shocks (optional). By default, the values represent absolute deviations from the relevant steady state (see `levels` for details). The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. A constrained minimisation problem is solved to find the combination of shocks with the smallest squared magnitude fulfilling the conditions.
 
 The left axis shows the level, and the right axis the deviation from the relevant steady state. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+
+If occasionally binding constraints aer present in the model, they are not taken into account here. 
 
 # Arguments
 - $MODEL®
