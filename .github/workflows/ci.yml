@@ -109,6 +109,21 @@ jobs:
             arch: x64
             test_set: "basic"
             allow_failure: true
+          - version: 'pre'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "jet"
+            allow_failure: true
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "jet"
+            allow_failure: true
+          - version: 'lts'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "jet"
+            allow_failure: true
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2

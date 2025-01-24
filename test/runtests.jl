@@ -12,9 +12,6 @@ using AxisKeys, SparseArrays
 import Zygote, FiniteDifferences, ForwardDiff
 import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
-if VERSION < v"1.12"
-    using JET
-end
 import LinearAlgebra as ℒ
 
 
@@ -40,6 +37,18 @@ include("functionality_tests.jl")
 #     transform = 3
 #     include("optim_solver_params.jl")
 # end
+
+if test_set == "jet"
+    if VERSION < v"1.12"
+        using JET
+    end
+    
+    @testset verbose = true "Static checking (JET.jl)" begin
+        if VERSION < v"1.12"
+            JET.test_package(MacroModelling; target_defined_modules = true, toplevel_logger = nothing)
+        end
+    end
+end
 
 if test_set == "estimate_sw07"
     include("test_sw07_estimation.jl")
@@ -425,12 +434,6 @@ if test_set == "basic"
     end
     GC.gc()
     
-    @testset verbose = true "Static checking (JET.jl)" begin
-        if VERSION < v"1.12"
-            JET.test_package(MacroModelling; target_defined_modules = true, toplevel_logger = nothing)
-        end
-    end
-
     # test_higher_order = true
     @testset verbose = true "Test various models: NSSS and 1st order solution" begin
         include("test_models.jl")
