@@ -2428,7 +2428,7 @@ end
 
 
 
-function create_symbols_eqs!(𝓂::ℳ)
+function create_symbols_eqs!(𝓂::ℳ)::symbolics{<: SPyPyC.Sym}
     # create symbols in module scope
     symbols_in_dynamic_equations = reduce(union,get_symbols.(𝓂.dyn_equations))
 
@@ -2466,7 +2466,7 @@ function create_symbols_eqs!(𝓂::ℳ)
         eval(:($none = SPyPyC.symbols($(string(none)), real = true, finite = true)))
     end
 
-    symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
+    symbolics{typeof(eval(:($(𝓂.dyn_equations[1]))))}(map(x->eval(:($x)),𝓂.ss_aux_equations),
                 map(x->eval(:($x)),𝓂.dyn_equations),
                 # map(x->eval(:($x)),𝓂.dyn_equations_future),
 
@@ -3201,7 +3201,7 @@ end
 function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false, avoid_solve::Bool = false)
     write_ss_check_function!(𝓂)
 
-    unknowns = union(Symbolics.vars_in_ss_equations, Symbolics.calibration_equations_parameters)
+    unknowns = union(Symbolics.calibration_equations_parameters, Symbolics.vars_in_ss_equations)
 
     @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 

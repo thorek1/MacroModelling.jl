@@ -93,59 +93,59 @@ struct timings
     dynamic_order::Vector{Int}
 end
 
-struct symbolics
-    ss_equations::Vector{SPyPyC.Sym}
-    dyn_equations::Vector{SPyPyC.Sym}
-    # dyn_equations_future::Vector{SPyPyC.Sym}
+struct symbolics{P <: SPyPyC.Sym}
+    ss_equations::Vector{P}
+    dyn_equations::Vector{P}
+    # dyn_equations_future::Vector{P}
 
-    # dyn_shift_var_present_list::Vector{Set{SPyPyC.Sym}}
-    # dyn_shift_var_past_list::Vector{Set{SPyPyC.Sym}}
-    # dyn_shift_var_future_list::Vector{Set{SPyPyC.Sym}}
+    # dyn_shift_var_present_list::Vector{Set{P}}
+    # dyn_shift_var_past_list::Vector{Set{P}}
+    # dyn_shift_var_future_list::Vector{Set{P}}
 
-    # dyn_shift2_var_past_list::Vector{Set{SPyPyC.Sym}}
+    # dyn_shift2_var_past_list::Vector{Set{P}}
 
-    dyn_var_present_list::Vector{Set{SPyPyC.Sym}}
-    dyn_var_past_list::Vector{Set{SPyPyC.Sym}}
-    dyn_var_future_list::Vector{Set{SPyPyC.Sym}}
-    # dyn_ss_list::Vector{Set{SPyPyC.Sym}}
-    dyn_exo_list::Vector{Set{SPyPyC.Sym}}
+    dyn_var_present_list::Vector{Set{P}}
+    dyn_var_past_list::Vector{Set{P}}
+    dyn_var_future_list::Vector{Set{P}}
+    # dyn_ss_list::Vector{Set{P}}
+    dyn_exo_list::Vector{Set{P}}
 
-    # dyn_exo_future_list::Vector{Set{SPyPyC.Sym}}
-    # dyn_exo_present_list::Vector{Set{SPyPyC.Sym}}
-    # dyn_exo_past_list::Vector{Set{SPyPyC.Sym}} 
+    # dyn_exo_future_list::Vector{Set{P}}
+    # dyn_exo_present_list::Vector{Set{P}}
+    # dyn_exo_past_list::Vector{Set{P}} 
 
-    dyn_future_list::Vector{Set{SPyPyC.Sym}}
-    dyn_present_list::Vector{Set{SPyPyC.Sym}}
-    dyn_past_list::Vector{Set{SPyPyC.Sym}}
+    dyn_future_list::Vector{Set{P}}
+    dyn_present_list::Vector{Set{P}}
+    dyn_past_list::Vector{Set{P}}
 
-    var_present_list::Vector{Set{SPyPyC.Sym}}
-    var_past_list::Vector{Set{SPyPyC.Sym}}
-    var_future_list::Vector{Set{SPyPyC.Sym}}
-    ss_list::Vector{Set{SPyPyC.Sym}}
-    var_list::Vector{Set{SPyPyC.Sym}}
-    # dynamic_variables_list::Vector{Set{SPyPyC.Sym}}
-    # dynamic_variables_future_list::Vector{Set{SPyPyC.Sym}}
+    var_present_list::Vector{Set{P}}
+    var_past_list::Vector{Set{P}}
+    var_future_list::Vector{Set{P}}
+    ss_list::Vector{Set{P}}
+    var_list::Vector{Set{P}}
+    # dynamic_variables_list::Vector{Set{P}}
+    # dynamic_variables_future_list::Vector{Set{P}}
 
-    par_list::Vector{Set{SPyPyC.Sym}}
+    par_list::Vector{Set{P}}
 
-    calibration_equations::Vector{SPyPyC.Sym}
-    calibration_equations_parameters::Vector{SPyPyC.Sym}
-    # parameters::Vector{SPyPyC.Sym}
+    calibration_equations::Vector{P}
+    calibration_equations_parameters::Vector{P}
+    # parameters::Vector{P}
 
-    # var_present::Set{SPyPyC.Sym}
-    # var_past::Set{SPyPyC.Sym}
-    # var_future::Set{SPyPyC.Sym}
-    vars_in_ss_equations::Set{SPyPyC.Sym}
-    var::Set{SPyPyC.Sym}
-    ➕_vars::Set{SPyPyC.Sym}
+    # var_present::Set{P}
+    # var_past::Set{P}
+    # var_future::Set{P}
+    vars_in_ss_equations::Set{P}
+    var::Set{P}
+    ➕_vars::Set{P}
 
-    ss_calib_list::Vector{Set{SPyPyC.Sym}}
-    par_calib_list::Vector{Set{SPyPyC.Sym}}
+    ss_calib_list::Vector{Set{P}}
+    par_calib_list::Vector{Set{P}}
 
-    var_redundant_list::Vector{Set{SPyPyC.Sym}}
-    # var_redundant_calib_list::Vector{Set{SPyPyC.Sym}}
-    # var_solved_list::Vector{Set{SPyPyC.Sym}}
-    # var_solved_calib_list::Vector{Set{SPyPyC.Sym}}
+    var_redundant_list::Vector{Set{P}}
+    # var_redundant_calib_list::Vector{Set{P}}
+    # var_solved_list::Vector{Set{P}}
+    # var_solved_calib_list::Vector{Set{P}}
 end
 
 struct auxilliary_indices
