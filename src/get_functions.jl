@@ -1037,6 +1037,20 @@ function get_irf(𝓂::ℳ,
 
     # Y = zeros(𝓂.timings.nVars,periods,𝓂.timings.nExo)
     Ŷ = []
+    if shocks == :none
+        Y = []
+
+        shock_history = zeros(𝓂.timings.nExo,periods)
+    
+        push!(Y, state_update(initial_state,shock_history[:,1]))
+    
+        for t in 1:periods-1
+            push!(Y, state_update(Y[end],shock_history[:,t+1]))
+        end
+    
+        push!(Ŷ, reduce(hcat,Y))
+    end
+
     for ii in shock_idx
         Y = []
 
@@ -1058,7 +1072,7 @@ function get_irf(𝓂::ℳ,
         push!(Ŷ, reduce(hcat,Y))
     end
 
-    deviations = reshape(reduce(hcat,Ŷ),𝓂.timings.nVars,periods,length(shock_idx))[var_idx,:,:]
+    deviations = reshape(reduce(hcat,Ŷ),𝓂.timings.nVars,periods,shocks == :none ? 1 : length(shock_idx))[var_idx,:,:]
 
     if levels
         return deviations .+ reference_steady_state[var_idx]
