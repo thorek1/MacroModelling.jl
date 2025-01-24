@@ -357,6 +357,27 @@ function reverse_transformation(transformed_expr::Expr, reverse_dict::Dict{Symbo
     return reverted_expr
 end
 
+function solve_symbolically(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py})::Union{Nothing,Vector{SPyPyC.Sym{PythonCall.Core.Py}}}
+    soll =  try SPyPyC.solve(equation, variable)
+            catch
+            end
+
+    return soll
+end
+
+function solve_symbolically(equations::Vector{SPyPyC.Sym{PythonCall.Core.Py}}, variables::Vector{SPyPyC.Sym{PythonCall.Core.Py}})::Union{Nothing,Dict{SPyPyC.Sym{PythonCall.Core.Py}, SPyPyC.Sym{PythonCall.Core.Py}}}
+    soll =  try SPyPyC.solve(equations, variables)
+            catch
+            end
+
+    if soll == Any[]
+        soll = Dict{SPyPyC.Sym{PythonCall.Core.Py}, SPyPyC.Sym{PythonCall.Core.Py}}()
+    elseif soll isa Vector
+        soll = Dict{SPyPyC.Sym{PythonCall.Core.Py}, SPyPyC.Sym{PythonCall.Core.Py}}(variables .=> soll[1])
+    end
+    
+    return soll
+end
 
 function transform_obc(ex::Expr; avoid_solve::Bool = false)
     transformed_expr, reverse_dict = transform_expression(ex)
@@ -370,12 +391,10 @@ function transform_obc(ex::Expr; avoid_solve::Bool = false)
     if avoid_solve || count_ops(Meta.parse(string(eq))) > 15
         soll = nothing
     else
-        soll = try SPyPyC.solve(eq, eval(:minmax__P))
-        catch
-        end
+        soll = solve_symbolically(eq, eval(:minmax__P))
     end
 
-    if length(soll) == 1
+    if !isempty(soll)
         sorted_minmax = Expr(:call, reverse_dict[:minmax__P].args[1], :($(reverse_dict[:minmax__P].args[2]) - $(Meta.parse(string(soll[1])))),  :($(reverse_dict[:minmax__P].args[3]) - $(Meta.parse(string(soll[1])))))
         return reverse_transformation(sorted_minmax, reverse_dict)
     else
@@ -2546,16 +2565,14 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
             if avoid_solve || count_ops(Meta.parse(string(ss_equations[i]))) > 15
                 soll = nothing
             else
-                soll = try SPyPyC.solve(ss_equations[i],var_to_solve_for)
-                catch
-                end
+                soll = solve_symbolically(ss_equations[i],var_to_solve_for)
             end
 
             if isnothing(soll)
                 continue
             end
             
-            if length(soll) == 0 || soll == SPyPyC.Sym[0] # take out variable if it is redundant from that euation only
+            if isempty(soll) || soll == SPyPyC.Sym{PythonCall.Core.Py}[0] # take out variable if it is redundant from that euation only
                 push!(Symbolics.var_redundant_list[i],var_to_solve_for)
                 ss_equations[i] = ss_equations[i].subs(var_to_solve_for,1).replace(SPyPyC.Sym(ℯ),exp(1)) # replace euler constant as it is not translated to julia properly
             end
@@ -2775,13 +2792,11 @@ function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incide
                     if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve[eq_combo]))) > 15
                         soll = nothing
                     else
-                        soll = try SPyPyC.solve(eqs_to_solve[eq_combo], vars_to_solve[var_combo])
-                        catch
-                        end
+                        soll = solve_symbolically(eqs_to_solve[eq_combo], vars_to_solve[var_combo])
                     end
                     
-                    if !(isnothing(soll) || length(soll) == 0)
-                        soll_collected = soll isa Dict ? collect(values(soll)) : collect(soll[end])
+                    if !(isnothing(soll) || isempty(soll))
+                        soll_collected = collect(values(soll))
                         
                         return (vars_to_solve[setdiff(1:length(eqs_to_solve),var_combo)],
                                 vars_to_solve[var_combo],
@@ -3283,11 +3298,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
             if avoid_solve || count_ops(Meta.parse(string(eq_to_solve))) > 15
                 soll = nothing
             else
-                soll = try SPyPyC.solve(eq_to_solve,var_to_solve_for)
-                catch
-                end
+                soll = solve_symbolically(eq_to_solve,var_to_solve_for)
             end
-            
+
             if isnothing(soll) || isempty(soll)
                 println("Failed finding solution symbolically for: ",var_to_solve_for," in: ",eq_to_solve)
                 
@@ -3351,27 +3364,25 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve))) > 15
                     soll = nothing
                 else
-                    soll = try SPyPyC.solve(eqs_to_solve,vars_to_solve)
-                    catch
-                    end
+                    soll = solve_symbolically(eqs_to_solve,vars_to_solve)
                 end
 
-                if isnothing(soll) || length(soll) == 0 || length(intersect((union(SPyPyC.free_symbols.(soll[1])...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
+                if isnothing(soll) || isempty(soll) || length(intersect((union(SPyPyC.free_symbols.(collect(values(soll)))...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
                     if verbose println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.") end
 
                     numerical_sol = true
                 else
                     if verbose println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " symbolically.") end
                     
-                    atoms = reduce(union,map(x->x.atoms(),collect(soll[1])))
+                    atoms = reduce(union,map(x->x.atoms(),collect(values(soll))))
 
                     for a in atoms push!(atoms_in_equations, Symbol(a)) end
                     
                     for (k, vars) in enumerate(vars_to_solve)
                         push!(𝓂.solved_vars,Symbol(vars))
-                        push!(𝓂.solved_vals,Meta.parse(string(soll[1][k]))) #using convert(Expr,x) leads to ugly expressions
+                        push!(𝓂.solved_vals,Meta.parse(string(soll[k]))) #using convert(Expr,x) leads to ugly expressions
 
-                        push!(atoms_in_equations_list, Set(Symbol.(soll[1][k].atoms())))
+                        push!(atoms_in_equations_list, Set(Symbol.(soll[k].atoms())))
                         push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
                     end
                 end
