@@ -8,6 +8,7 @@ using PrecompileTools
 import SpecialFunctions: erfcinv, erfc
 import SpecialFunctions
 import SymPyPythonCall as SPyPyC
+import PythonCall
 import Symbolics
 import Accessors
 # import TimerOutputs
@@ -2428,7 +2429,7 @@ end
 
 
 
-function create_symbols_eqs!(𝓂::ℳ)::symbolics{<: SPyPyC.Sym}
+function create_symbols_eqs!(𝓂::ℳ)::symbolics
     # create symbols in module scope
     symbols_in_dynamic_equations = reduce(union,get_symbols.(𝓂.dyn_equations))
 
@@ -2466,7 +2467,7 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics{<: SPyPyC.Sym}
         eval(:($none = SPyPyC.symbols($(string(none)), real = true, finite = true)))
     end
 
-    symbolics{typeof(eval(:($(𝓂.dyn_equations[1]))))}(map(x->eval(:($x)),𝓂.ss_aux_equations),
+    symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
                 map(x->eval(:($x)),𝓂.dyn_equations),
                 # map(x->eval(:($x)),𝓂.dyn_equations_future),
 
