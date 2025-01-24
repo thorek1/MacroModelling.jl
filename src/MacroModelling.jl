@@ -359,11 +359,27 @@ end
 
 
 function replace_with_one(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
-    equation.subs(variable, 1).replace(SPyPyC.Sym(ℯ), exp(1))
+    # equation.subs(variable, 1).replace(SPyPyC.Sym(ℯ), exp(1))
+    tmp = SPyPyC.subs(equation, variable, 1)
+
+    return replace_e(tmp)
+end
+
+function replace_e(equation::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
+    outraw =  SPyPyC.subs(equation, SPyPyC.Sym(ℯ), exp(1))
+
+    if outraw isa SPyPyC.Sym{PythonCall.Core.Py}
+        out = outraw
+    else
+        out = collect(outraw)[1]
+    end
+    
+    return out
 end
 
 function replace_symbolic(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py}, replacement::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
-    equation.subs(variable, replacement)
+    # equation.subs(variable, replacement)
+    return SPyPyC.subs(equation, variable, replacement)
 end
 
 function solve_symbolically(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py})::Union{Nothing,Vector{SPyPyC.Sym{PythonCall.Core.Py}}}
