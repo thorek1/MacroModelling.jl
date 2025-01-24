@@ -432,330 +432,331 @@ function rrule(::typeof(find_shocks),
 end
 
 
-@stable default_mode = "disable" begin
 
-function find_shocks(::Val{:SLSQP},
-                    initial_guess::Vector{Float64},
-                    kron_buffer::Vector{Float64},
-                    kron_buffer2::AbstractMatrix{Float64},
-                    J::ℒ.Diagonal{Bool, Vector{Bool}},
-                    𝐒ⁱ::AbstractMatrix{Float64},
-                    𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
-                    shock_independent::Vector{Float64};
-                    max_iter::Int = 500,
-                    tol::Float64 = 1e-13) # will fail for higher or lower precision
-    function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
-        if length(grad) > 0
-            copy!(grad, X)
+# @stable default_mode = "disable" begin
 
-            ℒ.rmul!(grad, 2)
-            # grad .= 2 .* X
-        end
+# function find_shocks(::Val{:SLSQP},
+#                     initial_guess::Vector{Float64},
+#                     kron_buffer::Vector{Float64},
+#                     kron_buffer2::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
+#                     𝐒ⁱ::AbstractMatrix{Float64},
+#                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
+#                     shock_independent::Vector{Float64};
+#                     max_iter::Int = 500,
+#                     tol::Float64 = 1e-13) # will fail for higher or lower precision
+#     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
+#         if length(grad) > 0
+#             copy!(grad, X)
+
+#             ℒ.rmul!(grad, 2)
+#             # grad .= 2 .* X
+#         end
         
-        sum(abs2, X)
-    end
+#         sum(abs2, X)
+#     end
 
-    function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
-        if length(jac) > 0
-            ℒ.kron!(kron_buffer2, J, x)
+#     function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
+#         if length(jac) > 0
+#             ℒ.kron!(kron_buffer2, J, x)
 
-            copy!(jac', 𝐒ⁱ)
+#             copy!(jac', 𝐒ⁱ)
 
-            ℒ.mul!(jac', 𝐒ⁱ²ᵉ, kron_buffer2, -2, -1)
-            # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))'
-        end
+#             ℒ.mul!(jac', 𝐒ⁱ²ᵉ, kron_buffer2, -2, -1)
+#             # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x))'
+#         end
 
-        ℒ.kron!(kron_buffer, x, x)
+#         ℒ.kron!(kron_buffer, x, x)
 
-        ℒ.mul!(res, 𝐒ⁱ, x)
+#         ℒ.mul!(res, 𝐒ⁱ, x)
 
-        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
+#         ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
 
-        ℒ.axpby!(1, shock_independent, -1, res)
-        # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
-    end
+#         ℒ.axpby!(1, shock_independent, -1, res)
+#         # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
+#     end
     
-    opt = NLopt.Opt(NLopt.:LD_SLSQP, size(𝐒ⁱ,2))
+#     opt = NLopt.Opt(NLopt.:LD_SLSQP, size(𝐒ⁱ,2))
                     
-    opt.min_objective = objective_optim_fun
+#     opt.min_objective = objective_optim_fun
 
-    # opt.xtol_abs = eps()
-    # opt.ftol_abs = eps()
-    opt.maxeval = max_iter
+#     # opt.xtol_abs = eps()
+#     # opt.ftol_abs = eps()
+#     opt.maxeval = max_iter
 
-    NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
+#     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
 
-    (minf,x,ret) = try 
-        NLopt.optimize(opt, initial_guess)
-    catch
-        return initial_guess, false
-    end
+#     (minf,x,ret) = try 
+#         NLopt.optimize(opt, initial_guess)
+#     catch
+#         return initial_guess, false
+#     end
 
-    ℒ.kron!(kron_buffer, x, x)
+#     ℒ.kron!(kron_buffer, x, x)
 
-    y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * kron_buffer
+#     y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * kron_buffer
 
-    norm1 = ℒ.norm(y)
+#     norm1 = ℒ.norm(y)
 
-	norm2 = ℒ.norm(shock_independent)
+# 	norm2 = ℒ.norm(shock_independent)
 
-    solved = ret ∈ Symbol.([
-        # NLopt.MAXEVAL_REACHED,
-        NLopt.SUCCESS,
-        NLopt.STOPVAL_REACHED,
-        NLopt.FTOL_REACHED,
-        NLopt.XTOL_REACHED,
-        NLopt.ROUNDOFF_LIMITED,
-    ])
+#     solved = ret ∈ Symbol.([
+#         # NLopt.MAXEVAL_REACHED,
+#         NLopt.SUCCESS,
+#         NLopt.STOPVAL_REACHED,
+#         NLopt.FTOL_REACHED,
+#         NLopt.XTOL_REACHED,
+#         NLopt.ROUNDOFF_LIMITED,
+#     ])
 
-    # println(ℒ.norm(x))
-    # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
-    return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
-end
+#     # println(ℒ.norm(x))
+#     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
+#     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
+# end
 
 
 
-function find_shocks(::Val{:SLSQP},
-                    initial_guess::Vector{Float64},
-                    kron_buffer::Vector{Float64},
-                    kron_buffer²::Vector{Float64},
-                    kron_buffer2::AbstractMatrix{Float64},
-                    kron_buffer3::AbstractMatrix{Float64},
-                    kron_buffer4::AbstractMatrix{Float64},
-                    J::ℒ.Diagonal{Bool, Vector{Bool}},
-                    𝐒ⁱ::AbstractMatrix{Float64},
-                    𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
-                    𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
-                    shock_independent::Vector{Float64};
-                    max_iter::Int = 500,
-                    tol::Float64 = 1e-13) # will fail for higher or lower precision
-    function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
-        if length(grad) > 0
-            copy!(grad, X)
+# function find_shocks(::Val{:SLSQP},
+#                     initial_guess::Vector{Float64},
+#                     kron_buffer::Vector{Float64},
+#                     kron_buffer²::Vector{Float64},
+#                     kron_buffer2::AbstractMatrix{Float64},
+#                     kron_buffer3::AbstractMatrix{Float64},
+#                     kron_buffer4::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
+#                     𝐒ⁱ::AbstractMatrix{Float64},
+#                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
+#                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
+#                     shock_independent::Vector{Float64};
+#                     max_iter::Int = 500,
+#                     tol::Float64 = 1e-13) # will fail for higher or lower precision
+#     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
+#         if length(grad) > 0
+#             copy!(grad, X)
 
-            ℒ.rmul!(grad, 2)
-            # grad .= 2 .* X
-        end
+#             ℒ.rmul!(grad, 2)
+#             # grad .= 2 .* X
+#         end
         
-        sum(abs2, X)
-    end
+#         sum(abs2, X)
+#     end
 
-    function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
-        ℒ.kron!(kron_buffer, x, x)
+#     function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
+#         ℒ.kron!(kron_buffer, x, x)
 
-        ℒ.kron!(kron_buffer², x, kron_buffer)
+#         ℒ.kron!(kron_buffer², x, kron_buffer)
 
-        if length(jac) > 0
-            ℒ.kron!(kron_buffer2, J, x)
+#         if length(jac) > 0
+#             ℒ.kron!(kron_buffer2, J, x)
 
-            ℒ.kron!(kron_buffer3, J, kron_buffer)
+#             ℒ.kron!(kron_buffer3, J, kron_buffer)
 
-            copy!(jac', 𝐒ⁱ)
+#             copy!(jac', 𝐒ⁱ)
 
-            ℒ.mul!(jac', 𝐒ⁱ²ᵉ, kron_buffer2, 2, 1)
+#             ℒ.mul!(jac', 𝐒ⁱ²ᵉ, kron_buffer2, 2, 1)
 
-            ℒ.mul!(jac', 𝐒ⁱ³ᵉ, kron_buffer3, -3, -1)
-            # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(J, x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(J, ℒ.kron(x,x)))'
-        end
+#             ℒ.mul!(jac', 𝐒ⁱ³ᵉ, kron_buffer3, -3, -1)
+#             # jac .= -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(J, x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(J, ℒ.kron(x,x)))'
+#         end
 
-        ℒ.mul!(res, 𝐒ⁱ, x)
+#         ℒ.mul!(res, 𝐒ⁱ, x)
 
-        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
+#         ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
 
-        ℒ.mul!(res, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
+#         ℒ.mul!(res, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
 
-        ℒ.axpby!(1, shock_independent, -1, res)
-        # res .= shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * ℒ.kron!(kron_buffer, x, x) - 𝐒ⁱ³ᵉ * ℒ.kron!(kron_buffer², x, kron_buffer)
-    end
+#         ℒ.axpby!(1, shock_independent, -1, res)
+#         # res .= shock_independent - 𝐒ⁱ * x - 𝐒ⁱ²ᵉ * ℒ.kron!(kron_buffer, x, x) - 𝐒ⁱ³ᵉ * ℒ.kron!(kron_buffer², x, kron_buffer)
+#     end
     
-    opt = NLopt.Opt(NLopt.:LD_SLSQP, size(𝐒ⁱ,2))
+#     opt = NLopt.Opt(NLopt.:LD_SLSQP, size(𝐒ⁱ,2))
                     
-    opt.min_objective = objective_optim_fun
+#     opt.min_objective = objective_optim_fun
 
-    # opt.xtol_abs = eps()
-    # opt.ftol_abs = eps()
-    # opt.constrtol_abs = eps() # doesnt work
-    # opt.xtol_rel = eps()
-    # opt.ftol_rel = eps()
-    opt.maxeval = max_iter
+#     # opt.xtol_abs = eps()
+#     # opt.ftol_abs = eps()
+#     # opt.constrtol_abs = eps() # doesnt work
+#     # opt.xtol_rel = eps()
+#     # opt.ftol_rel = eps()
+#     opt.maxeval = max_iter
 
-    NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
+#     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
 
-    (minf,x,ret) = try 
-        NLopt.optimize(opt, initial_guess)
-    catch
-        return initial_guess, false
-    end
+#     (minf,x,ret) = try 
+#         NLopt.optimize(opt, initial_guess)
+#     catch
+#         return initial_guess, false
+#     end
 
-    # println("SLSQP - retcode: $ret, nevals: $(opt.numevals)")
+#     # println("SLSQP - retcode: $ret, nevals: $(opt.numevals)")
 
-    y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
+#     y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
 
-    norm1 = ℒ.norm(y)
+#     norm1 = ℒ.norm(y)
 
-	norm2 = ℒ.norm(shock_independent)
+# 	norm2 = ℒ.norm(shock_independent)
 
-    solved = ret ∈ Symbol.([
-        # NLopt.MAXEVAL_REACHED,
-        NLopt.SUCCESS,
-        NLopt.STOPVAL_REACHED,
-        NLopt.FTOL_REACHED,
-        NLopt.XTOL_REACHED,
-        NLopt.ROUNDOFF_LIMITED,
-    ])
+#     solved = ret ∈ Symbol.([
+#         # NLopt.MAXEVAL_REACHED,
+#         NLopt.SUCCESS,
+#         NLopt.STOPVAL_REACHED,
+#         NLopt.FTOL_REACHED,
+#         NLopt.XTOL_REACHED,
+#         NLopt.ROUNDOFF_LIMITED,
+#     ])
 
-    # println(ℒ.norm(x))
-    # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
-    # println("SLSQP - $ret: $(ℒ.norm([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
-    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]))")
-    # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
-    return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
-end
-
-
+#     # println(ℒ.norm(x))
+#     # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
+#     # println("SLSQP - $ret: $(ℒ.norm([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+#     # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]))")
+#     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
+#     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
+# end
 
 
 
 
-function find_shocks(::Val{:COBYLA},
-                    initial_guess::Vector{Float64},
-                    kron_buffer::Vector{Float64},
-                    kron_buffer2::AbstractMatrix{Float64},
-                    J::ℒ.Diagonal{Bool, Vector{Bool}},
-                    𝐒ⁱ::AbstractMatrix{Float64},
-                    𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
-                    shock_independent::Vector{Float64};
-                    max_iter::Int = 10000,
-                    tol::Float64 = 1e-13) # will fail for higher or lower precision
-    function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
-        sum(abs2, X)
-    end
 
-    function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
-        ℒ.kron!(kron_buffer, x, x)
 
-        ℒ.mul!(res, 𝐒ⁱ, x)
+# function find_shocks(::Val{:COBYLA},
+#                     initial_guess::Vector{Float64},
+#                     kron_buffer::Vector{Float64},
+#                     kron_buffer2::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
+#                     𝐒ⁱ::AbstractMatrix{Float64},
+#                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
+#                     shock_independent::Vector{Float64};
+#                     max_iter::Int = 10000,
+#                     tol::Float64 = 1e-13) # will fail for higher or lower precision
+#     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
+#         sum(abs2, X)
+#     end
 
-        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
+#     function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
+#         ℒ.kron!(kron_buffer, x, x)
 
-        ℒ.axpby!(1, shock_independent, -1, res)
-        # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
-    end
+#         ℒ.mul!(res, 𝐒ⁱ, x)
 
-    opt = NLopt.Opt(NLopt.:LN_COBYLA, size(𝐒ⁱ,2))
+#         ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
+
+#         ℒ.axpby!(1, shock_independent, -1, res)
+#         # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X)
+#     end
+
+#     opt = NLopt.Opt(NLopt.:LN_COBYLA, size(𝐒ⁱ,2))
                     
-    opt.min_objective = objective_optim_fun
+#     opt.min_objective = objective_optim_fun
 
-    # opt.xtol_abs = eps()
-    # opt.ftol_abs = eps()
-    # opt.xtol_rel = eps()
-    # opt.ftol_rel = eps()
-    # opt.constrtol_abs = eps() # doesnt work
-    opt.maxeval = max_iter
+#     # opt.xtol_abs = eps()
+#     # opt.ftol_abs = eps()
+#     # opt.xtol_rel = eps()
+#     # opt.ftol_rel = eps()
+#     # opt.constrtol_abs = eps() # doesnt work
+#     opt.maxeval = max_iter
 
-    NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
+#     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
 
-    (minf,x,ret) = NLopt.optimize(opt, initial_guess)
+#     (minf,x,ret) = NLopt.optimize(opt, initial_guess)
 
-    # println("COBYLA - retcode: $ret, nevals: $(opt.numevals)")
+#     # println("COBYLA - retcode: $ret, nevals: $(opt.numevals)")
 
-    y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x)
+#     y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x)
 
-    norm1 = ℒ.norm(y)
+#     norm1 = ℒ.norm(y)
 
-	norm2 = ℒ.norm(shock_independent)
+# 	norm2 = ℒ.norm(shock_independent)
 
-    solved = ret ∈ Symbol.([
-        NLopt.SUCCESS,
-        NLopt.STOPVAL_REACHED,
-        NLopt.FTOL_REACHED,
-        NLopt.XTOL_REACHED,
-        NLopt.ROUNDOFF_LIMITED,
-    ])
+#     solved = ret ∈ Symbol.([
+#         NLopt.SUCCESS,
+#         NLopt.STOPVAL_REACHED,
+#         NLopt.FTOL_REACHED,
+#         NLopt.XTOL_REACHED,
+#         NLopt.ROUNDOFF_LIMITED,
+#     ])
 
-    # println("COBYLA: $(opt.numevals)")
+#     # println("COBYLA: $(opt.numevals)")
 
-    # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
-    return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
-end
+#     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
+#     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
+# end
 
 
 
-function find_shocks(::Val{:COBYLA},
-                    initial_guess::Vector{Float64},
-                    kron_buffer::Vector{Float64},
-                    kron_buffer²::Vector{Float64},
-                    kron_buffer2::AbstractMatrix{Float64},
-                    kron_buffer3::AbstractMatrix{Float64},
-                    kron_buffer4::AbstractMatrix{Float64},
-                    J::ℒ.Diagonal{Bool, Vector{Bool}},
-                    𝐒ⁱ::AbstractMatrix{Float64},
-                    𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
-                    𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
-                    shock_independent::Vector{Float64};
-                    max_iter::Int = 10000,
-                    tol::Float64 = 1e-13) # will fail for higher or lower precision
-    function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
-        sum(abs2, X)
-    end
+# function find_shocks(::Val{:COBYLA},
+#                     initial_guess::Vector{Float64},
+#                     kron_buffer::Vector{Float64},
+#                     kron_buffer²::Vector{Float64},
+#                     kron_buffer2::AbstractMatrix{Float64},
+#                     kron_buffer3::AbstractMatrix{Float64},
+#                     kron_buffer4::AbstractMatrix{Float64},
+#                     J::ℒ.Diagonal{Bool, Vector{Bool}},
+#                     𝐒ⁱ::AbstractMatrix{Float64},
+#                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
+#                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
+#                     shock_independent::Vector{Float64};
+#                     max_iter::Int = 10000,
+#                     tol::Float64 = 1e-13) # will fail for higher or lower precision
+#     function objective_optim_fun(X::Vector{S}, grad::Vector{S}) where S
+#         sum(abs2, X)
+#     end
 
-    function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
-        ℒ.kron!(kron_buffer, x, x)
+#     function constraint_optim(res::Vector{S}, x::Vector{S}, jac::Matrix{S}) where S <: Float64
+#         ℒ.kron!(kron_buffer, x, x)
 
-        ℒ.kron!(kron_buffer², x, kron_buffer)
+#         ℒ.kron!(kron_buffer², x, kron_buffer)
 
-        ℒ.mul!(res, 𝐒ⁱ, x)
+#         ℒ.mul!(res, 𝐒ⁱ, x)
 
-        ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
+#         ℒ.mul!(res, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
 
-        ℒ.mul!(res, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
+#         ℒ.mul!(res, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
 
-        ℒ.axpby!(1, shock_independent, -1, res)
-        # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X) - 𝐒ⁱ³ᵉ * ℒ.kron(X, ℒ.kron(X,X))
-    end
+#         ℒ.axpby!(1, shock_independent, -1, res)
+#         # res .= shock_independent - 𝐒ⁱ * X - 𝐒ⁱ²ᵉ * ℒ.kron(X,X) - 𝐒ⁱ³ᵉ * ℒ.kron(X, ℒ.kron(X,X))
+#     end
 
-    opt = NLopt.Opt(NLopt.:LN_COBYLA, size(𝐒ⁱ,2))
+#     opt = NLopt.Opt(NLopt.:LN_COBYLA, size(𝐒ⁱ,2))
                     
-    opt.min_objective = objective_optim_fun
+#     opt.min_objective = objective_optim_fun
 
-    # opt.xtol_abs = eps()
-    # opt.ftol_abs = eps()
-    # opt.xtol_rel = eps()
-    # opt.ftol_rel = eps()
-    # opt.constrtol_abs = eps() # doesnt work
-    opt.maxeval = max_iter
+#     # opt.xtol_abs = eps()
+#     # opt.ftol_abs = eps()
+#     # opt.xtol_rel = eps()
+#     # opt.ftol_rel = eps()
+#     # opt.constrtol_abs = eps() # doesnt work
+#     opt.maxeval = max_iter
 
-    NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
+#     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
 
-    (minf,x,ret) = NLopt.optimize(opt, initial_guess)
+#     (minf,x,ret) = NLopt.optimize(opt, initial_guess)
 
-    # println("COBYLA - retcode: $ret, nevals: $(opt.numevals)")
+#     # println("COBYLA - retcode: $ret, nevals: $(opt.numevals)")
 
-    y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
+#     y = 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x,x))
 
-    norm1 = ℒ.norm(y)
+#     norm1 = ℒ.norm(y)
 
-	norm2 = ℒ.norm(shock_independent)
+# 	norm2 = ℒ.norm(shock_independent)
 
-    solved = ret ∈ Symbol.([
-        NLopt.SUCCESS,
-        NLopt.STOPVAL_REACHED,
-        NLopt.FTOL_REACHED,
-        NLopt.XTOL_REACHED,
-        NLopt.ROUNDOFF_LIMITED,
-    ])
-    # println(ℒ.norm(x))
-    # println(x)
-    # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
-    # println("COBYLA: $(ℒ.norm([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
-    # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]))")
-    # println("COBYLA: $(opt.numevals)")
-    # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
+#     solved = ret ∈ Symbol.([
+#         NLopt.SUCCESS,
+#         NLopt.STOPVAL_REACHED,
+#         NLopt.FTOL_REACHED,
+#         NLopt.XTOL_REACHED,
+#         NLopt.ROUNDOFF_LIMITED,
+#     ])
+#     # println(ℒ.norm(x))
+#     # println(x)
+#     # λ = (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), kron_buffer))' \ x * 2
+#     # println("COBYLA: $(ℒ.norm([(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))' * λ - 2 * x
+#     # shock_independent - (𝐒ⁱ * x + 𝐒ⁱ²ᵉ * ℒ.kron(x,x) + 𝐒ⁱ³ᵉ * ℒ.kron(x, ℒ.kron(x, x)))]))")
+#     # println("COBYLA: $(opt.numevals)")
+#     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
 
-    return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
-end
+#     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol && solved
+# end
 
-
+# end # dispatch_doctor
 
 
 
@@ -1240,5 +1241,3 @@ end
 #     # println("Norm: $(ℒ.norm(y - shock_independent) / max(norm1,norm2))")
 #     return x, ℒ.norm(y - shock_independent) / max(norm1,norm2) < tol
 # end
-
-end # dispatch_doctor
