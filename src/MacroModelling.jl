@@ -3175,12 +3175,12 @@ function write_ss_check_function!(𝓂::ℳ)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
-    pars = []
+    pars = Expr[]
     for (i, p) in enumerate(𝓂.parameters)
         push!(pars, :($p = parameters[$i]))
     end
 
-    unknwns = []
+    unknwns = Expr[]
     for (i, u) in enumerate(unknowns)
         push!(unknwns, :($u = unknowns[$i]))
     end
@@ -3205,7 +3205,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 
-    incidence_matrix = fill(0,length(unknowns),length(unknowns))
+    incidence_matrix = spzeros(Int,length(unknowns),length(unknowns))
 
     eq_list = vcat(union.(setdiff.(union.(Symbolics.var_list,
                                         Symbolics.ss_list),
@@ -3214,14 +3214,14 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     union.(Symbolics.ss_calib_list,
                             Symbolics.par_calib_list))
 
-    for i in 1:length(unknowns)
-        for k in 1:length(unknowns)
-            incidence_matrix[i,k] = collect(unknowns)[i] ∈ collect(eq_list)[k]
+    for (i,u) in enumerate(unknowns)
+        for (k,e) in enumerate(eq_list)
+            incidence_matrix[i,k] = u ∈ e
         end
     end
 
-    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(incidence_matrix))
-    R̂ = []
+    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(incidence_matrix)
+    R̂ = Int[]
     for i in 1:n_blocks
         [push!(R̂, n_blocks - i + 1) for ii in R[i]:R[i+1] - 1]
     end
@@ -3229,7 +3229,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     vars = hcat(P, R̂)'
     eqs = hcat(Q, R̂)'
-
+    
     # @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
     @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant euqations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationary variables are not supported as of now." # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
     
@@ -3251,7 +3251,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     while n > 0 
         if length(eqs[:,eqs[2,:] .== n]) == 2
-            var_to_solve_for = collect(unknowns)[vars[:,vars[2,:] .== n][1]]
+            var_to_solve_for = unknowns[vars[:,vars[2,:] .== n][1]]
 
             eq_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1]]
 
@@ -3340,7 +3340,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 end
             end
         else
-            vars_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1,:]]
+            vars_to_solve = unknowns[vars[:,vars[2,:] .== n][1,:]]
 
             eqs_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1,:]]
 
@@ -3411,7 +3411,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     push!(NSSS_solver_cache_init_tmp, fill(Inf, length(𝓂.parameters)))
     push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_init_tmp)
 
-    unknwns = Symbol.(collect(unknowns))
+    unknwns = Symbol.(unknowns)
 
     parameters_only_in_par_defs = Set()
     # add parameters from parameter definitions
@@ -3621,7 +3621,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
 
     @assert length(unknowns) <= length(𝓂.ss_aux_equations) + length(𝓂.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 
-    incidence_matrix = fill(0,length(unknowns),length(unknowns))
+    incidence_matrix = spzeros(Int,length(unknowns),length(unknowns))
 
     eq_list = vcat(union.(union.(𝓂.var_list_aux_SS,
                                         𝓂.ss_list_aux_SS),
@@ -3629,14 +3629,14 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                     union.(𝓂.ss_calib_list,
                             𝓂.par_calib_list))
 
-    for i in 1:length(unknowns)
-        for k in 1:length(unknowns)
-            incidence_matrix[i,k] = collect(unknowns)[i] ∈ collect(eq_list)[k]
+    for (i,u) in enumerate(unknowns)
+        for (k,e) in enumerate(eq_list)
+            incidence_matrix[i,k] = u ∈ e
         end
     end
 
-    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(incidence_matrix))
-    R̂ = []
+    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(incidence_matrix)
+    R̂ = Int[]
     for i in 1:n_blocks
         [push!(R̂, n_blocks - i + 1) for ii in R[i]:R[i+1] - 1]
     end
@@ -3644,7 +3644,6 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
 
     vars = hcat(P, R̂)'
     eqs = hcat(Q, R̂)'
-
     # @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(𝓂.ss_equations,𝓂.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
     @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant euqations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationary variables are not supported as of now." # repr([vcat(𝓂.ss_equations,𝓂.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
     
@@ -3662,7 +3661,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
     n_block = 1
 
     while n > 0
-        vars_to_solve = collect(unknowns)[vars[:,vars[2,:] .== n][1,:]]
+        vars_to_solve = unknowns[vars[:,vars[2,:] .== n][1,:]]
 
         eqs_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1,:]]
 
@@ -3855,7 +3854,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
     push!(NSSS_solver_cache_init_tmp,fill(Inf,length(𝓂.parameters)))
     push!(𝓂.NSSS_solver_cache,NSSS_solver_cache_init_tmp)
 
-    unknwns = Symbol.(collect(unknowns))
+    unknwns = Symbol.(unknowns)
 
     parameters_only_in_par_defs = Set()
     # add parameters from parameter definitions
