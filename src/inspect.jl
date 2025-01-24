@@ -658,7 +658,7 @@ end
 
 """
 $(SIGNATURES)
-Returns the auxilliary variables, without timing subscripts, part of the augmented system of equations describing the model dynamics. Augmented means that, in case of variables with leads or lags larger than 1, or exogenous shocks with leads or lags, the system is augemented by auxilliary variables containing variables or shocks in lead or lag. because the original equations included variables with leads or lags certain expression cannot be negative (e.g. given `log(c/q)` an auxilliary variable is created for `c/q`).
+Returns the auxilliary variables, without timing subscripts, part of the augmented system of equations describing the model dynamics. Augmented means that, in case of variables with leads or lags larger than 1, or exogenous shocks with leads or lags, the system is augemented by auxilliary variables containing variables or shocks in lead or lag. Because the original equations included variables with leads or lags certain expression cannot be negative (e.g. given `log(c/q)` an auxilliary variable is created for `c/q`).
 
 See `get_dynamic_equations` for more details on the auxilliary variables and equations.
 
