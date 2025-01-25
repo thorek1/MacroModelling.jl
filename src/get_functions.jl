@@ -1013,7 +1013,7 @@ function get_irf(𝓂::ℳ,
     reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
     if (solution_error > tol.NSSS_acceptance_tol) || isnan(solution_error)
-        return zeros(S,0,0,0)
+        return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)# |> Matrix
@@ -1026,7 +1026,7 @@ function get_irf(𝓂::ℳ,
     if solved 
         𝓂.solution.perturbation.qme_solution = qme_sol
     else
-        return zeros(S,0,0,0)
+        return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
     state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
@@ -1057,10 +1057,6 @@ function get_irf(𝓂::ℳ,
         if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
             shock_history = zeros(𝓂.timings.nExo,periods)
             shock_history[ii,1] = negative_shock ? -1 : 1
-        end
-
-        if shocks == :none
-            shock_history = zeros(𝓂.timings.nExo,periods)
         end
 
         push!(Y, state_update(initial_state,shock_history[:,1]))
