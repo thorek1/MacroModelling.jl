@@ -791,7 +791,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
         shocks[free_shock_idx,1] .= x
         
-        initial_state = Stateupdate(Val(algorithm), [initial_state], Float64[shocks[:,1]...], 𝓂.timings, 𝓂.solution.perturbation)[1]
+        initial_state = sol_mat * vcat(initial_state, Float64[shocks[:,1]...])
 
         Y[:,1] = pruning ? sum(initial_state) : initial_state
 
@@ -836,7 +836,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
             shocks[free_shock_idx,i] .= x
 
-            initial_state = Stateupdate(Val(algorithm), [initial_state], Float64[shocks[:,i]...], 𝓂.timings, 𝓂.solution.perturbation)[1]
+            initial_state = sol_mat * vcat(initial_state, Float64[shocks[:,i]...])
 
             Y[:,i] = pruning ? sum(initial_state) : initial_state
         end
@@ -855,9 +855,9 @@ function get_conditional_forecast(𝓂::ℳ,
     
         shocks[free_shock_idx,1] .= 0
     
-        shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - Stateupdate(Val(:first_order), [initial_state], Float64[shocks[:,1]...], 𝓂.timings, 𝓂.solution.perturbation)[1][cond_var_idx])
+        shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - sol_mat * vcat(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
         
-        Y[:,1] = Stateupdate(Val(:first_order), [initial_state], Float64[shocks[:,1]...], 𝓂.timings, 𝓂.solution.perturbation)[1]
+        Y[:,1] = sol_mat * vcat(initial_state, Float64[shocks[:,1]...])
 
         for i in 2:size(conditions,2)
             cond_var_idx = findall(conditions[:,i] .!= nothing)
@@ -882,9 +882,9 @@ function get_conditional_forecast(𝓂::ℳ,
             @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
             end
     
-            shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - Stateupdate(Val(:first_order), [Y[:,i-1]], Float64[shocks[:,i]...], 𝓂.timings, 𝓂.solution.perturbation)[1][cond_var_idx])
+            shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - sol_mat * vcat(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
     
-            Y[:,i] = Stateupdate(Val(:first_order), [Y[:,i-1]], Float64[shocks[:,i]...], 𝓂.timings, 𝓂.solution.perturbation)[1]
+            Y[:,i] = sol_mat * vcat(Y[:,i-1], Float64[shocks[:,i]...])
         end
     end
 
@@ -1042,10 +1042,10 @@ function get_irf(𝓂::ℳ,
 
         shock_history = zeros(𝓂.timings.nExo,periods)
     
-        push!(Y, Stateupdate(Val(:first_order), [initial_state], shock_history[:,1], 𝓂.timings, 𝓂.solution.perturbation)[1])
+        push!(Y, sol_mat * vcat(initial_state, shock_history[:,1]))
         
         for t in 1:periods-1
-            push!(Y, Stateupdate(Val(:first_order), [Y[end]], shock_history[:,t+1], 𝓂.timings, 𝓂.solution.perturbation)[1])
+            push!(Y, sol_mat * vcat(Y[end], shock_history[:,t+1]))
         end
     
         push!(Ŷ, reduce(hcat,Y))
@@ -1059,10 +1059,10 @@ function get_irf(𝓂::ℳ,
             shock_history[ii,1] = negative_shock ? -1 : 1
         end
 
-        push!(Y, Stateupdate(Val(:first_order), [initial_state], shock_history[:,1], 𝓂.timings, 𝓂.solution.perturbation)[1])
+        push!(Y, sol_mat * vcat(initial_state, shock_history[:,1]))
 
         for t in 1:periods-1
-            push!(Y, Stateupdate(Val(:first_order), [Y[end]], shock_history[:,t+1], 𝓂.timings, 𝓂.solution.perturbation)[1])
+            push!(Y, sol_mat * vcat(Y[end], shock_history[:,t+1]))
         end
 
         push!(Ŷ, reduce(hcat,Y))
