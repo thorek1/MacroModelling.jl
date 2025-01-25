@@ -7306,19 +7306,19 @@ end
 
 end # dispatch_doctor
 
-function Stateupdate(::Val{:first_order}, states::Vector{S}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
-    return P.first_order.solution_matrix * [states[T.past_not_future_and_mixed_idx]; shocks]
+function Stateupdate(::Val{:first_order}, states::Vector{Vector{S}}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
+    return [P.first_order.solution_matrix * [states[1][T.past_not_future_and_mixed_idx]; shocks]]
 end
 
-function Stateupdate(::Val{:second_order}, states::Vector{S}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
-    aug_state₁ = [states[T.past_not_future_and_mixed_idx]; shocks]
+function Stateupdate(::Val{:second_order}, states::Vector{Vector{S}}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
+    aug_state₁ = [states[1][T.past_not_future_and_mixed_idx]; shocks]
 
-    aug_state = [states[T.past_not_future_and_mixed_idx]; 1; shocks]
+    aug_state = [states[1][T.past_not_future_and_mixed_idx]; 1; shocks]
 
     𝐒₁ = P.first_order.solution_matrix
     𝐒₂ = P.second_order_solution * P.second_order_auxilliary_matrices.𝐔₂
 
-    return 𝐒₁ * aug_state₁ + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+    return [𝐒₁ * aug_state₁ + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2]
 end
 
 function Stateupdate(::Val{:pruned_second_order}, pruned_states::Vector{Vector{S}}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
@@ -7333,10 +7333,10 @@ function Stateupdate(::Val{:pruned_second_order}, pruned_states::Vector{Vector{S
     return [𝐒₁ * aug_state₁̃, 𝐒₁ * aug_state₂̃ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2]
 end
 
-function Stateupdate(::Val{:third_order}, states::Vector{S}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
-    aug_state₁ = [states[T.past_not_future_and_mixed_idx]; shocks]
+function Stateupdate(::Val{:third_order}, states::Vector{Vector{S}}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
+    aug_state₁ = [states[1][T.past_not_future_and_mixed_idx]; shocks]
 
-    aug_state = [states[T.past_not_future_and_mixed_idx]; 1; shocks]
+    aug_state = [states[1][T.past_not_future_and_mixed_idx]; 1; shocks]
 
     𝐒₁ = P.first_order.solution_matrix
     𝐒₂ = P.second_order_solution * P.second_order_auxilliary_matrices.𝐔₂
@@ -7344,7 +7344,7 @@ function Stateupdate(::Val{:third_order}, states::Vector{S}, shocks::Vector{R}, 
 
     kron_aug_state = ℒ.kron(aug_state, aug_state)
 
-    return 𝐒₁ * aug_state₁ + 𝐒₂ * kron_aug_state / 2 + 𝐒₃ * ℒ.kron(kron_aug_state, aug_state) / 6
+    return [𝐒₁ * aug_state₁ + 𝐒₂ * kron_aug_state / 2 + 𝐒₃ * ℒ.kron(kron_aug_state, aug_state) / 6]
 end
 
 function Stateupdate(::Val{:pruned_third_order}, pruned_states::Vector{Vector{S}}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
