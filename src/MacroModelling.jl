@@ -451,11 +451,12 @@ end
 
 
 function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
-    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
-
+    Conditions, algorithm, T, P, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
+    
     Shocks[Free_shock_idx] .= X
 
-    new_State = State_update(State, convert(typeof(X), Shocks))
+    # new_State = State_update(State, convert(typeof(X), Shocks))
+    new_State = Stateupdate(Val(algorithm), State, convert(typeof(X), Shocks), T, P)
 
     cond_vars = Pruning ? sum(new_State) : new_State
 
@@ -7304,6 +7305,65 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
 end
 
 end # dispatch_doctor
+
+function Stateupdate(::Val{:first_order}, states::Vector{S}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
+    return P.first_order.solution_matrix * [states[T.past_not_future_and_mixed_idx]; shocks]
+end
+
+function Stateupdate(::Val{:second_order}, states::Vector{S}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
+    aug_state₁ = [states[T.past_not_future_and_mixed_idx]; shocks]
+
+    aug_state = [states[T.past_not_future_and_mixed_idx]; 1; shocks]
+
+    𝐒₁ = P.first_order.solution_matrix
+    𝐒₂ = P.second_order_solution * P.second_order_auxilliary_matrices.𝐔₂
+
+    return 𝐒₁ * aug_state₁ + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2
+end
+
+function Stateupdate(::Val{:pruned_second_order}, pruned_states::Vector{Vector{S}}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
+    aug_state₁ = [pruned_states[1][T.past_not_future_and_mixed_idx]; 1; shocks]
+
+    aug_state₁̃ = [pruned_states[1][T.past_not_future_and_mixed_idx]; shocks]
+    aug_state₂̃ = [pruned_states[2][T.past_not_future_and_mixed_idx]; zero(shocks)]
+    
+    𝐒₁ = P.first_order.solution_matrix
+    𝐒₂ = P.second_order_solution * P.second_order_auxilliary_matrices.𝐔₂
+
+    return [𝐒₁ * aug_state₁̃, 𝐒₁ * aug_state₂̃ + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2]
+end
+
+function Stateupdate(::Val{:third_order}, states::Vector{S}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
+    aug_state₁ = [states[T.past_not_future_and_mixed_idx]; shocks]
+
+    aug_state = [states[T.past_not_future_and_mixed_idx]; 1; shocks]
+
+    𝐒₁ = P.first_order.solution_matrix
+    𝐒₂ = P.second_order_solution * P.second_order_auxilliary_matrices.𝐔₂
+    𝐒₃ = P.third_order_solution * P.third_order_auxilliary_matrices.𝐔₃
+
+    kron_aug_state = ℒ.kron(aug_state, aug_state)
+
+    return 𝐒₁ * aug_state₁ + 𝐒₂ * kron_aug_state / 2 + 𝐒₃ * ℒ.kron(kron_aug_state, aug_state) / 6
+end
+
+function Stateupdate(::Val{:pruned_third_order}, pruned_states::Vector{Vector{S}}, shocks::Vector{R}, T::timings, P::perturbation) where {S <: Real, R <: Real}
+    aug_state₁ = [pruned_states[1][T.past_not_future_and_mixed_idx]; 1; shocks]
+    aug_state₁̂ = [pruned_states[1][T.past_not_future_and_mixed_idx]; 0; shocks]
+    aug_state₂ = [pruned_states[2][T.past_not_future_and_mixed_idx]; 0; zero(shocks)]
+
+    aug_state₁̃ = [pruned_states[1][T.past_not_future_and_mixed_idx]; shocks]
+    aug_state₂̃ = [pruned_states[2][T.past_not_future_and_mixed_idx]; zero(shocks)]
+    aug_state₃̃ = [pruned_states[3][T.past_not_future_and_mixed_idx]; zero(shocks)]
+    
+    𝐒₁ = P.first_order.solution_matrix
+    𝐒₂ = P.second_order_solution * P.second_order_auxilliary_matrices.𝐔₂
+    𝐒₃ = P.third_order_solution * P.third_order_auxilliary_matrices.𝐔₃
+    
+    kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
+
+    return [𝐒₁ * aug_state₁̃, 𝐒₁ * aug_state₂̃ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃̃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+end
 
 function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasionally_binding_constraints::Bool)::Tuple{Function, Bool}
     if occasionally_binding_constraints

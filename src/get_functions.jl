@@ -714,7 +714,7 @@ function get_conditional_forecast(𝓂::ℳ,
             dynamics = true, 
             algorithm = algorithm)
 
-    state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+    pruning = algorithm ∈ [:pruned_second_order, :pruned_third_order]
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
@@ -765,7 +765,7 @@ function get_conditional_forecast(𝓂::ℳ,
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
         precision_factor = 1.0
 
-        p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state, pruning, precision_factor)
+        p = (conditions[:,1], algorithm, 𝓂.timings, 𝓂.solution.perturbation, shocks[:,1], cond_var_idx, free_shock_idx, initial_state, pruning, precision_factor)
 
         res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                             zeros(length(free_shock_idx)), 
@@ -790,8 +790,8 @@ function get_conditional_forecast(𝓂::ℳ,
         x = Optim.minimizer(res)
 
         shocks[free_shock_idx,1] .= x
-                
-        initial_state = state_update(initial_state, Float64[shocks[:,1]...])
+        
+        initial_state = Stateupdate(Val(algorithm), initial_state, Float64[shocks[:,1]...], 𝓂.timings, 𝓂.solution.perturbation)
 
         Y[:,1] = pruning ? sum(initial_state) : initial_state
 
@@ -810,7 +810,7 @@ function get_conditional_forecast(𝓂::ℳ,
     
             @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
     
-            p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, precision_factor)
+            p = (conditions[:,i], algorithm, 𝓂.timings, 𝓂.solution.perturbation, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, precision_factor)
 
             res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                                 zeros(length(free_shock_idx)), 
@@ -836,7 +836,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
             shocks[free_shock_idx,i] .= x
 
-            initial_state = state_update(initial_state, Float64[shocks[:,i]...])
+            initial_state = Stateupdate(Val(algorithm), initial_state, Float64[shocks[:,i]...], 𝓂.timings, 𝓂.solution.perturbation)
 
             Y[:,i] = pruning ? sum(initial_state) : initial_state
         end
@@ -855,9 +855,9 @@ function get_conditional_forecast(𝓂::ℳ,
     
         shocks[free_shock_idx,1] .= 0
     
-        shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - state_update(initial_state, Float64[shocks[:,1]...])[cond_var_idx])
-    
-        Y[:,1] = state_update(initial_state, Float64[shocks[:,1]...])
+        shocks[free_shock_idx,1] = CC \ (conditions[cond_var_idx,1] - Stateupdate(Val(:first_order), initial_state, Float64[shocks[:,1]...], 𝓂.timings, 𝓂.solution.perturbation)[cond_var_idx])
+        
+        Y[:,1] = Stateupdate(Val(:first_order), initial_state, Float64[shocks[:,1]...], 𝓂.timings, 𝓂.solution.perturbation)
 
         for i in 2:size(conditions,2)
             cond_var_idx = findall(conditions[:,i] .!= nothing)
@@ -882,9 +882,9 @@ function get_conditional_forecast(𝓂::ℳ,
             @assert ℒ.issuccess(CC) "Numerical stabiltiy issues for restrictions in period " * repr(i) * "."
             end
     
-            shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
+            shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - Stateupdate(Val(:first_order), Y[:,i-1], Float64[shocks[:,i]...], 𝓂.timings, 𝓂.solution.perturbation)[cond_var_idx])
     
-            Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
+            Y[:,i] = Stateupdate(Val(:first_order), Y[:,i-1], Float64[shocks[:,i]...], 𝓂.timings, 𝓂.solution.perturbation)
         end
     end
 
@@ -1010,6 +1010,8 @@ function get_irf(𝓂::ℳ,
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
 
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+
     reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
     if (solution_error > tol.NSSS_acceptance_tol) || isnan(solution_error)
@@ -1029,9 +1031,7 @@ function get_irf(𝓂::ℳ,
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
-    state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
-
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+    # state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
 
     initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - reference_steady_state[1:length(𝓂.var)]
 
@@ -1042,10 +1042,10 @@ function get_irf(𝓂::ℳ,
 
         shock_history = zeros(𝓂.timings.nExo,periods)
     
-        push!(Y, state_update(initial_state,shock_history[:,1]))
-    
+        push!(Y, Stateupdate(Val(:first_order), initial_state, shock_history[:,1], 𝓂.timings, 𝓂.solution.perturbation))
+        
         for t in 1:periods-1
-            push!(Y, state_update(Y[end],shock_history[:,t+1]))
+            push!(Y, Stateupdate(Val(:first_order), Y[end],shock_history[:,t+1], 𝓂.timings, 𝓂.solution.perturbation))
         end
     
         push!(Ŷ, reduce(hcat,Y))
@@ -1059,10 +1059,10 @@ function get_irf(𝓂::ℳ,
             shock_history[ii,1] = negative_shock ? -1 : 1
         end
 
-        push!(Y, state_update(initial_state,shock_history[:,1]))
+        push!(Y, Stateupdate(Val(:first_order), initial_state, shock_history[:,1], 𝓂.timings, 𝓂.solution.perturbation))
 
         for t in 1:periods-1
-            push!(Y, state_update(Y[end],shock_history[:,t+1]))
+            push!(Y, Stateupdate(Val(:first_order), Y[end], shock_history[:,t+1], 𝓂.timings, 𝓂.solution.perturbation))
         end
 
         push!(Ŷ, reduce(hcat,Y))
