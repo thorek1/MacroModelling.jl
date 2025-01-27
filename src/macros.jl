@@ -1,7 +1,7 @@
 
-import MacroTools: unblock, postwalk, @capture
+import MacroTools: unblock, postwalk, @capture, flatten
 
-const all_available_algorithms = [:linear_time_iteration, :riccati, :first_order, :quadratic_iteration, :binder_pesaran, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
 
 """
@@ -303,7 +303,7 @@ macro model(𝓂,ex...)
                     x :
                 x,
             model_ex.args[i])
-            push!(ss_equations,unblock(eqs))
+            push!(ss_equations,flatten(unblock(eqs)))
 
             # write down ss equations including nonnegativity auxilliary variables
             # find nonegative variables, parameters, or terms
@@ -461,13 +461,13 @@ macro model(𝓂,ex...)
                         x.args[1] ∈ [:exp] ?
                             x.args[2] isa Symbol ? # have exp terms bound so they dont go to Inf
                                 begin
-                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 700)) : (-1e12, 700)
+                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 600)) : (-1e12, 600)
                                     x
                                 end :
                             x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # have exp terms bound so they dont go to Inf
                                     begin
-                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], -1e12), min(bounds[x.args[2].args[1]][2], 700)) : (-1e12, 700)
+                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], -1e12), min(bounds[x.args[2].args[1]][2], 600)) : (-1e12, 600)
                                         x
                                     end :
                                 x :
@@ -484,7 +484,7 @@ macro model(𝓂,ex...)
                                             replacement = unique_➕_eqs[x.args[2]]
                                         else
                                             lb = -1e12
-                                            ub = 700
+                                            ub = 600
 
                                             # push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(ub,max(lb,$(x.args[2])))))
                                             push!(ss_and_aux_equations, Expr(:call,:-, :($(Expr(:ref,Symbol("➕" * sub(string(length(➕_vars)+1))),0))), x.args[2]))
@@ -555,7 +555,7 @@ macro model(𝓂,ex...)
     end
 
     # go through changed SS equations including nonnegative auxilliary variables
-    ss_aux_equations = []
+    ss_aux_equations = Expr[]
 
     # tag vars and pars in changed SS equations
     var_list_aux_SS = []
@@ -645,9 +645,13 @@ macro model(𝓂,ex...)
                 ss_aux_equation = simplify(unblock(prs_ex))
             end
         end
-        ss_aux_equation_expr = if ss_aux_equation isa Symbol Expr(:call,:-,ss_aux_equation,0) else ss_aux_equation end
-
-        push!(ss_aux_equations,ss_aux_equation_expr)
+        
+        if ss_aux_equation isa Symbol 
+            push!(ss_aux_equations, Expr(:call,:-,ss_aux_equation,0))
+        else#if !(ss_aux_equation isa Int)
+            # println(eq)
+            push!(ss_aux_equations, ss_aux_equation)
+        end
     end
 
     # go through dynamic equations and label
@@ -712,6 +716,11 @@ macro model(𝓂,ex...)
 
     @assert length(intersect(union(var,exo),parameters_in_equations)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(union(var,exo),parameters_in_equations)...]))
 
+    @assert !any(isnothing, future_not_past_and_mixed_idx) "The following variables appear in the future only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
+
+    @assert !any(isnothing, past_not_future_and_mixed_idx) "The following variables appear in the past only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
+
+    ℂ = Caches()
 
     T = timings(present_only,
                 future_not_past,
@@ -882,45 +891,51 @@ macro model(𝓂,ex...)
                         ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian_SS_and_pars_vars
                         # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
                         ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_hessian
+                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_hessian_SS_and_pars_vars
                         ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives
+                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives_SS_and_pars_vars
 
                         $T,
+
+                        $ℂ,
 
                         Expr[],
                         # $obc_shock_bounds,
                         $max_obc_horizon,
                         x->x,
-
+                        # see here for tolerances: https://nlopt.readthedocs.io/en/latest/NLopt_Introduction/#function-value-and-parameter-tolerances
                         [
-                            solver_parameters(eps(), eps(), eps(), 250, 
-                            1.0242323883590136, 0.5892723157762478, 0.0006988523559835617, 0.009036867721330505, 0.14457591298892497, 1.3282546133453548, 0.7955753778741823, 1.7661485851863441e-6, 2.6206711939142943e-7, 7.052160321659248e-12, 1.06497513443326e-6, 5.118937128189348, 90.94952163302091, 3.1268025435012207e-13, 1.691251847378593, 0.5455751102495228, 0.1201767636895742, 0.0007802908980930664, 0.011310267585075185, 1.0032972640942657, 
+                            solver_parameters(1.0242323883590136, 0.58927243157762478, 0.0006988523559835617, 0.009036867721330505, 0.14457591298892497, 1.3282546133453548, 0.7955753778741823, 1.7661485851863441e-6, 2.6206711939142943e-7, 7.052160321659248e-12, 1.06497513443326e-6, 5.118937128189348, 90.94952163302091, 3.1268025435012207e-13, 1.691251847378593, 0.5455751102495228, 0.1201767636895742, 0.0007802908980930664, 0.011310267585075185, 1.0032972640942657, 
                             1, 0.0, 2),
 
-                            solver_parameters(eps(), eps(), eps(), 250, 
-                            1.2472903868878749, 0.7149401846020106, 0.0034717544971213966, 0.0008409477479813854, 0.24599133854242075, 1.7996260724902138, 0.2399133704286251, 0.728108158144521, 0.03250298738504968, 0.003271716521926188, 0.5319194600339338, 2.1541622462034, 7.751722474870615, 0.08193253023289011, 1.52607969046303, 0.0002086811131899754, 0.005611466658864538, 0.018304952326087726, 0.0024888171138406773, 0.9061879299736817, 
+                            solver_parameters(1.2472903868878749, 0.7149401846020106, 0.0034717544971213966, 0.0008409477479813854, 0.24599133854242075, 1.7996260724902138, 0.2399133704286251, 0.728108158144521, 0.03250298738504968, 0.003271716521926188, 0.5319194600339338, 2.1541622462034, 7.751722474870615, 0.08193253023289011, 1.52607969046303, 0.0002086811131899754, 0.005611466658864538, 0.018304952326087726, 0.0024888171138406773, 0.9061879299736817, 
                             1, 0.0, 2),
 
-                            solver_parameters(eps(), eps(), eps(), 250, 
-                            1.9479518608134938, 0.02343520604394183, 5.125002799990568, 0.02387522857907376, 0.2239226474715968, 4.889172213411495, 1.747880258818237, 2.8683242331457, 0.938229356687311, 1.4890887655876235, 1.6261504814901664, 11.26863249187599, 36.05486169712279, 6.091535897587629, 11.73936761697657, 3.189349432626493, 0.21045178305336348, 0.17122196312330415, 13.251662547139363, 5.282429995876679, 
+                            solver_parameters(1.9479518608134938, 0.02343520604394183, 5.125002799990568, 0.02387522857907376, 0.2239226474715968, 4.889172213411495, 1.747880258818237, 2.8683242331457, 0.938229356687311, 1.4890887655876235, 1.6261504814901664, 11.26863249187599, 36.05486169712279, 6.091535897587629, 11.73936761697657, 3.189349432626493, 0.21045178305336348, 0.17122196312330415, 13.251662547139363, 5.282429995876679, 
                             1, 0.0, 2),
 
-                            solver_parameters(eps(), eps(), eps(), 250, 
-                            2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688, 
+                            solver_parameters(2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.7688, 
                             1, 0.0, 2),
 
-                            solver_parameters(eps(), eps(), eps(), 250, 
-                            2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.897,
+                            solver_parameters(2.9912988764832833, 0.8725, 0.0027, 0.028948770826150612, 8.04, 4.076413176215408, 0.06375413238034794, 0.24284340766769424, 0.5634017580097571, 0.009549630552246828, 0.6342888355132347, 0.5275522227754195, 1.0, 0.06178989216048817, 0.5234277812131813, 0.422, 0.011209254402846185, 0.5047, 0.6020757011698457, 0.897,
+                            1, 0.0, 2),
+
+                            solver_parameters(6.8658210317889115, 3.054280631509596, 9.239560890529688, 5.0330393159601705, 4.619974181880515, 2.130665389110862, 13.395678237998878, 8.95412704048986, 16.67031860308238, 4.1686309854116175, 7.193385978766233, 6.284359482297452, 1.6025436780830082, 4.080789181245917, 11.237586964445232, 0.9812514892088027, 10.182504561803604, 2.2723756926184744, 5.580529028552923, 4.761189900509761, 
+                            1, 0.0, 2),
+
+                            solver_parameters(0.29645150804713516, 0.15969019747689142, 0.2693496924553368, 0.0034970496426367293, 0.5008694464959978, 0.6699637884425756, 1.611285608601616, 0.6899397454094642, 0.029431947073776017, 0.3142583183135748, 0.42018256598233805, 0.06924215548968618, 0.7804883376691316, 0.06394988937558344, 0.15004023218157433, 1.1769307574775534, 1.262653860526411, 0.029216109042280492, 0.5838043687191993, -6.690519495126307, 
                             1, 0.0, 2)
                         ],
 
                         solution(
-                            perturbation(   perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), (x,y)->nothing, nothing),
-                                            perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), (x,y)->nothing, nothing),
-                                            perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), (x,y)->nothing, nothing),
-                                            second_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),
-                                            second_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),
-                                            third_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),
-                                            third_order_perturbation_solution(SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0), [], (x,y)->nothing, nothing),
+                            perturbation(   perturbation_solution(zeros(0,0), (x,y)->nothing, (x,y)->nothing),
+                                            second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
+                                            second_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
+                                            third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
+                                            third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
+                                            zeros(0,0),                                 # 1st order sol
+                                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 2nd order sol
+                                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 3rd order sol
                                             auxilliary_indices(Int[],Int[],Int[],Int[],Int[]),
                                             second_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
                                             third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
@@ -1070,7 +1085,7 @@ macro parameters(𝓂,ex...)
     parameter_definitions = replace_indices(ex[end])
 
     # parse parameter inputs
-    # label all variables parameters and exogenous vairables and timings across all equations
+    # label all variables parameters and exogenous variables and timings across all equations
     postwalk(x -> 
         x isa Expr ?
             x.head == :(=) ? 
@@ -1118,7 +1133,7 @@ macro parameters(𝓂,ex...)
             x.head == :(=) ? 
                 typeof(x.args[2]) ∈ [Int, Float64] ?
                     x :
-                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? #this doesnt work really well yet
+                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? # this doesnt work really well yet
                     x.args[2] isa Expr ?
                         x.args[2].args[1] == :| ? # capture this case: b_star = b_share * y[ss] | b_star
                             begin # this is calibration by targeting SS values (conditional parameter at the end)
@@ -1510,29 +1525,34 @@ macro parameters(𝓂,ex...)
 
         mod.$𝓂.solution.functions_written = true
 
+        opts = merge_calculation_options(verbose = $verbose)
+
         if !$precompile
             if !$silent 
                 print("Find non stochastic steady state:\t\t\t\t\t") 
             end
             # time_SS_real_solve = @elapsed 
-            SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, $verbose, true, mod.$𝓂.solver_parameters)
-            
-            select_fastest_SS_solver_parameters!(mod.$𝓂)
+            SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
+
+            select_fastest_SS_solver_parameters!(mod.$𝓂, tol = opts.tol)
 
             found_solution = true
 
-            if solution_error > 1e-12
+            if solution_error > opts.tol.NSSS_acceptance_tol
                 # start_time = time()
-                found_solution = find_SS_solver_parameters!(mod.$𝓂)
+                found_solution = find_SS_solver_parameters!(mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
                 # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
+                if found_solution
+                    SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
+                end
             end
             
-            if !found_solution
-                @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
-            end
-
             if !$silent 
                 println(round(time() - start_time, digits = 3), " seconds") 
+            end
+
+            if !found_solution
+                @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
             end
 
             mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
