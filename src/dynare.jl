@@ -137,7 +137,7 @@ Writes a `dynare` .mod-file in the current working directory. This function is n
 The recommended workflow is to use this function to write a .mod-file, and then adapt the output so that it runs and corresponds to the input.
 
 # Arguments
-- $MODEL
+- $MODEL®
 """
 function write_mod_file(m::ℳ)
     NSSS = get_SS(m, derivatives = false)
