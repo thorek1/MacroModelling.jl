@@ -233,19 +233,19 @@ end
 
 	ctrend = 0.3982
 
-	z_ea	= 0.4618
+	z_ea	= 0.4618 # technology shock
 
-	z_eb	= 1.8513
+	z_eb	= 1.8513 # risk-premium shock
 
-	z_eg	= 0.6090
+	z_eg	= 0.6090 # government shock
 
-	z_em	= 0.2397
+	z_em	= 0.2397 # interest rate shock
 
-	z_ew	= 0.2089
+	z_ew	= 0.2089 # wage mark-up shock
 
-	z_eqs	= 0.6017
+	z_eqs	= 0.6017 # investment-specific shock
 
-	z_epinf	= 0.1455
+	z_epinf	= 0.1455 # price mark-up shock
 
 	1e-6 > ygap > -1e-6
 end
