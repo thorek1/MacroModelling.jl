@@ -1274,8 +1274,10 @@ function plot_solution(𝓂::ℳ,
     vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
+    
+    all_states = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
-    state_selector = state .== 𝓂.timings.var
+    state_selector = state .== all_states
 
     n_subplots = length(var_idx)
     pp = []
@@ -1355,8 +1357,6 @@ function plot_solution(𝓂::ℳ,
     variable_dict = Dict()
 
     NSSS = relevant_SS_dictionnary[:first_order]
-
-    all_states = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
     for a in algorithm
         SSS_delta = collect(NSSS - relevant_SS_dictionnary[a])
