@@ -2687,7 +2687,7 @@ end
 
 moments = get_moments(RBC);
 
-moments[1]
+moments[:non_stochastic_steady_state]
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 4-element Vector{Symbol}
@@ -2702,7 +2702,7 @@ And data, 4×6 Matrix{Float64}:
 
 
 ```jldoctest part1
-moments[2]
+moments[:standard_deviation]
 # output
 2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
 ↓   Variables ∈ 4-element Vector{Symbol}
