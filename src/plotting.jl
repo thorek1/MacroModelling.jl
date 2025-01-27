@@ -1275,9 +1275,7 @@ function plot_solution(𝓂::ℳ,
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
-    all_states = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
-    state_selector = state .== all_states
+    state_selector = state .== full_NSSS
 
     n_subplots = length(var_idx)
     pp = []
@@ -1381,7 +1379,7 @@ function plot_solution(𝓂::ℳ,
         impact_output   = Dict()
 
         for k in vars_to_plot
-            idx = indexin([k], all_states)
+            idx = indexin([k], full_NSSS)
 
             push!(variable_output,  k => var_state_range[idx,:]) 
             
@@ -1415,7 +1413,7 @@ function plot_solution(𝓂::ℳ,
                     Pl = StatsPlots.plot() 
 
                     for a in algorithm
-                        StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state],all_states)][1], 
+                        StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state], full_NSSS)][1], 
                             variable_dict[a][k][1,:], 
                             ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
                             xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
@@ -1423,7 +1421,7 @@ function plot_solution(𝓂::ℳ,
                     end
 
                     for a in algorithm
-                        StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], all_states)][1]], [relevant_SS_dictionnary[a][indexin([k], all_states)][1]], 
+                        StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], full_NSSS)][1]], [relevant_SS_dictionnary[a][indexin([k], full_NSSS)][1]], 
                         label = "")
                     end
 
