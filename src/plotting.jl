@@ -29,7 +29,7 @@ In case `shock_decomposition = true`, the plot shows the variables, shocks, and 
 
 For higher order perturbation solutions the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
 
-If occasionally binding constraints aer present in the model, they are not taken into account here. 
+If occasionally binding constraints are present in the model, they are not taken into account here. 
 
 # Arguments
 - $MODEL®
@@ -915,7 +915,7 @@ Plot conditional variance decomposition of the model.
 
 The vertical axis shows the share of the shocks variance contribution, and horizontal axis the period of the variance decomposition. The stacked bars represent each shocks variance contribution at a specific time horizon.
 
-If occasionally binding constraints aer present in the model, they are not taken into account here. 
+If occasionally binding constraints are present in the model, they are not taken into account here. 
 
 # Arguments
 - $MODEL®
@@ -1490,7 +1490,7 @@ Plot the conditional forecast given restrictions on endogenous variables and sho
 
 The left axis shows the level, and the right axis the deviation from the relevant steady state. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
 
-If occasionally binding constraints aer present in the model, they are not taken into account here. 
+If occasionally binding constraints are present in the model, they are not taken into account here. 
 
 # Arguments
 - $MODEL®
