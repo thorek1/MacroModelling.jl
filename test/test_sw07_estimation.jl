@@ -99,21 +99,25 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear
 # inits = [Dict(get_parameters(Smets_Wouters_2007_linear, values = true))[string(i)] for i in par_names]
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-#                                         Optim.SimulatedAnnealing(),
-#                                         initial_params = inits)
+#                                         Optim.SimulatedAnnealing())#,
+# #                                         initial_params = inits)
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
 #                                         initial_params = modeSW2007.values)
 
-modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                        Optim.NelderMead())
+# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+#                                         Optim.NelderMead())
 
-println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+# println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+
+# LLH = Turing.logjoint(SW07_loglikelihood, (all_params = inits,))
 
 n_samples = 1000
 
-samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = modeSW2007.values)
+samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, 
+                            # initial_params = inits,
+                            progress = true)
 
 println(samps)
 println("Mean variable values (linear): $(mean(samps).nt.mean)")
@@ -124,7 +128,7 @@ include("../models/Smets_Wouters_2007.jl")
 
 fixed_parameters = Smets_Wouters_2007.parameter_values[indexin([:ctou, :clandaw, :cg, :curvp, :curvw], Smets_Wouters_2007.parameters)]
 
-SS(Smets_Wouters_2007, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01])(observables)
+SS(Smets_Wouters_2007, parameters = [:crhoms => 0.01, :crhopinf => 0.01, :crhow => 0.01, :cmap => 0.01, :cmaw => 0.01])(observables,:)
 
 SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, observables, fixed_parameters, :kalman)
 
@@ -133,21 +137,24 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 # inits = [Dict(get_parameters(Smets_Wouters_2007, values = true))[string(i)] for i in par_names]
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-#                                         Optim.SimulatedAnnealing(),
-#                                         initial_params = inits)
+#                                         Optim.SimulatedAnnealing())#,
+# #                                         initial_params = inits)
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
 #                                         initial_params = modeSW2007.values)
 
-modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
-                                        Optim.NelderMead())
+# modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
+#                                         Optim.NelderMead(),
+#                                         initial_params = modeSW2007.values)
 
-println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
+# println("Mode variable values (linear): $(modeSW2007.values); Mode loglikelihood: $(modeSW2007.lp)")
 
 n_samples = 1000
 
-samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = modeSW2007.values)
+samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, 
+                            # initial_params = inits,
+                            progress = true)
 
 println(samps)
 println("Mean variable values (nonlinear): $(mean(samps).nt.mean)")
