@@ -1409,7 +1409,7 @@ function plot_solution(𝓂::ℳ,
                     Pl = StatsPlots.plot() 
 
                     for a in algorithm
-                        StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state], full_NSSS)][1], 
+                        StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1], 
                             variable_dict[a][k][1,:], 
                             ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
                             xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
@@ -1417,7 +1417,7 @@ function plot_solution(𝓂::ℳ,
                     end
 
                     for a in algorithm
-                        StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], full_NSSS)][1]], [relevant_SS_dictionnary[a][indexin([k], full_NSSS)][1]], 
+                        StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1]], [relevant_SS_dictionnary[a][indexin([k], 𝓂.var)][1]], 
                         label = "")
                     end
 
