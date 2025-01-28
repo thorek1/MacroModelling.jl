@@ -88,6 +88,7 @@ function get_shock_decomposition(𝓂::ℳ,
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                                 lyapunov_algorithm::Symbol = :doubling)::KeyedArray
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -235,6 +236,7 @@ function get_estimated_shocks(𝓂::ℳ,
                             quadratic_matrix_equation_algorithm::Symbol = :schur,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                             lyapunov_algorithm::Symbol = :doubling)::KeyedArray
+    @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -366,6 +368,7 @@ function get_estimated_variables(𝓂::ℳ,
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                                 lyapunov_algorithm::Symbol = :doubling)::KeyedArray
+    @nospecialize # reduce compile time                         
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -484,6 +487,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                     tol::Tolerances = Tolerances(),
                                                     quadratic_matrix_equation_algorithm::Symbol = :schur,
                                                     lyapunov_algorithm::Symbol = :doubling)
+    @nospecialize # reduce compile time                                               
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -643,6 +647,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                                 lyapunov_algorithm::Symbol = :doubling)
+    @nospecialize # reduce compile time                        
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1161,6 +1166,7 @@ function get_irf(𝓂::ℳ;
                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                 lyapunov_algorithm::Symbol = :doubling)::KeyedArray
+    @nospecialize # reduce compile time            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1509,7 +1515,8 @@ function get_steady_state(𝓂::ℳ;
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = :schur,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling)::KeyedArray
-
+    @nospecialize # reduce compile time
+                            
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
@@ -1787,6 +1794,7 @@ function get_solution(𝓂::ℳ;
                         tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling)::KeyedArray
+    @nospecialize # reduce compile time      
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2161,6 +2169,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                 tol::Tolerances = Tolerances(),
                                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                                 lyapunov_algorithm::Symbol = :doubling)
+    @nospecialize # reduce compile time                                            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2321,7 +2330,8 @@ function get_variance_decomposition(𝓂::ℳ;
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = :schur,
                                     lyapunov_algorithm::Symbol = :doubling)
-
+    @nospecialize # reduce compile time
+                                    
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     lyapunov_algorithm = lyapunov_algorithm)
@@ -2450,6 +2460,7 @@ function get_correlation(𝓂::ℳ;
                         lyapunov_algorithm::Symbol = :doubling, 
                         verbose::Bool = false,
                         tol::Tolerances = Tolerances())
+    @nospecialize # reduce compile time                    
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2566,6 +2577,7 @@ function get_autocorrelation(𝓂::ℳ;
                             lyapunov_algorithm::Symbol = :doubling, 
                             verbose::Bool = false,
                             tol::Tolerances = Tolerances())
+    @nospecialize # reduce compile time
     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2732,6 +2744,7 @@ function get_moments(𝓂::ℳ;
                     lyapunov_algorithm::Symbol = :doubling, 
                     verbose::Bool = false,
                     tol::Tolerances = Tolerances())#limit output by selecting pars and vars like for plots and irfs!?
+    @nospecialize # reduce compile time          
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3629,6 +3642,7 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
                                                     parameters::ParameterType = nothing,
                                                     tol::Tolerances = Tolerances(),
                                                     verbose::Bool = false)
+    @nospecialize # reduce compile time                                             
 
     opts = merge_calculation_options(tol = tol, verbose = verbose)
     
