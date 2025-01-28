@@ -120,7 +120,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                                 lyapunov_algorithm::Symbol = :doubling)
-    @nospecialize # reduce compile time                            
+    # @nospecialize # reduce compile time                            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -503,7 +503,7 @@ function plot_irf(𝓂::ℳ;
                     quadratic_matrix_equation_algorithm::Symbol = :schur,
                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                     lyapunov_algorithm::Symbol = :doubling)
-    @nospecialize # reduce compile time                
+    # @nospecialize # reduce compile time                
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -986,7 +986,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 tol::Tolerances = Tolerances(),
                                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
                                                 lyapunov_algorithm::Symbol = :doubling)
-    @nospecialize # reduce compile time                                            
+    # @nospecialize # reduce compile time                                            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1209,7 +1209,7 @@ function plot_solution(𝓂::ℳ,
                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                         lyapunov_algorithm::Symbol = :doubling)
-    @nospecialize # reduce compile time                    
+    # @nospecialize # reduce compile time                    
     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1593,7 +1593,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm::Symbol = :schur,
                                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                                     lyapunov_algorithm::Symbol = :doubling)
-    @nospecialize # reduce compile time
+    # @nospecialize # reduce compile time
                                     
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
