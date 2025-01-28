@@ -5744,22 +5744,22 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
             else
-                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
-                # for i in 1:min(min_n_funcs, length(vals))
+                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+                for i in 1:min(min_n_funcs, length(vals))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
 
                     indices = length(indices) == 1 ? indices[1] : indices
 
                     func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
 
-                    begin
-                        lock(lk)
-                        try
+                    # begin
+                    #     lock(lk)
+                    #     try
                             push!(funcs, func)
-                        finally
-                            unlock(lk)
-                        end
-                    end
+                    #     finally
+                    #         unlock(lk)
+                    #     end
+                    # end
                 end
             end
 
@@ -5775,22 +5775,22 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(first_order, 1:length(first_order), Val(:string)))
             else
-                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(first_order))
-                # for i in 1:min(min_n_funcs, length(first_order))
+                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(first_order))
+                for i in 1:min(min_n_funcs, length(first_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
 
                     indices = length(indices) == 1 ? indices[1] : indices
 
                     func = write_derivatives_function(first_order[indices], indices, Val(:string))
 
-                    begin
-                        lock(lk)
-                        try
+                    # begin
+                    #     lock(lk)
+                    #     try
                             push!(funcs, func)
-                        finally
-                            unlock(lk)
-                        end
-                    end
+                    #     finally
+                    #         unlock(lk)
+                    #     end
+                    # end
                 end
             end
 
@@ -5814,22 +5814,22 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(second_order[perm_vals], 1:length(second_order), Val(:string)))
             else
-                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(second_order))
-                # for i in 1:min(min_n_funcs, length(second_order))
+                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(second_order))
+                for i in 1:min(min_n_funcs, length(second_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
             
                     indices = length(indices) == 1 ? indices[1] : indices
 
                     func = write_derivatives_function(second_order[perm_vals][indices], indices, Val(:string))
 
-                    begin
-                        lock(lk)
-                        try
+                    # begin
+                    #     lock(lk)
+                    #     try
                             push!(funcs, func)
-                        finally
-                            unlock(lk)
-                        end
-                    end
+                    #     finally
+                    #         unlock(lk)
+                    #     end
+                    # end
                 end
             end
 
@@ -5858,22 +5858,22 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         if min_n_funcs == 1
             push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
         else
-            Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
-            # for i in 1:min(min_n_funcs, length(vals))
+            # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+            for i in 1:min(min_n_funcs, length(vals))
                 indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
 
                 indices = length(indices) == 1 ? indices[1] : indices
 
                 func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
 
-                begin
-                    lock(lk)
-                    try
+                # begin
+                #     lock(lk)
+                #     try
                         push!(funcs, func)
-                    finally
-                        unlock(lk)
-                    end
-                end
+                #     finally
+                #         unlock(lk)
+                #     end
+                # end
             end
         end
 
@@ -5897,8 +5897,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             if min_n_funcs == 1
                 push!(funcs, write_derivatives_function(third_order[perm_vals], 1:length(third_order), Val(:string)))
             else
-                Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(third_order))
-                # for i in 1:min(min_n_funcs, length(third_order))
+                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(third_order))
+                for i in 1:min(min_n_funcs, length(third_order))
                     indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
             
                     if length(indices) == 1
@@ -5907,14 +5907,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
                     func = write_derivatives_function(third_order[perm_vals][indices], indices, Val(:string))
 
-                    begin
-                        lock(lk)
-                        try
+                    # begin
+                    #     lock(lk)
+                    #     try
                             push!(funcs, func)
-                        finally
-                            unlock(lk)
-                        end
-                    end
+                    #     finally
+                    #         unlock(lk)
+                    #     end
+                    # end
                 end
             end
 
@@ -5943,22 +5943,22 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         if min_n_funcs == 1
             push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
         else
-            Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
-            # for i in 1:min(min_n_funcs, length(vals))
+            # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+            for i in 1:min(min_n_funcs, length(vals))
                 indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
 
                 indices = length(indices) == 1 ? indices[1] : indices
 
                 func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
 
-                begin
-                    lock(lk)
-                    try
+                # begin
+                #     lock(lk)
+                #     try
                         push!(funcs, func)
-                    finally
-                        unlock(lk)
-                    end
-                end
+                #     finally
+                #         unlock(lk)
+                #     end
+                # end
             end
         end
 
