@@ -3245,8 +3245,8 @@ end
 
 get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_deviation = RBC.var)
 # output
-1-element Vector{Any}:
- [0.02666420378525503, 0.26467737291221793, 0.07393254045396483, 0.010206207261596574]
+Dict{Symbol, AbstractArray{Float64}} with 1 entry:
+  :standard_deviation => [0.0266642, 0.264677, 0.0739325, 0.0102062]
 ```
 """
 function get_statistics(𝓂,
