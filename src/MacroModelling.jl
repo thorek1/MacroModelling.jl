@@ -3987,6 +3987,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
 
                     while range_iters <= 500 && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
                         range_iters += 1
+                        fail_fast_solvers_only = range_iters > 1 ? true : false
 
                     # for range_ in range_length
                         # rangee = range(0,1,range_+1)
@@ -4281,7 +4282,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     sol_minimum  = ℒ.norm(res)
 
     if !cold_start
-        if sol_minimum > tol.NSSS_acceptance_tol
+        if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol
             ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
 
             ∇̂ = ℒ.lu!(∇, check = false)
@@ -4301,8 +4302,8 @@ function block_solver(parameters_and_solved_vars::Vector{T},
     else
         rel_sol_minimum = 1.0
     end
-
-    if sol_minimum < tol.NSSS_acceptance_tol
+    
+    if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
         solved_yet = true
 
         if verbose
@@ -4320,14 +4321,14 @@ function block_solver(parameters_and_solved_vars::Vector{T},
         for g in guesses
             for p in parameters
                 for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
-                    if sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
+                    if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
                         if solved_yet continue end
                         sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                             g, 
                                                             p,
                                                             ext,
                                                             false)
-                        if sol_minimum < tol.NSSS_acceptance_tol
+                        if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
                             solved_yet = true
                         end
                     end
@@ -4339,7 +4340,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
             for s in (fail_fast_solvers_only ? [false] : Any[false,p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]) #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                 # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
                 for algo in [newton, levenberg_marquardt]
-                    if sol_minimum > tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol
+                    if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol
                         if solved_yet continue end
                         # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
                         sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
@@ -4352,7 +4353,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                                                                             false, # ext
                                                                             # false)
                                                                             s) 
-                        if sol_minimum < tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol)
+                        if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol)
                             solved_yet = true
 
                             if verbose
@@ -7861,80 +7862,78 @@ end
 
 end # dispatch_doctor
 
-# if VERSION >= v"1.9"
-#     @setup_workload begin
-#         # Putting some things in `setup` can reduce the size of the
-#         # precompile file and potentially make loading faster.
-#         @model FS2000 precompile = true begin
-#             dA[0] = exp(gam + z_e_a  *  e_a[x])
-#             log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-#             - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-#             W[0] = l[0] / n[0]
-#             - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-#             R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-#             1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-#             c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-#             P[0] * c[0] = m[0]
-#             m[0] - 1 + d[0] = l[0]
-#             e[0] = exp(z_e_a  *  e_a[x])
-#             y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-#             gy_obs[0] = dA[0] * y[0] / y[-1]
-#             gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-#             log_gy_obs[0] = log(gy_obs[0])
-#             log_gp_obs[0] = log(gp_obs[0])
-#         end
+@setup_workload begin
+    # Putting some things in `setup` can reduce the size of the
+    # precompile file and potentially make loading faster.
+    @model FS2000 precompile = true begin
+        dA[0] = exp(gam + z_e_a  *  e_a[x])
+        log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+        - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+        W[0] = l[0] / n[0]
+        - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+        R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+        1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+        c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+        P[0] * c[0] = m[0]
+        m[0] - 1 + d[0] = l[0]
+        e[0] = exp(z_e_a  *  e_a[x])
+        y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+        gy_obs[0] = dA[0] * y[0] / y[-1]
+        gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+        log_gy_obs[0] = log(gy_obs[0])
+        log_gp_obs[0] = log(gp_obs[0])
+    end
 
-#         @parameters FS2000 silent = true precompile = true begin  
-#             alp     = 0.356
-#             bet     = 0.993
-#             gam     = 0.0085
-#             mst     = 1.0002
-#             rho     = 0.129
-#             psi     = 0.65
-#             del     = 0.01
-#             z_e_a   = 0.035449
-#             z_e_m   = 0.008862
-#         end
-        
-#         ENV["GKSwstype"] = "nul"
+    @parameters FS2000 silent = true precompile = true begin  
+        alp     = 0.356
+        bet     = 0.993
+        gam     = 0.0085
+        mst     = 1.0002
+        rho     = 0.129
+        psi     = 0.65
+        del     = 0.01
+        z_e_a   = 0.035449
+        z_e_m   = 0.008862
+    end
 
-#         @compile_workload begin
-#             # all calls in this block will be precompiled, regardless of whether
-#             # they belong to your package or not (on Julia 1.8 and higher)
-#             @model RBC precompile = true begin
-#                 1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-#                 c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
-#                 z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
-#             end
+    ENV["GKSwstype"] = "nul"
 
-#             @parameters RBC silent = true precompile = true begin
-#                 δ = 0.02
-#                 α = 0.5
-#             end
+    @compile_workload begin
+        # all calls in this block will be precompiled, regardless of whether
+        # they belong to your package or not (on Julia 1.8 and higher)
+        @model RBC precompile = true begin
+            1  /  c[0] = (0.95 /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + exp(z[0]) * k[-1]^α
+            z[0] = 0.2 * z[-1] + 0.01 * eps_z[x]
+        end
 
-#             get_SS(FS2000, silent = true)
-#             get_SS(FS2000, parameters = :alp => 0.36, silent = true)
-#             get_solution(FS2000, silent = true)
-#             get_solution(FS2000, parameters = :alp => 0.35)
-#             get_standard_deviation(FS2000)
-#             get_correlation(FS2000)
-#             get_autocorrelation(FS2000)
-#             get_variance_decomposition(FS2000)
-#             get_conditional_variance_decomposition(FS2000)
-#             get_irf(FS2000)
+        @parameters RBC silent = true precompile = true begin
+            δ = 0.02
+            α = 0.5
+        end
 
-#             data = simulate(FS2000)([:c,:k],:,:simulate)
-#             get_loglikelihood(FS2000, data, FS2000.parameter_values)
-#             get_mean(FS2000, silent = true)
-#             # get_SSS(FS2000, silent = true)
-#             # get_SSS(FS2000, algorithm = :third_order, silent = true)
+        get_SS(FS2000, silent = true)
+        get_SS(FS2000, parameters = :alp => 0.36, silent = true)
+        get_solution(FS2000, silent = true)
+        get_solution(FS2000, parameters = :alp => 0.35)
+        get_standard_deviation(FS2000)
+        get_correlation(FS2000)
+        get_autocorrelation(FS2000)
+        get_variance_decomposition(FS2000)
+        get_conditional_variance_decomposition(FS2000)
+        get_irf(FS2000)
 
-#             # import StatsPlots
-#             # plot_irf(FS2000)
-#             # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
-#             # plot_conditional_variance_decomposition(FS2000)
-#         end
-#     end
-# end
+        data = simulate(FS2000)([:c,:k],:,:simulate)
+        get_loglikelihood(FS2000, data, FS2000.parameter_values)
+        get_mean(FS2000, silent = true)
+        # get_SSS(FS2000, silent = true)
+        # get_SSS(FS2000, algorithm = :third_order, silent = true)
+
+        # import StatsPlots
+        # plot_irf(FS2000)
+        # plot_solution(FS2000,:k) # fix warning when there is no sensitivity and all values are the same. triggers: no strict ticks found...
+        # plot_conditional_variance_decomposition(FS2000)
+    end
+end
 
 end
