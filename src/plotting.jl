@@ -1275,7 +1275,7 @@ function plot_solution(𝓂::ℳ,
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
-    state_selector = state .== full_NSSS
+    state_selector = state .== 𝓂.var
 
     n_subplots = length(var_idx)
     pp = []
@@ -1304,10 +1304,6 @@ function plot_solution(𝓂::ℳ,
         legend = :inside, 
         label = labels[a][2])
     end
-
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
     if any(x -> contains(string(x), "◖"), full_NSSS)
         full_NSSS_decomposed = decompose_name.(full_NSSS)
@@ -1379,7 +1375,7 @@ function plot_solution(𝓂::ℳ,
         impact_output   = Dict()
 
         for k in vars_to_plot
-            idx = indexin([k], full_NSSS)
+            idx = indexin([k], 𝓂.var)
 
             push!(variable_output,  k => var_state_range[idx,:]) 
             
