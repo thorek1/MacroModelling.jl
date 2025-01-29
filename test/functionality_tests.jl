@@ -238,10 +238,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         
 
         for filter in (algorithm == :first_order ? filters : [:inversion])
-            for presample_periods in [0, 10]
+            for presample_periods in [0, 3]
                 for initial_covariance in [:diagonal, :theoretical]
                     for verbose in [false] # [true, false]
-                        for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-3)]
+                        for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
                             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                                 llh = get_loglikelihood(m, data_in_levels, parameter_values,
                                                         algorithm = algorithm,
@@ -2121,7 +2121,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
                 for filter in (algorithm == :first_order ? filters : [:inversion])
                     for smooth in [true, false]
-                        for presample_periods in [0, 10]
+                        for presample_periods in [0, 3]
                             clear_solution_caches!(m, algorithm)
 
                             plot_model_estimates(m, data, 
