@@ -94,6 +94,8 @@ function rrule(::typeof(solve_lyapunov_equation),
     # pullback 
     # https://arxiv.org/abs/2011.11430  
     function solve_lyapunov_equation_pullback(∂P)
+        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+
         ∂C, slvd = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
     
         solved = solved && slvd

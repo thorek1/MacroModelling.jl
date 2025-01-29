@@ -118,10 +118,10 @@ end
 end # dispatch_doctor 
 
 function rrule(::typeof(calculate_first_order_solution), 
-                ∇₁::Matrix{Float64};
+                ∇₁::Matrix{R};
                 T::timings, 
                 opts::CalculationOptions = merge_calculation_options(),
-                initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))
+                initial_guess::AbstractMatrix{R} = zeros(0,0)) where R <: AbstractFloat
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -631,14 +631,17 @@ function rrule(::typeof(calculate_second_order_solution),
         # ∂𝐒₂ *= 𝐔₂t
 
         # @timeit_debug timer "Sylvester" begin
-
+        if ℒ.norm(∂𝐒₂) < opts.tol.sylvester_tol
+            return (𝐒₂, false), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
+        
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂,
                                                 sylvester_algorithm = opts.sylvester_algorithm²,
                                                 tol = opts.tol.sylvester_tol,
                                                 𝕊ℂ = ℂ.sylvester_caches,
                                                 acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
-        
+       
         if !solved
             return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end

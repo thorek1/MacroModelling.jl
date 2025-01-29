@@ -68,8 +68,8 @@ function solve_sylvester_equation(A::M,
     if verbose && i != 0
         println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: $sylvester_algorithm")
     end
-    
-    if !(reached_tol < acceptance_tol) && sylvester_algorithm ≠ :bartels_stewart && length(B) < 5e7 # try sylvester if previous one didn't solve it
+
+    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && (sylvester_algorithm ≠ :bartels_stewart) && (length(B) < 5e7) # try sylvester if previous one didn't solve it
         aa = collect(A)
 
         bb = collect(B)
@@ -85,11 +85,11 @@ function solve_sylvester_equation(A::M,
                                                             verbose = verbose)
 
         if verbose && i != 0
-            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: sylvester")
+            println("Sylvester equation - converged to tol $acceptance_tol: $(reached_tol < acceptance_tol); iterations: $i; reached tol: $reached_tol; algorithm: bartels_stewart")
         end
     end
 
-    if !(reached_tol < acceptance_tol) && reached_tol < sqrt(acceptance_tol)
+    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && reached_tol < sqrt(acceptance_tol)
         aa = collect(A)
 
         cc = collect(C)
@@ -111,7 +111,7 @@ function solve_sylvester_equation(A::M,
         end
     end
 
-    if !(reached_tol < acceptance_tol) && sylvester_algorithm ≠ :gmres
+    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && sylvester_algorithm ≠ :gmres
         aa = collect(A)
 
         cc = collect(C)
@@ -129,7 +129,7 @@ function solve_sylvester_equation(A::M,
         end
     end
 
-    if !(reached_tol < acceptance_tol) && reached_tol < sqrt(acceptance_tol)
+    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && reached_tol < sqrt(acceptance_tol)
         aa = collect(A)
 
         cc = collect(C)
@@ -151,7 +151,7 @@ function solve_sylvester_equation(A::M,
         end
     end
 
-    if !(reached_tol < acceptance_tol) && sylvester_algorithm ≠ :doubling
+    if (!isfinite(reached_tol) || !(reached_tol < acceptance_tol)) && sylvester_algorithm ≠ :doubling
         aa = collect(A)
 
         cc = collect(C)
@@ -255,8 +255,11 @@ function rrule(::typeof(solve_sylvester_equation),
                                         verbose = verbose, 
                                         initial_guess = initial_guess)
 
+                                        println("C norm: $(ℒ.norm(C))")
     # pullback
     function solve_sylvester_equation_pullback(∂P)
+        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+
         ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 
                                             sylvester_algorithm = sylvester_algorithm, 
                                             tol = tol, 

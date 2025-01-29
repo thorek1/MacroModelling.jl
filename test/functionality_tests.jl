@@ -241,7 +241,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for presample_periods in [0, 10]
                 for initial_covariance in [:diagonal, :theoretical]
                     for verbose in [false] # [true, false]
-                        for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
+                        for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-3)]
                             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                                 llh = get_loglikelihood(m, data_in_levels, parameter_values,
                                                         algorithm = algorithm,
