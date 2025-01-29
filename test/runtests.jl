@@ -350,6 +350,7 @@ end
 
 
 if test_set == "higher_order_2"
+	Random.seed!(18400875)
     plots = true
     # test_higher_order = true
 
