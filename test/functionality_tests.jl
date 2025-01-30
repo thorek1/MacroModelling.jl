@@ -45,7 +45,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 var_idxs = [1]
             end
 
-            Random.seed!(123)
+            Random.seed!(41823)
 
             simulation = simulate(m, algorithm = algorithm)
 
@@ -71,7 +71,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for quadratic_matrix_equation_algorithm in qme_algorithms
                 for lyapunov_algorithm in lyapunov_algorithms
                     for sylvester_algorithm in sylvester_algorithms
-                        for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                        for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                             clear_solution_caches!(m, algorithm)
 
                             plot_model_estimates(m, data, 
@@ -655,7 +655,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             var_idxs = [1]
         end
 
-        Random.seed!(123)
+        Random.seed!(41823)
 
         simulation = simulate(m, algorithm = algorithm)
 
