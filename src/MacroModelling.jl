@@ -925,11 +925,11 @@ function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}};
 end
 
 
-function choose_matrix_format(A::ℒ.Adjoint{S, <: DenseMatrix{S}}; 
+function choose_matrix_format(A::ℒ.Adjoint{S, M}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
-                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real, M <: AbstractMatrix{S}}
     choose_matrix_format(convert(typeof(transpose(A)),A), 
                         density_threshold = density_threshold, 
                         min_length = min_length, 
@@ -937,17 +937,17 @@ function choose_matrix_format(A::ℒ.Adjoint{S, <: DenseMatrix{S}};
                         tol = tol)
 end
 
-function choose_matrix_format(A::ℒ.Adjoint{S, <: AbstractSparseMatrix{S}}; 
-                                density_threshold::Float64 = .1, 
-                                min_length::Int = 1000,
-                                tol::R = 1e-14,
-                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
-    choose_matrix_format(convert(typeof(transpose(A)),A), 
-                        density_threshold = density_threshold, 
-                        min_length = min_length, 
-                        multithreaded = multithreaded,
-                        tol = tol)
-end
+# function choose_matrix_format(A::ℒ.Adjoint{S, <: AbstractSparseMatrix{S}}; 
+#                                 density_threshold::Float64 = .1, 
+#                                 min_length::Int = 1000,
+#                                 tol::R = 1e-14,
+#                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
+#     choose_matrix_format(convert(typeof(transpose(A)),A), 
+#                         density_threshold = density_threshold, 
+#                         min_length = min_length, 
+#                         multithreaded = multithreaded,
+#                         tol = tol)
+# end
 
 function choose_matrix_format(A::DenseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
