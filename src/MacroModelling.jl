@@ -640,7 +640,7 @@ end
 
 
 function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
-    push!(m.solution.outdated_algorithms, [:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order])
+    push!(𝓂.solution.outdated_algorithms, [:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order])
 
     while length(𝓂.NSSS_solver_cache) > 1
         pop!(𝓂.NSSS_solver_cache)
