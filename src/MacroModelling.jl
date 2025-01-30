@@ -5315,19 +5315,7 @@ function solve!(𝓂::ℳ;
                 
                 kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
                 
-                dyn1 = 𝐒₁ * aug_state₁
-
-                dyn2 = 𝐒₁ * aug_state₂
-                dyn2 += 𝐒₂ * kron_aug_state₁ / 2
-
-                dyn3 = 𝐒₁ * aug_state₃
-                dyn3 += 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) 
-                kron_kron_aug_state₁ = ℒ.kron(kron_aug_state₁,aug_state₁)
-                println("kron state: $(size(kron_kron_aug_state₁))")
-                println("3rd order solution: $(size(𝐒₃))")
-                dyn3 += 𝐒₃ * kron_kron_aug_state₁ / 6
-                return [dyn1, dyn2, dyn3]
-                # return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
+                return [𝐒₁ * aug_state₁, 𝐒₁ * aug_state₂ + 𝐒₂ * kron_aug_state₁ / 2, 𝐒₁ * aug_state₃ + 𝐒₂ * ℒ.kron(aug_state₁̂, aug_state₂) + 𝐒₃ * ℒ.kron(kron_aug_state₁,aug_state₁) / 6]
             end
 
             if obc
