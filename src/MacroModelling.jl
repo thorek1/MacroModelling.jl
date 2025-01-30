@@ -4827,7 +4827,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     Ŝ = 𝓂.caches.third_order_caches.Ŝ
 
-    𝐒₃ = sparse_preallocated!(Ŝ, ℂ = 𝓂.caches.third_order_caches)
+    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.caches.third_order_caches)
     
     # 𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
     # 𝐒₃ = sparse_preallocated!(𝐒₃, ℂ = 𝓂.caches.third_order_caches)
@@ -4863,9 +4863,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         
         A = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
-        Ĉ = 𝐒₃[:,kron_s⁺_s⁺_s⁺]
+        Ĉ = 𝐒₃̂[:,kron_s⁺_s⁺_s⁺]
     
-        SSSstates, converged = calculate_third_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, 𝐒₃, SSSstates, 𝓂)
+        SSSstates, converged = calculate_third_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, 𝐒₃̂, SSSstates, 𝓂)
         
         if !converged
             if opts.verbose println("SSS not found") end
@@ -4886,7 +4886,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     # all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
-    return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃
+    return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
 
@@ -5313,7 +5313,7 @@ function solve!(𝓂::ℳ;
                 kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
                 
                 dyn1 = 𝐒₁ * aug_state₁
-                
+
                 dyn2 = 𝐒₁ * aug_state₂
                 dyn2 += 𝐒₂ * kron_aug_state₁ / 2
 
