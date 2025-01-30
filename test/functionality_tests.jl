@@ -655,7 +655,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             var_idxs = [1]
         end
 
-        Random.seed!(41823)
+        Random.seed!(418023)
 
         simulation = simulate(m, algorithm = algorithm)
 
