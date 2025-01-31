@@ -651,6 +651,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         if length(m.exo) > 3
             n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
             var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+        elseif length(m.var) == 17
+            var_idxs = [5]
         else
             var_idxs = [1]
         end
