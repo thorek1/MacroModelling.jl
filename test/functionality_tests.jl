@@ -34,6 +34,616 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
     init_states = [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
 
+    if plots
+        @testset "plot_model_estimates" begin
+            sol = get_solution(m)
+            
+            if length(m.exo) > 3
+                n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+            else
+                var_idxs = [1]
+            end
+
+            Random.seed!(41823)
+
+            simulation = simulate(m, algorithm = algorithm)
+
+            data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+            data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
+
+            
+            
+            if !(algorithm in [:second_order, :third_order])
+                # plotlyjs_backend()
+
+                # plot_shock_decomposition(m, data, 
+                #                             algorithm = algorithm, 
+                #                             data_in_levels = false)
+
+                # gr_backend()
+
+                plot_shock_decomposition(m, data, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = false)
+            end
+
+            for quadratic_matrix_equation_algorithm in qme_algorithms
+                for lyapunov_algorithm in lyapunov_algorithms
+                    for sylvester_algorithm in sylvester_algorithms
+                        for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                            clear_solution_caches!(m, algorithm)
+
+                            plot_model_estimates(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
+
+                            clear_solution_caches!(m, algorithm)
+                        
+                            plot_model_estimates(m, data_in_levels, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = true,
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
+                        end
+                    end
+                end
+            end
+
+            for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
+                for filter in (algorithm == :first_order ? filters : [:inversion])
+                    for smooth in [true, false]
+                        for presample_periods in [0, 3]
+                            clear_solution_caches!(m, algorithm)
+
+                            plot_model_estimates(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    filter = filter,
+                                                    smooth = smooth,
+                                                    presample_periods = presample_periods,
+                                                    shock_decomposition = shock_decomposition)
+
+                            clear_solution_caches!(m, algorithm)
+                        
+                            plot_model_estimates(m, data_in_levels, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = true,
+                                                    filter = filter,
+                                                    smooth = smooth,
+                                                    presample_periods = presample_periods,
+                                                    shock_decomposition = shock_decomposition)
+                        end
+                    end
+                end
+            end
+
+            for parameters in params
+                    plot_model_estimates(m, data, 
+                                            parameters = parameters,
+                                            algorithm = algorithm, 
+                                            data_in_levels = false)
+            end
+
+            for variables in vars
+                plot_model_estimates(m, data, 
+                                        variables = variables,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
+            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2])]
+                plot_model_estimates(m, data, 
+                                        shocks = shocks,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end 
+
+            for plots_per_page in [4,6]
+                for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
+                    for max_elements_per_legend_row in [3,5]
+                        for extra_legend_space in [0.0, 0.5]
+                            plot_model_estimates(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false,
+                                                    plot_attributes = plot_attributes,
+                                                    max_elements_per_legend_row = max_elements_per_legend_row,
+                                                    extra_legend_space = extra_legend_space,
+                                                    plots_per_page = plots_per_page,)
+                        end
+                    end
+                end
+            end
+
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+                    for save_plots in [true, false]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                                plot_model_estimates(m, data, 
+                                                        algorithm = algorithm, 
+                                                        data_in_levels = false,
+                                                        show_plots = show_plots,
+                                                        save_plots = save_plots,
+                                                        save_plots_path = save_plots_path,
+                                                        save_plots_format = save_plots_format)
+                            end
+                        end
+                    end
+                end
+            # end
+        end
+        @testset "plot_solution" begin
+            
+
+            states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
+            
+            if algorithm == :first_order
+                algos = [:first_order]
+            elseif algorithm in [:second_order, :pruned_second_order]
+                algos = [[:first_order], [:first_order, :second_order], [:first_order, :pruned_second_order], [:first_order, :second_order, :pruned_second_order]]
+            elseif algorithm in [:third_order, :pruned_third_order]
+                algos = [[:first_order], [:first_order, :second_order], [:first_order, :third_order], [:second_order, :third_order], [:third_order, :pruned_third_order], [:first_order, :second_order, :third_order], [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]]
+            end
+            
+            for variables in vars
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        for lyapunov_algorithm in lyapunov_algorithms
+                            for sylvester_algorithm in sylvester_algorithms
+                                clear_solution_caches!(m, algorithm)
+                    
+                                plot_solution(m, states[1], 
+                                                algorithm = algos[end],
+                                                variables = variables,
+                                                tol = tol,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                sylvester_algorithm = sylvester_algorithm)
+                            end
+                        end
+                    end
+                end
+            end
+
+            for plots_per_page in [1,4]
+                for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
+                    plot_solution(m, states[1], algorithm = algos[end],
+                                    plot_attributes = plot_attributes,
+                                    plots_per_page = plots_per_page)
+                end
+            end
+
+            
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+                    for save_plots in [true, false]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                                plot_solution(m, states[1], algorithm = algos[end],
+                                                show_plots = show_plots,
+                                                save_plots = save_plots,
+                                                save_plots_path = save_plots_path,
+                                                save_plots_format = save_plots_format)
+                            end
+                        end
+                    end
+                end
+            # end
+
+            for parameters in params
+                plot_solution(m, states[1], algorithm = algos[end],
+                                parameters = parameters)
+            end
+
+            for σ in [0.5, 5]
+                for ignore_obc in [true, false]
+                    for state in states[[1,end]]
+                        for algo in algos
+                            plot_solution(m, state,
+                                            σ = σ,
+                                            algorithm = algo,
+                                            ignore_obc = ignore_obc)
+                        end
+                    end
+                end
+            end
+
+            # plotlyjs_backend()
+
+            # plot_solution(m, states[1], algorithm = algos[end])
+
+            # gr_backend()
+        end
+
+
+        @testset "plot_irf" begin
+            
+
+            # plotlyjs_backend()
+
+            plot_IRF(m, algorithm = algorithm)
+
+            # gr_backend()
+
+            plot_irfs(m, algorithm = algorithm)
+
+            plot_simulations(m, algorithm = algorithm)
+
+            plot_simulation(m, algorithm = algorithm)
+
+            plot_girf(m, algorithm = algorithm)
+
+            for ignore_obc in [true,false]
+                for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
+                    for negative_shock in [true,false]
+                        for shock_size in [.1,1]
+                            for periods in [1,10]
+                                plot_irf(m, algorithm = algorithm, 
+                                            ignore_obc = ignore_obc,
+                                            periods = periods,
+                                            generalised_irf = generalised_irf,
+                                            negative_shock = negative_shock,
+                                            shock_size = shock_size)
+                            end
+                        end
+                    end
+                end
+            end
+
+            
+
+            shock_mat = randn(m.timings.nExo,3)
+
+            shock_mat2 = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10)
+
+            shock_mat3 = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10)
+
+            for parameters in params
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        for lyapunov_algorithm in lyapunov_algorithms
+                            for sylvester_algorithm in sylvester_algorithms
+                                clear_solution_caches!(m, algorithm)
+                                            
+                                plot_irf(m, algorithm = algorithm, 
+                                            parameters = parameters,
+                                            tol = tol,
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                            lyapunov_algorithm = lyapunov_algorithm,
+                                            sylvester_algorithm = sylvester_algorithm)
+                            end
+                        end
+                    end
+                end
+            end
+
+            for initial_state in init_states
+                clear_solution_caches!(m, algorithm)
+                            
+                plot_irf(m, algorithm = algorithm, initial_state = initial_state)
+            end
+
+            for variables in vars
+                clear_solution_caches!(m, algorithm)
+                            
+                plot_irf(m, algorithm = algorithm, variables = variables)
+            end
+
+            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                clear_solution_caches!(m, algorithm)
+                            
+                plot_irf(m, algorithm = algorithm, shocks = shocks)
+            end
+
+            for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
+                for plots_per_page in [4,6]
+                    plot_irf(m, algorithm = algorithm,
+                                plot_attributes = plot_attributes,
+                                plots_per_page = plots_per_page)
+                end
+            end
+
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+                    for save_plots in [true, false]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                                plot_irf(m, algorithm = algorithm,
+                                            show_plots = show_plots,
+                                            save_plots = save_plots,
+                                            save_plots_path = save_plots_path,
+                                            save_plots_format = save_plots_format)
+                            end
+                        end
+                    end
+                end
+            # end
+        end
+
+
+        @testset "plot_conditional_variance_decomposition" begin
+            # plotlyjs_backend()
+            
+            plot_fevd(m)
+
+            # gr_backend()
+
+            plot_forecast_error_variance_decomposition(m)
+
+            for periods in [10,40]
+                for variables in vars
+                    plot_conditional_variance_decomposition(m, periods = periods, variables = variables)
+                end
+            end
+
+            
+
+            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for quadratic_matrix_equation_algorithm in qme_algorithms
+                    for lyapunov_algorithm in lyapunov_algorithms
+                       clear_solution_caches!(m, algorithm)
+                            
+                        plot_conditional_variance_decomposition(m, tol = tol,
+                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                lyapunov_algorithm = lyapunov_algorithm)
+                    end
+                end
+            end
+            
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+                    for save_plots in [true, false]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                                for plots_per_page in [4,6]
+                                    for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
+                                        for max_elements_per_legend_row in [3,5]
+                                            for extra_legend_space in [0.0, 0.5]
+                                                plot_conditional_variance_decomposition(m,
+                                                                                        plot_attributes = plot_attributes,
+                                                                                        max_elements_per_legend_row = max_elements_per_legend_row,
+                                                                                        extra_legend_space = extra_legend_space,
+                                                                                        show_plots = show_plots,
+                                                                                        save_plots = save_plots,
+                                                                                        plots_per_page = plots_per_page,
+                                                                                        save_plots_path = save_plots_path,
+                                                                                        save_plots_format = save_plots_format)
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            # end
+        end
+
+        @testset "plot_conditional_forecast" begin
+            # test conditional forecasting
+            new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
+            varnames = axiskeys(new_sub_irfs_all,1)
+            shocknames = axiskeys(new_sub_irfs_all,3)
+            sol = get_solution(m)
+            # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+
+
+            stst  = get_irf(m, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
+
+            conditions = []
+
+            cndtns = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .01
+            cndtns[var_idxs[2],2] = .02
+
+            push!(conditions, cndtns)
+
+            cndtns = spzeros(size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .01
+            cndtns[var_idxs[2],2] = .02
+
+            push!(conditions, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns[1,1] = .01
+            cndtns[2,2] = .02
+
+            push!(conditions, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns[1,1] = .01
+            cndtns[2,2] = .02
+
+            push!(conditions, cndtns)
+
+            conditions_lvl = []
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+
+            push!(conditions_lvl, cndtns_lvl)
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+        
+            push!(conditions_lvl, cndtns_lvl)
+
+
+            shocks = []
+
+            push!(shocks, nothing)
+
+            if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
+                shcks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
+                shcks[1,1] = .1
+
+                push!(shocks, shcks)
+
+                shcks = spzeros(size(new_sub_irfs_all,3),1)
+                shcks[1,1] = .1
+                
+                push!(shocks, shcks)
+
+                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
+                shcks[1,1] = .1
+
+                push!(shocks, shcks)
+
+                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
+                shcks[1,1] = .1
+
+                push!(shocks, shcks)
+            end
+            
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+                    for save_plots in [true, false]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                                for plots_per_page in [1,4]
+                                    for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
+                                        plot_conditional_forecast(m, conditions[1],
+                                                                    conditions_in_levels = false,
+                                                                    initial_state = [0.0],
+                                                                    algorithm = algorithm, 
+                                                                    shocks = shocks[1],
+                                                                    plot_attributes = plot_attributes,
+                                                                    show_plots = show_plots,
+                                                                    save_plots = save_plots,
+                                                                    plots_per_page = plots_per_page,
+                                                                    save_plots_path = save_plots_path,
+                                                                    save_plots_format = save_plots_format)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            # end
+
+            
+
+            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for quadratic_matrix_equation_algorithm in qme_algorithms
+                    for lyapunov_algorithm in lyapunov_algorithms
+                        for sylvester_algorithm in sylvester_algorithms
+                            clear_solution_caches!(m, algorithm)
+                        
+                            plot_conditional_forecast(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[end],
+                                                        tol = tol,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                        sylvester_algorithm = sylvester_algorithm)
+                        end
+                    end
+                end
+            end
+
+            for periods in [0,10]
+                for levels in [true, false]
+                    clear_solution_caches!(m, algorithm)
+                
+                    plot_conditional_forecast(m, conditions[end],
+                                                conditions_in_levels = false,
+                                                algorithm = algorithm, 
+                                                periods = periods,
+                                                levels = levels,
+                                                shocks = shocks[end])
+
+                    
+                    clear_solution_caches!(m, algorithm)
+                
+                    plot_conditional_forecast(m, conditions_lvl[end],
+                                                algorithm = algorithm, 
+                                                periods = periods,
+                                                levels = levels,
+                                                shocks = shocks[end])
+
+                end
+            end
+
+            for variables in vars
+                plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm, 
+                                            variables = variables)
+            end
+            
+            for initial_state in init_states
+                plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            initial_state = initial_state,
+                                            algorithm = algorithm)
+            end
+
+            for shcks in shocks
+                plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm, 
+                                            shocks = shcks)
+            end
+
+            for parameters in params
+                plot_conditional_forecast(m, conditions[end],
+                                            parameters = parameters,
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+            end
+
+            for cndtns in conditions
+                plot_conditional_forecast(m, cndtns,
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+            end
+            
+            # plotlyjs_backend()
+
+            # plot_conditional_forecast(m, conditions[end],
+            #                                 conditions_in_levels = false,
+            #                                 algorithm = algorithm)
+
+            # gr_backend()
+        end
+    end
 
     @testset "filter, smooth, loglikelihood" begin
         sol = get_solution(m)
@@ -45,7 +655,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             var_idxs = [1]
         end
 
-        Random.seed!(123)
+        Random.seed!(418023)
 
         simulation = simulate(m, algorithm = algorithm)
 
@@ -1594,617 +2204,4 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         @test isapprox(collect(new_sub_lvl_irfs[:,1,:]), collect(lvl_irfs[:,6,1]),rtol = eps(Float32))
     end
 
-
-
-
-    if plots
-        @testset "plot_solution" begin
-            
-
-            states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
-            
-            if algorithm == :first_order
-                algos = [:first_order]
-            elseif algorithm in [:second_order, :pruned_second_order]
-                algos = [[:first_order], [:first_order, :second_order], [:first_order, :pruned_second_order], [:first_order, :second_order, :pruned_second_order]]
-            elseif algorithm in [:third_order, :pruned_third_order]
-                algos = [[:first_order], [:first_order, :second_order], [:first_order, :third_order], [:second_order, :third_order], [:third_order, :pruned_third_order], [:first_order, :second_order, :third_order], [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]]
-            end
-            
-            for variables in vars
-                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                    for quadratic_matrix_equation_algorithm in qme_algorithms
-                        for lyapunov_algorithm in lyapunov_algorithms
-                            for sylvester_algorithm in sylvester_algorithms
-                                clear_solution_caches!(m, algorithm)
-                    
-                                plot_solution(m, states[1], 
-                                                algorithm = algos[end],
-                                                variables = variables,
-                                                tol = tol,
-                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                lyapunov_algorithm = lyapunov_algorithm,
-                                                sylvester_algorithm = sylvester_algorithm)
-                            end
-                        end
-                    end
-                end
-            end
-
-            for plots_per_page in [1,4]
-                for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
-                    plot_solution(m, states[1], algorithm = algos[end],
-                                    plot_attributes = plot_attributes,
-                                    plots_per_page = plots_per_page)
-                end
-            end
-
-            
-            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
-            #     if backend == :gr
-            #         gr_backend()
-            #     else
-            #         plotlyjs_backend()
-            #     end
-                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
-                    for save_plots in [true, false]
-                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
-                                plot_solution(m, states[1], algorithm = algos[end],
-                                                show_plots = show_plots,
-                                                save_plots = save_plots,
-                                                save_plots_path = save_plots_path,
-                                                save_plots_format = save_plots_format)
-                            end
-                        end
-                    end
-                end
-            # end
-
-            for parameters in params
-                plot_solution(m, states[1], algorithm = algos[end],
-                                parameters = parameters)
-            end
-
-            for σ in [0.5, 5]
-                for ignore_obc in [true, false]
-                    for state in states[[1,end]]
-                        for algo in algos
-                            plot_solution(m, state,
-                                            σ = σ,
-                                            algorithm = algo,
-                                            ignore_obc = ignore_obc)
-                        end
-                    end
-                end
-            end
-
-            # plotlyjs_backend()
-
-            # plot_solution(m, states[1], algorithm = algos[end])
-
-            # gr_backend()
-        end
-
-
-        @testset "plot_irf" begin
-            
-
-            # plotlyjs_backend()
-
-            plot_IRF(m, algorithm = algorithm)
-
-            # gr_backend()
-
-            plot_irfs(m, algorithm = algorithm)
-
-            plot_simulations(m, algorithm = algorithm)
-
-            plot_simulation(m, algorithm = algorithm)
-
-            plot_girf(m, algorithm = algorithm)
-
-            for ignore_obc in [true,false]
-                for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
-                    for negative_shock in [true,false]
-                        for shock_size in [.1,1]
-                            for periods in [1,10]
-                                plot_irf(m, algorithm = algorithm, 
-                                            ignore_obc = ignore_obc,
-                                            periods = periods,
-                                            generalised_irf = generalised_irf,
-                                            negative_shock = negative_shock,
-                                            shock_size = shock_size)
-                            end
-                        end
-                    end
-                end
-            end
-
-            
-
-            shock_mat = randn(m.timings.nExo,3)
-
-            shock_mat2 = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10)
-
-            shock_mat3 = KeyedArray(randn(m.timings.nExo,10),Shocks = string.(m.timings.exo), Periods = 1:10)
-
-            for parameters in params
-                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                    for quadratic_matrix_equation_algorithm in qme_algorithms
-                        for lyapunov_algorithm in lyapunov_algorithms
-                            for sylvester_algorithm in sylvester_algorithms
-                                clear_solution_caches!(m, algorithm)
-                                            
-                                plot_irf(m, algorithm = algorithm, 
-                                            parameters = parameters,
-                                            tol = tol,
-                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                            lyapunov_algorithm = lyapunov_algorithm,
-                                            sylvester_algorithm = sylvester_algorithm)
-                            end
-                        end
-                    end
-                end
-            end
-
-            for initial_state in init_states
-                clear_solution_caches!(m, algorithm)
-                            
-                plot_irf(m, algorithm = algorithm, initial_state = initial_state)
-            end
-
-            for variables in vars
-                clear_solution_caches!(m, algorithm)
-                            
-                plot_irf(m, algorithm = algorithm, variables = variables)
-            end
-
-            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
-                clear_solution_caches!(m, algorithm)
-                            
-                plot_irf(m, algorithm = algorithm, shocks = shocks)
-            end
-
-            for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
-                for plots_per_page in [4,6]
-                    plot_irf(m, algorithm = algorithm,
-                                plot_attributes = plot_attributes,
-                                plots_per_page = plots_per_page)
-                end
-            end
-
-            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
-            #     if backend == :gr
-            #         gr_backend()
-            #     else
-            #         plotlyjs_backend()
-            #     end
-                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
-                    for save_plots in [true, false]
-                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
-                                plot_irf(m, algorithm = algorithm,
-                                            show_plots = show_plots,
-                                            save_plots = save_plots,
-                                            save_plots_path = save_plots_path,
-                                            save_plots_format = save_plots_format)
-                            end
-                        end
-                    end
-                end
-            # end
-        end
-
-
-        @testset "plot_conditional_variance_decomposition" begin
-            # plotlyjs_backend()
-            
-            plot_fevd(m)
-
-            # gr_backend()
-
-            plot_forecast_error_variance_decomposition(m)
-
-            for periods in [10,40]
-                for variables in vars
-                    plot_conditional_variance_decomposition(m, periods = periods, variables = variables)
-                end
-            end
-
-            
-
-            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                for quadratic_matrix_equation_algorithm in qme_algorithms
-                    for lyapunov_algorithm in lyapunov_algorithms
-                       clear_solution_caches!(m, algorithm)
-                            
-                        plot_conditional_variance_decomposition(m, tol = tol,
-                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                lyapunov_algorithm = lyapunov_algorithm)
-                    end
-                end
-            end
-            
-            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
-            #     if backend == :gr
-            #         gr_backend()
-            #     else
-            #         plotlyjs_backend()
-            #     end
-                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
-                    for save_plots in [true, false]
-                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
-                                for plots_per_page in [4,6]
-                                    for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
-                                        for max_elements_per_legend_row in [3,5]
-                                            for extra_legend_space in [0.0, 0.5]
-                                                plot_conditional_variance_decomposition(m,
-                                                                                        plot_attributes = plot_attributes,
-                                                                                        max_elements_per_legend_row = max_elements_per_legend_row,
-                                                                                        extra_legend_space = extra_legend_space,
-                                                                                        show_plots = show_plots,
-                                                                                        save_plots = save_plots,
-                                                                                        plots_per_page = plots_per_page,
-                                                                                        save_plots_path = save_plots_path,
-                                                                                        save_plots_format = save_plots_format)
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            # end
-        end
-
-        @testset "plot_conditional_forecast" begin
-            # test conditional forecasting
-            new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
-            varnames = axiskeys(new_sub_irfs_all,1)
-            shocknames = axiskeys(new_sub_irfs_all,3)
-            sol = get_solution(m)
-            # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
-            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
-            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
-
-
-            stst  = get_irf(m, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
-
-            conditions = []
-
-            cndtns = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
-            cndtns[var_idxs[1],1] = .01
-            cndtns[var_idxs[2],2] = .02
-
-            push!(conditions, cndtns)
-
-            cndtns = spzeros(size(new_sub_irfs_all,1),2)
-            cndtns[var_idxs[1],1] = .01
-            cndtns[var_idxs[2],2] = .02
-
-            push!(conditions, cndtns)
-
-            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
-            cndtns[1,1] = .01
-            cndtns[2,2] = .02
-
-            push!(conditions, cndtns)
-
-            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-            cndtns[1,1] = .01
-            cndtns[2,2] = .02
-
-            push!(conditions, cndtns)
-
-            conditions_lvl = []
-
-            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
-            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
-
-            push!(conditions_lvl, cndtns_lvl)
-
-            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
-            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
-            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
-        
-            push!(conditions_lvl, cndtns_lvl)
-
-
-            shocks = []
-
-            push!(shocks, nothing)
-
-            if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
-                shcks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
-                shcks[1,1] = .1
-
-                push!(shocks, shcks)
-
-                shcks = spzeros(size(new_sub_irfs_all,3),1)
-                shcks[1,1] = .1
-                
-                push!(shocks, shcks)
-
-                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
-                shcks[1,1] = .1
-
-                push!(shocks, shcks)
-
-                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
-                shcks[1,1] = .1
-
-                push!(shocks, shcks)
-            end
-            
-            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
-            #     if backend == :gr
-            #         gr_backend()
-            #     else
-            #         plotlyjs_backend()
-            #     end
-                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
-                    for save_plots in [true, false]
-                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
-                                for plots_per_page in [1,4]
-                                    for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
-                                        plot_conditional_forecast(m, conditions[1],
-                                                                    conditions_in_levels = false,
-                                                                    initial_state = [0.0],
-                                                                    algorithm = algorithm, 
-                                                                    shocks = shocks[1],
-                                                                    plot_attributes = plot_attributes,
-                                                                    show_plots = show_plots,
-                                                                    save_plots = save_plots,
-                                                                    plots_per_page = plots_per_page,
-                                                                    save_plots_path = save_plots_path,
-                                                                    save_plots_format = save_plots_format)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            # end
-
-            
-
-            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                for quadratic_matrix_equation_algorithm in qme_algorithms
-                    for lyapunov_algorithm in lyapunov_algorithms
-                        for sylvester_algorithm in sylvester_algorithms
-                            clear_solution_caches!(m, algorithm)
-                        
-                            plot_conditional_forecast(m, conditions[end],
-                                                        conditions_in_levels = false,
-                                                        algorithm = algorithm, 
-                                                        shocks = shocks[end],
-                                                        tol = tol,
-                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                        lyapunov_algorithm = lyapunov_algorithm,
-                                                        sylvester_algorithm = sylvester_algorithm)
-                        end
-                    end
-                end
-            end
-
-            for periods in [0,10]
-                for levels in [true, false]
-                    clear_solution_caches!(m, algorithm)
-                
-                    plot_conditional_forecast(m, conditions[end],
-                                                conditions_in_levels = false,
-                                                algorithm = algorithm, 
-                                                periods = periods,
-                                                levels = levels,
-                                                shocks = shocks[end])
-
-                    
-                    clear_solution_caches!(m, algorithm)
-                
-                    plot_conditional_forecast(m, conditions_lvl[end],
-                                                algorithm = algorithm, 
-                                                periods = periods,
-                                                levels = levels,
-                                                shocks = shocks[end])
-
-                end
-            end
-
-            for variables in vars
-                plot_conditional_forecast(m, conditions[end],
-                                            conditions_in_levels = false,
-                                            algorithm = algorithm, 
-                                            variables = variables)
-            end
-            
-            for initial_state in init_states
-                plot_conditional_forecast(m, conditions[end],
-                                            conditions_in_levels = false,
-                                            initial_state = initial_state,
-                                            algorithm = algorithm)
-            end
-
-            for shcks in shocks
-                plot_conditional_forecast(m, conditions[end],
-                                            conditions_in_levels = false,
-                                            algorithm = algorithm, 
-                                            shocks = shcks)
-            end
-
-            for parameters in params
-                plot_conditional_forecast(m, conditions[end],
-                                            parameters = parameters,
-                                            conditions_in_levels = false,
-                                            algorithm = algorithm)
-            end
-
-            for cndtns in conditions
-                plot_conditional_forecast(m, cndtns,
-                                            conditions_in_levels = false,
-                                            algorithm = algorithm)
-            end
-            
-            # plotlyjs_backend()
-
-            # plot_conditional_forecast(m, conditions[end],
-            #                                 conditions_in_levels = false,
-            #                                 algorithm = algorithm)
-
-            # gr_backend()
-        end
-        @testset "plot_model_estimates" begin
-            sol = get_solution(m)
-            
-            if length(m.exo) > 3
-                n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
-                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
-            else
-                var_idxs = [1]
-            end
-
-            Random.seed!(123)
-
-            simulation = simulate(m, algorithm = algorithm)
-
-            data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
-            data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
-
-            
-            
-            if !(algorithm in [:second_order, :third_order])
-                # plotlyjs_backend()
-
-                # plot_shock_decomposition(m, data, 
-                #                             algorithm = algorithm, 
-                #                             data_in_levels = false)
-
-                # gr_backend()
-
-                plot_shock_decomposition(m, data, 
-                                            algorithm = algorithm, 
-                                            data_in_levels = false)
-            end
-
-            for quadratic_matrix_equation_algorithm in qme_algorithms
-                for lyapunov_algorithm in lyapunov_algorithms
-                    for sylvester_algorithm in sylvester_algorithms
-                        for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                            clear_solution_caches!(m, algorithm)
-
-                            plot_model_estimates(m, data, 
-                                                    algorithm = algorithm, 
-                                                    data_in_levels = false, 
-                                                    tol = tol,
-                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                    lyapunov_algorithm = lyapunov_algorithm,
-                                                    sylvester_algorithm = sylvester_algorithm)
-
-                            clear_solution_caches!(m, algorithm)
-                        
-                            plot_model_estimates(m, data_in_levels, 
-                                                    algorithm = algorithm, 
-                                                    data_in_levels = true,
-                                                    tol = tol,
-                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                    lyapunov_algorithm = lyapunov_algorithm,
-                                                    sylvester_algorithm = sylvester_algorithm)
-                        end
-                    end
-                end
-            end
-
-            for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
-                for filter in (algorithm == :first_order ? filters : [:inversion])
-                    for smooth in [true, false]
-                        for presample_periods in [0, 3]
-                            clear_solution_caches!(m, algorithm)
-
-                            plot_model_estimates(m, data, 
-                                                    algorithm = algorithm, 
-                                                    data_in_levels = false, 
-                                                    filter = filter,
-                                                    smooth = smooth,
-                                                    presample_periods = presample_periods,
-                                                    shock_decomposition = shock_decomposition)
-
-                            clear_solution_caches!(m, algorithm)
-                        
-                            plot_model_estimates(m, data_in_levels, 
-                                                    algorithm = algorithm, 
-                                                    data_in_levels = true,
-                                                    filter = filter,
-                                                    smooth = smooth,
-                                                    presample_periods = presample_periods,
-                                                    shock_decomposition = shock_decomposition)
-                        end
-                    end
-                end
-            end
-
-            for parameters in params
-                    plot_model_estimates(m, data, 
-                                            parameters = parameters,
-                                            algorithm = algorithm, 
-                                            data_in_levels = false)
-            end
-
-            for variables in vars
-                plot_model_estimates(m, data, 
-                                        variables = variables,
-                                        algorithm = algorithm, 
-                                        data_in_levels = false)
-            end
-
-            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2])]
-                plot_model_estimates(m, data, 
-                                        shocks = shocks,
-                                        algorithm = algorithm, 
-                                        data_in_levels = false)
-            end 
-
-            for plots_per_page in [4,6]
-                for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
-                    for max_elements_per_legend_row in [3,5]
-                        for extra_legend_space in [0.0, 0.5]
-                            plot_model_estimates(m, data, 
-                                                    algorithm = algorithm, 
-                                                    data_in_levels = false,
-                                                    plot_attributes = plot_attributes,
-                                                    max_elements_per_legend_row = max_elements_per_legend_row,
-                                                    extra_legend_space = extra_legend_space,
-                                                    plots_per_page = plots_per_page,)
-                        end
-                    end
-                end
-            end
-
-            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
-            #     if backend == :gr
-            #         gr_backend()
-            #     else
-            #         plotlyjs_backend()
-            #     end
-                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
-                    for save_plots in [true, false]
-                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
-                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
-                                plot_model_estimates(m, data, 
-                                                        algorithm = algorithm, 
-                                                        data_in_levels = false,
-                                                        show_plots = show_plots,
-                                                        save_plots = save_plots,
-                                                        save_plots_path = save_plots_path,
-                                                        save_plots_format = save_plots_format)
-                            end
-                        end
-                    end
-                end
-            # end
-        end
-    end
 end

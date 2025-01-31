@@ -640,12 +640,15 @@ end
 
 
 function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
+    for i in [:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order]
+        push!(𝓂.solution.outdated_algorithms, i)
+    end
+
     while length(𝓂.NSSS_solver_cache) > 1
         pop!(𝓂.NSSS_solver_cache)
     end
 
     𝓂.solution.outdated_NSSS = true
-    push!(𝓂.solution.outdated_algorithms, algorithm)
     𝓂.solution.perturbation.qme_solution = zeros(0,0)
     𝓂.solution.perturbation.second_order_solution = spzeros(0,0)
     𝓂.solution.perturbation.third_order_solution = spzeros(0,0)
@@ -922,29 +925,29 @@ function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}};
 end
 
 
-function choose_matrix_format(A::ℒ.Adjoint{S, <: DenseMatrix{S}}; 
+function choose_matrix_format(A::ℒ.Adjoint{S, M}; 
                                 density_threshold::Float64 = .1, 
                                 min_length::Int = 1000,
                                 tol::R = 1e-14,
-                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
-    choose_matrix_format(convert(typeof(A'),A), 
+                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real, M <: AbstractMatrix{S}}
+    choose_matrix_format(convert(typeof(transpose(A)),A), 
                         density_threshold = density_threshold, 
                         min_length = min_length, 
                         multithreaded = multithreaded,
                         tol = tol)
 end
 
-function choose_matrix_format(A::ℒ.Adjoint{S, <: AbstractSparseMatrix{S}}; 
-                                density_threshold::Float64 = .1, 
-                                min_length::Int = 1000,
-                                tol::R = 1e-14,
-                                multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
-    choose_matrix_format(convert(typeof(A'),A), 
-                        density_threshold = density_threshold, 
-                        min_length = min_length, 
-                        multithreaded = multithreaded,
-                        tol = tol)
-end
+# function choose_matrix_format(A::ℒ.Adjoint{S, <: AbstractSparseMatrix{S}}; 
+#                                 density_threshold::Float64 = .1, 
+#                                 min_length::Int = 1000,
+#                                 tol::R = 1e-14,
+#                                 multithreaded::Bool = true)::Union{Matrix{S}, SparseMatrixCSC{S, Int}, ThreadedSparseArrays.ThreadedSparseMatrixCSC{S, Int, SparseMatrixCSC{S, Int}}} where {R <: AbstractFloat, S <: Real}
+#     choose_matrix_format(convert(typeof(transpose(A)),A), 
+#                         density_threshold = density_threshold, 
+#                         min_length = min_length, 
+#                         multithreaded = multithreaded,
+#                         tol = tol)
+# end
 
 function choose_matrix_format(A::DenseMatrix{S}; 
                                 density_threshold::Float64 = .1, 
@@ -4827,7 +4830,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     Ŝ = 𝓂.caches.third_order_caches.Ŝ
 
-    𝐒₃ = sparse_preallocated!(Ŝ, ℂ = 𝓂.caches.third_order_caches)
+    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.caches.third_order_caches)
     
     # 𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
     # 𝐒₃ = sparse_preallocated!(𝐒₃, ℂ = 𝓂.caches.third_order_caches)
@@ -4863,9 +4866,9 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         
         A = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
-        Ĉ = 𝐒₃[:,kron_s⁺_s⁺_s⁺]
+        Ĉ = 𝐒₃̂[:,kron_s⁺_s⁺_s⁺]
     
-        SSSstates, converged = calculate_third_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, 𝐒₃, SSSstates, 𝓂)
+        SSSstates, converged = calculate_third_order_stochastic_steady_state(Val(:newton), 𝐒₁, 𝐒₂, 𝐒₃̂, SSSstates, 𝓂)
         
         if !converged
             if opts.verbose println("SSS not found") end
@@ -4886,7 +4889,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     # all_SS = [SS_and_pars[indexin([s],NSSS_labels)...] for s in all_variables]
     # we need all variables for the stochastic steady state because even leads and lags have different SSS then the non-lead-lag ones (contrary to the no stochastic steady state) and we cannot recover them otherwise
 
-    return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃
+    return all_SS + state, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃̂
 end
 
 
