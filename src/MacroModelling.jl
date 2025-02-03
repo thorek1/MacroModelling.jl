@@ -7241,19 +7241,19 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
             @warn "Following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ")
             return Int[]
         end
-        return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(reshape(variables,1,length(variables)) .== T.var,dims= 2))))
+        return indexin(variables, T.var)
     elseif variables isa Tuple{Symbol,Vararg{Symbol}}
         if length(setdiff(variables,T.var)) > 0
             @warn "Following variables are not part of the model: " * join(string.(setdiff(Symbol.(collect(variables)),T.var)), ", ")
             return Int[]
         end
-        return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(reshape(collect(variables),1,length(variables)) .== T.var,dims= 2))))
+        return indexin(variables, T.var)
     elseif variables isa Symbol
         if length(setdiff([variables],T.var)) > 0
             @warn "Following variable is not part of the model: " * join(string(setdiff([variables],T.var)[1]),", ")
             return Int[]
         end
-        return getindex(1:length(T.var),variables .== T.var)
+        return indexin(variables, T.var)
     else
         @warn "Invalid argument in variables"
         return Int[]
