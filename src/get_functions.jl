@@ -119,7 +119,7 @@ function get_shock_decomposition(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -264,7 +264,7 @@ function get_estimated_shocks(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -396,7 +396,7 @@ function get_estimated_variables(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -508,7 +508,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -749,7 +749,7 @@ function get_conditional_forecast(𝓂::ℳ,
         end
     end
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     Y = zeros(size(𝓂.solution.perturbation.first_order.solution_matrix,1),periods)
 
@@ -1015,7 +1015,7 @@ function get_irf(𝓂::ℳ,
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
@@ -2776,7 +2776,7 @@ function get_moments(𝓂::ℳ;
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     parameter_derivatives = parameter_derivatives isa String_input ? parameter_derivatives .|> Meta.parse .|> replace_indices : parameter_derivatives
 

@@ -174,8 +174,8 @@ function plot_model_estimates(𝓂::ℳ,
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
-    obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
-    var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) 
+    obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
+    var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
     shock_idx   = parse_shocks_input_to_index(shocks,𝓂.timings)
 
     legend_columns = 1
@@ -559,7 +559,7 @@ function plot_irf(𝓂::ℳ;
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     if ignore_obc
         occasionally_binding_constraints = false
@@ -1016,7 +1016,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     fevds = fevds isa KeyedArray ? axiskeys(fevds,1) isa Vector{String} ? rekey(fevds, 1 => axiskeys(fevds,1) .|> Meta.parse .|> replace_indices) : fevds : fevds
 
@@ -1273,7 +1273,7 @@ function plot_solution(𝓂::ℳ,
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
 

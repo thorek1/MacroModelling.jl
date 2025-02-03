@@ -1762,7 +1762,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     if variables == :full_covar
         return [T.var => T.past_not_future_and_mixed]
     else
-        var_idx = MacroModelling.parse_variables_input_to_index(variables, T)
+        var_idx = MacroModelling.parse_variables_input_to_index(variables, T) |> sort
         observables = T.var[var_idx]
     end
 
@@ -6874,7 +6874,7 @@ function irf(state_update::Function,
         shock_idx = parse_shocks_input_to_index(shocks,T)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T)
+    var_idx = parse_variables_input_to_index(variables, T) |> sort
 
     axis1 = T.var[var_idx]
         
@@ -7015,7 +7015,7 @@ function irf(state_update::Function,
         shock_idx = parse_shocks_input_to_index(shocks,T)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T)
+    var_idx = parse_variables_input_to_index(variables, T) |> sort
 
     axis1 = T.var[var_idx]
         
@@ -7141,7 +7141,7 @@ function girf(state_update::Function,
         shock_idx = parse_shocks_input_to_index(shocks,T)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T)
+    var_idx = parse_variables_input_to_index(variables, T) |> sort
 
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
 
