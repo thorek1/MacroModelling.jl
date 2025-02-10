@@ -147,107 +147,135 @@ function calculate_second_order_moments(parameters::Vector{R},
 
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
 
-    nᵉ = 𝓂.timings.nExo
+    if solved
+        nᵉ = 𝓂.timings.nExo
 
-    nˢ = 𝓂.timings.nPast_not_future_and_mixed
+        nˢ = 𝓂.timings.nPast_not_future_and_mixed
 
-    iˢ = 𝓂.timings.past_not_future_and_mixed_idx
+        iˢ = 𝓂.timings.past_not_future_and_mixed_idx
 
-    Σᶻ₁ = Σʸ₁[iˢ, iˢ]
+        Σᶻ₁ = Σʸ₁[iˢ, iˢ]
 
-    # precalc second order
-    ## mean
-    I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
+        # precalc second order
+        ## mean
+        I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
 
-    ## covariance
-    E_e⁴ = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
+        ## covariance
+        E_e⁴ = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
 
-    quadrup = multiplicate(nᵉ, 4)
+        quadrup = multiplicate(nᵉ, 4)
 
-    comb⁴ = reduce(vcat, generateSumVectors(nᵉ, 4))
+        comb⁴ = reduce(vcat, generateSumVectors(nᵉ, 4))
 
-    comb⁴ = comb⁴ isa Int64 ? reshape([comb⁴],1,1) : comb⁴
+        comb⁴ = comb⁴ isa Int64 ? reshape([comb⁴],1,1) : comb⁴
 
-    for j = 1:size(comb⁴,1)
-        E_e⁴[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb⁴[j,:])
+        for j = 1:size(comb⁴,1)
+            E_e⁴[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb⁴[j,:])
+        end
+
+        e⁴ = quadrup * E_e⁴
+
+        # second order
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
+                                                    𝓂.solution.perturbation.second_order_auxilliary_matrices,
+                                                    𝓂.caches; 
+                                                    T = 𝓂.timings, 
+                                                    opts = opts)
+
+        if solved2
+            if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+
+            𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+
+            if !(typeof(𝐒₂) <: AbstractSparseMatrix)
+                𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+            end
+
+            s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
+            e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
+            v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
+
+            kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
+            kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
+            kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
+            kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
+
+            # first order
+            s_to_y₁ = 𝐒₁[:, 1:nˢ]
+            e_to_y₁ = 𝐒₁[:, (nˢ + 1):end]
+            
+            s_to_s₁ = 𝐒₁[iˢ, 1:nˢ]
+            e_to_s₁ = 𝐒₁[iˢ, (nˢ + 1):end]
+
+
+            # second order
+            s_s_to_y₂ = 𝐒₂[:, kron_s_s]
+            e_e_to_y₂ = 𝐒₂[:, kron_e_e]
+            v_v_to_y₂ = 𝐒₂[:, kron_v_v]
+            s_e_to_y₂ = 𝐒₂[:, kron_s_e]
+
+            s_s_to_s₂ = 𝐒₂[iˢ, kron_s_s] |> collect
+            e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
+            v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
+            s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
+
+            s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+            e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
+            s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+
+            # # Set up in pruned state transition matrices
+            ŝ_to_ŝ₂ = [ s_to_s₁             zeros(nˢ, nˢ + nˢ^2)
+                        zeros(nˢ, nˢ)       s_to_s₁             s_s_to_s₂ / 2
+                        zeros(nˢ^2, 2*nˢ)   s_to_s₁_by_s_to_s₁                  ]
+
+            ê_to_ŝ₂ = [ e_to_s₁         zeros(nˢ, nᵉ^2 + nᵉ * nˢ)
+                        zeros(nˢ,nᵉ)    e_e_to_s₂ / 2       s_e_to_s₂
+                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁]
+
+            ŝ_to_y₂ = [s_to_y₁  s_to_y₁         s_s_to_y₂ / 2]
+
+            ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
+
+            ŝv₂ = [ zeros(nˢ) 
+                    vec(v_v_to_s₂) / 2 + e_e_to_s₂ / 2 * vec(ℒ.I(nᵉ))
+                    e_to_s₁_by_e_to_s₁ * vec(ℒ.I(nᵉ))]
+
+            yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec(ℒ.I(nᵉ))) / 2
+
+            ## Mean
+            μˢ⁺₂ = (ℒ.I - ŝ_to_ŝ₂) \ ŝv₂
+            Δμˢ₂ = vec((ℒ.I - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec(ℒ.I(nᵉ))) / 2))
+            μʸ₂  = SS_and_pars[1:𝓂.timings.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+
+            slvd = solved && solved2
+        else
+            μʸ₂ = zeros(R,0)
+            Δμˢ₂ = zeros(R,0)
+            # Σʸ₁ = zeros(R,0,0)
+            # Σᶻ₁ = zeros(R,0,0)
+            # SS_and_pars = zeros(R,0)
+            # 𝐒₁ = zeros(R,0,0)
+            # ∇₁ = zeros(R,0,0)
+            # 𝐒₂ = spzeros(R,0,0)
+            # ∇₂ = spzeros(R,0,0)
+            slvd = solved2
+        end
+    else
+        μʸ₂ = zeros(R,0)
+        Δμˢ₂ = zeros(R,0)
+        # Σʸ₁ = zeros(R,0,0)
+        Σᶻ₁ = zeros(R,0,0)
+        # SS_and_pars = zeros(R,0)
+        # 𝐒₁ = zeros(R,0,0)
+        # ∇₁ = zeros(R,0,0)
+        𝐒₂ = spzeros(R,0,0)
+        ∇₂ = spzeros(R,0,0)
+        slvd = solved
     end
 
-    e⁴ = quadrup * E_e⁴
-
-    # second order
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
-
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                𝓂.solution.perturbation.second_order_auxilliary_matrices,
-                                                𝓂.caches; 
-                                                T = 𝓂.timings, 
-                                                opts = opts)
-
-    if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
-
-    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
-
-    if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
-    end
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
-    v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
-
-    kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
-    kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
-    kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
-
-    # first order
-    s_to_y₁ = 𝐒₁[:, 1:nˢ]
-    e_to_y₁ = 𝐒₁[:, (nˢ + 1):end]
-    
-    s_to_s₁ = 𝐒₁[iˢ, 1:nˢ]
-    e_to_s₁ = 𝐒₁[iˢ, (nˢ + 1):end]
-
-
-    # second order
-    s_s_to_y₂ = 𝐒₂[:, kron_s_s]
-    e_e_to_y₂ = 𝐒₂[:, kron_e_e]
-    v_v_to_y₂ = 𝐒₂[:, kron_v_v]
-    s_e_to_y₂ = 𝐒₂[:, kron_s_e]
-
-    s_s_to_s₂ = 𝐒₂[iˢ, kron_s_s] |> collect
-    e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
-    v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
-    s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
-
-    s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
-    e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
-    s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
-
-    # # Set up in pruned state transition matrices
-    ŝ_to_ŝ₂ = [ s_to_s₁             zeros(nˢ, nˢ + nˢ^2)
-                zeros(nˢ, nˢ)       s_to_s₁             s_s_to_s₂ / 2
-                zeros(nˢ^2, 2*nˢ)   s_to_s₁_by_s_to_s₁                  ]
-
-    ê_to_ŝ₂ = [ e_to_s₁         zeros(nˢ, nᵉ^2 + nᵉ * nˢ)
-                zeros(nˢ,nᵉ)    e_e_to_s₂ / 2       s_e_to_s₂
-                zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁]
-
-    ŝ_to_y₂ = [s_to_y₁  s_to_y₁         s_s_to_y₂ / 2]
-
-    ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
-
-    ŝv₂ = [ zeros(nˢ) 
-            vec(v_v_to_s₂) / 2 + e_e_to_s₂ / 2 * vec(ℒ.I(nᵉ))
-            e_to_s₁_by_e_to_s₁ * vec(ℒ.I(nᵉ))]
-
-    yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec(ℒ.I(nᵉ))) / 2
-
-    ## Mean
-    μˢ⁺₂ = (ℒ.I - ŝ_to_ŝ₂) \ ŝv₂
-    Δμˢ₂ = vec((ℒ.I - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec(ℒ.I(nᵉ))) / 2))
-    μʸ₂  = SS_and_pars[1:𝓂.timings.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
-
-    return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, (solved && solved2)
+    return μʸ₂, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, slvd
 end
 
 
@@ -257,128 +285,183 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
 
-    nᵉ = 𝓂.timings.nExo
+    if solved
+        nᵉ = 𝓂.timings.nExo
 
-    nˢ = 𝓂.timings.nPast_not_future_and_mixed
+        nˢ = 𝓂.timings.nPast_not_future_and_mixed
 
-    iˢ = 𝓂.timings.past_not_future_and_mixed_idx
+        iˢ = 𝓂.timings.past_not_future_and_mixed_idx
 
-    Σᶻ₁ = Σʸ₁[iˢ, iˢ]
+        Σᶻ₁ = Σʸ₁[iˢ, iˢ]
 
-    # precalc second order
-    ## mean
-    I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
+        # precalc second order
+        ## mean
+        I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
 
-    ## covariance
-    E_e⁴ = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
+        ## covariance
+        E_e⁴ = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
 
-    quadrup = multiplicate(nᵉ, 4)
+        quadrup = multiplicate(nᵉ, 4)
 
-    comb⁴ = reduce(vcat, generateSumVectors(nᵉ, 4))
+        comb⁴ = reduce(vcat, generateSumVectors(nᵉ, 4))
 
-    comb⁴ = comb⁴ isa Int64 ? reshape([comb⁴],1,1) : comb⁴
+        comb⁴ = comb⁴ isa Int64 ? reshape([comb⁴],1,1) : comb⁴
 
-    for j = 1:size(comb⁴,1)
-        E_e⁴[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb⁴[j,:])
+        for j = 1:size(comb⁴,1)
+            E_e⁴[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb⁴[j,:])
+        end
+
+        e⁴ = quadrup * E_e⁴
+
+        # second order
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
+                                                    𝓂.solution.perturbation.second_order_auxilliary_matrices,
+                                                    𝓂.caches; 
+                                                    T = 𝓂.timings, 
+                                                    opts = opts)
+        if solved2
+            if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+
+            𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+
+            if !(typeof(𝐒₂) <: AbstractSparseMatrix)
+                𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+            end
+
+            s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
+            e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
+            v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
+
+            kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
+            kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
+            kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
+            kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
+
+            # first order
+            s_to_y₁ = 𝐒₁[:, 1:nˢ]
+            e_to_y₁ = 𝐒₁[:, (nˢ + 1):end]
+            
+            s_to_s₁ = 𝐒₁[iˢ, 1:nˢ]
+            e_to_s₁ = 𝐒₁[iˢ, (nˢ + 1):end]
+
+
+            # second order
+            s_s_to_y₂ = 𝐒₂[:, kron_s_s]
+            e_e_to_y₂ = 𝐒₂[:, kron_e_e]
+            v_v_to_y₂ = 𝐒₂[:, kron_v_v]
+            s_e_to_y₂ = 𝐒₂[:, kron_s_e]
+
+            s_s_to_s₂ = 𝐒₂[iˢ, kron_s_s] |> collect
+            e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
+            v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
+            s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
+
+            s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
+            e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
+            s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
+
+            # # Set up in pruned state transition matrices
+            ŝ_to_ŝ₂ = [ s_to_s₁             zeros(nˢ, nˢ + nˢ^2)
+                        zeros(nˢ, nˢ)       s_to_s₁             s_s_to_s₂ / 2
+                        zeros(nˢ^2, 2*nˢ)   s_to_s₁_by_s_to_s₁                  ]
+
+            ê_to_ŝ₂ = [ e_to_s₁         zeros(nˢ, nᵉ^2 + nᵉ * nˢ)
+                        zeros(nˢ,nᵉ)    e_e_to_s₂ / 2       s_e_to_s₂
+                        zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁]
+
+            ŝ_to_y₂ = [s_to_y₁  s_to_y₁         s_s_to_y₂ / 2]
+
+            ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
+
+            ŝv₂ = [ zeros(nˢ) 
+                    vec(v_v_to_s₂) / 2 + e_e_to_s₂ / 2 * vec(ℒ.I(nᵉ))
+                    e_to_s₁_by_e_to_s₁ * vec(ℒ.I(nᵉ))]
+
+            yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec(ℒ.I(nᵉ))) / 2
+
+            ## Mean
+            μˢ⁺₂ = (ℒ.I - ŝ_to_ŝ₂) \ ŝv₂
+            Δμˢ₂ = vec((ℒ.I - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec(ℒ.I(nᵉ))) / 2))
+            μʸ₂  = SS_and_pars[1:𝓂.timings.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+
+            # Covariance
+            Γ₂ = [ ℒ.I(nᵉ)             zeros(nᵉ, nᵉ^2 + nᵉ * nˢ)
+                    zeros(nᵉ^2, nᵉ)    reshape(e⁴, nᵉ^2, nᵉ^2) - vec(ℒ.I(nᵉ)) * vec(ℒ.I(nᵉ))'     zeros(nᵉ^2, nᵉ * nˢ)
+                    zeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σᶻ₁, ℒ.I(nᵉ))]
+
+            C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
+
+            Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, 
+                                                lyapunov_algorithm = opts.lyapunov_algorithm, 
+                                                tol = opts.tol.lyapunov_tol,
+                                                acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                                verbose = opts.verbose)
+
+            if info
+                # if Σᶻ₂ isa DenseMatrix
+                #     Σᶻ₂ = sparse(Σᶻ₂)
+                # end
+
+                Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
+
+                autocorr_tmp = ŝ_to_ŝ₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_ŝ₂ * Γ₂ * ê_to_y₂'
+
+                slvd = solved && solved2 && info
+            else
+                Σʸ₂ = zeros(R,0,0)
+                Σᶻ₂ = zeros(R,0,0)
+                μʸ₂ = zeros(R,0)
+                Δμˢ₂ = zeros(R,0)
+                autocorr_tmp = zeros(R,0,0)
+                ŝ_to_ŝ₂ = zeros(R,0,0)
+                ŝ_to_y₂ = zeros(R,0,0)
+                # Σʸ₁ = zeros(R,0,0)
+                # Σᶻ₁ = zeros(R,0,0)
+                # SS_and_pars = zeros(R,0)
+                # 𝐒₁ = zeros(R,0,0)
+                # ∇₁ = zeros(R,0,0)
+                # 𝐒₂ = zsperos(R,0,0)
+                # ∇₂ = spzeros(R,0,0)
+                slvd = info
+            end
+        else
+            Σʸ₂ = zeros(R,0,0)
+            Σᶻ₂ = zeros(R,0,0)
+            μʸ₂ = zeros(R,0)
+            Δμˢ₂ = zeros(R,0)
+            autocorr_tmp = zeros(R,0,0)
+            ŝ_to_ŝ₂ = zeros(R,0,0)
+            ŝ_to_y₂ = zeros(R,0,0)
+            # Σʸ₁ = zeros(R,0,0)
+            # Σᶻ₁ = zeros(R,0,0)
+            # SS_and_pars = zeros(R,0)
+            # 𝐒₁ = zeros(R,0,0)
+            # ∇₁ = zeros(R,0,0)
+            # 𝐒₂ = zsperos(R,0,0)
+            # ∇₂ = spzeros(R,0,0)
+            slvd = solved2
+        end
+    else
+        Σʸ₂ = zeros(R,0,0)
+        Σᶻ₂ = zeros(R,0,0)
+        μʸ₂ = zeros(R,0)
+        Δμˢ₂ = zeros(R,0)
+        autocorr_tmp = zeros(R,0,0)
+        ŝ_to_ŝ₂ = zeros(R,0,0)
+        ŝ_to_y₂ = zeros(R,0,0)
+        # Σʸ₁ = zeros(R,0,0)
+        Σᶻ₁ = zeros(R,0,0)
+        # SS_and_pars = zeros(R,0)
+        # 𝐒₁ = zeros(R,0,0)
+        # ∇₁ = zeros(R,0,0)
+        𝐒₂ = zsperos(R,0,0)
+        ∇₂ = spzeros(R,0,0)
+        slvd = solved
     end
 
-    e⁴ = quadrup * E_e⁴
-
-    # second order
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
-
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                𝓂.solution.perturbation.second_order_auxilliary_matrices,
-                                                𝓂.caches; 
-                                                T = 𝓂.timings, 
-                                                opts = opts)
-
-    if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
-
-    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
-
-    if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
-    end
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
-    v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
-
-    kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
-    kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
-    kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
-
-    # first order
-    s_to_y₁ = 𝐒₁[:, 1:nˢ]
-    e_to_y₁ = 𝐒₁[:, (nˢ + 1):end]
-    
-    s_to_s₁ = 𝐒₁[iˢ, 1:nˢ]
-    e_to_s₁ = 𝐒₁[iˢ, (nˢ + 1):end]
-
-
-    # second order
-    s_s_to_y₂ = 𝐒₂[:, kron_s_s]
-    e_e_to_y₂ = 𝐒₂[:, kron_e_e]
-    v_v_to_y₂ = 𝐒₂[:, kron_v_v]
-    s_e_to_y₂ = 𝐒₂[:, kron_s_e]
-
-    s_s_to_s₂ = 𝐒₂[iˢ, kron_s_s] |> collect
-    e_e_to_s₂ = 𝐒₂[iˢ, kron_e_e]
-    v_v_to_s₂ = 𝐒₂[iˢ, kron_v_v] |> collect
-    s_e_to_s₂ = 𝐒₂[iˢ, kron_s_e]
-
-    s_to_s₁_by_s_to_s₁ = ℒ.kron(s_to_s₁, s_to_s₁) |> collect
-    e_to_s₁_by_e_to_s₁ = ℒ.kron(e_to_s₁, e_to_s₁)
-    s_to_s₁_by_e_to_s₁ = ℒ.kron(s_to_s₁, e_to_s₁)
-
-    # # Set up in pruned state transition matrices
-    ŝ_to_ŝ₂ = [ s_to_s₁             zeros(nˢ, nˢ + nˢ^2)
-                zeros(nˢ, nˢ)       s_to_s₁             s_s_to_s₂ / 2
-                zeros(nˢ^2, 2*nˢ)   s_to_s₁_by_s_to_s₁                  ]
-
-    ê_to_ŝ₂ = [ e_to_s₁         zeros(nˢ, nᵉ^2 + nᵉ * nˢ)
-                zeros(nˢ,nᵉ)    e_e_to_s₂ / 2       s_e_to_s₂
-                zeros(nˢ^2,nᵉ)  e_to_s₁_by_e_to_s₁  I_plus_s_s * s_to_s₁_by_e_to_s₁]
-
-    ŝ_to_y₂ = [s_to_y₁  s_to_y₁         s_s_to_y₂ / 2]
-
-    ê_to_y₂ = [e_to_y₁  e_e_to_y₂ / 2   s_e_to_y₂]
-
-    ŝv₂ = [ zeros(nˢ) 
-            vec(v_v_to_s₂) / 2 + e_e_to_s₂ / 2 * vec(ℒ.I(nᵉ))
-            e_to_s₁_by_e_to_s₁ * vec(ℒ.I(nᵉ))]
-
-    yv₂ = (vec(v_v_to_y₂) + e_e_to_y₂ * vec(ℒ.I(nᵉ))) / 2
-
-    ## Mean
-    μˢ⁺₂ = (ℒ.I - ŝ_to_ŝ₂) \ ŝv₂
-    Δμˢ₂ = vec((ℒ.I - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec(ℒ.I(nᵉ))) / 2))
-    μʸ₂  = SS_and_pars[1:𝓂.timings.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
-
-    # Covariance
-    Γ₂ = [ ℒ.I(nᵉ)             zeros(nᵉ, nᵉ^2 + nᵉ * nˢ)
-            zeros(nᵉ^2, nᵉ)    reshape(e⁴, nᵉ^2, nᵉ^2) - vec(ℒ.I(nᵉ)) * vec(ℒ.I(nᵉ))'     zeros(nᵉ^2, nᵉ * nˢ)
-            zeros(nˢ * nᵉ, nᵉ + nᵉ^2)    ℒ.kron(Σᶻ₁, ℒ.I(nᵉ))]
-
-    C = ê_to_ŝ₂ * Γ₂ * ê_to_ŝ₂'
-
-    Σᶻ₂, info = solve_lyapunov_equation(ŝ_to_ŝ₂, C, 
-                                        lyapunov_algorithm = opts.lyapunov_algorithm, 
-                                        tol = opts.tol.lyapunov_tol,
-                                        acceptance_tol = opts.tol.lyapunov_acceptance_tol,
-                                        verbose = opts.verbose)
-
-    # if Σᶻ₂ isa DenseMatrix
-    #     Σᶻ₂ = sparse(Σᶻ₂)
-    # end
-
-    Σʸ₂ = ŝ_to_y₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_y₂ * Γ₂ * ê_to_y₂'
-
-    autocorr_tmp = ŝ_to_ŝ₂ * Σᶻ₂ * ŝ_to_y₂' + ê_to_ŝ₂ * Γ₂ * ê_to_y₂'
-
-    return Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, (solved && solved2 && info)
+    return Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, slvd
 end
 
 
@@ -394,6 +477,10 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = second_order_moments
 
+    if !solved
+        return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
+    end
+
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
@@ -403,6 +490,10 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
                                                 T = 𝓂.timings, 
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 opts = opts)
+
+    if !solved3
+        return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
+    end
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
@@ -599,6 +690,10 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
                                             acceptance_tol = opts.tol.lyapunov_acceptance_tol,
                                             verbose = opts.verbose)
 
+        if !info
+            return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
+        end
+
         solved_lyapunov = solved_lyapunov && info
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
@@ -646,6 +741,10 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     Σʸ₂, Σᶻ₂, μʸ₂, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = second_order_moments
 
+    if !solved
+        return zeros(T,0,0), zeros(T,0), zeros(T,0), false
+    end
+
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
@@ -655,6 +754,10 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                 T = 𝓂.timings, 
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 opts = opts)
+
+    if !solved3
+        return zeros(T,0,0), zeros(T,0), zeros(T,0), false
+    end
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
@@ -849,6 +952,10 @@ function calculate_third_order_moments(parameters::Vector{T},
                                             acceptance_tol = opts.tol.lyapunov_acceptance_tol,
                                             verbose = opts.verbose)
 
+        if !info
+            return zeros(T,0,0), zeros(T,0), zeros(T,0), false
+        end
+    
         solved_lyapunov = solved_lyapunov && info
 
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
