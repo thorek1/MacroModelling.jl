@@ -7253,7 +7253,7 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
             @warn "Following variable is not part of the model: " * join(string(setdiff([variables],T.var)[1]),", ")
             return Int[]
         end
-        return Int.(indexin(variables, T.var))
+        return Int.(indexin([variables], T.var))
     else
         @warn "Invalid argument in variables"
         return Int[]
