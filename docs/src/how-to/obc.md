@@ -123,7 +123,7 @@ Let's check out the non stochastic steady state (NSSS):
 
 ```@repl howto_obc
 SS(Gali_2015_chapter_3_obc)
-SS(Gali_2015_chapter_3_obc)(:R)
+SS(Gali_2015_chapter_3_obc)(:R,:)
 ```
 
 There are a few things to note here. First, we get the NSSS values of the auxilliary variables related to the occasionally binding constraint. Second, the NSSS value of `R` is 1, and thereby the effective lower bound is binding in the NSSS. While this is a viable NSSS it is not a viable approximation point for perturbation. We can only find a perturbation solution if the effective lower bound is not binding in NSSS. Calling `get_solution` reveals that there is no stable solution at this NSSS:
@@ -319,14 +319,14 @@ Compare this to the theoretical mean of the model without the occasionally bindi
 
 ```@repl howto_obc
 get_mean(Gali_2015_chapter_3_obc)
-get_mean(Gali_2015_chapter_3_obc)(:Y)
+get_mean(Gali_2015_chapter_3_obc)(:Y,:)
 ```
 
 and the theoretical standard deviation:
 
 ```@repl howto_obc
 get_std(Gali_2015_chapter_3_obc)
-get_std(Gali_2015_chapter_3_obc)(:Y)
+get_std(Gali_2015_chapter_3_obc)(:Y,:)
 ```
 
 The mean of output is lower in the model with effective lower bound compared to the model without and the standard deviation is higher.
@@ -339,10 +339,10 @@ Let us start with a consumption-saving model containing a borrowing constraint (
 
 ```math
 \begin{align*}
-Y_t + B_t &= C_t + R B_{t-1}\\
-\log(Y_t) &= \rho \log(Y_{t-1}) + \sigma \varepsilon_t\\
-C_t^{-\gamma} &= \beta R \mathbb{E}_t (C_{t+1}^{-\gamma}) + \lambda_t\\
-0 &= \lambda_t (B_t - mY_t)
+Y_t + B_t &= C_t + R \, B_{t-1}\\
+\log(Y_t) &= \rho \, \log(Y_{t-1}) + \sigma \, \varepsilon_t\\
+C_t^{-\gamma} &= \beta \, R \, \mathbb{E}_t (C_{t+1}^{-\gamma}) + \lambda_t\\
+0 &= \lambda_t \, (B_t - mY_t)
 \end{align*}
 ```
 
