@@ -422,7 +422,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                 # SS_and_pars = zeros(R,0)
                 # 𝐒₁ = zeros(R,0,0)
                 # ∇₁ = zeros(R,0,0)
-                # 𝐒₂ = zsperos(R,0,0)
+                # 𝐒₂ = spzeros(R,0,0)
                 # ∇₂ = spzeros(R,0,0)
                 slvd = info
             end
@@ -439,7 +439,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             # SS_and_pars = zeros(R,0)
             # 𝐒₁ = zeros(R,0,0)
             # ∇₁ = zeros(R,0,0)
-            # 𝐒₂ = zsperos(R,0,0)
+            # 𝐒₂ = spzeros(R,0,0)
             # ∇₂ = spzeros(R,0,0)
             slvd = solved2
         end
@@ -456,7 +456,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         # SS_and_pars = zeros(R,0)
         # 𝐒₁ = zeros(R,0,0)
         # ∇₁ = zeros(R,0,0)
-        𝐒₂ = zsperos(R,0,0)
+        𝐒₂ = spzeros(R,0,0)
         ∇₂ = spzeros(R,0,0)
         slvd = solved
     end
