@@ -1501,7 +1501,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VARIABLES®
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state substracted.
 - $ALGORITHM®
-- $LEVELS®
+- `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®

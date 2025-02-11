@@ -309,7 +309,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $ALGORITHM®
 - $FILTER®
 - $DATA_IN_LEVELS®
-- $LEVELS®
+- `levels` [Default: `true`, Type: `Bool`]: $LEVELS®
 - $SMOOTH®
 - $QME®
 - $SYLVESTER®
@@ -550,7 +550,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PARAMETERS®
 - $VARIABLES®
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state substracted.
-- $LEVELS®
+- `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
 - $ALGORITHM®
 - $QME®
 - $SYLVESTER®
@@ -923,7 +923,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SHOCKS®
 - $NEGATIVE_SHOCK®
 - $INITIAL_STATE®1
-- $LEVELS®
+- `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
 - $QME®
 - $TOLERANCES®
 - $VERBOSE®
@@ -1102,7 +1102,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $NEGATIVE_SHOCK®
 - $GENERALISED_IRF®
 - $INITIAL_STATE®
-- $LEVELS®
+- `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
 - $SHOCK_SIZE®
 - $IGNORE_OBC®
 - $QME®
