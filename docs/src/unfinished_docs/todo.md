@@ -4,6 +4,7 @@
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
 - [ ] fix borrowing_constraint how-to
+- [ ] implement check for plots, that they always return a plot (shocks = :none didnt return a plot)
 - [ ] implement benchmarks
 - [ ] write non allocating version of steady state functions
 - [ ] cache sparse kron, sylvester solution, and compressed kron in order to avoid allocs; check sparse kron! call
