@@ -1042,26 +1042,15 @@ function get_irf(𝓂::ℳ,
 
     # Y = zeros(𝓂.timings.nVars,periods,𝓂.timings.nExo)
     Ŷ = []
-    if shocks == :none
-        Y = []
-
-        shock_history = zeros(𝓂.timings.nExo,periods)
-    
-        push!(Y, state_update(initial_state,shock_history[:,1]))
-    
-        for t in 1:periods-1
-            push!(Y, state_update(Y[end],shock_history[:,t+1]))
-        end
-    
-        push!(Ŷ, reduce(hcat,Y))
-    end
 
     for ii in shock_idx
         Y = []
 
-        if shocks ∉ [:simulate, :none] && shocks isa Union{Symbol_input,String_input}
+        if shocks isa Union{Symbol_input,String_input}
             shock_history = zeros(𝓂.timings.nExo,periods)
-            shock_history[ii,1] = negative_shock ? -1 : 1
+            if shocks ≠ :none
+                shock_history[ii,1] = negative_shock ? -1 : 1
+            end
         end
 
         push!(Y, state_update(initial_state,shock_history[:,1]))
@@ -1073,7 +1062,7 @@ function get_irf(𝓂::ℳ,
         push!(Ŷ, reduce(hcat,Y))
     end
 
-    deviations = reshape(reduce(hcat,Ŷ),𝓂.timings.nVars,periods,shocks == :none ? 1 : length(shock_idx))[var_idx,:,:]
+    deviations = reshape(reduce(hcat,Ŷ),𝓂.timings.nVars, periods, shocks == :none ? 1 : length(shock_idx))[var_idx,:,:]
 
     if levels
         return deviations .+ reference_steady_state[var_idx]
