@@ -1059,7 +1059,7 @@ function get_irf(𝓂::ℳ,
     for ii in shock_idx
         Y = []
 
-        if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
+        if shocks ∉ [:simulate, :none] && shocks isa Union{Symbol_input,String_input}
             shock_history = zeros(𝓂.timings.nExo,periods)
             shock_history[ii,1] = negative_shock ? -1 : 1
         end

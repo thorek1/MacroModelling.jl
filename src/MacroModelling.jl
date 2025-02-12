@@ -6933,7 +6933,7 @@ function irf(state_update::Function,
         Y = zeros(T.nVars,periods,length(shock_idx))
 
         for (i,ii) in enumerate(shock_idx)
-            if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
+            if shocks ∉ [:simulate, :none] && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -shock_size : shock_size
             end
@@ -7064,7 +7064,7 @@ function irf(state_update::Function,
         for (i,ii) in enumerate(shock_idx)
             initial_state_copy = deepcopy(initial_state)
             
-            if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
+            if shocks ∉ [:simulate, :none] && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -shock_size : shock_size
             end
@@ -7160,7 +7160,7 @@ function girf(state_update::Function,
 
             baseline_noise = randn(T.nExo)
 
-            if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
+            if shocks ∉ [:simulate, :none] && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -shock_size : shock_size
             end
