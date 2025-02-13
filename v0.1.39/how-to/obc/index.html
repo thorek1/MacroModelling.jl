@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Occasionally binding constraints · MacroModelling.jl</title><meta name="title" content="Occasionally binding constraints · MacroModelling.jl"/><meta property="og:title" content="Occasionally binding constraints · MacroModelling.jl"/><meta property="twitter:title" content="Occasionally binding constraints · MacroModelling.jl"/><meta name="description" content="Documentation for MacroModelling.jl."/><meta property="og:description" content="Documentation for MacroModelling.jl."/><meta property="twitter:description" content="Documentation for MacroModelling.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">MacroModelling.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Introduction</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../../tutorials/install/">Installation</a></li><li><a class="tocitem" href="../../tutorials/rbc/">Write your first simple model - RBC</a></li><li><a class="tocitem" href="../../tutorials/sw03/">Work with a more complex model - Smets and Wouters (2003)</a></li><li><a class="tocitem" href="../../tutorials/calibration/">Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)</a></li><li><a class="tocitem" href="../../tutorials/estimation/">Estimate a model using gradient based samplers - Schorfheide (2000)</a></li></ul></li><li><span class="tocitem">How-to guides</span><ul><li><a class="tocitem" href="../loops/">Programmatic model writing using for-loops</a></li><li class="is-active"><a class="tocitem" href>Occasionally binding constraints</a><ul class="internal"><li><a class="tocitem" href="#Example:-Effective-lower-bound-on-interest-rates"><span>Example: Effective lower bound on interest rates</span></a></li><li><a class="tocitem" href="#Example:-Borrowing-constraint"><span>Example: Borrowing constraint</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../../api/">API</a></li><li><a class="tocitem" href="../../call_index/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">How-to guides</a></li><li class="is-active"><a href>Occasionally binding constraints</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Occasionally binding constraints</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl/blob/main/docs/src/how-to/obc.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Occasionally-Binding-Constraints"><a class="docs-heading-anchor" href="#Occasionally-Binding-Constraints">Occasionally Binding Constraints</a><a id="Occasionally-Binding-Constraints-1"></a><a class="docs-heading-anchor-permalink" href="#Occasionally-Binding-Constraints" title="Permalink"></a></h1><p>Occasionally binding constraints are a form of nonlinearity frequently used to model effects like the zero lower bound on interest rates, or borrowing constraints. Perturbation methods are not able to capture them as they are local approximations. Nonetheless, there are ways to combine the speed of perturbation solutions and the flexibility of occasionally binding constraints. <code>MacroModelling.jl</code> provides a convenient way to write down the constraints and automatically enforces the constraint equation with shocks. More specifically, the constraint equation is enforced for each periods unconditional forecast (default forecast horizon of 40 periods) by constraint equation specific anticipated shocks, while minimising the shock size.</p><p>This guide will demonstrate how to write down models containing occasionally binding constraints (e.g. effective lower bound and borrowing constraint), show some potential problems the user may encounter and how to overcome them, and go through some use cases.</p><p>Common problems that may occur are that no perturbation solution is found, or that the algorithm cannot find a combination of shocks which enforce the constraint equation. The former has to do with the fact that occasionally binding constraints can give rise to more than one steady state but only one is suitable for a perturbation solution. The latter has to do with the dynamics of the model and the fact that we use a finite amount of shocks to enforce the constraint equation.</p><p>Beyond the examples outlined in this guide there is a version of Smets and Wouters (2003) with the ELB in the models folder (filename: <code>SW03_obc.jl</code>).</p><h2 id="Example:-Effective-lower-bound-on-interest-rates"><a class="docs-heading-anchor" href="#Example:-Effective-lower-bound-on-interest-rates">Example: Effective lower bound on interest rates</a><a id="Example:-Effective-lower-bound-on-interest-rates-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Effective-lower-bound-on-interest-rates" title="Permalink"></a></h2><h3 id="Writing-a-model-with-occasionally-binding-constraints"><a class="docs-heading-anchor" href="#Writing-a-model-with-occasionally-binding-constraints">Writing a model with occasionally binding constraints</a><a id="Writing-a-model-with-occasionally-binding-constraints-1"></a><a class="docs-heading-anchor-permalink" href="#Writing-a-model-with-occasionally-binding-constraints" title="Permalink"></a></h3><p>Let us take the <a href="../../#gali2015">Galı́ (2015)</a>, Chapter 3 model containing a Taylor rule and implement an effective lower bound on interest rates. The Taylor rule in the model: <code>R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])</code> needs to be modified so that <code>R[0]</code> never goes below an effective lower bound <code>R̄</code>. We can do this using the <code>max</code> operator: <code>R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))</code></p><p>The model definition after the change of the Taylor rule looks like this:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using MacroModelling</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; @model Gali_2015_chapter_3_obc begin
+           W_real[0] = C[0] ^ σ * N[0] ^ φ
+       
+           Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+       
+           R[0] = 1 / Q[0]
+       
+           Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+       
+           R[0] = Pi[1] * realinterest[0]
+       
+           C[0] = Y[0]
+       
+           log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+       
+           log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+       
+           nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+       
+           MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+       
+           1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+       
+           S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+       
+           Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+       
+           x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+       
+           x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+       
+           log_y[0] = log(Y[0])
+       
+           log_W_real[0] = log(W_real[0])
+       
+           log_N[0] = log(N[0])
+       
+           pi_ann[0] = 4 * log(Pi[0])
+       
+           i_ann[0] = 4 * log(R[0])
+       
+           r_real_ann[0] = 4 * log(realinterest[0])
+       
+           M_real[0] = Y[0] / R[0] ^ η
+       
+           R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+       
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Model:        Gali_2015_chapter_3_obc
+Variables
+ Total:       68
+  Auxiliary:  41
+ States:      44
+  Auxiliary:  40
+ Jumpers:     5
+  Auxiliary:  0
+Shocks:       44
+Parameters:   18</code></pre><p>In the background the system of equations is augmented by a series of anticipated shocks added to the equation containing the constraint (max/min operator). This explains the large number of auxilliary variables and shocks.</p><p>Next we define the parameters including the new parameter defining the effective lower bound (which we set to 1, which implements a zero lower bound):</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; @parameters Gali_2015_chapter_3_obc begin
+           R̄ = 1.0
+       
+           σ = 1
+       
+           φ = 5
+       
+           ϕᵖⁱ = 1.5
+       
+           ϕʸ = 0.125
+       
+           θ = 0.75
+       
+           ρ_ν = 0.5
+       
+           ρ_z = 0.5
+       
+           ρ_a = 0.9
+       
+           β = 0.99
+       
+           η = 3.77
+       
+           α = 0.25
+       
+           ϵ = 9
+       
+           τ = 0
+       
+           std_a = .01
+       
+           std_z = .05
+       
+           std_nu = .0025
+       
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.589 seconds
+Set up non stochastic steady state problem:				3.268 seconds
+Take symbolic derivatives up to first order:				4.421 seconds
+Find non stochastic steady state:					5.446 seconds
+Model:        Gali_2015_chapter_3_obc
+Variables
+ Total:       68
+  Auxiliary:  41
+ States:      44
+  Auxiliary:  40
+ Jumpers:     5
+  Auxiliary:  0
+Shocks:       44
+Parameters:   18</code></pre><h3 id="Verify-the-non-stochastic-steady-state"><a class="docs-heading-anchor" href="#Verify-the-non-stochastic-steady-state">Verify the non stochastic steady state</a><a id="Verify-the-non-stochastic-steady-state-1"></a><a class="docs-heading-anchor-permalink" href="#Verify-the-non-stochastic-steady-state" title="Permalink"></a></h3><p>Let&#39;s check out the non stochastic steady state (NSSS):</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; SS(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Variables_and_calibrated_parameters ∈ 68-element Vector{Symbol}</span>
+→   <span class="sgr35">Steady_state_and_∂steady_state∂parameter ∈ 19-element Vector{Symbol}</span>
+And data, <span class="sgr1">68×19 Matrix{Float64}</span>:
+                     <span class="sgr35">(:Steady_state)</span>  <span class="sgr35">(:R̄)</span>  …  <span class="sgr35">(:std_nu)</span>  <span class="sgr35">(:activeᵒᵇᶜshocks)</span>
+  <span class="sgr35">(:A)</span>                1.0              0.0      0.0        0.0
+  <span class="sgr35">(:C)</span>                0.95058          0.0      0.0        0.0
+  <span class="sgr35">(:MC)</span>               0.888889         0.0      0.0        0.0
+  <span class="sgr35">(:M_real)</span>           0.915236         0.0      0.0        0.0
+  <span class="sgr35">(:N)</span>                0.934655         0.0  …   0.0        0.0
+  <span class="sgr35">(:Pi)</span>               1.0              0.0      0.0        0.0
+   ⋮                                        ⋱
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁴⁰⁾)</span>   0.0              0.0      0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁴⁾)</span>    0.0              0.0      0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁵⁾)</span>    0.0              0.0  …   0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁶⁾)</span>    0.0              0.0      0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁷⁾)</span>    0.0              0.0      0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁸⁾)</span>    0.0              0.0      0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁹⁾)</span>    0.0              0.0      0.0        0.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; SS(Gali_2015_chapter_3_obc)(:R,:)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Steady_state_and_∂steady_state∂parameter ∈ 19-element Vector{Symbol}</span>
+And data, <span class="sgr1">19-element view(::Matrix{Float64}, 9, :)</span> with eltype Float64:
+ <span class="sgr35">(:Steady_state)</span>      1.0101010101010104
+ <span class="sgr35">(:R̄)</span>                 0.0
+ <span class="sgr35">(:σ)</span>                -1.3016191809296284e-18
+ <span class="sgr35">(:φ)</span>                -2.3459635298654423e-35
+ <span class="sgr35">(:ϕᵖⁱ)</span>              -4.485749594445071e-16
+ <span class="sgr35">(:ϕʸ)</span>                0.0
+ <span class="sgr35">(:θ)</span>                -4.424580281793546e-17
+ <span class="sgr35">(:ρ_ν)</span>               0.0
+  ⋮
+ <span class="sgr35">(:α)</span>                -1.4311051240958898e-33
+ <span class="sgr35">(:ϵ)</span>                -1.9192328280384416e-32
+ <span class="sgr35">(:τ)</span>                -2.2895432749599088e-32
+ <span class="sgr35">(:std_a)</span>             0.0
+ <span class="sgr35">(:std_z)</span>             0.0
+ <span class="sgr35">(:std_nu)</span>            0.0
+ <span class="sgr35">(:activeᵒᵇᶜshocks)</span>   0.0</code></pre><p>There are a few things to note here. First, we get the NSSS values of the auxilliary variables related to the occasionally binding constraint. Second, the NSSS value of <code>R</code> is 1, and thereby the effective lower bound is binding in the NSSS. While this is a viable NSSS it is not a viable approximation point for perturbation. We can only find a perturbation solution if the effective lower bound is not binding in NSSS. Calling <code>get_solution</code> reveals that there is no stable solution at this NSSS:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_solution(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Steady_state__States__Shocks ∈ 89-element Vector{Symbol}</span>
+→   <span class="sgr35">Variables ∈ 68-element Vector{Symbol}</span>
+And data, <span class="sgr1">89×68 adjoint(::Matrix{Float64})</span> with eltype Float64:
+                         <span class="sgr35">(:A)</span>          …  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁸⁾)</span>  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁹⁾)</span>
+  <span class="sgr35">(:Steady_state)</span>         1.0              0.0               0.0
+  <span class="sgr35">(:A₍₋₁₎)</span>                0.9              0.0               0.0
+  <span class="sgr35">(:S₍₋₁₎)</span>                6.81123e-16      0.0               0.0
+  <span class="sgr35">(:Z₍₋₁₎)</span>               -4.64179e-16      0.0               0.0
+  <span class="sgr35">(:nu₍₋₁₎)</span>               4.00415e-16  …   0.0               0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻²²⁾₍₋₁₎)</span>  -2.09599e-16      0.0               0.0
+   ⋮                                   ⋱   ⋮
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁴⁰⁾₍ₓ₎)</span>     -0.0             -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁴⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁵⁾₍ₓ₎)</span>      -0.0          …  -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁶⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁷⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁸⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁹⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0</code></pre><p>In order to get the other viable NSSS we have to restrict the values of R to be larger than the effective lower bound. We can do this by adding a constraint on the variable in the <code>@parameter</code> section. Let us redefine the model:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; @model Gali_2015_chapter_3_obc begin
+           W_real[0] = C[0] ^ σ * N[0] ^ φ
+       
+           Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+       
+           R[0] = 1 / Q[0]
+       
+           Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+       
+           R[0] = Pi[1] * realinterest[0]
+       
+           C[0] = Y[0]
+       
+           log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+       
+           log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+       
+           nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+       
+           MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+       
+           1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+       
+           S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+       
+           Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+       
+           x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+       
+           x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+       
+           log_y[0] = log(Y[0])
+       
+           log_W_real[0] = log(W_real[0])
+       
+           log_N[0] = log(N[0])
+       
+           pi_ann[0] = 4 * log(Pi[0])
+       
+           i_ann[0] = 4 * log(R[0])
+       
+           r_real_ann[0] = 4 * log(realinterest[0])
+       
+           M_real[0] = Y[0] / R[0] ^ η
+       
+           R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+       
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Model:        Gali_2015_chapter_3_obc
+Variables
+ Total:       68
+  Auxiliary:  41
+ States:      44
+  Auxiliary:  40
+ Jumpers:     5
+  Auxiliary:  0
+Shocks:       44
+Parameters:   18</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; @parameters Gali_2015_chapter_3_obc begin
+           R̄ = 1.0
+       
+           σ = 1
+       
+           φ = 5
+       
+           ϕᵖⁱ = 1.5
+       
+           ϕʸ = 0.125
+       
+           θ = 0.75
+       
+           ρ_ν = 0.5
+       
+           ρ_z = 0.5
+       
+           ρ_a = 0.9
+       
+           β = 0.99
+       
+           η = 3.77
+       
+           α = 0.25
+       
+           ϵ = 9
+       
+           τ = 0
+       
+           std_a = .01
+       
+           std_z = .05
+       
+           std_nu = .0025
+       
+           R &gt; 1.000001
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	1.228 seconds
+Set up non stochastic steady state problem:				2.793 seconds
+Take symbolic derivatives up to first order:				0.675 seconds
+Find non stochastic steady state:					0.692 seconds
+Model:        Gali_2015_chapter_3_obc
+Variables
+ Total:       68
+  Auxiliary:  41
+ States:      44
+  Auxiliary:  40
+ Jumpers:     5
+  Auxiliary:  0
+Shocks:       44
+Parameters:   18</code></pre><p>and check the NSSS once more:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; SS(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Variables_and_calibrated_parameters ∈ 68-element Vector{Symbol}</span>
+→   <span class="sgr35">Steady_state_and_∂steady_state∂parameter ∈ 19-element Vector{Symbol}</span>
+And data, <span class="sgr1">68×19 Matrix{Float64}</span>:
+                     <span class="sgr35">(:Steady_state)</span>  <span class="sgr35">(:R̄)</span>  …  <span class="sgr35">(:std_nu)</span>  <span class="sgr35">(:activeᵒᵇᶜshocks)</span>
+  <span class="sgr35">(:A)</span>                1.0              0.0      0.0        0.0
+  <span class="sgr35">(:C)</span>                0.95058          0.0      0.0        0.0
+  <span class="sgr35">(:MC)</span>               0.888889         0.0      0.0        0.0
+  <span class="sgr35">(:M_real)</span>           0.915236         0.0      0.0        0.0
+  <span class="sgr35">(:N)</span>                0.934655         0.0  …   0.0        0.0
+  <span class="sgr35">(:Pi)</span>               1.0              0.0      0.0        0.0
+   ⋮                                        ⋱
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁴⁰⁾)</span>   0.0              0.0      0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁴⁾)</span>    0.0              0.0      0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁵⁾)</span>    0.0              0.0  …   0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁶⁾)</span>    0.0              0.0      0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁷⁾)</span>    0.0              0.0      0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁸⁾)</span>    0.0              0.0      0.0        0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁹⁾)</span>    0.0              0.0      0.0        0.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; SS(Gali_2015_chapter_3_obc)(:R)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+ERROR: ArgumentError: key of type Symbol is ambiguous, matches dimensions (1, 2)</code></pre><p>Now we get <code>R &gt; R̄</code>, so that the constraint is not binding in the NSSS and we can work with a stable first order solution:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_solution(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Steady_state__States__Shocks ∈ 89-element Vector{Symbol}</span>
+→   <span class="sgr35">Variables ∈ 68-element Vector{Symbol}</span>
+And data, <span class="sgr1">89×68 adjoint(::Matrix{Float64})</span> with eltype Float64:
+                         <span class="sgr35">(:A)</span>          …  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁸⁾)</span>  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁹⁾)</span>
+  <span class="sgr35">(:Steady_state)</span>         1.0              0.0               0.0
+  <span class="sgr35">(:A₍₋₁₎)</span>                0.9              0.0               0.0
+  <span class="sgr35">(:S₍₋₁₎)</span>               -3.04014e-15      0.0               0.0
+  <span class="sgr35">(:Z₍₋₁₎)</span>               -1.52483e-15      0.0               0.0
+  <span class="sgr35">(:nu₍₋₁₎)</span>               3.03477e-15  …   0.0               0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻²²⁾₍₋₁₎)</span>  -6.91257e-16      0.0               0.0
+   ⋮                                   ⋱   ⋮
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁴⁰⁾₍ₓ₎)</span>     -0.0             -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁴⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁵⁾₍ₓ₎)</span>      -0.0          …  -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁶⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁷⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁸⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁹⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0</code></pre><h3 id="Generate-model-output"><a class="docs-heading-anchor" href="#Generate-model-output">Generate model output</a><a id="Generate-model-output-1"></a><a class="docs-heading-anchor-permalink" href="#Generate-model-output" title="Permalink"></a></h3><p>Having defined the system with an occasionally binding constraint we can simply simulate the model by calling:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import StatsPlots</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_simulations(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">3-element Vector{Any}:
+ Plot{Plots.GRBackend() n=36}
+ Plot{Plots.GRBackend() n=26}
+ Plot{Plots.GRBackend() n=14}</code></pre><p><img src="../../assets/Gali_2015_chapter_3_obc__simulation__1.png" alt="Simulation_elb"/></p><p>In the background an optimisation problem is set up to find the smallest shocks in magnitude which enforce the equation containing the occasionally binding constraint over the unconditional forecast horizon (default 40 periods) at each period of the simulation. The plots show multiple spells of a binding effective lower bound and many other variables are skewed as a result of the nonlinearity. It can happen that it is not possible to find a combination of shocks which enforce the occasionally binding constraint equation. In this case one solution can be to make the horizon larger over which the algorithm tries to enforce the equation. You can do this by setting the parameter at the beginning of the <code>@model</code> section: <code>@model Gali_2015_chapter_3_obc max_obc_horizon = 60 begin ... end</code>.</p><p>Next let us change the effective lower bound to <code>0.99</code> and plot once more:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_simulations(Gali_2015_chapter_3_obc, parameters = :R̄ =&gt; 0.99)</code><code class="nohighlight hljs ansi" style="display:block;">3-element Vector{Any}:
+ Plot{Plots.GRBackend() n=34}
+ Plot{Plots.GRBackend() n=22}
+ Plot{Plots.GRBackend() n=14}</code></pre><p><img src="../../assets/Gali_2015_chapter_3_obc__simulation__2.png" alt="Simulation_elb2"/></p><p>Now, the effect of the effective lower bound becomes less important as it binds less often.</p><p>If you want to ignore the occasionally binding constraint you can simply call:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_simulations(Gali_2015_chapter_3_obc, ignore_obc = true)</code><code class="nohighlight hljs ansi" style="display:block;">3-element Vector{Any}:
+ Plot{Plots.GRBackend() n=36}
+ Plot{Plots.GRBackend() n=24}
+ Plot{Plots.GRBackend() n=14}</code></pre><p><img src="../../assets/Gali_2015_chapter_3_obc__simulation__no.png" alt="Simulation_no_elb"/></p><p>and you get the simulation based on the first order solution approximated around the NSSS, which is the same as the one for the model without the modified Taylor rule.</p><p>We can plot the impulse response functions for the <code>eps_z</code> shock, while setting the parameter of the occasionally binding constraint back to <code>1</code>, as follows:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, parameters = :R̄ =&gt; 1.0)</code><code class="nohighlight hljs ansi" style="display:block;">3-element Vector{Any}:
+ Plot{Plots.GRBackend() n=36}
+ Plot{Plots.GRBackend() n=28}
+ Plot{Plots.GRBackend() n=8}</code></pre><p><img src="../../assets/Gali_2015_chapter_3_obc__eps_z.png" alt="IRF_elb"/></p><p>As you can see <code>R</code> remains above the effective lower bound in the first period.</p><p>Next, let us simulate the model using a series of shocks. E.g. three positive shocks to <code>eps_z</code> in periods 5, 10, and 15 in decreasing magnitude:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; shcks = zeros(1,15)</code><code class="nohighlight hljs ansi" style="display:block;">1×15 Matrix{Float64}:
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; shcks[5] =  3.0</code><code class="nohighlight hljs ansi" style="display:block;">3.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; shcks[10] = 2.0</code><code class="nohighlight hljs ansi" style="display:block;">2.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; shcks[15] = 1.0</code><code class="nohighlight hljs ansi" style="display:block;">1.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sks = KeyedArray(shcks;  Shocks = [:eps_z], Periods = 1:15)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Shocks ∈ 1-element Vector{Symbol}</span>
+→   <span class="sgr34">Periods ∈ 15-element UnitRange{Int64}</span>
+And data, <span class="sgr1">1×15 Matrix{Float64}</span>:
+            <span class="sgr34">(1)</span>    <span class="sgr34">(2)</span>    <span class="sgr34">(3)</span>    <span class="sgr34">(4)</span>    …  <span class="sgr34">(12)</span>    <span class="sgr34">(13)</span>    <span class="sgr34">(14)</span>    <span class="sgr34">(15)</span>
+  <span class="sgr35">(:eps_z)</span>    0.0    0.0    0.0    0.0        0.0     0.0     0.0     1.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_irf(Gali_2015_chapter_3_obc, shocks = sks, periods = 10)</code><code class="nohighlight hljs ansi" style="display:block;">3-element Vector{Any}:
+ Plot{Plots.GRBackend() n=32}
+ Plot{Plots.GRBackend() n=28}
+ Plot{Plots.GRBackend() n=8}</code></pre><p><img src="../../assets/Gali_2015_chapter_3_obc__shock_matrix__1.png" alt="Shock_series_elb"/></p><p>The effective lower bound is binding after all three shocks but the length of the constraint being binding varies with the shock size and is completely endogenous.</p><p>Last but not least, we can get the simulated moments of the model (theoretical moments are not available):</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; sims = get_irf(Gali_2015_chapter_3_obc, periods = 1000, shocks = :simulate, levels = true)</code><code class="nohighlight hljs ansi" style="display:block;">┌ Warning: No solution in period: 55
+└ @ MacroModelling ~/work/MacroModelling.jl/MacroModelling.jl/src/MacroModelling.jl:6900
+3-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Variables ∈ 23-element Vector{Symbol}</span>
+→   <span class="sgr34">Periods ∈ 1000-element UnitRange{Int64}</span>
+◪   <span class="sgr35">Shocks ∈ 1-element Vector{Symbol}</span>
+And data, <span class="sgr1">23×1000×1 Array{Float64, 3}</span>:
+<span class="sgr35">[:, :, 1] ~ (:, :, :simulate):</span>
+                   <span class="sgr34">(1)</span>            …  <span class="sgr34">(999)</span>            <span class="sgr34">(1000)</span>
+  <span class="sgr35">(:A)</span>               1.00456             1.0               1.0
+  <span class="sgr35">(:C)</span>               0.893383            0.95058           0.95058
+  <span class="sgr35">(:MC)</span>              0.428576            0.888889          0.888889
+  <span class="sgr35">(:M_real)</span>          0.894671            0.915236          0.915236
+  <span class="sgr35">(:N)</span>               0.853986     …      0.934655          0.934655
+  <span class="sgr35">(:Pi)</span>              0.980013            1.0               1.0
+   ⋮                              ⋱      ⋮
+  <span class="sgr35">(:nu)</span>             -0.000135444         0.0               0.0
+  <span class="sgr35">(:pi_ann)</span>         -0.079946     …     -1.77636e-15      -1.77636e-15
+  <span class="sgr35">(:r_real_ann)</span>      0.036057            0.0402013         0.0402013
+  <span class="sgr35">(:realinterest)</span>    1.00905             1.0101            1.0101
+  <span class="sgr35">(:x_aux_1)</span>         2.19287             3.452             3.452
+  <span class="sgr35">(:x_aux_2)</span>         3.39838             3.8835            3.8835</code></pre><p>Let&#39;s look at the mean and standard deviation of borrowing:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Statistics</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.mean(sims(:Y,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.9504128354065339</code></pre><p>and</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.std(sims(:Y,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.008610894732614794</code></pre><p>Compare this to the theoretical mean of the model without the occasionally binding constraint:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Variables ∈ 23-element Vector{Symbol}</span>
+→   <span class="sgr35">Mean_and_∂mean∂parameter ∈ 19-element Vector{Symbol}</span>
+And data, <span class="sgr1">23×19 Matrix{Float64}</span>:
+                   <span class="sgr35">(:Mean)</span>       <span class="sgr35">(:R̄)</span>  …  <span class="sgr35">(:std_nu)</span>  <span class="sgr35">(:activeᵒᵇᶜshocks)</span>
+  <span class="sgr35">(:A)</span>              1.0           0.0      0.0        0.0
+  <span class="sgr35">(:C)</span>              0.95058       0.0      0.0        0.0
+  <span class="sgr35">(:MC)</span>             0.888889      0.0      0.0        0.0
+  <span class="sgr35">(:M_real)</span>         0.915236      0.0      0.0        0.0
+  <span class="sgr35">(:N)</span>              0.934655      0.0  …   0.0        0.0
+  <span class="sgr35">(:Pi)</span>             1.0           0.0      0.0        0.0
+   ⋮                                   ⋱
+  <span class="sgr35">(:log_y)</span>         -0.0506831     0.0      0.0        0.0
+  <span class="sgr35">(:nu)</span>             0.0           0.0      0.0        0.0
+  <span class="sgr35">(:pi_ann)</span>        -1.77636e-15   0.0  …   0.0        0.0
+  <span class="sgr35">(:r_real_ann)</span>     0.0402013     0.0      0.0        0.0
+  <span class="sgr35">(:realinterest)</span>   1.0101        0.0      0.0        0.0
+  <span class="sgr35">(:x_aux_1)</span>        3.452         0.0      0.0        0.0
+  <span class="sgr35">(:x_aux_2)</span>        3.8835        0.0      0.0        0.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(Gali_2015_chapter_3_obc)(:Y,:)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Mean_and_∂mean∂parameter ∈ 19-element Vector{Symbol}</span>
+And data, <span class="sgr1">19-element view(::Matrix{Float64}, 12, :)</span> with eltype Float64:
+ <span class="sgr35">(:Mean)</span>              0.9505798249541407
+ <span class="sgr35">(:R̄)</span>                 0.0
+ <span class="sgr35">(:σ)</span>                 0.006022296117038623
+ <span class="sgr35">(:φ)</span>                 0.008029728156051453
+ <span class="sgr35">(:ϕᵖⁱ)</span>               4.91816205861777e-17
+ <span class="sgr35">(:ϕʸ)</span>                0.0
+ <span class="sgr35">(:θ)</span>                 0.0
+ <span class="sgr35">(:ρ_ν)</span>               0.0
+  ⋮
+ <span class="sgr35">(:α)</span>                -0.0941921455772785
+ <span class="sgr35">(:ϵ)</span>                 0.0016503121961009332
+ <span class="sgr35">(:τ)</span>                 0.11882247811926773
+ <span class="sgr35">(:std_a)</span>             0.0
+ <span class="sgr35">(:std_z)</span>             0.0
+ <span class="sgr35">(:std_nu)</span>            0.0
+ <span class="sgr35">(:activeᵒᵇᶜshocks)</span>   0.0</code></pre><p>and the theoretical standard deviation:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Variables ∈ 23-element Vector{Symbol}</span>
+→   <span class="sgr35">Standard_deviation_and_∂standard_deviation∂parameter ∈ 19-element Vector{Symbol}</span>
+And data, <span class="sgr1">23×19 Matrix{Float64}</span>:
+                   <span class="sgr35">(:Standard_deviation)</span>  …  <span class="sgr35">(:std_nu)</span>     <span class="sgr35">(:activeᵒᵇᶜshocks)</span>
+  <span class="sgr35">(:A)</span>              0.0229416                 1.90534e-29   0.0
+  <span class="sgr35">(:C)</span>              0.0335717                 0.0963579     0.0
+  <span class="sgr35">(:MC)</span>             0.216091                  0.837765      0.0
+  <span class="sgr35">(:M_real)</span>         0.0592662                 0.254845      0.0
+  <span class="sgr35">(:N)</span>              0.0378695             …   0.146816      0.0
+  <span class="sgr35">(:Pi)</span>             0.0123588                 0.0334732     0.0
+   ⋮                                      ⋱
+  <span class="sgr35">(:log_y)</span>          0.0353171                 0.101368      0.0
+  <span class="sgr35">(:nu)</span>             0.00288675                1.1547        0.0
+  <span class="sgr35">(:pi_ann)</span>         0.049435              …   0.133893      0.0
+  <span class="sgr35">(:r_real_ann)</span>     0.0564465                 0.253692      0.0
+  <span class="sgr35">(:realinterest)</span>   0.0142542                 0.0640637     0.0
+  <span class="sgr35">(:x_aux_1)</span>        0.951526                  1.44896       0.0
+  <span class="sgr35">(:x_aux_2)</span>        0.516659                  0.269446      0.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(Gali_2015_chapter_3_obc)(:Y,:)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Standard_deviation_and_∂standard_deviation∂parameter ∈ 19-element Vector{Symbol}</span>
+And data, <span class="sgr1">19-element view(::Matrix{Float64}, 12, :)</span> with eltype Float64:
+ <span class="sgr35">(:Standard_deviation)</span>   0.03357169677999059
+ <span class="sgr35">(:R̄)</span>                    0.0
+ <span class="sgr35">(:σ)</span>                   -0.015188891670653773
+ <span class="sgr35">(:φ)</span>                   -0.0008487527406967675
+ <span class="sgr35">(:ϕᵖⁱ)</span>                 -0.005609204146850108
+ <span class="sgr35">(:ϕʸ)</span>                  -0.03311342389433858
+ <span class="sgr35">(:θ)</span>                    0.06235561294718318
+ <span class="sgr35">(:ρ_ν)</span>                  0.0003287423120004376
+  ⋮
+ <span class="sgr35">(:α)</span>                    0.014790836886619477
+ <span class="sgr35">(:ϵ)</span>                    0.0006244538126497961
+ <span class="sgr35">(:τ)</span>                    0.004196462097498814
+ <span class="sgr35">(:std_a)</span>                0.924132145811677
+ <span class="sgr35">(:std_z)</span>                0.48178961033413437
+ <span class="sgr35">(:std_nu)</span>               0.09635792206682661
+ <span class="sgr35">(:activeᵒᵇᶜshocks)</span>      0.0</code></pre><p>The mean of output is lower in the model with effective lower bound compared to the model without and the standard deviation is higher.</p><h2 id="Example:-Borrowing-constraint"><a class="docs-heading-anchor" href="#Example:-Borrowing-constraint">Example: Borrowing constraint</a><a id="Example:-Borrowing-constraint-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Borrowing-constraint" title="Permalink"></a></h2><h3 id="Model-definition"><a class="docs-heading-anchor" href="#Model-definition">Model definition</a><a id="Model-definition-1"></a><a class="docs-heading-anchor-permalink" href="#Model-definition" title="Permalink"></a></h3><p>Let us start with a consumption-saving model containing a borrowing constraint (see [@citet cuba2019likelihood] for details). Output is exogenously given, and households can only borrow up to a fraction of output and decide between saving and consumption. The first order conditions of the model are:</p><p class="math-container">\[\begin{align*}
+Y_t + B_t &amp;= C_t + R \, B_{t-1}\\
+\log(Y_t) &amp;= \rho \, \log(Y_{t-1}) + \sigma \, \varepsilon_t\\
+C_t^{-\gamma} &amp;= \beta \, R \, \mathbb{E}_t (C_{t+1}^{-\gamma}) + \lambda_t\\
+0 &amp;= \lambda_t \, (B_t - mY_t)
+\end{align*}\]</p><p>in order to write this model down we need to express the Karush-Kuhn-Tucker condition (last equation) using a max (or min) operator, so that it becomes:</p><p class="math-container">\[0 = \max(B_t - mY_t, -\lambda_t)\]</p><p>We can write this model containing an occasionally binding constraint in a very convenient way:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; @model borrowing_constraint begin
+           Y[0] + B[0] = C[0] + R * B[-1]
+       
+           log(Y[0]) = ρ * log(Y[-1]) + σ * ε[x]
+       
+           C[0]^(-γ) = β * R * C[1]^(-γ) + λ[0]
+       
+           0 = max(B[0] - m * Y[0], -λ[0])
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Model:        borrowing_constraint
+Variables
+ Total:       49
+  Auxiliary:  41
+ States:      42
+  Auxiliary:  40
+ Jumpers:     1
+  Auxiliary:  0
+Shocks:       42
+Parameters:   7</code></pre><p>In the background the system of equations is augmented by a series of anticipated shocks added to the equation containing the constraint (max/min operator). This explains the large number of auxilliary variables and shocks.</p><p>Next we define the parameters as usual:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; @parameters borrowing_constraint begin
+           R = 1.05
+           β = 0.945
+           ρ = 0.9
+           σ = 0.05
+           m = 1
+           γ = 1
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non stochastic steady state problem:	0.511 seconds
+Set up non stochastic steady state problem:				0.268 seconds
+Take symbolic derivatives up to first order:				0.533 seconds
+Find non stochastic steady state:					2.711 seconds
+Model:        borrowing_constraint
+Variables
+ Total:       49
+  Auxiliary:  41
+ States:      42
+  Auxiliary:  40
+ Jumpers:     1
+  Auxiliary:  0
+Shocks:       42
+Parameters:   7</code></pre><h3 id="Working-with-the-model"><a class="docs-heading-anchor" href="#Working-with-the-model">Working with the model</a><a id="Working-with-the-model-1"></a><a class="docs-heading-anchor-permalink" href="#Working-with-the-model" title="Permalink"></a></h3><p>For the non stochastic steady state (NSSS) to exist the constraint has to be binding (<code>B[0] = m * Y[0]</code>). This implies a wedge in the Euler equation (<code>λ &gt; 0</code>).</p><p>We can check this by getting the NSSS:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; SS(borrowing_constraint)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Variables_and_calibrated_parameters ∈ 49-element Vector{Symbol}</span>
+→   <span class="sgr35">Steady_state_and_∂steady_state∂parameter ∈ 8-element Vector{Symbol}</span>
+And data, <span class="sgr1">49×8 Matrix{Float64}</span>:
+                     <span class="sgr35">(:Steady_state)</span>  …  <span class="sgr35">(:γ)</span>          <span class="sgr35">(:activeᵒᵇᶜshocks)</span>
+  <span class="sgr35">(:B)</span>                1.0                 0.0           0.0
+  <span class="sgr35">(:C)</span>                0.95                0.0           0.0
+  <span class="sgr35">(:Y)</span>                1.0                 0.0           0.0
+  <span class="sgr35">(:Χᵒᵇᶜ⁺ꜝ¹ꜝ)</span>         0.0                 0.0           0.0
+  <span class="sgr35">(:λ)</span>                0.00815789      …   0.000418445   0.0
+  <span class="sgr35">(:χᵒᵇᶜ⁺ꜝ¹ꜝʳ)</span>       -0.00815789         -0.000418445   0.0
+   ⋮                                  ⋱
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁴⁰⁾)</span>   0.0                 0.0           0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁴⁾)</span>    0.0                 0.0           0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁵⁾)</span>    0.0             …   0.0           0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁶⁾)</span>    0.0                 0.0           0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁷⁾)</span>    0.0                 0.0           0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁸⁾)</span>    0.0                 0.0           0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁹⁾)</span>    0.0                 0.0           0.0</code></pre><p>A common task is to plot impulse response function for positive and negative shocks. This should allow us to understand the role of the constraint.</p><p>First, we need to import the StatsPlots package and then we can plot the positive shock.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import StatsPlots</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_irf(borrowing_constraint)</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: AssertionError: Could not find stable first order solution.</code></pre><p><img src="../../assets/borrowing_constraint__ε_pos.png" alt="Positive_shock"/></p><p>We can see that the constraint is no longer binding in the first five periods because <code>Y</code> and <code>B</code> do not increase by the same amount. They should move by the same amount in the case of a negative shock:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import StatsPlots</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_irf(borrowing_constraint, negative_shock = true)</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: AssertionError: Could not find stable first order solution.</code></pre><p><img src="../../assets/borrowing_constraint__ε_neg.png" alt="Negative_shock"/></p><p>and indeed in this case they move by the same amount. The difference between a positive and negative shock demonstrates the influence of the occasionally binding constraint.</p><p>Another common exercise is to plot the impulse response functions from a series of shocks. Let&#39;s assume in period 10 there is a positive shocks and in period 30 a negative one. Let&#39;s view the results for 50 more periods. We can do this as follows:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; shcks = zeros(1,30)</code><code class="nohighlight hljs ansi" style="display:block;">1×30 Matrix{Float64}:
+ 0.0  0.0  0.0  0.0  0.0  0.0  0.0  0.0  …  0.0  0.0  0.0  0.0  0.0  0.0  0.0</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; shcks[10] =  .6</code><code class="nohighlight hljs ansi" style="display:block;">0.6</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; shcks[30] = -.6</code><code class="nohighlight hljs ansi" style="display:block;">-0.6</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sks = KeyedArray(shcks;  Shocks = [:ε], Periods = 1:30)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Shocks ∈ 1-element Vector{Symbol}</span>
+→   <span class="sgr34">Periods ∈ 30-element UnitRange{Int64}</span>
+And data, <span class="sgr1">1×30 Matrix{Float64}</span>:
+        <span class="sgr34">(1)</span>    <span class="sgr34">(2)</span>    <span class="sgr34">(3)</span>    <span class="sgr34">(4)</span>    <span class="sgr34">(5)</span>    …  <span class="sgr34">(27)</span>    <span class="sgr34">(28)</span>    <span class="sgr34">(29)</span>    <span class="sgr34">(30)</span>
+  <span class="sgr35">(:ε)</span>    0.0    0.0    0.0    0.0    0.0        0.0     0.0     0.0    -0.6</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_irf(borrowing_constraint, shocks = sks, periods = 50)</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: AssertionError: Could not find stable first order solution.</code></pre><p><img src="../../assets/borrowing_constraint__obc.png" alt="Simulation"/></p><p>In this case the difference between the shocks and the impact of the constraint become quite obvious. Let&#39;s compare this with a version of the model that ignores the occasionally binding constraint. In order to plot the impulse response functions without dynamically enforcing the constraint we can simply write:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_irf(borrowing_constraint, shocks = sks, periods = 50, ignore_obc = true)</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: AssertionError: Could not find stable first order solution.</code></pre><p><img src="../../assets/borrowing_constraint__no_obc.png" alt="Simulation"/></p><p>Another interesting statistic is model moments. As there are no theoretical moments we have to rely on simulated data:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; sims = get_irf(borrowing_constraint, periods = 1000, shocks = :simulate, levels = true)</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: AssertionError: Could not find stable first order solution.</code></pre><p>Let&#39;s look at the mean and standard deviation of borrowing:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Statistics</code><code class="nohighlight hljs ansi" style="display:block;"></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.mean(sims(:B,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: ArgumentError: could not find key :B in vector [:A, :C, :MC, :M_real, :N, :Pi, :Pi_star, :Q, :R, :S, :W_real, :Y, :Z, :i_ann, :log_N, :log_W_real, :log_y, :nu, :pi_ann, :r_real_ann, :realinterest, :x_aux_1, :x_aux_2]</code></pre><p>and</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.std(sims(:B,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">ERROR: ArgumentError: could not find key :B in vector [:A, :C, :MC, :M_real, :N, :Pi, :Pi_star, :Q, :R, :S, :W_real, :Y, :Z, :i_ann, :log_N, :log_W_real, :log_y, :nu, :pi_ann, :r_real_ann, :realinterest, :x_aux_1, :x_aux_2]</code></pre><p>Compare this to the theoretical mean of the model without the occasionally binding constraint:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(borrowing_constraint)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+↓   <span class="sgr35">Variables ∈ 4-element Vector{Symbol}</span>
+→   <span class="sgr35">Mean_and_∂mean∂parameter ∈ 8-element Vector{Symbol}</span>
+And data, <span class="sgr1">4×8 Matrix{Float64}</span>:
+        <span class="sgr35">(:Mean)</span>      <span class="sgr35">(:R)</span>      <span class="sgr35">(:β)</span>      …  <span class="sgr35">(:γ)</span>          <span class="sgr35">(:activeᵒᵇᶜshocks)</span>
+  <span class="sgr35">(:B)</span>   1.0          0.0       0.0          0.0           0.0
+  <span class="sgr35">(:C)</span>   0.95        -1.0       0.0          0.0           0.0
+  <span class="sgr35">(:Y)</span>   1.0          0.0       0.0          0.0           0.0
+  <span class="sgr35">(:λ)</span>   0.00815789  -0.98615  -1.10526      0.000418445   0.0</code></pre><p>and the theoretical standard deviation:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_std(borrowing_constraint)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+ERROR: AssertionError: Could not find covariance matrix.</code></pre><p>The mean of borrowing is lower in the model with occasionally binding constraints compared to the model without and the standard deviation is higher.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../loops/">« Programmatic model writing using for-loops</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.1 on <span class="colophon-date" title="Thursday 13 February 2025 11:54">Thursday 13 February 2025</span>. Using Julia version 1.11.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
