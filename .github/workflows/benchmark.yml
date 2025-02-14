@@ -1,10 +1,9 @@
 name: Benchmark a pull request
 
 on:
-  pull_request:
-    types: [opened, synchronize]
+  pull_request_target:
     branches:
-    - master
+      - master
   workflow_dispatch:  # allows manual triggering
 
 permissions:
