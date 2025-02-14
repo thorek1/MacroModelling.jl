@@ -8,15 +8,16 @@ const SUITE = BenchmarkGroup()
 
 SUITE["FS2000"] = BenchmarkGroup()
 
-SUITE["FS2000"]["load_time"] = @elapsed using MacroModelling
-
+# SUITE["FS2000"]["load_time"] = @elapsed using MacroModelling
+using MacroModelling
 import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters
 
-SUITE["FS2000"]["ttfx_excl_load_time"] = @elapsed include("../models/FS2000.jl")
-
+# SUITE["FS2000"]["ttfx_excl_load_time"] = @elapsed include("../models/FS2000.jl")
+include("../models/FS2000.jl")
 model = FS2000
 
-SUITE["FS2000"]["ttfx_irf"] = @elapsed get_irf(model)
+# SUITE["FS2000"]["ttfx_irf"] = @elapsed get_irf(model)
+get_irf(model)
 
 SUITE["FS2000"]["irf"] = @benchmarkable get_irf($model) setup = clear_solution_caches!($model, :first_order)
 
