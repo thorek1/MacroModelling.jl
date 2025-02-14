@@ -1,7 +1,9 @@
 name: Benchmark a pull request
 
 on:
-  push:
+  pull_request:
+    branches:
+    - master
   workflow_dispatch:  # allows manual triggering
 
 permissions:
