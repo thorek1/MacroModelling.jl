@@ -3,6 +3,7 @@ using BenchmarkTools
 
 BenchmarkTools.DEFAULT_PARAMETERS.evals = 10
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 1000
+BenchmarkTools.DEFAULT_PARAMETERS.seconds = 10
 
 # Define a parent BenchmarkGroup to contain our SUITE
 const SUITE = BenchmarkGroup()
@@ -48,8 +49,7 @@ sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, 
 
 clear_solution_caches!(𝓂, :first_order)
 
-SUITE["FS2000"]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($
-𝓂, :first_order)
+SUITE["FS2000"]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($𝓂, :first_order)
 
 SUITE["FS2000"]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
 
@@ -109,10 +109,8 @@ sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, 
 
 clear_solution_caches!(𝓂, :first_order)
 
-SUITE["NAWM_EAUS_2008"]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($
-𝓂, :first_order)
-
-SUITE["NAWM_EAUS_2008"]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["NAWM_EAUS_2008"]["qme"]["schur"] =       @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["NAWM_EAUS_2008"]["qme"]["doubling"] =    @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
 
 
 A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
@@ -124,11 +122,10 @@ CC = C * C'
 solve_lyapunov_equation(A, CC)
 
 SUITE["NAWM_EAUS_2008"]["lyapunov"] = BenchmarkGroup()
-SUITE["NAWM_EAUS_2008"]["lyapunov"]["doubling"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :doubling) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["NAWM_EAUS_2008"]["lyapunov"]["bartels_stewart"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bartels_stewart) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["NAWM_EAUS_2008"]["lyapunov"]["bicgstab"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bicgstab) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["NAWM_EAUS_2008"]["lyapunov"]["gmres"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :gmres) # setup = clear_solution_caches!($𝓂, :first_order)
-
+SUITE["NAWM_EAUS_2008"]["lyapunov"]["doubling"] =           @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :doubling) # setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["NAWM_EAUS_2008"]["lyapunov"]["bartels_stewart"] =    @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bartels_stewart) # setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["NAWM_EAUS_2008"]["lyapunov"]["bicgstab"] =           @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bicgstab) # setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["NAWM_EAUS_2008"]["lyapunov"]["gmres"] =              @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :gmres) # setup = clear_solution_caches!($𝓂, :first_order)
 
 clear_solution_caches!(𝓂, :first_order)
 
