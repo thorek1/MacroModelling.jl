@@ -63,11 +63,15 @@ CC = C * C'
 solve_lyapunov_equation(A, CC)
 
 SUITE["FS2000"]["lyapunov"] = BenchmarkGroup()
-SUITE["FS2000"]["lyapunov"]["doubling"] = @benchmark solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :doubling) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["FS2000"]["lyapunov"]["bartels_stewart"] = @benchmark solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bartels_stewart) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["FS2000"]["lyapunov"]["bicgstab"] = @benchmark solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bicgstab) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["FS2000"]["lyapunov"]["gmres"] = @benchmark solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :gmres) # setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["FS2000"]["lyapunov"]["doubling"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :doubling) # setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["FS2000"]["lyapunov"]["bartels_stewart"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bartels_stewart) # setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["FS2000"]["lyapunov"]["bicgstab"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bicgstab) # setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["FS2000"]["lyapunov"]["gmres"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :gmres) # setup = clear_solution_caches!($𝓂, :first_order)
 
+
+clear_solution_caches!(𝓂, :first_order)
+
+SUITE["FS2000"]["covariance"] = @benchmarkable get_covariance($𝓂) setup = clear_solution_caches!($𝓂, :first_order)
 
 # SUITE["trig"] = BenchmarkGroup(["math", "triangles"])
 # SUITE["dot"] = BenchmarkGroup(["broadcast", "elementwise"])
