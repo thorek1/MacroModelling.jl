@@ -12,44 +12,61 @@ const SUITE = BenchmarkGroup()
 SUITE["FS2000"] = BenchmarkGroup()
 
 # SUITE["FS2000"]["load_time"] = @elapsed using MacroModelling
+import LinearAlgebra as ℒ
 using MacroModelling
-import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculate_jacobian, merge_calculation_options
+import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculate_jacobian, merge_calculation_options, solve_lyapunov_equation
 
 # SUITE["FS2000"]["ttfx_excl_load_time"] = @elapsed include("../models/FS2000.jl")
 include("../models/FS2000.jl")
-model = FS2000
+𝓂 = FS2000
 
-# SUITE["FS2000"]["ttfx_irf"] = @elapsed get_irf(model)
-get_irf(model)
-
-
-clear_solution_caches!($model, :first_order)
-
-SUITE["FS2000"]["irf"] = @benchmarkable get_irf($model) setup = clear_solution_caches!($model, :first_order)
-
-reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(model, model.parameter_values)
-
-clear_solution_caches!($model, :first_order)
-
-SUITE["FS2000"]["NSSS"] = @benchmarkable get_NSSS_and_parameters($model, $model.parameter_values) setup = clear_solution_caches!($model, :first_order)
+# SUITE["FS2000"]["ttfx_irf"] = @elapsed get_irf(𝓂)
+get_irf(𝓂)
 
 
-∇₁ = calculate_jacobian(model.parameter_values, reference_steady_state, model)
+clear_solution_caches!(𝓂, :first_order)
 
-clear_solution_caches!($model, :first_order)
+SUITE["FS2000"]["irf"] = @benchmarkable get_irf($𝓂) setup = clear_solution_caches!($𝓂, :first_order)
 
-SUITE["FS2000"]["jacobian"] = @benchmarkable calculate_jacobian($model.parameter_values, $reference_steady_state, $model) setup = clear_solution_caches!($model, :first_order)
+reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values)
+
+clear_solution_caches!(𝓂, :first_order)
+
+SUITE["FS2000"]["NSSS"] = @benchmarkable get_NSSS_and_parameters($𝓂, $𝓂.parameter_values) setup = clear_solution_caches!($𝓂, :first_order)
+
+
+∇₁ = calculate_jacobian(𝓂.parameter_values, reference_steady_state, 𝓂)
+
+clear_solution_caches!(𝓂, :first_order)
+
+SUITE["FS2000"]["jacobian"] = @benchmarkable calculate_jacobian($𝓂.parameter_values, $reference_steady_state, $𝓂) setup = clear_solution_caches!($𝓂, :first_order)
 
 
 SUITE["FS2000"]["qme"] = BenchmarkGroup()
 
-sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁; T = model.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
+sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
 
-clear_solution_caches!($model, :first_order)
+clear_solution_caches!(𝓂, :first_order)
 
-SUITE["FS2000"]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $model.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($model, :first_order)
+SUITE["FS2000"]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($
+𝓂, :first_order)
 
-SUITE["FS2000"]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $model.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($model, :first_order)
+SUITE["FS2000"]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
+
+
+A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+
+C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
+
+CC = C * C'
+
+solve_lyapunov_equation(A, CC)
+
+SUITE["FS2000"]["lyapunov"] = BenchmarkGroup()
+SUITE["FS2000"]["lyapunov"]["doubling"] = @benchmark solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :doubling) # setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["FS2000"]["lyapunov"]["bartels_stewart"] = @benchmark solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bartels_stewart) # setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["FS2000"]["lyapunov"]["bicgstab"] = @benchmark solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bicgstab) # setup = clear_solution_caches!($𝓂, :first_order)
+SUITE["FS2000"]["lyapunov"]["gmres"] = @benchmark solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :gmres) # setup = clear_solution_caches!($𝓂, :first_order)
 
 
 # SUITE["trig"] = BenchmarkGroup(["math", "triangles"])
