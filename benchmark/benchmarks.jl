@@ -3,6 +3,7 @@ using BenchmarkTools
 
 BenchmarkTools.DEFAULT_PARAMETERS.evals = 10
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 1000
+BenchmarkTools.DEFAULT_PARAMETERS.seconds = 10
 
 # Define a parent BenchmarkGroup to contain our SUITE
 const SUITE = BenchmarkGroup()
@@ -15,124 +16,73 @@ import LinearAlgebra as ℒ
 using MacroModelling
 import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculate_jacobian, merge_calculation_options, solve_lyapunov_equation
 
-# SUITE["FS2000"]["ttfx_excl_load_time"] = @elapsed include("../models/FS2000.jl")
+
+function run_benchmarks!(𝓂::ℳ, SUITE::BenchmarkGroup)
+    SUITE[𝓂.model_name] = BenchmarkGroup()
+
+    get_irf(𝓂)
+    
+    clear_solution_caches!(𝓂, :first_order)
+    
+    SUITE[𝓂.model_name]["irf"] = @benchmarkable get_irf($𝓂) setup = clear_solution_caches!($𝓂, :first_order)
+    
+    reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values)
+    
+    clear_solution_caches!(𝓂, :first_order)
+    
+    SUITE[𝓂.model_name]["NSSS"] = @benchmarkable get_NSSS_and_parameters($𝓂, $𝓂.parameter_values) setup = clear_solution_caches!($𝓂, :first_order)
+    
+    
+    ∇₁ = calculate_jacobian(𝓂.parameter_values, reference_steady_state, 𝓂)
+    
+    clear_solution_caches!(𝓂, :first_order)
+    
+    SUITE[𝓂.model_name]["jacobian"] = @benchmarkable calculate_jacobian($𝓂.parameter_values, $reference_steady_state, $𝓂) setup = clear_solution_caches!($𝓂, :first_order)
+    
+    
+    SUITE[𝓂.model_name]["qme"] = BenchmarkGroup()
+    
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
+    
+    clear_solution_caches!(𝓂, :first_order)
+    
+    SUITE[𝓂.model_name]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($𝓂, :first_order)
+    
+    SUITE[𝓂.model_name]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
+    
+    
+    A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+    
+    C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
+    
+    CC = C * C'
+    
+    solve_lyapunov_equation(A, CC)
+    
+    SUITE[𝓂.model_name]["lyapunov"] = BenchmarkGroup()
+    SUITE[𝓂.model_name]["lyapunov"]["doubling"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :doubling) # setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["lyapunov"]["bartels_stewart"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bartels_stewart) # setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["lyapunov"]["bicgstab"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bicgstab) # setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["lyapunov"]["gmres"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :gmres) # setup = clear_solution_caches!($𝓂, :first_order)
+    
+    
+    clear_solution_caches!(𝓂, :first_order)
+    
+    SUITE[𝓂.model_name]["covariance"] = @benchmarkable get_covariance($𝓂) setup = clear_solution_caches!($𝓂, :first_order)
+end
+
+
 include("../models/FS2000.jl")
-𝓂 = FS2000
-
-SUITE["FS2000"] = BenchmarkGroup()
-
-get_irf(𝓂)
-
-
-clear_solution_caches!(𝓂, :first_order)
-
-SUITE["FS2000"]["irf"] = @benchmarkable get_irf($𝓂) setup = clear_solution_caches!($𝓂, :first_order)
-
-reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values)
-
-clear_solution_caches!(𝓂, :first_order)
-
-SUITE["FS2000"]["NSSS"] = @benchmarkable get_NSSS_and_parameters($𝓂, $𝓂.parameter_values) setup = clear_solution_caches!($𝓂, :first_order)
-
-
-∇₁ = calculate_jacobian(𝓂.parameter_values, reference_steady_state, 𝓂)
-
-clear_solution_caches!(𝓂, :first_order)
-
-SUITE["FS2000"]["jacobian"] = @benchmarkable calculate_jacobian($𝓂.parameter_values, $reference_steady_state, $𝓂) setup = clear_solution_caches!($𝓂, :first_order)
-
-
-SUITE["FS2000"]["qme"] = BenchmarkGroup()
-
-sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
-
-clear_solution_caches!(𝓂, :first_order)
-
-SUITE["FS2000"]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($
-𝓂, :first_order)
-
-SUITE["FS2000"]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
-
-
-A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
-
-C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
-
-CC = C * C'
-
-solve_lyapunov_equation(A, CC)
-
-SUITE["FS2000"]["lyapunov"] = BenchmarkGroup()
-SUITE["FS2000"]["lyapunov"]["doubling"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :doubling) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["FS2000"]["lyapunov"]["bartels_stewart"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bartels_stewart) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["FS2000"]["lyapunov"]["bicgstab"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bicgstab) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["FS2000"]["lyapunov"]["gmres"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :gmres) # setup = clear_solution_caches!($𝓂, :first_order)
-
-
-clear_solution_caches!(𝓂, :first_order)
-
-SUITE["FS2000"]["covariance"] = @benchmarkable get_covariance($𝓂) setup = clear_solution_caches!($𝓂, :first_order)
-
-
-
+run_benchmarks!(FS2000, SUITE)
 
 
 include("../models/NAWM_EAUS_2008.jl")
-𝓂 = NAWM_EAUS_2008
-
-SUITE["NAWM_EAUS_2008"] = BenchmarkGroup()
-
-get_irf(𝓂)
+run_benchmarks!(NAWM_EAUS_2008, SUITE)
 
 
-clear_solution_caches!(𝓂, :first_order)
+include("../models/Smets_and_Wouters_2007.jl")
+run_benchmarks!(Smets_and_Wouters_2007, SUITE)
 
-SUITE["NAWM_EAUS_2008"]["irf"] = @benchmarkable get_irf($𝓂) setup = clear_solution_caches!($𝓂, :first_order)
-
-reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values)
-
-clear_solution_caches!(𝓂, :first_order)
-
-SUITE["NAWM_EAUS_2008"]["NSSS"] = @benchmarkable get_NSSS_and_parameters($𝓂, $𝓂.parameter_values) setup = clear_solution_caches!($𝓂, :first_order)
-
-
-∇₁ = calculate_jacobian(𝓂.parameter_values, reference_steady_state, 𝓂)
-
-clear_solution_caches!(𝓂, :first_order)
-
-SUITE["NAWM_EAUS_2008"]["jacobian"] = @benchmarkable calculate_jacobian($𝓂.parameter_values, $reference_steady_state, $𝓂) setup = clear_solution_caches!($𝓂, :first_order)
-
-
-SUITE["NAWM_EAUS_2008"]["qme"] = BenchmarkGroup()
-
-sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
-
-clear_solution_caches!(𝓂, :first_order)
-
-SUITE["NAWM_EAUS_2008"]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($
-𝓂, :first_order)
-
-SUITE["NAWM_EAUS_2008"]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
-
-
-A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
-
-C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
-
-CC = C * C'
-
-solve_lyapunov_equation(A, CC)
-
-SUITE["NAWM_EAUS_2008"]["lyapunov"] = BenchmarkGroup()
-SUITE["NAWM_EAUS_2008"]["lyapunov"]["doubling"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :doubling) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["NAWM_EAUS_2008"]["lyapunov"]["bartels_stewart"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bartels_stewart) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["NAWM_EAUS_2008"]["lyapunov"]["bicgstab"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :bicgstab) # setup = clear_solution_caches!($𝓂, :first_order)
-SUITE["NAWM_EAUS_2008"]["lyapunov"]["gmres"] = @benchmarkable solve_lyapunov_equation($A, $CC, lyapunov_algorithm = :gmres) # setup = clear_solution_caches!($𝓂, :first_order)
-
-
-clear_solution_caches!(𝓂, :first_order)
-
-SUITE["NAWM_EAUS_2008"]["covariance"] = @benchmarkable get_covariance($𝓂) setup = clear_solution_caches!($𝓂, :first_order)
 
 # SUITE["trig"] = BenchmarkGroup(["math", "triangles"])
 # SUITE["dot"] = BenchmarkGroup(["broadcast", "elementwise"])
