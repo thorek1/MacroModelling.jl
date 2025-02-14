@@ -20,8 +20,9 @@ import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculat
 function run_benchmarks!(𝓂::ℳ, SUITE::BenchmarkGroup)
     SUITE[𝓂.model_name] = BenchmarkGroup()
 
-    get_irf(𝓂)
-    
+    # get_irf(𝓂)
+    SUITE[𝓂.model_name]["ttfx_irf"] = BenchmarkTools.Trial(BenchmarkTools.Parameters(seconds=0,samples=1,evals=1,overhead=0,gctrial=false,gcsample=false),[@elapsed get_irf(𝓂)],zeros(1),0,0)
+
     clear_solution_caches!(𝓂, :first_order)
     
     SUITE[𝓂.model_name]["irf"] = @benchmarkable get_irf($𝓂) setup = clear_solution_caches!($𝓂, :first_order)
