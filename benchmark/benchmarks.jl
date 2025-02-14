@@ -80,7 +80,7 @@ include("../models/NAWM_EAUS_2008.jl")
 run_benchmarks!(NAWM_EAUS_2008, SUITE)
 
 
-include("../models/Smets_and_Wouters_2007.jl")
+include("../models/Smets_Wouters_2007.jl")
 run_benchmarks!(Smets_and_Wouters_2007, SUITE)
 
 
