@@ -1,6 +1,9 @@
 
 using BenchmarkTools
 
+BenchmarkTools.DEFAULT_PARAMETERS.evals = 10
+BenchmarkTools.DEFAULT_PARAMETERS.samples = 1000
+
 # Define a parent BenchmarkGroup to contain our SUITE
 const SUITE = BenchmarkGroup()
 
@@ -19,7 +22,14 @@ model = FS2000
 # SUITE["FS2000"]["ttfx_irf"] = @elapsed get_irf(model)
 get_irf(model)
 
+
+clear_solution_caches!($model, :first_order)
+
 SUITE["FS2000"]["irf"] = @benchmarkable get_irf($model) setup = clear_solution_caches!($model, :first_order)
+
+get_NSSS_and_parameters(model, $model.parameter_values)
+
+clear_solution_caches!($model, :first_order)
 
 SUITE["FS2000"]["NSSS"] = @benchmarkable get_NSSS_and_parameters($model, $model.parameter_values) setup = clear_solution_caches!($model, :first_order)
 
