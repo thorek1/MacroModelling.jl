@@ -384,6 +384,7 @@ mutable struct ℳ
 
     bounds::Dict{Symbol,Tuple{Float64,Float64}}
 
+    jacobian::Tuple{Function, Vector{<: Real}, Matrix{<: Real}, 𝒟.JacobianPrep}
     # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
     model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
     # model_jacobian_parameters::Function

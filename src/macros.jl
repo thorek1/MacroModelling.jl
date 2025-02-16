@@ -885,6 +885,7 @@ macro model(𝓂,ex...)
 
                         $bounds,
 
+                        (x->x, zeros(0), zeros(0,0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0])), # jacobian
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
                         ([], Int[], zeros(1,1)), # model_jacobian
                         # x->x, # model_jacobian_parameters

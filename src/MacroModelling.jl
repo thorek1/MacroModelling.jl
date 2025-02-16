@@ -25,6 +25,7 @@ import Accessors
 import DifferentiationInterface as 𝒟
 import ForwardDiff as ℱ
 backend = 𝒟.AutoForwardDiff()
+import FastDifferentiation
 # import Diffractor: DiffractorForwardBackend
 # 𝒷 = 𝒜.ForwardDiffBackend
 # 𝒷 = Diffractor.DiffractorForwardBackend
@@ -2616,7 +2617,7 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
 
     vars_to_exclude = [vcat(Symbol.(vars_to_solve), 𝓂.➕_vars),Symbol[]]
 
-    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
 
 
     push!(𝓂.solved_vars, Symbol.(vars_to_solve))
@@ -2840,7 +2841,7 @@ end
 
 
 
-function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}, 
+function make_equation_robust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}, 
                                                 vars_to_exclude::Vector{Vector{Symbol}}, 
                                                 bounds::Dict{Symbol,Tuple{Float64,Float64}}, 
                                                 ➕_vars::Vector{Symbol}, 
@@ -3364,7 +3365,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 else
                     vars_to_exclude = [vcat(Symbol.(var_to_solve_for), 𝓂.➕_vars), Symbol[]]
                     
-                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
+                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
     
                     if length(vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)) > 0
                         push!(SS_solve_func,vcat(ss_and_aux_equations, ss_and_aux_equations_dep)...)
@@ -5587,18 +5588,62 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     dyn_present_list = collect(reduce(union, 𝓂.dyn_present_list))
     dyn_past_list = collect(reduce(union, 𝓂.dyn_past_list))
     dyn_exo_list = collect(reduce(union,𝓂.dyn_exo_list))
-    # dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+    dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
     
     future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_future_list))
     present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_present_list))
     past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")),string.(dyn_past_list))
     exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")),string.(dyn_exo_list))
-    # stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")),string.(dyn_ss_list))
+    stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")),string.(dyn_ss_list))
     
-    vars_raw = [dyn_future_list[indexin(sort(future),future)]...,
-                dyn_present_list[indexin(sort(present),present)]...,
-                dyn_past_list[indexin(sort(past),past)]...,
-                dyn_exo_list[indexin(sort(exo),exo)]...]
+    vars_raw = vcat(dyn_future_list[indexin(sort(future),future)],
+                    dyn_present_list[indexin(sort(present),present)],
+                    dyn_past_list[indexin(sort(past),past)],
+                    dyn_exo_list[indexin(sort(exo),exo)])
+
+    pars_and_SS = Expr[]
+    for (i, p) in enumerate(vcat(𝓂.parameters, 𝓂.calibration_equations_parameters))
+        push!(pars_and_SS, :($p = parameters_and_SS[$i]))
+    end
+
+    nn = length(pars_and_SS)
+
+    for (i, p) in enumerate(dyn_ss_list[indexin(sort(stst),stst)])
+        push!(pars_and_SS, :($p = parameters_and_SS[$(i + nn)]))
+    end
+
+    deriv_vars = Expr[]
+    for (i, u) in enumerate(vars_raw)
+        push!(deriv_vars, :($u = variables[$i]))
+    end
+
+    eeqqss = Expr[]
+    for (i, u) in enumerate(𝓂.dyn_equations)
+        push!(eeqqss, :(ϵ[$i] = $u))
+    end
+
+    funcs = :(function calculate_residual_of_dynamic_equations!(ϵ, variables, parameters_and_SS)
+        $(pars_and_SS...)
+        $(𝓂.calibration_equations_no_var...)
+        $(deriv_vars...)
+        @inbounds begin
+        $(eeqqss...)
+        end
+        return nothing
+    end)
+
+    calc! = @RuntimeGeneratedFunction(funcs)
+
+    ϵ = zeros(length(𝓂.dyn_equations))
+    ∂ = zeros(length(deriv_vars)) 
+    C = zeros(length(pars_and_SS))
+    jac = zeros(length(𝓂.dyn_equations), length(deriv_vars));
+
+    backend = 𝒟.AutoFastDifferentiation()
+
+    prep = 𝒟.prepare_jacobian(calc!, ϵ, backend, ∂, 𝒟.Constant(C));
+    
+    𝓂.jacobian = (calc!, ϵ, jac, prep)
 
     Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x) erfc(x) erfcinv(x)
 
@@ -6444,7 +6489,7 @@ function calculate_jacobian(parameters::Vector{M},
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
-    par = vcat(parameters,calibrated_parameters)
+    par = vcat(parameters, calibrated_parameters)
     
     dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
     dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
@@ -6453,47 +6498,59 @@ function calculate_jacobian(parameters::Vector{M},
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
+    # X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
     
-    # vals = M[]
+    deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
+    SS_and_pars = vcat(par, SS[dyn_ss_idx])
 
-    # for f in 𝓂.model_jacobian[1]
-    #     push!(vals, f(X)...)
+    C = 𝒟.Constant(SS_and_pars)
+
+    backend = 𝒟.AutoFastDifferentiation()
+
+    𝒟.jacobian!(𝓂.jacobian[1], 𝓂.jacobian[2], 𝓂.jacobian[3], 𝓂.jacobian[4], backend, deriv_vars, C)
+
+    return 𝓂.jacobian[3]
+
+
+    # # vals = M[]
+
+    # # for f in 𝓂.model_jacobian[1]
+    # #     push!(vals, f(X)...)
+    # # end
+
+    # vals = zeros(M, length(𝓂.model_jacobian[1]))
+    
+    # # lk = ReentrantLock()
+
+    # # @timeit_debug timer "Loop" begin
+
+    # Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian[1]
+    # # for f in 𝓂.model_jacobian[1]
+    # # for f in 𝓂.model_jacobian[1]
+    #     # val, idx = f(X)#::Tuple{<: Real, Int}
+    #     out = f(X)#::Tuple{Vector{<: Real}, UnitRange{Int64}}
+        
+    #     # begin
+    #     #     lock(lk)
+    #     #     try
+    #             @inbounds vals[out[2]] = out[1]
+    #             # @inbounds vals[idx] = val
+    #     #     finally
+    #     #         unlock(lk)
+    #     #     end
+    #     # end
     # end
 
-    vals = zeros(M, length(𝓂.model_jacobian[1]))
-    
-    # lk = ReentrantLock()
+    # if eltype(𝓂.model_jacobian[3]) ≠ M
+    #     Accessors.@reset 𝓂.model_jacobian[3] = convert(Matrix{M}, 𝓂.model_jacobian[3])
+    # end
 
-    # @timeit_debug timer "Loop" begin
+    # 𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
 
-    Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian[1]
-    # for f in 𝓂.model_jacobian[1]
-    # for f in 𝓂.model_jacobian[1]
-        # val, idx = f(X)#::Tuple{<: Real, Int}
-        out = f(X)#::Tuple{Vector{<: Real}, UnitRange{Int64}}
-        
-        # begin
-        #     lock(lk)
-        #     try
-                @inbounds vals[out[2]] = out[1]
-                # @inbounds vals[idx] = val
-        #     finally
-        #         unlock(lk)
-        #     end
-        # end
-    end
+    # # end # timeit_debug
+    # # end # timeit_debug
 
-    if eltype(𝓂.model_jacobian[3]) ≠ M
-        Accessors.@reset 𝓂.model_jacobian[3] = convert(Matrix{M}, 𝓂.model_jacobian[3])
-    end
-
-    𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    return 𝓂.model_jacobian[3]
+    # return 𝓂.model_jacobian[3]
 end
 
 end # dispatch_doctor

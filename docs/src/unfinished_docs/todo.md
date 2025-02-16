@@ -124,6 +124,7 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] weed out SS solver and saved objects
 
+- [x] do SVD on matrices before solving first order. idea to solve in lower dimensional subspace. doesnt work as that is the whole point of the solution. what breaks is the X^2 as any transformation of X would have a term in the middle remaining
 - [x] automatically adjust plots for different legend widths and heights
 - [x] use ID for sparse output sylvester solvers (filed issue)
 - [x] add user facing option to choose sylvester solver
