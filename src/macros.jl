@@ -886,6 +886,7 @@ macro model(𝓂,ex...)
                         $bounds,
 
                         (x->x, zeros(0), zeros(0,0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0])), # jacobian
+                        (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0])), # jacobian_SS_and_pars_vars
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
                         ([], Int[], zeros(1,1)), # model_jacobian
                         # x->x, # model_jacobian_parameters
@@ -1503,27 +1504,6 @@ macro parameters(𝓂,ex...)
 
         start_time = time()
 
-        if !$silent
-            if $perturbation_order == 1
-                print("Take symbolic derivatives up to first order:\t\t\t\t")
-            elseif $perturbation_order == 2
-                print("Take symbolic derivatives up to second order:\t\t\t\t")
-            elseif $perturbation_order == 3
-                print("Take symbolic derivatives up to third order:\t\t\t\t")
-            end
-        end
-
-        # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, $perturbation_order)
-
-        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-        
-        if !$silent
-            println(round(time() - start_time, digits = 3), " seconds")
-        end
-
-        start_time = time()
-
         mod.$𝓂.solution.functions_written = true
 
         opts = merge_calculation_options(verbose = $verbose)
@@ -1558,6 +1538,30 @@ macro parameters(𝓂,ex...)
 
             mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
             mod.$𝓂.solution.outdated_NSSS = false
+        end
+
+
+        start_time = time()
+
+        if !$silent
+            if $perturbation_order == 1
+                print("Take symbolic derivatives up to first order:\t\t\t\t")
+            elseif $perturbation_order == 2
+                print("Take symbolic derivatives up to second order:\t\t\t\t")
+            elseif $perturbation_order == 3
+                print("Take symbolic derivatives up to third order:\t\t\t\t")
+            end
+        end
+
+        write_auxilliary_indices!(mod.$𝓂)
+
+        # time_dynamic_derivs = @elapsed 
+        write_functions_mapping!(mod.$𝓂, $perturbation_order)
+
+        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        
+        if !$silent
+            println(round(time() - start_time, digits = 3), " seconds")
         end
 
         if !$silent Base.show(mod.$𝓂) end

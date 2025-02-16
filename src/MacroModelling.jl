@@ -26,6 +26,8 @@ import DifferentiationInterface as 𝒟
 import ForwardDiff as ℱ
 backend = 𝒟.AutoForwardDiff()
 import FastDifferentiation
+import SparseMatrixColorings: GreedyColoringAlgorithm, sparsity_pattern
+import SparseConnectivityTracer: TracerSparsityDetector
 # import Diffractor: DiffractorForwardBackend
 # 𝒷 = 𝒜.ForwardDiffBackend
 # 𝒷 = Diffractor.DiffractorForwardBackend
@@ -5634,9 +5636,17 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
     calc! = @RuntimeGeneratedFunction(funcs)
 
+    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+
+    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
+
+    ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
+    C = vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[dyn_ss_idx])
+
     ϵ = zeros(length(𝓂.dyn_equations))
-    ∂ = zeros(length(deriv_vars)) 
-    C = zeros(length(pars_and_SS))
     jac = zeros(length(𝓂.dyn_equations), length(deriv_vars));
 
     backend = 𝒟.AutoFastDifferentiation()
@@ -5644,6 +5654,32 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     prep = 𝒟.prepare_jacobian(calc!, ϵ, backend, ∂, 𝒟.Constant(C));
     
     𝓂.jacobian = (calc!, ϵ, jac, prep)
+
+
+    jac_deriv(SS_and_pars, derivvars) = 𝓂.jacobian[4].jac_exe(derivvars, SS_and_pars)
+
+    backend = 𝒟.AutoSparse(
+        𝒟.AutoForwardDiff();  # any object from ADTypes
+        sparsity_detector = TracerSparsityDetector(),
+        coloring_algorithm = GreedyColoringAlgorithm(),
+    )
+
+    prepjac = 𝒟.prepare_jacobian(jac_deriv, backend, C, 𝒟.Constant(∂))
+
+    jac_buffer = 𝒟.similar(sparsity_pattern(prepjac), eltype(ϵ))
+
+    
+    backend = 𝒟.AutoSparse(
+        𝒟.AutoFastDifferentiation();  # any object from ADTypes
+        sparsity_detector = TracerSparsityDetector(),
+        coloring_algorithm = GreedyColoringAlgorithm(),
+    )
+
+    prepjac = 𝒟.prepare_jacobian(jac_deriv, backend, C, 𝒟.Constant(∂))
+
+    𝓂.jacobian_SS_and_pars_vars = (jac_deriv, jac_buffer, prepjac)
+
+
 
     Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x) erfc(x) erfcinv(x)
 
