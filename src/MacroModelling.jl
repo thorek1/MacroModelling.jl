@@ -5644,7 +5644,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
     ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
-    C = vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[dyn_ss_idx])
+    C = vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))]) # [dyn_ss_idx])
 
     ϵ = zeros(length(𝓂.dyn_equations))
     jac = zeros(length(𝓂.dyn_equations), length(deriv_vars));
@@ -6537,15 +6537,26 @@ function calculate_jacobian(parameters::Vector{M},
     # X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
     
     deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
-    SS_and_pars = vcat(par, SS[dyn_ss_idx])
+    SS_and_pars = vcat(par, SS)#[dyn_ss_idx])
 
     C = 𝒟.Constant(SS_and_pars)
 
     backend = 𝒟.AutoFastDifferentiation()
 
-    𝒟.jacobian!(𝓂.jacobian[1], 𝓂.jacobian[2], 𝓂.jacobian[3], 𝓂.jacobian[4], backend, deriv_vars, C)
+    if eltype(𝓂.jacobian[3]) != M
+        jac_buffer = zeros(M, size(𝓂.jacobian[3]))
 
-    return 𝓂.jacobian[3]
+        𝒟.jacobian!(𝓂.jacobian[1], 𝓂.jacobian[2], jac_buffer, 𝓂.jacobian[4], backend, deriv_vars, C)
+
+        return jac_buffer
+    else
+        jac_buffer = 𝓂.jacobian[3]
+
+        𝒟.jacobian!(𝓂.jacobian[1], 𝓂.jacobian[2], jac_buffer, 𝓂.jacobian[4], backend, deriv_vars, C)
+    
+        return jac_buffer
+    end
+
 
 
     # # vals = M[]
@@ -6602,39 +6613,55 @@ function rrule(::typeof(calculate_jacobian),
 
     # end # timeit_debug
 
+    # dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+    # dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+    # dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+    # dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+
+    # shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
+
+    # ∂ = Constant(vcat(SS_and_pars[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss))
+    # C = vcat(parameters, SS_and_pars[(end - length(𝓂.calibration_equations)+1):end], SS_and_pars[dyn_ss_idx])
+
+
     function calculate_jacobian_pullback(∂∇₁)
         # @timeit_debug timer "Calculate jacobian - reverse" begin
-        X = [parameters; SS_and_pars]
 
-        # vals = Float64[]
+        𝒟.jacobian!(𝓂.jacobian_SS_and_pars_vars[1], 𝓂.jacobian_SS_and_pars_vars[2], 𝓂.jacobian_SS_and_pars_vars[3], backend, C, ∂)
 
-        # for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
-        #     push!(vals, f(X)...)
+        analytical_jacobian_SS_and_pars_vars = 𝓂.jacobian_SS_and_pars_vars[2]
+        println("hh")
+        # X = [parameters; SS_and_pars]
+
+        # # vals = Float64[]
+
+        # # for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
+        # #     push!(vals, f(X)...)
+        # # end
+
+        # vals = zeros(Float64, length(𝓂.model_jacobian_SS_and_pars_vars[1]))
+
+        # # lk = ReentrantLock()
+
+        # # @timeit_debug timer "Loop" begin
+
+        # Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
+        # # for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
+        #     out = f(X)
+
+        #     # begin
+        #     #     lock(lk)
+        #     #     try
+        #             @inbounds vals[out[2]] = out[1]
+        #     #     finally
+        #     #         unlock(lk)
+        #     #     end
+        #     # end
         # end
-
-        vals = zeros(Float64, length(𝓂.model_jacobian_SS_and_pars_vars[1]))
-
-        # lk = ReentrantLock()
-
-        # @timeit_debug timer "Loop" begin
-
-        Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
-        # for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
-            out = f(X)
-
-            # begin
-            #     lock(lk)
-            #     try
-                    @inbounds vals[out[2]] = out[1]
-            #     finally
-            #         unlock(lk)
-            #     end
-            # end
-        end
     
-        Accessors.@reset 𝓂.model_jacobian_SS_and_pars_vars[2].nzval = vals
+        # Accessors.@reset 𝓂.model_jacobian_SS_and_pars_vars[2].nzval = vals
         
-        analytical_jacobian_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        # analytical_jacobian_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
         cols_unique = unique(findnz(analytical_jacobian_SS_and_pars_vars)[2])
 

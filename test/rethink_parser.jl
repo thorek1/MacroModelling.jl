@@ -8,10 +8,27 @@ include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_spec
 include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
 
 𝓂 = m
+
+get_std(m)
+
+SS(m)
+
+get_solution(m)
+get_solution(m)
+# 9*x-7*i>3*(3*x-7*u)
+# -7*i>3*(3*x-7*u) - 9*x
+# 7*i> - 3*(3*x-7*u) + 9*x
+
+# i > - (3*(3*x-7*u) - 9*x) / 7
+# i > - 3 / 7 * ((3*x-7*u) - 3*x)
+# i > - 3 / 7 * (3*x-7*u - 3*x)
+# i > - 3 / 7 * (-7*u )
+# i >  3 * u
+# i <3 * u
+
 𝓂.model_jacobian_SS_and_pars_vars[2]
 𝓂.jacobian_SS_and_pars_vars[2]'
 
-SS(m)
 # (:Pibar)   1.00083          0.0       0.332779      0.0       0.00111065   0.0         0.0             0.0       0.0    -0.332779     0.0
 include("../models/NAWM_EAUS_2008.jl")
 
@@ -21,6 +38,33 @@ include("../models/NAWM_EAUS_2008.jl")
 
 
 SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values)
+
+
+parameters = 𝓂.parameter_values
+StSt = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+
+par = vcat(parameters, calibrated_parameters)
+
+dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+
+shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
+
+# X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
+
+deriv_vars = vcat(StSt[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
+SS_and_pars = vcat(par, StSt)#[dyn_ss_idx])
+
+C = 𝒟.Constant(SS_and_pars)
+
+backend = 𝒟.AutoFastDifferentiation()
+
+𝒟.jacobian!(𝓂.jacobian[1], 𝓂.jacobian[2], 𝓂.jacobian[3], 𝓂.jacobian[4], backend, deriv_vars, C)
+
+
 
 ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 @benchmark calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)
@@ -415,7 +459,7 @@ shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 X = [STST[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; STST[dyn_ss_idx]; par; shocks_ss]
 
 deriv_vars = vcat(STST[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
-SS_and_pars = vcat(par, STST[dyn_ss_idx])
+SS_and_pars = vcat(par, STST) # [dyn_ss_idx])
 
 # @benchmark model_dynamics!(ϵ, 
                             # vcat(STST[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss), 
@@ -569,6 +613,7 @@ backend = AutoFastDifferentiation()
 @benchmark jacobian!(model_dynamics!, ϵ, jac, prep, backend, deriv_vars, Constant(SS_and_pars))
 
 
+𝓂.jacobian[1]
 𝓂.jacobian[3]
 jacobian!(𝓂.jacobian... ,backend, deriv_vars, Constant(SS_and_pars))
 𝓂.jacobian[3]
