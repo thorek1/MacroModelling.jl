@@ -6545,17 +6545,13 @@ function calculate_jacobian(parameters::Vector{M},
 
     if eltype(𝓂.jacobian[3]) != M
         jac_buffer = zeros(M, size(𝓂.jacobian[3]))
-
-        𝒟.jacobian!(𝓂.jacobian[1], 𝓂.jacobian[2], jac_buffer, 𝓂.jacobian[4], backend, deriv_vars, C)
-
-        return jac_buffer
     else
         jac_buffer = 𝓂.jacobian[3]
-
-        𝒟.jacobian!(𝓂.jacobian[1], 𝓂.jacobian[2], jac_buffer, 𝓂.jacobian[4], backend, deriv_vars, C)
-    
-        return jac_buffer
     end
+
+    𝒟.jacobian!(𝓂.jacobian[1], 𝓂.jacobian[2], jac_buffer, 𝓂.jacobian[4], backend, deriv_vars, C)
+
+    return jac_buffer
 
 
 
@@ -6613,16 +6609,21 @@ function rrule(::typeof(calculate_jacobian),
 
     # end # timeit_debug
 
-    # dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    # dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    # dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    # dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
 
-    # shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
+    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    # ∂ = Constant(vcat(SS_and_pars[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss))
-    # C = vcat(parameters, SS_and_pars[(end - length(𝓂.calibration_equations)+1):end], SS_and_pars[dyn_ss_idx])
+    ∂ = 𝒟.Constant(vcat(SS_and_pars[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss))
+    C = vcat(parameters, SS_and_pars[(end - length(𝓂.calibration_equations)+1):end], SS_and_pars[1:(end - length(𝓂.calibration_equations))])
 
+    backend = 𝒟.AutoSparse(
+        𝒟.AutoFastDifferentiation();  # any object from ADTypes
+        sparsity_detector = TracerSparsityDetector(),
+        coloring_algorithm = GreedyColoringAlgorithm(),
+    )
 
     function calculate_jacobian_pullback(∂∇₁)
         # @timeit_debug timer "Calculate jacobian - reverse" begin
@@ -6630,7 +6631,7 @@ function rrule(::typeof(calculate_jacobian),
         𝒟.jacobian!(𝓂.jacobian_SS_and_pars_vars[1], 𝓂.jacobian_SS_and_pars_vars[2], 𝓂.jacobian_SS_and_pars_vars[3], backend, C, ∂)
 
         analytical_jacobian_SS_and_pars_vars = 𝓂.jacobian_SS_and_pars_vars[2]
-        println("hh")
+
         # X = [parameters; SS_and_pars]
 
         # # vals = Float64[]
