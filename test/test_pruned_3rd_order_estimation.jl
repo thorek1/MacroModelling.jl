@@ -48,7 +48,7 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :third_order)
+        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
     end
 end
 
@@ -60,6 +60,7 @@ Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(dat
 # samps = @time sample(Caldara_et_al_2012_loglikelihood, PG(100), 10, progress = true)#, init_params = sol)
 
 # samps = sample(Caldara_et_al_2012_loglikelihood, IS(), 1000, progress = true)#, init_params = sol)
+
 
 mode_estimateNM = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
                                                 Optim.NelderMead(),
@@ -76,11 +77,12 @@ mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihoo
 
 init_params = mode_estimateLBFGS.values |> collect
 
+
 println("Mode variable values (L-BFGS): $init_params")
 
 n_samples = 100
 
-samps = sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = init_params)
+samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = init_params)
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 

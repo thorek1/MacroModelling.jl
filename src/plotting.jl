@@ -1,13 +1,5 @@
 import LaTeXStrings
-
-const default_attributes = Dict(:size=>(700,500),
-                                :plot_titlefont => 10, 
-                                :titlefont => 10, 
-                                :guidefont => 8, 
-                                :legendfontsize => 8, 
-                                :tickfontsize => 8,
-                                :framestyle => :semi)
-
+@stable default_mode = "disable" begin
 """
 ```
 gr_backend()
@@ -30,28 +22,45 @@ plotlyjs_backend = StatsPlots.plotlyjs
 
 """
 $(SIGNATURES)
-Plot model estimates of the variables given the data. The default plot shows the estimated variables, shocks, and the data to estimate the former.
-The left axis shows the level, and the right the deviation from the reference steady state. The horizontal black line indicates the non stochastic steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+Plot model estimates of the variables given the data. The default plot shows the estimated variables, shocks, and the data underlying the estimates. The estimates are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model.
 
-In case `shock_decomposition = true`, then the plot shows the variables, shocks, and data in absolute deviations from the non stochastic steady state plus the contribution of the shocks as a stacked bar chart per period.
+The left axis shows the level, and the right the deviation from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks, and number of pages per shock.
+In case `shock_decomposition = true`, the plot shows the variables, shocks, and data in absolute deviations from the relevant steady state as a stacked bar chart per period.
+
+For higher order perturbation solutions the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
+
+If occasionally binding constraints are present in the model, they are not taken into account here. 
 
 # Arguments
-- $MODEL
-- $DATA
+- $MODEL®
+- $DATA®
 # Keyword Arguments
-- $PARAMETERS
-- $VARIABLES
+- $PARAMETERS®
+- $ALGORITHM®
+- $FILTER®
+- $VARIABLES®
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
-- $DATA_IN_LEVELS
+- `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
+- $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks
-- $SMOOTH
-- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
-- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
-- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
-- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
+- $SMOOTH®
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
+- $PLOTS_PER_PAGE®
 - `transparency` [Default: `0.6`, Type: `Float64`]: transparency of bars
-- $VERBOSE
+- $MAX_ELEMENTS_PER_LEGENDS_ROW®
+- $EXTRA_LEGEND_SPACE®
+- $PLOT_ATTRIBUTES®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
 
 # Examples
 ```julia
@@ -86,35 +95,53 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 ```
 """
 function plot_model_estimates(𝓂::ℳ,
-    data::KeyedArray{Float64};
-    parameters::ParameterType = nothing,
-    algorithm::Symbol = :first_order, 
-    filter::Symbol = :kalman, 
-    warmup_iterations::Int = 0,
-    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-    shocks::Union{Symbol_input,String_input} = :all, 
-    presample_periods::Int = 0,
-    data_in_levels::Bool = true,
-    shock_decomposition::Bool = false,
-    smooth::Bool = true,
-    show_plots::Bool = true,
-    save_plots::Bool = false,
-    save_plots_format::Symbol = :pdf,
-    save_plots_path::String = ".",
-    plots_per_page::Int = 9,
-    transparency::Float64 = .6,
-    max_elements_per_legend_row::Int = 4,
-    extra_legend_space::Float64 = 0.0,
-    plot_attributes::Dict = Dict(),
-    verbose::Bool = false)
+                                data::KeyedArray{Float64};
+                                parameters::ParameterType = nothing,
+                                algorithm::Symbol = :first_order, 
+                                filter::Symbol = :kalman, 
+                                warmup_iterations::Int = 0,
+                                variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
+                                shocks::Union{Symbol_input,String_input} = :all, 
+                                presample_periods::Int = 0,
+                                data_in_levels::Bool = true,
+                                shock_decomposition::Bool = false,
+                                smooth::Bool = true,
+                                show_plots::Bool = true,
+                                save_plots::Bool = false,
+                                save_plots_format::Symbol = :pdf,
+                                save_plots_path::String = ".",
+                                plots_per_page::Int = 9,
+                                transparency::Float64 = .6,
+                                max_elements_per_legend_row::Int = 4,
+                                extra_legend_space::Float64 = 0.0,
+                                plot_attributes::Dict = Dict(),
+                                verbose::Bool = false,
+                                tol::Tolerances = Tolerances(),
+                                quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
+                                lyapunov_algorithm::Symbol = :doubling)
+    # @nospecialize # reduce compile time                            
 
-    attributes = merge(default_attributes, plot_attributes)
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
+                                    lyapunov_algorithm = lyapunov_algorithm)
+
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
 
     attributes_redux = copy(attributes)
 
     delete!(attributes_redux, :framestyle)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
@@ -122,16 +149,20 @@ function plot_model_estimates(𝓂::ℳ,
 
     pruning = false
 
-    @assert !(algorithm ∈ [:second_order, :third_order]) "Decomposition  implemented for first order, pruned second and third order. Second and third order solution decomposition is not yet implemented."
+    @assert !(algorithm ∈ [:second_order, :third_order] && shock_decomposition) "Decomposition  implemented for first order, pruned second and third order. Second and third order solution decomposition is not yet implemented."
     
+    if algorithm ∈ [:second_order, :third_order]
+        filter = :inversion
+    end
+
     if algorithm ∈ [:pruned_second_order, :pruned_third_order]
         filter = :inversion
         pruning = true
     end
 
-    solve!(𝓂, parameters = parameters, algorithm = algorithm, verbose = verbose, dynamics = true)
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
     data = data(sort(axiskeys(data,1)))
     
@@ -143,8 +174,8 @@ function plot_model_estimates(𝓂::ℳ,
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
-    obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings)
-    var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) 
+    obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
+    var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
     shock_idx   = parse_shocks_input_to_index(shocks,𝓂.timings)
 
     legend_columns = 1
@@ -169,13 +200,15 @@ function plot_model_estimates(𝓂::ℳ,
 
     date_axis = axiskeys(data,2)
 
+    extra_legend_space += length(string(date_axis[1])) > 6 ? .1 : 0.0
+
     @assert presample_periods < size(data,2) "The number of presample periods must be less than the number of periods in the data."
 
     periods = presample_periods+1:size(data,2)
 
     date_axis = date_axis[periods]
 
-    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, verbose = verbose)
+    variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts)
     
     if pruning
         decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
@@ -199,9 +232,12 @@ function plot_model_estimates(𝓂::ℳ,
         if i > length(var_idx) # Shock decomposition
             push!(pp,begin
                     StatsPlots.plot()
-                    StatsPlots.plot!(date_axis, shocks_to_plot[shock_idx[i - length(var_idx)],periods],
+                    StatsPlots.plot!(#date_axis, 
+                        shocks_to_plot[shock_idx[i - length(var_idx)],periods],
                         title = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
+                        xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                        xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                         color = shock_decomposition ? estimate_color : :auto)
                     StatsPlots.hline!([0],
                         color = :black,
@@ -220,9 +256,11 @@ function plot_model_estimates(𝓂::ℳ,
                     if shock_decomposition
                         additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
 
-                        StatsPlots.groupedbar!(date_axis,
+                        StatsPlots.groupedbar!(#date_axis,
                             decomposition[var_idx[i],[additional_indices..., shock_idx...],periods]', 
                             bar_position = :stack, 
+                            xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                            xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                             lc = :transparent,  # Line color set to transparent
                             lw = 0,  # This removes the lines around the bars
                             legend = :none, 
@@ -231,36 +269,44 @@ function plot_model_estimates(𝓂::ℳ,
                             alpha = transparency)
                     end
 
-                    StatsPlots.plot!(date_axis,
+                    StatsPlots.plot!(#date_axis,
                         variables_to_plot[var_idx[i],periods] .+ SS,
                         title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
                         ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
+                        xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                        xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                         label = "", 
                         # xformatter = x -> string(date_axis[Int(x)]),
                         color = shock_decomposition ? estimate_color : :auto)
 
                     if var_idx[i] ∈ obs_idx 
-                        StatsPlots.plot!(date_axis,
+                        StatsPlots.plot!(#date_axis,
                             data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
                             title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
                             ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
                             label = "", 
+                            xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                            xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                             # xformatter = x -> string(date_axis[Int(x)]),
                             color = shock_decomposition ? data_color : :auto) 
                     end
 
                     if can_dual_axis 
                         StatsPlots.plot!(StatsPlots.twinx(),
-                            date_axis, 
+                            # date_axis, 
                             100*((variables_to_plot[var_idx[i],periods] .+ SS) ./ SS .- 1), 
                             ylabel = LaTeXStrings.L"\% \Delta", 
+                            xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                            xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                             label = "") 
 
                         if var_idx[i] ∈ obs_idx 
                             StatsPlots.plot!(StatsPlots.twinx(),
-                                date_axis, 
+                                # date_axis, 
                                 100*((data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS) ./ SS .- 1), 
                                 ylabel = LaTeXStrings.L"\% \Delta", 
+                                xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
+                                xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                                 label = "") 
                         end
                     end
@@ -381,26 +427,37 @@ plot_shock_decomposition(args...; kwargs...) =  plot_model_estimates(args...; kw
 $(SIGNATURES)
 Plot impulse response functions (IRFs) of the model.
 
-The left axis shows the level, and the right the deviation from the reference steady state. Linear solutions have the non stochastic steady state as reference other solution the stochastic steady state. The horizontal black line indicates the reference steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+The left axis shows the level, and the right axis the deviation from the relevant steady state. The non-stochastic steady state is relevant for first order solutions and the stochastic steady state for higher order solutions. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+
+If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- $PERIODS
-- $SHOCKS
-- $VARIABLES
-- $PARAMETERS
-- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
-- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
-- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
-- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
-- $ALGORITHM
-- $NEGATIVE_SHOCK
-- $GENERALISED_IRF
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
-- `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
-- $VERBOSE
+- $PERIODS®
+- $SHOCKS®
+- $VARIABLES®
+- $PARAMETERS®
+- $ALGORITHM®
+- $SHOCK_SIZE®
+- $NEGATIVE_SHOCK®
+- $GENERALISED_IRF®
+- $INITIAL_STATE®
+- $IGNORE_OBC®
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
+- $PLOTS_PER_PAGE®
+- $PLOT_ATTRIBUTES®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
 
 # Examples
 ```julia
@@ -425,30 +482,48 @@ plot_irf(RBC)
 ```
 """
 function plot_irf(𝓂::ℳ;
-    periods::Int = 40, 
-    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
-    variables::Union{Symbol_input,String_input} = :all_excluding_auxilliary_and_obc,
-    parameters::ParameterType = nothing,
-    show_plots::Bool = true,
-    save_plots::Bool = false,
-    save_plots_format::Symbol = :pdf,
-    save_plots_path::String = ".",
-    plots_per_page::Int = 9, 
-    algorithm::Symbol = :first_order,
-    negative_shock::Bool = false,
-    generalised_irf::Bool = false,
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-    ignore_obc::Bool = false,
-    plot_attributes::Dict = Dict(),
-    verbose::Bool = false)
+                    periods::Int = 40, 
+                    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
+                    variables::Union{Symbol_input,String_input} = :all_excluding_auxilliary_and_obc,
+                    parameters::ParameterType = nothing,
+                    show_plots::Bool = true,
+                    save_plots::Bool = false,
+                    save_plots_format::Symbol = :pdf,
+                    save_plots_path::String = ".",
+                    plots_per_page::Int = 9, 
+                    algorithm::Symbol = :first_order,
+                    shock_size::Real = 1,
+                    negative_shock::Bool = false,
+                    generalised_irf::Bool = false,
+                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+                    ignore_obc::Bool = false,
+                    plot_attributes::Dict = Dict(),
+                    verbose::Bool = false,
+                    tol::Tolerances = Tolerances(),
+                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
+                    lyapunov_algorithm::Symbol = :doubling)
+    # @nospecialize # reduce compile time                
 
-    attributes = merge(default_attributes, plot_attributes)
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
+                    lyapunov_algorithm = lyapunov_algorithm)
 
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
+                
     attributes_redux = copy(attributes)
 
     delete!(attributes_redux, :framestyle)
-
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -484,7 +559,7 @@ function plot_irf(𝓂::ℳ;
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     if ignore_obc
         occasionally_binding_constraints = false
@@ -492,9 +567,9 @@ function plot_irf(𝓂::ℳ;
         occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
     end
 
-    solve!(𝓂, parameters = parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+    solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
 
-    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
     unspecified_initial_state = initial_state == [0.0]
 
@@ -516,7 +591,9 @@ function plot_irf(𝓂::ℳ;
                 initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
             end
         else
-            @assert algorithm ∉ [:pruned_second_order, :pruned_third_order] && initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+            end
         end
     end
     
@@ -538,6 +615,7 @@ function plot_irf(𝓂::ℳ;
                     𝓂.timings; 
                     periods = periods, 
                     shocks = shocks, 
+                    shock_size = shock_size,
                     variables = variables, 
                     negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
     else
@@ -657,6 +735,7 @@ function plot_irf(𝓂::ℳ;
                     𝓂.timings;
                     periods = periods, 
                     shocks = shocks, 
+                    shock_size = shock_size,
                     variables = variables, 
                     negative_shock = negative_shock) .+ SSS_delta[var_idx]
         else
@@ -666,6 +745,7 @@ function plot_irf(𝓂::ℳ;
                     𝓂.timings;
                     periods = periods, 
                     shocks = shocks, 
+                    shock_size = shock_size,
                     variables = variables, 
                     negative_shock = negative_shock) .+ SSS_delta[var_idx]
         end
@@ -822,7 +902,6 @@ Wrapper for [`plot_irf`](@ref) with `shocks = :simulate` and `periods = 100`.
 """
 plot_simulation(args...; kwargs...) =  plot_irf(args...; kwargs..., shocks = :simulate, periods = get(kwargs, :periods, 100))
 
-
 """
 Wrapper for [`plot_irf`](@ref) with `generalised_irf = true`.
 """
@@ -838,18 +917,29 @@ Plot conditional variance decomposition of the model.
 
 The vertical axis shows the share of the shocks variance contribution, and horizontal axis the period of the variance decomposition. The stacked bars represent each shocks variance contribution at a specific time horizon.
 
+If occasionally binding constraints are present in the model, they are not taken into account here. 
+
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- $PERIODS
-- $VARIABLES
-- $PARAMETERS
-- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
-- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
-- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
-- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
-- $VERBOSE
+- $PERIODS®
+- $VARIABLES®
+- $PARAMETERS®
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
+- $PLOTS_PER_PAGE®
+- $PLOT_ATTRIBUTES®
+- $MAX_ELEMENTS_PER_LEGENDS_ROW®
+- $EXTRA_LEGEND_SPACE®
+- $QME®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
 
 # Examples
 ```julia
@@ -881,35 +971,52 @@ plot_conditional_variance_decomposition(RBC_CME)
 ```
 """
 function plot_conditional_variance_decomposition(𝓂::ℳ;
-    periods::Int = 40, 
-    variables::Union{Symbol_input,String_input} = :all,
-    parameters::ParameterType = nothing,
-    show_plots::Bool = true,
-    save_plots::Bool = false,
-    save_plots_format::Symbol = :pdf,
-    save_plots_path::String = ".",
-    plots_per_page::Int = 9, 
-    plot_attributes::Dict = Dict(),
-    max_elements_per_legend_row::Int = 4,
-    extra_legend_space::Float64 = 0.0,
-    verbose::Bool = false)
+                                                periods::Int = 40, 
+                                                variables::Union{Symbol_input,String_input} = :all,
+                                                parameters::ParameterType = nothing,
+                                                show_plots::Bool = true,
+                                                save_plots::Bool = false,
+                                                save_plots_format::Symbol = :pdf,
+                                                save_plots_path::String = ".",
+                                                plots_per_page::Int = 9, 
+                                                plot_attributes::Dict = Dict(),
+                                                max_elements_per_legend_row::Int = 4,
+                                                extra_legend_space::Float64 = 0.0,
+                                                verbose::Bool = false,
+                                                tol::Tolerances = Tolerances(),
+                                                quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                                lyapunov_algorithm::Symbol = :doubling)
+    # @nospecialize # reduce compile time                                            
 
-    attributes = merge(default_attributes, plot_attributes)
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                lyapunov_algorithm = lyapunov_algorithm)
 
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
+                                            
     attributes_redux = copy(attributes)
 
     delete!(attributes_redux, :framestyle)
 
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
-
     fevds = get_conditional_variance_decomposition(𝓂,
                                                     periods = 1:periods,
                                                     parameters = parameters,
-                                                    verbose = verbose)
+                                                    verbose = verbose,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    tol = tol)
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     fevds = fevds isa KeyedArray ? axiskeys(fevds,1) isa Vector{String} ? rekey(fevds, 1 => axiskeys(fevds,1) .|> Meta.parse .|> replace_indices) : fevds : fevds
 
@@ -1022,27 +1129,38 @@ plot_forecast_error_variance_decomposition = plot_conditional_variance_decomposi
 
 """
 $(SIGNATURES)
-Plot the solution of the model (mapping of past states to present variables) around the (non) stochastic steady state (depending on chosen solution algorithm). Each plot shows the relationship between the chosen state (defined in `state`) and one of the chosen variables (defined in `variables`). 
+Plot the solution of the model (mapping of past states to present variables) around the relevant steady state (e.g. higher order perturbation algorithms are centered around the stochastic steady state). Each plot shows the relationship between the chosen state (defined in `state`) and one of the chosen variables (defined in `variables`). 
 
-The (non) stochastic steady state is plotted along with the mapping from the chosen past state to one present variable per plot. All other (non-chosen) states remain in the (non) stochastic steady state.
+The relevant steady state is plotted along with the mapping from the chosen past state to one present variable per plot. All other (non-chosen) states remain in the relevant steady state.
 
-In the case of pruned solutions there as many (latent) state vectors as the perturbation order. The first and third order baseline state vectors are the non stochastic steady state and the second order baseline state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order baseline state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of inifite possible mappings.
+In the case of pruned higher order solutions there are as many (latent) state vectors as the perturbation order. The first and third order baseline state vectors are the non stochastic steady state and the second order baseline state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order baseline state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of inifitely many possible mappings.
+
+If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
 
 # Arguments
-- $MODEL
+- $MODEL®
 - `state` [Type: `Union{Symbol,String}`]: state variable to be shown on x-axis.
 # Keyword Arguments
-- $VARIABLES
+- $VARIABLES®
 - `algorithm` [Default: `:first_order`, Type: Union{Symbol,Vector{Symbol}}]: solution algorithm for which to show the IRFs. Can be more than one, e.g.: `[:second_order,:pruned_third_order]`"
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
-- $PARAMETERS
-- `ignore_obc` [Default: `false`, Type: `Bool`]: solve the model ignoring the occasionally binding constraints.
-- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
-- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
-- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
+- $PARAMETERS®
+- $IGNORE_OBC®
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
-- $VERBOSE
+- $PLOT_ATTRIBUTES®
+- $ALGORITHM®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
 
 # Examples
 ```julia
@@ -1074,22 +1192,41 @@ plot_solution(RBC_CME, :k)
 ```
 """
 function plot_solution(𝓂::ℳ,
-    state::Union{Symbol,String};
-    variables::Union{Symbol_input,String_input} = :all,
-    algorithm::Union{Symbol,Vector{Symbol}} = :first_order,
-    σ::Union{Int64,Float64} = 2,
-    parameters::ParameterType = nothing,
-    ignore_obc::Bool = false,
-    show_plots::Bool = true,
-    save_plots::Bool = false,
-    save_plots_format::Symbol = :pdf,
-    save_plots_path::String = ".",
-    plots_per_page::Int = 6,
-    plot_attributes::Dict = Dict(),
-    verbose::Bool = false)
+                        state::Union{Symbol,String};
+                        variables::Union{Symbol_input,String_input} = :all,
+                        algorithm::Union{Symbol,Vector{Symbol}} = :first_order,
+                        σ::Union{Int64,Float64} = 2,
+                        parameters::ParameterType = nothing,
+                        ignore_obc::Bool = false,
+                        show_plots::Bool = true,
+                        save_plots::Bool = false,
+                        save_plots_format::Symbol = :pdf,
+                        save_plots_path::String = ".",
+                        plots_per_page::Int = 6,
+                        plot_attributes::Dict = Dict(),
+                        verbose::Bool = false,
+                        tol::Tolerances = Tolerances(),
+                        quadratic_matrix_equation_algorithm::Symbol = :schur,
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
+                        lyapunov_algorithm::Symbol = :doubling)
+    # @nospecialize # reduce compile time                    
+    
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                        sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
+                        lyapunov_algorithm = lyapunov_algorithm)
 
-    attributes = merge(default_attributes, plot_attributes)
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
+                    
     attributes_redux = copy(attributes)
 
     delete!(attributes_redux, :framestyle)
@@ -1111,34 +1248,38 @@ function plot_solution(𝓂::ℳ,
     end
 
     for a in algorithm
-        solve!(𝓂, verbose = verbose, algorithm = a, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
+        solve!(𝓂, opts = opts, algorithm = a, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
     end
 
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
                             parameters = parameters,
                             variables = :all,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            sylvester_algorithm = sylvester_algorithm,
+                            lyapunov_algorithm = lyapunov_algorithm,
+                            tol = tol,
                             verbose = verbose)
 
-    SS_and_std[1] = SS_and_std[1] isa KeyedArray ? axiskeys(SS_and_std[1],1) isa Vector{String} ? rekey(SS_and_std[1], 1 => axiskeys(SS_and_std[1],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[1] : SS_and_std[1]
+    SS_and_std[:non_stochastic_steady_state] = SS_and_std[:non_stochastic_steady_state] isa KeyedArray ? axiskeys(SS_and_std[:non_stochastic_steady_state],1) isa Vector{String} ? rekey(SS_and_std[:non_stochastic_steady_state], 1 => axiskeys(SS_and_std[:non_stochastic_steady_state],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:non_stochastic_steady_state] : SS_and_std[:non_stochastic_steady_state]
     
-    SS_and_std[2] = SS_and_std[2] isa KeyedArray ? axiskeys(SS_and_std[2],1) isa Vector{String} ? rekey(SS_and_std[2], 1 => axiskeys(SS_and_std[2],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[2] : SS_and_std[2]
+    SS_and_std[:standard_deviation] = SS_and_std[:standard_deviation] isa KeyedArray ? axiskeys(SS_and_std[:standard_deviation],1) isa Vector{String} ? rekey(SS_and_std[:standard_deviation], 1 => axiskeys(SS_and_std[:standard_deviation],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:standard_deviation] : SS_and_std[:standard_deviation]
 
     full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
 
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
-    full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[1](s) for s in full_NSSS]
+    full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings)
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
-    vars_to_plot = intersect(axiskeys(SS_and_std[1])[1],𝓂.timings.var[var_idx])
+    vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
 
-    state_range = collect(range(-SS_and_std[2](state), SS_and_std[2](state), 100)) * σ
-
-    state_selector = state .== 𝓂.timings.var
+    state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
+    
+    state_selector = state .== 𝓂.var
 
     n_subplots = length(var_idx)
     pp = []
@@ -1168,10 +1309,6 @@ function plot_solution(𝓂::ℳ,
         label = labels[a][2])
     end
 
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-
     if any(x -> contains(string(x), "◖"), full_NSSS)
         full_NSSS_decomposed = decompose_name.(full_NSSS)
         full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
@@ -1180,7 +1317,11 @@ function plot_solution(𝓂::ℳ,
     relevant_SS_dictionnary = Dict{Symbol,Vector{Float64}}()
 
     for a in algorithm
-        relevant_SS = get_steady_state(𝓂, algorithm = a, return_variables_only = true, derivatives = false)
+        relevant_SS = get_steady_state(𝓂, algorithm = a, return_variables_only = true, derivatives = false,
+                                        tol = opts.tol,
+                                        verbose = opts.verbose,
+                                        quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                        sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
         full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
 
@@ -1188,7 +1329,11 @@ function plot_solution(𝓂::ℳ,
     end
 
     if :first_order ∉ algorithm
-        relevant_SS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false)
+        relevant_SS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
+                                        tol = opts.tol,
+                                        verbose = opts.verbose,
+                                        quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                        sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
         full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
 
@@ -1211,8 +1356,6 @@ function plot_solution(𝓂::ℳ,
 
     NSSS = relevant_SS_dictionnary[:first_order]
 
-    all_states = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
     for a in algorithm
         SSS_delta = collect(NSSS - relevant_SS_dictionnary[a])
 
@@ -1222,7 +1365,7 @@ function plot_solution(𝓂::ℳ,
             if a == :pruned_second_order
                 initial_state = [state_selector * x, -SSS_delta]
             elseif a == :pruned_third_order
-                initial_state = [state_selector * x, -SSS_delta, zeros(length(all_states))]
+                initial_state = [state_selector * x, -SSS_delta, zero(SSS_delta)]
             else
                 initial_state = collect(relevant_SS_dictionnary[a]) .+ state_selector * x
             end
@@ -1236,7 +1379,7 @@ function plot_solution(𝓂::ℳ,
         impact_output   = Dict()
 
         for k in vars_to_plot
-            idx = indexin([k], all_states)
+            idx = indexin([k], 𝓂.var)
 
             push!(variable_output,  k => var_state_range[idx,:]) 
             
@@ -1270,7 +1413,7 @@ function plot_solution(𝓂::ℳ,
                     Pl = StatsPlots.plot() 
 
                     for a in algorithm
-                        StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state],all_states)][1], 
+                        StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1], 
                             variable_dict[a][k][1,:], 
                             ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
                             xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
@@ -1278,7 +1421,7 @@ function plot_solution(𝓂::ℳ,
                     end
 
                     for a in algorithm
-                        StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], all_states)][1]], [relevant_SS_dictionnary[a][indexin([k], all_states)][1]], 
+                        StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1]], [relevant_SS_dictionnary[a][indexin([k], 𝓂.var)][1]], 
                         label = "")
                     end
 
@@ -1341,28 +1484,38 @@ end
 
 """
 $(SIGNATURES)
-Plot conditional forecast given restrictions on endogenous variables and shocks (optional) of the model. The algorithm finds the combinations of shocks with the smallest magnitude to match the conditions and plots both the endogenous variables and shocks.
+Plot the conditional forecast given restrictions on endogenous variables and shocks (optional). By default, the values represent absolute deviations from the relevant steady state (see `levels` for details). The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. A constrained minimisation problem is solved to find the combination of shocks with the smallest squared magnitude fulfilling the conditions.
 
-The left axis shows the level, and the right axis the deviation from the (non) stochastic steady state, depending on the solution algorithm (e.g. higher order perturbation algorithms will show the stochastic steady state). Variable names are above the subplots, conditioned values are marked, and the title provides information about the model, and number of pages.
+The left axis shows the level, and the right axis the deviation from the relevant steady state. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
+
+If occasionally binding constraints are present in the model, they are not taken into account here. 
 
 # Arguments
-- $MODEL
-- $CONDITIONS
+- $MODEL®
+- $CONDITIONS®
 # Keyword Arguments
-- $SHOCK_CONDITIONS
-- `initial_state` [Default: `[0.0]`, Type: `Union{Vector{Vector{Float64}},Vector{Float64}}`]: The initial state defines the starting point for the model and is relevant for normal IRFs. In the case of pruned solution algorithms the initial state can be given as multiple state vectors (`Vector{Vector{Float64}}`). In this case the initial state must be given in devations from the non-stochastic steady state. In all other cases the initial state must be given in levels. If a pruned solution algorithm is selected and initial state is a `Vector{Float64}` then it impacts the first order initial state vector only. The state includes all variables as well as exogenous variables in leads or lags if present.
+- $SHOCK_CONDITIONS®
+- $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
-- $PARAMETERS
-- $VARIABLES
-`conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non stochastic steady state substracted.
-- $LEVELS
-- $ALGORITHM
-- `show_plots` [Default: `true`, Type: `Bool`]: show plots. Separate plots per shocks and varibles depending on number of variables and `plots_per_page`.
-- `save_plots` [Default: `false`, Type: `Bool`]: switch to save plots using path and extension from `save_plots_path` and `save_plots_format`. Separate files per shocks and variables depending on number of variables and `plots_per_page`
-- `save_plots_format` [Default: `:pdf`, Type: `Symbol`]: output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
-- `save_plots_path` [Default: `pwd()`, Type: `String`]: path where to save plots
-- `plots_per_page` [Default: `9`, Type: `Int`]: how many plots to show per page
-- $VERBOSE
+- $PARAMETERS®
+- $VARIABLES®
+- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state substracted.
+- $ALGORITHM®
+- `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
+- $PLOTS_PER_PAGE®
+- $PLOT_ATTRIBUTES®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
 
 # Examples
 ```julia
@@ -1393,7 +1546,7 @@ end
 # c is conditioned to deviate by 0.01 in period 1 and y is conditioned to deviate by 0.02 in period 3
 conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = [:c,:y], Periods = 1:2)
 conditions[1,1] = .01
-conditions[2,2] = .02
+conditions[2,3] = .02
 
 # in period 2 second shock (eps_z) is conditioned to take a value of 0.05
 shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
@@ -1420,30 +1573,41 @@ plot_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_le
 ```
 """
 function plot_conditional_forecast(𝓂::ℳ,
-    conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
-    shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-    periods::Int = 40, 
-    parameters::ParameterType = nothing,
-    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-    conditions_in_levels::Bool = true,
-    algorithm::Symbol = :first_order,
-    levels::Bool = false,
-    show_plots::Bool = true,
-    save_plots::Bool = false,
-    save_plots_format::Symbol = :pdf,
-    save_plots_path::String = ".",
-    plots_per_page::Int = 9,
-    plot_attributes::Dict = Dict(),
-    verbose::Bool = false)
+                                    conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
+                                    shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
+                                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+                                    periods::Int = 40, 
+                                    parameters::ParameterType = nothing,
+                                    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
+                                    conditions_in_levels::Bool = true,
+                                    algorithm::Symbol = :first_order,
+                                    levels::Bool = false,
+                                    show_plots::Bool = true,
+                                    save_plots::Bool = false,
+                                    save_plots_format::Symbol = :pdf,
+                                    save_plots_path::String = ".",
+                                    plots_per_page::Int = 9,
+                                    plot_attributes::Dict = Dict(),
+                                    verbose::Bool = false,
+                                    tol::Tolerances = Tolerances(),
+                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
+                                    lyapunov_algorithm::Symbol = :doubling)
+    # @nospecialize # reduce compile time
+                                    
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
-    attributes = merge(default_attributes, plot_attributes)
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
 
     attributes_redux = copy(attributes)
 
     delete!(attributes_redux, :framestyle)
-
-    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     conditions = conditions isa KeyedArray ? axiskeys(conditions,1) isa Vector{String} ? rekey(conditions, 1 => axiskeys(conditions,1) .|> Meta.parse .|> replace_indices) : conditions : conditions
 
@@ -1459,6 +1623,10 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 conditions_in_levels = conditions_in_levels,
                                 algorithm = algorithm,
                                 levels = levels,
+                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                sylvester_algorithm = sylvester_algorithm,
+                                lyapunov_algorithm = lyapunov_algorithm,
+                                tol = tol,
                                 verbose = verbose)
 
     periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
@@ -1472,10 +1640,20 @@ function plot_conditional_forecast(𝓂::ℳ,
     var_idx = indexin(var_names,full_SS)
 
     if length(intersect(𝓂.aux,var_names)) > 0
-        var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+        for v in 𝓂.aux
+            idx = indexin([v],var_names)
+            if !isnothing(idx[1])
+                var_names[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+            end
+        end
+        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
     end
     
-    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false)
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
+                                    tol = tol,
+                                    verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = sylvester_algorithm)
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
@@ -1556,7 +1734,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), ylabel = "Level", label = "")
                                 if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
                                 StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")   
-                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)                            
+                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = gr_back ? :star8 : :pentagon, markercolor = :black)                            
                     end)
                 else
                     push!(pp,begin
@@ -1571,7 +1749,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                     push!(pp,begin
                                 StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
                                 StatsPlots.hline!([SS], color = :black, label = "")
-                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = :star8, markercolor = :black)  
+                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = gr_back ? :star8 : :pentagon, markercolor = :black)  
                     end)
                 else 
                     push!(pp,begin
@@ -1594,7 +1772,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                 p = StatsPlots.plot(ppp,begin
                                             StatsPlots.scatter(fill(0,1,1), 
                                             label = "Condition", 
-                                            marker = :star8,
+                                            marker = gr_back ? :star8 : :pentagon,
                                             markercolor = :black,
                                             linewidth = 0, 
                                             framestyle = :none, 
@@ -1640,7 +1818,7 @@ function plot_conditional_forecast(𝓂::ℳ,
         p = StatsPlots.plot(ppp,begin
                                 StatsPlots.scatter(fill(0,1,1), 
                                 label = "Condition", 
-                                marker = :star8,
+                                marker = gr_back ? :star8 : :pentagon,
                                 markercolor = :black,
                                 linewidth = 0, 
                                 framestyle = :none, 
@@ -1676,3 +1854,5 @@ function plot_conditional_forecast(𝓂::ℳ,
     return return_plots
 
 end
+
+end # dispatch_doctor

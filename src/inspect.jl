@@ -1,3 +1,5 @@
+@stable default_mode = "disable" begin
+
 get_symbols(ex::Symbol) = [ex]
 
 get_symbols(ex::Real) = [ex]
@@ -28,10 +30,13 @@ end
 
 """
 $(SIGNATURES)
-Return the equations of the model. In case programmatic model writing was used this function returns the parsed equations (see loop over shocks in example).
+Return the equations of the model. In case programmatic model writing was used this function returns the parsed equations (see loop over shocks in `Examples`).
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the parsed equations. 
 
 # Examples
 ```jldoctest
@@ -70,7 +75,7 @@ get_equations(RBC)
  "Δk_4q[0] = log(k[0]) - log(k[-4])"
 ```
 """
-function get_equations(𝓂::ℳ)
+function get_equations(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.original_equations), "◖" => "{", "◗" => "}")
 end
 
@@ -84,7 +89,10 @@ Auxilliary variables facilitate the solution of the NSSS problem. The package su
 Note that the ouput assumes the equations are equal to 0. As in, `-z{δ} * ρ{δ} + z{δ}` implies `-z{δ} * ρ{δ} + z{δ} = 0` and therefore: `z{δ} * ρ{δ} = z{δ}`.
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the NSSS equations. 
 
 # Examples
 ```jldoctest
@@ -125,7 +133,7 @@ get_steady_state_equations(RBC)
  "Δk_4q - 0"
 ```
 """
-function get_steady_state_equations(𝓂::ℳ)
+function get_steady_state_equations(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.ss_aux_equations), "◖" => "{", "◗" => "}")
 end
 
@@ -139,7 +147,10 @@ In case programmatic model writing was used this function returns the parsed equ
 Note that the ouput assumes the equations are equal to 0. As in, `kᴸ⁽⁻¹⁾[0] - k[-1]` implies `kᴸ⁽⁻¹⁾[0] - k[-1] = 0` and therefore: `kᴸ⁽⁻¹⁾[0] = k[-1]`.
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the dynamic model equations. 
 
 # Examples
 ```jldoctest
@@ -183,7 +194,7 @@ get_dynamic_equations(RBC)
  "Δk_4q[0] - (log(k[0]) - log(kᴸ⁽⁻³⁾[-1]))"
 ```
 """
-function get_dynamic_equations(𝓂::ℳ)
+function get_dynamic_equations(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.dyn_equations), "◖" => "{", "◗" => "}", "₍₋₁₎" => "[-1]", "₍₁₎" => "[1]", "₍₀₎" => "[0]", "₍ₓ₎" => "[x]")
 end
 
@@ -197,7 +208,10 @@ In case programmatic model writing was used this function returns the parsed equ
 Note that the ouput assumes the equations are equal to 0. As in, `k / (q * 4) - capital_to_output` implies `k / (q * 4) - capital_to_output = 0` and therefore: `k / (q * 4) = capital_to_output`.
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the calibration equations. 
 
 # Examples
 ```jldoctest
@@ -230,7 +244,7 @@ get_calibration_equations(RBC)
  "k / (q * 4) - capital_to_output"
 ```
 """
-function get_calibration_equations(𝓂::ℳ)
+function get_calibration_equations(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.calibration_equations), "◖" => "{", "◗" => "}")
 end
 
@@ -239,12 +253,15 @@ end
 $(SIGNATURES)
 Returns the parameters (and optionally the values) which have an impact on the model dynamics but do not depend on other parameters and are not determined by calibration equations. 
 
-In case programmatic model writing was used this function returns the parsed parameters (see `σ` in example).
+In case programmatic model writing was used this function returns the parsed parameters (see `σ` in `Examples`).
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names
+- `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names.
+
+# Returns
+- `Vector{String}` of the parameters or `Vector{Pair{String, Float64}}` of parameters and values if `values` is set to `true`.
 
 # Examples
 ```jldoctest
@@ -283,7 +300,7 @@ get_parameters(RBC)
  "β"
 ```
 """
-function get_parameters(𝓂::ℳ; values::Bool = false)
+function get_parameters(𝓂::ℳ; values::Bool = false)::Union{Vector{Pair{String, Float64}},Vector{String}}
     if values
         return replace.(string.(𝓂.parameters), "◖" => "{", "◗" => "}") .=> 𝓂.parameter_values
     else
@@ -297,10 +314,12 @@ $(SIGNATURES)
 Returns the parameters (and optionally the values) which are determined by a calibration equation. 
 
 # Arguments
-- $MODEL
+- $MODEL®
 # Keyword Arguments
-- `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names
+- `values` [Default: `false`, Type: `Bool`]: return the values together with the parameter names.
 
+# Returns
+- `Vector{String}` of the calibrated parameters or `Vector{Pair{String, Float64}}` of the calibrated parameters and values if `values` is set to `true`.
 
 # Examples
 ```jldoctest
@@ -333,7 +352,7 @@ get_calibrated_parameters(RBC)
  "δ"
 ```
 """
-function get_calibrated_parameters(𝓂::ℳ; values::Bool = false)
+function get_calibrated_parameters(𝓂::ℳ; values::Bool = false)::Union{Vector{Pair{String, Float64}},Vector{String}}
     if values
         return replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}") .=> 𝓂.solution.non_stochastic_steady_state[𝓂.timings.nVars + 1:end]
     else
@@ -346,10 +365,13 @@ end
 $(SIGNATURES)
 Returns the parameters contained in the model equations. Note that these parameters might be determined by other parameters or calibration equations defined in the `@parameters` block.
 
-In case programmatic model writing was used this function returns the parsed parameters (see `σ` in example).
+In case programmatic model writing was used this function returns the parsed parameters (see `σ` in `Examples`).
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the parameters.
 
 # Examples
 ```jldoctest
@@ -388,17 +410,20 @@ get_parameters_in_equations(RBC)
  "σ{δ}"
 ```
 """
-function get_parameters_in_equations(𝓂::ℳ)
+function get_parameters_in_equations(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.parameters_in_equations), "◖" => "{", "◗" => "}")# |> sort
 end
 
 
 """
 $(SIGNATURES)
-Returns the parameters which are defined by other parameters which are not necessarily used in the equations of the model (see `α` in example).
+Returns the parameters which are defined by other parameters which are not necessarily used in the equations of the model (see `α` in `Examples`).
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the parameters.
 
 # Examples
 ```jldoctest
@@ -431,17 +456,20 @@ get_parameters_defined_by_parameters(RBC)
  "α"
 ```
 """
-function get_parameters_defined_by_parameters(𝓂::ℳ)
+function get_parameters_defined_by_parameters(𝓂::ℳ)::Vector{String}
     replace.(string.(𝓂.parameters_as_function_of_parameters), "◖" => "{", "◗" => "}")# |> sort
 end
 
 
 """
 $(SIGNATURES)
-Returns the parameters which define other parameters in the `@parameters` block which are not necessarily used in the equations of the model (see `alpha` in example).
+Returns the parameters which define other parameters in the `@parameters` block which are not necessarily used in the equations of the model (see `alpha` in `Examples`).
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the parameters.
 
 # Examples
 ```jldoctest
@@ -474,17 +502,20 @@ get_parameters_defining_parameters(RBC)
  "alpha"
 ```
 """
-function get_parameters_defining_parameters(𝓂::ℳ)
+function get_parameters_defining_parameters(𝓂::ℳ)::Vector{String}
     replace.(string.(setdiff(𝓂.parameters, 𝓂.calibration_equations_parameters, 𝓂.parameters_in_equations, 𝓂.calibration_equations_parameters, 𝓂.parameters_as_function_of_parameters, reduce(union, 𝓂.par_calib_list, init = []))), "◖" => "{", "◗" => "}")# |> sort
 end
 
 
 """
 $(SIGNATURES)
-Returns the parameters used in calibration equations which are not used in the equations of the model (see `capital_to_output` in example).
+Returns the parameters used in calibration equations which are not used in the equations of the model (see `capital_to_output` in `Examples`).
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the parameters.
 
 # Examples
 ```jldoctest
@@ -517,7 +548,7 @@ get_calibration_equation_parameters(RBC)
  "capital_to_output"
 ```
 """
-function get_calibration_equation_parameters(𝓂::ℳ)
+function get_calibration_equation_parameters(𝓂::ℳ)::Vector{String}
     reduce(union, 𝓂.par_calib_list, init = []) |> collect |> sort  .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
@@ -526,10 +557,13 @@ end
 $(SIGNATURES)
 Returns the variables of the model without timing subscripts and not including auxilliary variables.
 
-In case programmatic model writing was used this function returns the parsed variables (see `z` in example).
+In case programmatic model writing was used this function returns the parsed variables (see `z` in `Examples`).
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the variables.
 
 # Examples
 ```jldoctest
@@ -568,7 +602,7 @@ get_variables(RBC)
  "Δk_4q"
 ```
 """
-function get_variables(𝓂::ℳ)
+function get_variables(𝓂::ℳ)::Vector{String}
     setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations), init = []), union(𝓂.parameters_in_equations,𝓂.➕_vars)) |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
@@ -580,7 +614,10 @@ Returns the auxilliary variables, without timing subscripts, added to the non-st
 See `get_steady_state_equations` for more details on the auxilliary variables and equations.
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the auxilliary parameters.
 
 # Examples
 ```jldoctest
@@ -614,19 +651,22 @@ get_nonnegativity_auxilliary_variables(RBC)
  "➕₂"
 ```
 """
-function get_nonnegativity_auxilliary_variables(𝓂::ℳ)
+function get_nonnegativity_auxilliary_variables(𝓂::ℳ)::Vector{String}
     𝓂.➕_vars |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
 """
 $(SIGNATURES)
-Returns the auxilliary variables, without timing subscripts, part of the augmented system of equations describing the model dynamics. Augmented means that, in case of variables with leads or lags larger than 1, or exogenous shocks with leads or lags, the system is augemented by auxilliary variables containing variables or shocks in lead or lag. because the original equations included variables with leads or lags certain expression cannot be negative (e.g. given `log(c/q)` an auxilliary variable is created for `c/q`).
+Returns the auxilliary variables, without timing subscripts, part of the augmented system of equations describing the model dynamics. Augmented means that, in case of variables with leads or lags larger than 1, or exogenous shocks with leads or lags, the system is augemented by auxilliary variables containing variables or shocks in lead or lag. Because the original equations included variables with leads or lags certain expression cannot be negative (e.g. given `log(c/q)` an auxilliary variable is created for `c/q`).
 
 See `get_dynamic_equations` for more details on the auxilliary variables and equations.
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the auxilliary parameters.
 
 # Examples
 ```jldoctest
@@ -661,7 +701,7 @@ get_dynamic_auxilliary_variables(RBC)
  "kᴸ⁽⁻¹⁾"
 ```
 """
-function get_dynamic_auxilliary_variables(𝓂::ℳ)
+function get_dynamic_auxilliary_variables(𝓂::ℳ)::Vector{String}
     𝓂.aux |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
@@ -674,7 +714,10 @@ Returns the exogenous shocks.
 In case programmatic model writing was used this function returns the parsed variables (see `eps` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the exogenous shocks.
 
 # Examples
 ```jldoctest
@@ -710,7 +753,7 @@ get_shocks(RBC)
  "eps{δ}"
 ```
 """
-function get_shocks(𝓂::ℳ)
+function get_shocks(𝓂::ℳ)::Vector{String}
     𝓂.exo |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
@@ -724,7 +767,10 @@ Returns the state variables of the model. State variables occur in the past and 
 In case programmatic model writing was used this function returns the parsed variables (see `z` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the state variables.
 
 # Examples
 ```jldoctest
@@ -766,7 +812,7 @@ get_state_variables(RBC)
  "z{δ}"
 ```
 """
-function get_state_variables(𝓂::ℳ)
+function get_state_variables(𝓂::ℳ)::Vector{String}
     𝓂.timings.past_not_future_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
@@ -774,12 +820,15 @@ end
 
 """
 $(SIGNATURES)
-Returns the jump variables of the model. Jumper variables occur in the future and not in the past or occur in all three: past, present, and future.
+Returns the jump variables of the model. Jump variables occur in the future and not in the past or occur in all three: past, present, and future.
 
 In case programmatic model writing was used this function returns the parsed variables (see `z` in example).
 
 # Arguments
-- $MODEL
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the jump variables.
 
 # Examples
 ```jldoctest
@@ -814,7 +863,8 @@ get_jump_variables(RBC)
  "z{δ}"
 ```
 """
-function get_jump_variables(𝓂::ℳ)
+function get_jump_variables(𝓂::ℳ)::Vector{String}
     𝓂.timings.future_not_past_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
+end # dispatch_doctor

@@ -203,7 +203,7 @@ Next, let's define a function measuring how close we are to our target for given
 function distance_to_target(parameter_value_inputs)
     model_statistics = get_statistics(Gali_2015, parameter_value_inputs, parameters = [:α, :std_a], mean = [:W_real], standard_deviation = [:Pi])
     targets = [0.7, 0.01]
-    return sum(abs2, vcat(model_statistics...) - targets)
+    return sum(abs2, vcat(model_statistics[:mean], model_statistics[:standard_deviation]) - targets)
 end
 ```
 
@@ -291,7 +291,7 @@ we need to define the target function and specify that we use a nonlinear soluti
 function distance_to_target(parameter_value_inputs)
     model_statistics = get_statistics(Gali_2015, parameter_value_inputs, algorithm = :pruned_third_order, parameters = [:α, :std_a], mean = [:W_real], standard_deviation = [:Pi])
     targets = [0.7, 0.01]
-    return sum(abs2, vcat(model_statistics...) - targets)
+    return sum(abs2, vcat(model_statistics[:mean], model_statistics[:standard_deviation]) - targets)
 end
 ```
 
@@ -335,7 +335,7 @@ We need to redefine our target function and optimise it. Note that the previous 
 function distance_to_target(parameter_value_inputs)
     model_statistics = get_statistics(Gali_2015, parameter_value_inputs, algorithm = :pruned_third_order, parameters = [:α, :σ], mean = [:W_real], standard_deviation = [:Pi])
     targets = [0.7, 0.01]
-    return sum(abs2, vcat(model_statistics...) - targets)
+    return sum(abs2, vcat(model_statistics[:mean], model_statistics[:standard_deviation]) - targets)
 end
 
 sol = Optim.optimize(distance_to_target,
