@@ -6664,11 +6664,12 @@ function rrule(::typeof(calculate_jacobian),
         
         # analytical_jacobian_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
 
-        cols_unique = unique(findnz(analytical_jacobian_SS_and_pars_vars)[2])
+        # cols_unique = unique(findnz(analytical_jacobian_SS_and_pars_vars)[2])
 
-        v∂∇₁ = ∂∇₁[cols_unique]
-
-        ∂parameters_and_SS_and_pars = analytical_jacobian_SS_and_pars_vars[:,cols_unique] * v∂∇₁
+        # v∂∇₁ = ∂∇₁[cols_unique]
+        
+        # ∂parameters_and_SS_and_pars = analytical_jacobian_SS_and_pars_vars[:,cols_unique] * v∂∇₁
+        ∂parameters_and_SS_and_pars = analytical_jacobian_SS_and_pars_vars' * vec(∂∇₁)
 
         # end # timeit_debug
         # end # timeit_debug
