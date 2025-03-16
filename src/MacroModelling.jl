@@ -37,7 +37,7 @@ import Polyester
 import NLopt
 import Optim, LineSearches
 # import Zygote
-import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse, nonzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 # import LinearAlgebra: mul!
 # import Octavian: matmul!
@@ -906,6 +906,41 @@ function fill_kron_adjoint_∂A!(∂X::AbstractSparseMatrix{R}, ∂A::AbstractMa
             end
         end
     end
+end
+
+function reshape_sparse_matrix(A::SparseMatrixCSC)
+    # Let A be of size (n*m) x m. Deduce n and m.
+    R, m = size(A)           # R = n*m
+    @assert R % m == 0 "Number of rows must be a multiple of number of columns."
+    n = div(R, m)
+    
+    # Number of nonzeros and their values.
+    nz = nonzeros(A)
+    N = length(nz)
+    
+    # Reconstruct the column indices for each nonzero from A.colptr.
+    col_indices = Vector{Int}(undef, N)
+    for j in 1:m
+        for k in A.colptr[j]:(A.colptr[j+1]-1)
+            col_indices[k] = j
+        end
+    end
+    # Row indices are available from A.rowval.
+    row_indices = A.rowval
+    
+    # In column-major order, the linear index for A[r,c] is:
+    #   k = r + (c - 1) * (n*m)  where n*m = R.
+    linear_indices = row_indices .+ (col_indices .- 1) .* R
+    
+    # When reshaping into an n x (m*m) matrix, the new indices are given by:
+    #   new row: i = (k - 1) % n + 1
+    #   new col: j = (k - 1) ÷ n + 1
+    newI = (linear_indices .- 1) .% n .+ 1
+    newJ = ((linear_indices .- 1) .÷ n) .+ 1
+    
+    # Build the reshaped sparse matrix B.
+    B = sparse(newI, newJ, nz, n, m*m)
+    return B
 end
 
 
@@ -5802,85 +5837,85 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     end
     
     if max_perturbation_order >= 1
-        if 𝓂.model_jacobian[2] == Int[]
-            write_auxilliary_indices!(𝓂)
+        # if 𝓂.model_jacobian[2] == Int[]
+        #     write_auxilliary_indices!(𝓂)
 
-            write_derivatives_of_ss_equations!(𝓂::ℳ, max_exprs_per_func = max_exprs_per_func)
+        #     write_derivatives_of_ss_equations!(𝓂::ℳ, max_exprs_per_func = max_exprs_per_func)
 
-            # derivative of jacobian wrt SS_and_pars and parameters
-            eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), first_order)
+        #     # derivative of jacobian wrt SS_and_pars and parameters
+        #     eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), first_order)
 
-            ∂jacobian_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(final_indices))]), simplify = false) # |> findnz
+        #     ∂jacobian_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(final_indices))]), simplify = false) # |> findnz
 
-            idx_conversion = (row1 + length(eqs) * (column1 .- 1))
+        #     idx_conversion = (row1 + length(eqs) * (column1 .- 1))
 
-            cols, rows, vals = findnz(∂jacobian_∂SS_and_pars) #transposed
+        #     cols, rows, vals = findnz(∂jacobian_∂SS_and_pars) #transposed
 
-            converted_cols = idx_conversion[cols]
+        #     converted_cols = idx_conversion[cols]
 
-            perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
+        #     perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
 
-            min_n_funcs = length(vals) ÷ max_exprs_per_func + 1
+        #     min_n_funcs = length(vals) ÷ max_exprs_per_func + 1
 
-            funcs = Function[]
+        #     funcs = Function[]
 
-            lk = ReentrantLock()
+        #     lk = ReentrantLock()
 
-            if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
-            else
-                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
-                for i in 1:min(min_n_funcs, length(vals))
-                    indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
+        #     if min_n_funcs == 1
+        #         push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
+        #     else
+        #         # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
+        #         for i in 1:min(min_n_funcs, length(vals))
+        #             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
 
-                    indices = length(indices) == 1 ? indices[1] : indices
+        #             indices = length(indices) == 1 ? indices[1] : indices
 
-                    func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
+        #             func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
 
-                    # begin
-                    #     lock(lk)
-                    #     try
-                            push!(funcs, func)
-                    #     finally
-                    #         unlock(lk)
-                    #     end
-                    # end
-                end
-            end
+        #             # begin
+        #             #     lock(lk)
+        #             #     try
+        #                     push!(funcs, func)
+        #             #     finally
+        #             #         unlock(lk)
+        #             #     end
+        #             # end
+        #         end
+        #     end
 
-            𝓂.model_jacobian_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * length(vars)))
+        #     𝓂.model_jacobian_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * length(vars)))
 
-            # first order
-            min_n_funcs = length(first_order) ÷ max_exprs_per_func + 1
+        #     # first order
+        #     min_n_funcs = length(first_order) ÷ max_exprs_per_func + 1
 
-            funcs = Function[]
+        #     funcs = Function[]
 
-            lk = ReentrantLock()
+        #     lk = ReentrantLock()
 
-            if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(first_order, 1:length(first_order), Val(:string)))
-            else
-                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(first_order))
-                for i in 1:min(min_n_funcs, length(first_order))
-                    indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
+        #     if min_n_funcs == 1
+        #         push!(funcs, write_derivatives_function(first_order, 1:length(first_order), Val(:string)))
+        #     else
+        #         # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(first_order))
+        #         for i in 1:min(min_n_funcs, length(first_order))
+        #             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
 
-                    indices = length(indices) == 1 ? indices[1] : indices
+        #             indices = length(indices) == 1 ? indices[1] : indices
 
-                    func = write_derivatives_function(first_order[indices], indices, Val(:string))
+        #             func = write_derivatives_function(first_order[indices], indices, Val(:string))
 
-                    # begin
-                    #     lock(lk)
-                    #     try
-                            push!(funcs, func)
-                    #     finally
-                    #         unlock(lk)
-                    #     end
-                    # end
-                end
-            end
+        #             # begin
+        #             #     lock(lk)
+        #             #     try
+        #                     push!(funcs, func)
+        #             #     finally
+        #             #         unlock(lk)
+        #             #     end
+        #             # end
+        #         end
+        #     end
 
-            𝓂.model_jacobian = (funcs, row1 .+ (column1 .- 1) .* length(eqs_sub),  zeros(length(eqs_sub), length(vars)))
-        end
+        #     𝓂.model_jacobian = (funcs, row1 .+ (column1 .- 1) .* length(eqs_sub),  zeros(length(eqs_sub), length(vars)))
+        # end
     end
         
     if max_perturbation_order >= 2
@@ -5888,37 +5923,64 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
 
-            perm_vals = sortperm(column2) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
 
-            min_n_funcs = length(second_order) ÷ max_exprs_per_func + 1
+            # hes_deriv(x, y) = 𝓂.jacobian[4].jac_exe(x, y)'
 
-            funcs = Function[]
-        
-            lk = ReentrantLock()
+            backend = 𝒟.AutoSparse(
+                𝒟.AutoForwardDiff();  # any object from ADTypes
+                sparsity_detector = TracerSparsityDetector(),
+                coloring_algorithm = GreedyColoringAlgorithm(),
+            )
 
-            if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(second_order[perm_vals], 1:length(second_order), Val(:string)))
-            else
-                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(second_order))
-                for i in 1:min(min_n_funcs, length(second_order))
-                    indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
+            prephes = 𝒟.prepare_jacobian(𝓂.jacobian[4].jac_exe, backend, ∂, 𝒟.Constant(C))
+
+            hesbuffer_tmp = 𝒟.similar(sparsity_pattern(prephes), eltype(ϵ))
+
+            # hesbuffer = 𝒟.similar(sparse(reshape(sparsity_pattern(prephes),length(𝓂.dyn_equations), length(∂)^2)), eltype(ϵ))
+
+            hesbuffer = reshape_sparse_matrix(hesbuffer_tmp)
+
+            backend = 𝒟.AutoSparse(
+                𝒟.AutoFastDifferentiation();  # any object from ADTypes
+                sparsity_detector = TracerSparsityDetector(),
+                coloring_algorithm = GreedyColoringAlgorithm(),
+            )
             
-                    indices = length(indices) == 1 ? indices[1] : indices
+            prephes = 𝒟.prepare_jacobian(𝓂.jacobian[4].jac_exe, backend, ∂, 𝒟.Constant(C))
 
-                    func = write_derivatives_function(second_order[perm_vals][indices], indices, Val(:string))
+            𝓂.hessian = (𝓂.jacobian[4].jac_exe, hesbuffer_tmp, prephes, hesbuffer)
 
-                    # begin
-                    #     lock(lk)
-                    #     try
-                            push!(funcs, func)
-                    #     finally
-                    #         unlock(lk)
-                    #     end
-                    # end
-                end
-            end
+            # perm_vals = sortperm(column2) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
 
-            𝓂.model_hessian = (funcs, sparse(row2, column2, zero(column2), length(eqs_sub), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
+            # min_n_funcs = length(second_order) ÷ max_exprs_per_func + 1
+
+            # funcs = Function[]
+        
+            # lk = ReentrantLock()
+
+            # if min_n_funcs == 1
+            #     push!(funcs, write_derivatives_function(second_order[perm_vals], 1:length(second_order), Val(:string)))
+            # else
+            #     # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(second_order))
+            #     for i in 1:min(min_n_funcs, length(second_order))
+            #         indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
+            
+            #         indices = length(indices) == 1 ? indices[1] : indices
+
+            #         func = write_derivatives_function(second_order[perm_vals][indices], indices, Val(:string))
+
+            #         # begin
+            #         #     lock(lk)
+            #         #     try
+            #                 push!(funcs, func)
+            #         #     finally
+            #         #         unlock(lk)
+            #         #     end
+            #         # end
+            #     end
+            # end
+
+            # 𝓂.model_hessian = (funcs, sparse(row2, column2, zero(column2), length(eqs_sub), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
         end
 
         # derivative of hessian wrt SS_and_pars and parameters
@@ -6686,8 +6748,8 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
-    par = vcat(parameters,calibrated_parameters)
-
+    par = vcat(parameters, calibrated_parameters)
+    
     dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
     dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
     dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
@@ -6695,46 +6757,78 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-        
-    # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
-    # return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+    ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
+    C = 𝒟.Constant(vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))])) # [dyn_ss_idx])
 
-    # second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) for f in 𝓂.model_hessian]
-    
-    # vals = [i[1] for i in second_out]
-    # rows = [i[2] for i in second_out]
-    # cols = [i[3] for i in second_out]
+    backend = 𝒟.AutoFastDifferentiation()
 
-    X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-    
-    # vals = M[]
-
-    # for f in 𝓂.model_hessian[1]
-    #     push!(vals, f(X)...)
-    # end
-
-    vals = zeros(M, length(𝓂.model_hessian[1]))
-
-    # lk = ReentrantLock()
-
-    Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian[1]
-    # for f in 𝓂.model_hessian[1]
-        out = f(X)
-        
-        # begin
-        #     lock(lk)
-        #     try
-                @inbounds vals[out[2]] = out[1]
-        #     finally
-        #         unlock(lk)
-        #     end
-        # end
+    if eltype(𝓂.jacobian[3]) != M
+        hesbuffer_tmp = zeros(M, size(𝓂.hessian[2]))
+    else
+        hesbuffer_tmp = 𝓂.hessian[2]
     end
 
-    Accessors.@reset 𝓂.model_hessian[2].nzval = vals
+    𝒟.jacobian!(𝓂.hessian[1], hesbuffer_tmp, 𝓂.hessian[3], backend, ∂, C)
+
+    tmp = nonzeros(𝓂.hessian[4])
+
+    tmp .= hesbuffer_tmp.nzval
+
+    return 𝓂.hessian[4]
     
-    return 𝓂.model_hessian[2] * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+
+    # SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+    # calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+    
+    # par = vcat(parameters,calibrated_parameters)
+
+    # dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+    # dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+    # dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+    # dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+
+    # shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
+
+    # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+        
+    # # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
+    # # return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+
+    # # second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) for f in 𝓂.model_hessian]
+    
+    # # vals = [i[1] for i in second_out]
+    # # rows = [i[2] for i in second_out]
+    # # cols = [i[3] for i in second_out]
+
+    # X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
+    
+    # # vals = M[]
+
+    # # for f in 𝓂.model_hessian[1]
+    # #     push!(vals, f(X)...)
+    # # end
+
+    # vals = zeros(M, length(𝓂.model_hessian[1]))
+
+    # # lk = ReentrantLock()
+
+    # Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian[1]
+    # # for f in 𝓂.model_hessian[1]
+    #     out = f(X)
+        
+    #     # begin
+    #     #     lock(lk)
+    #     #     try
+    #             @inbounds vals[out[2]] = out[1]
+    #     #     finally
+    #     #         unlock(lk)
+    #     #     end
+    #     # end
+    # end
+
+    # Accessors.@reset 𝓂.model_hessian[2].nzval = vals
+    
+    # return 𝓂.model_hessian[2] * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
 
     # vals = M[]
     # rows = Int[]

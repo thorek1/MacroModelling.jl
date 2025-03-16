@@ -887,6 +887,7 @@ macro model(𝓂,ex...)
 
                         (x->x, zeros(0), zeros(0,0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0])), # jacobian
                         (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0])), # jacobian_SS_and_pars_vars
+                        (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # hessian
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
                         ([], Int[], zeros(1,1)), # model_jacobian
                         # x->x, # model_jacobian_parameters

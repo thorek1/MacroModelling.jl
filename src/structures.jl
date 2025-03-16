@@ -386,6 +386,7 @@ mutable struct ℳ
 
     jacobian::Tuple{Function, Vector{<: Real}, Matrix{<: Real}, 𝒟.JacobianPrep}
     jacobian_SS_and_pars_vars::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep}
+    hessian::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep, SparseMatrixCSC{<: Real, Int}}
 
     # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
     model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
