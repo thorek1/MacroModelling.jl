@@ -908,41 +908,79 @@ function fill_kron_adjoint_∂A!(∂X::AbstractSparseMatrix{R}, ∂A::AbstractMa
     end
 end
 
-function reshape_sparse_matrix(A::SparseMatrixCSC)
-    # Let A be of size (n*m) x m. Deduce n and m.
-    R, m = size(A)           # R = n*m
-    @assert R % m == 0 "Number of rows must be a multiple of number of columns."
-    n = div(R, m)
+function reshape_sparse_matrix(A::SparseMatrixCSC, n::Int, m::Int, order::Int)
+#     # Let A be of size (n*m) x m. Deduce n and m.
+#     R, C = size(A)           # R = n*m
+#     # @assert R % m == 0 "Number of rows must be a multiple of number of columns."
+#     # n = div(R, m)
+
+#     # m = div(length(A), n)
+
+#     # Number of nonzeros and their values.
+#     nz = nonzeros(A)
+#     N = length(nz)
     
-    # Number of nonzeros and their values.
+#     # Reconstruct the column indices for each nonzero from A.colptr.
+#     col_indices = Vector{Int}(undef, N)
+#     for j in 1:m^(order-1)
+#         for k in A.colptr[j]:(A.colptr[j+1]-1)
+#             col_indices[k] = j
+#         end
+#     end
+#     # Row indices are available from A.rowval.
+#     row_indices = A.rowval
+    
+#     # In column-major order, the linear index for A[r,c] is:
+#     #   k = r + (c - 1) * (n*m)  where n*m = R.
+#     linear_indices = row_indices .+ (col_indices .- 1) .* R
+    
+#     # When reshaping into an n x (m*m) matrix, the new indices are given by:
+#     #   new row: i = (k - 1) % n + 1
+#     #   new col: j = (k - 1) ÷ n + 1
+#     newI = (linear_indices .- 1) .% n .+ 1
+#     newJ = ((linear_indices .- 1) .÷ n) .+ 1
+    
+#     # Build the reshaped sparse matrix B.
+#     B = sparse(newI, newJ, nz, n, m^order)
+#     return B
+# end
+
+
+    # Expected dimensions for A are (n * m^(order-1)) x m.
+    expected_rows = n * m^(order - 1)
+    @assert size(A, 1) == expected_rows "Matrix A must have n*m^(order-1) rows."
+    @assert size(A, 2) == m "Matrix A must have m columns."
+    
+    # Extract nonzero values.
     nz = nonzeros(A)
     N = length(nz)
     
-    # Reconstruct the column indices for each nonzero from A.colptr.
+    # Reconstruct column indices from A.colptr.
     col_indices = Vector{Int}(undef, N)
     for j in 1:m
         for k in A.colptr[j]:(A.colptr[j+1]-1)
             col_indices[k] = j
         end
     end
-    # Row indices are available from A.rowval.
+    # Row indices come directly from A.rowval.
     row_indices = A.rowval
     
-    # In column-major order, the linear index for A[r,c] is:
-    #   k = r + (c - 1) * (n*m)  where n*m = R.
-    linear_indices = row_indices .+ (col_indices .- 1) .* R
+    # Compute the dense linear indices in A (column-major order).
+    # For an element at (r, c) in A (with r ∈ [1, expected_rows] and c ∈ [1, m]),
+    # the linear index is: k = r + (c - 1)*expected_rows.
+    linear_indices = row_indices .+ (col_indices .- 1) .* expected_rows
     
-    # When reshaping into an n x (m*m) matrix, the new indices are given by:
-    #   new row: i = (k - 1) % n + 1
-    #   new col: j = (k - 1) ÷ n + 1
+    # When reshaping into a matrix of size n x m^order,
+    # the new row and column indices are given by:
+    #   new row: i = (linear_index - 1) % n + 1
+    #   new col: j = (linear_index - 1) ÷ n + 1
     newI = (linear_indices .- 1) .% n .+ 1
     newJ = ((linear_indices .- 1) .÷ n) .+ 1
     
-    # Build the reshaped sparse matrix B.
-    B = sparse(newI, newJ, nz, n, m*m)
+    # Construct the reshaped sparse matrix B with dimensions n x m^order.
+    B = sparse(newI, newJ, nz, n, m^order)
     return B
 end
-
 
 function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}}; 
                                 density_threshold::Float64 = .1, 
@@ -5516,10 +5554,10 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
             end
         end
     end
-            
+
     𝐒𝐏 = sparse(collect(nonnull_columns), collect(nonnull_columns), 1, n̄, n̄)
 
-    return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐈₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
+    return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
 end
 
 end # dispatch_doctor
@@ -5923,9 +5961,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
 
-
-            # hes_deriv(x, y) = 𝓂.jacobian[4].jac_exe(x, y)'
-
             backend = 𝒟.AutoSparse(
                 𝒟.AutoForwardDiff();  # any object from ADTypes
                 sparsity_detector = TracerSparsityDetector(),
@@ -5934,11 +5969,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
             prephes = 𝒟.prepare_jacobian(𝓂.jacobian[4].jac_exe, backend, ∂, 𝒟.Constant(C))
 
+            prephesdense = 𝒟.prepare_jacobian(𝓂.jacobian[4].jac_exe, 𝒟.AutoFastDifferentiation(), ∂, 𝒟.Constant(C))
+
             hesbuffer_tmp = 𝒟.similar(sparsity_pattern(prephes), eltype(ϵ))
 
             # hesbuffer = 𝒟.similar(sparse(reshape(sparsity_pattern(prephes),length(𝓂.dyn_equations), length(∂)^2)), eltype(ϵ))
 
-            hesbuffer = reshape_sparse_matrix(hesbuffer_tmp)
+            hesbuffer = reshape_sparse_matrix(hesbuffer_tmp, length(𝓂.dyn_equations), length(∂), 2)
 
             backend = 𝒟.AutoSparse(
                 𝒟.AutoFastDifferentiation();  # any object from ADTypes
@@ -6033,6 +6070,36 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
         
+            backend = 𝒟.AutoSparse(
+                𝒟.AutoForwardDiff();  # any object from ADTypes
+                sparsity_detector = TracerSparsityDetector(),
+                coloring_algorithm = GreedyColoringAlgorithm(),
+            )
+
+            CC = 𝒟.Constant(C)
+            # println(typeof(hesbuffer_tmp))
+            # deriv_third_order(x, y) = prephesdense.jac_exe!(hesbuffer_tmp, x::T, y) where T
+            # deriv_third_order(x, y) = vec(𝓂.hessian[3].jac_exe(x, y))
+
+            prephesdense = 𝒟.prepare_jacobian(𝓂.jacobian[4].jac_exe, 𝒟.AutoFastDifferentiation(), ∂, CC)
+
+            prepthird = 𝒟.prepare_jacobian(prephesdense.jac_exe, backend, ∂, CC)
+
+            thirdbuffer_tmp = 𝒟.similar(sparsity_pattern(prepthird), eltype(ϵ))
+
+            thirdbuffer = reshape_sparse_matrix(thirdbuffer_tmp, length(𝓂.dyn_equations), length(∂), 3)
+
+            backend = 𝒟.AutoSparse(
+                𝒟.AutoFastDifferentiation();  # any object from ADTypes
+                sparsity_detector = TracerSparsityDetector(),
+                coloring_algorithm = GreedyColoringAlgorithm(),
+            )
+            
+            prepthird = 𝒟.prepare_jacobian(prephesdense.jac_exe, backend, ∂, CC)
+
+            𝓂.third_order_derivatives = (prephesdense.jac_exe, thirdbuffer_tmp, prepthird, thirdbuffer)
+
+
             perm_vals = sortperm(column3) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
 
             min_n_funcs = length(third_order) ÷ max_exprs_per_func + 1
@@ -6894,8 +6961,8 @@ function calculate_third_order_derivatives(parameters::Vector{M},
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
-    par = vcat(parameters,calibrated_parameters)
-
+    par = vcat(parameters, calibrated_parameters)
+    
     dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
     dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
     dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
@@ -6903,72 +6970,104 @@ function calculate_third_order_derivatives(parameters::Vector{M},
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
-    # return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
-    
-    
-    # third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
-    
-    # vals = [i[1] for i in third_out]
-    # rows = [i[2] for i in third_out]
-    # cols = [i[3] for i in third_out]
+    ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
+    C = 𝒟.Constant(vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))])) # [dyn_ss_idx])
 
-    # vals = convert(Vector{M}, vals)
-    
-    X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-    
-    # vals = M[]
+    backend = 𝒟.AutoFastDifferentiation()
 
-    # for f in 𝓂.model_third_order_derivatives[1]
-    #     push!(vals, f(X)...)
-    # end
-    
-    vals = zeros(M, length(𝓂.model_third_order_derivatives[1]))
-
-    # lk = ReentrantLock()
-
-    # @timeit_debug timer "Loop" begin
-
-    Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives[1]
-    # for f in 𝓂.model_third_order_derivatives[1]
-        out = f(X)
-        
-        # begin
-        #     lock(lk)
-        #     try
-                @inbounds vals[out[2]] = out[1]
-        #     finally
-        #         unlock(lk)
-        #     end
-        # end
+    if eltype(𝓂.jacobian[3]) != M
+        thirdbuffer_tmp = zeros(M, size(𝓂.third_order_derivatives[2]))
+    else
+        thirdbuffer_tmp = 𝓂.third_order_derivatives[2]
     end
 
-    # end # timeit_debug
+    𝒟.jacobian!(𝓂.third_order_derivatives[1], thirdbuffer_tmp, 𝓂.third_order_derivatives[3], backend, ∂, C)
 
-    # @timeit_debug timer "Allocation" begin
+    tmp = nonzeros(𝓂.third_order_derivatives[4])
 
-    Accessors.@reset 𝓂.model_third_order_derivatives[2].nzval = vals
+    tmp .= thirdbuffer_tmp.nzval
+
+    return 𝓂.third_order_derivatives[4] * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂∇₃
+
+
+    # SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+    # calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
-    # end # timeit_debug
-    # end # timeit_debug
+    # par = vcat(parameters,calibrated_parameters)
 
-    return 𝓂.model_third_order_derivatives[2]# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    # dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+    # dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+    # dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+    # dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
 
-    # vals = M[]
-    # rows = Int[]
-    # cols = Int[]
+    # shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    # for f in 𝓂.model_third_order_derivatives
-    #     output = f(input)
+    # # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
+    # # return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    
+    
+    # # third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
+    
+    # # vals = [i[1] for i in third_out]
+    # # rows = [i[2] for i in third_out]
+    # # cols = [i[3] for i in third_out]
 
-    #     push!(vals, output[1]...)
-    #     push!(rows, output[2]...)
-    #     push!(cols, output[3]...)
+    # # vals = convert(Vector{M}, vals)
+    
+    # X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
+    
+    # # vals = M[]
+
+    # # for f in 𝓂.model_third_order_derivatives[1]
+    # #     push!(vals, f(X)...)
+    # # end
+    
+    # vals = zeros(M, length(𝓂.model_third_order_derivatives[1]))
+
+    # # lk = ReentrantLock()
+
+    # # @timeit_debug timer "Loop" begin
+
+    # Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives[1]
+    # # for f in 𝓂.model_third_order_derivatives[1]
+    #     out = f(X)
+        
+    #     # begin
+    #     #     lock(lk)
+    #     #     try
+    #             @inbounds vals[out[2]] = out[1]
+    #     #     finally
+    #     #         unlock(lk)
+    #     #     end
+    #     # end
     # end
 
-    # # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-    # # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
-    # sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    # # end # timeit_debug
+
+    # # @timeit_debug timer "Allocation" begin
+
+    # Accessors.@reset 𝓂.model_third_order_derivatives[2].nzval = vals
+    
+    # # end # timeit_debug
+    # # end # timeit_debug
+
+    # return 𝓂.model_third_order_derivatives[2]# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+
+    # # vals = M[]
+    # # rows = Int[]
+    # # cols = Int[]
+
+    # # for f in 𝓂.model_third_order_derivatives
+    # #     output = f(input)
+
+    # #     push!(vals, output[1]...)
+    # #     push!(rows, output[2]...)
+    # #     push!(cols, output[3]...)
+    # # end
+
+    # # # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
+    # # # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
+    # # sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
 end
 
 end # dispatch_doctor

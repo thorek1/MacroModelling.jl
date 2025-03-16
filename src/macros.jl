@@ -888,6 +888,7 @@ macro model(𝓂,ex...)
                         (x->x, zeros(0), zeros(0,0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0])), # jacobian
                         (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0])), # jacobian_SS_and_pars_vars
                         (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # hessian
+                        (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
                         ([], Int[], zeros(1,1)), # model_jacobian
                         # x->x, # model_jacobian_parameters
@@ -941,7 +942,7 @@ macro model(𝓂,ex...)
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 3rd order sol
                                             auxilliary_indices(Int[],Int[],Int[],Int[],Int[]),
                                             second_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
-                                            third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
+                                            third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
                             ),
                             Float64[], 
                             # Set([:first_order]),

@@ -167,7 +167,8 @@ struct third_order_auxilliary_matrices
     𝐂₃::SparseMatrixCSC{Int}
     𝐔₃::SparseMatrixCSC{Int}
     𝐈₃::Dict{Vector{Int}, Int}
-    
+
+    𝐂∇₃::SparseMatrixCSC{Int}
     𝐔∇₃::SparseMatrixCSC{Int}
 
     𝐏::SparseMatrixCSC{Int}
@@ -387,6 +388,7 @@ mutable struct ℳ
     jacobian::Tuple{Function, Vector{<: Real}, Matrix{<: Real}, 𝒟.JacobianPrep}
     jacobian_SS_and_pars_vars::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep}
     hessian::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep, SparseMatrixCSC{<: Real, Int}}
+    third_order_derivatives::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep, SparseMatrixCSC{<: Real, Int}}
 
     # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
     model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
