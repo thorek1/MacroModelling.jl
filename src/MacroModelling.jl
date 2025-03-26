@@ -6923,13 +6923,17 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
     C = 𝒟.Constant(vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))])) # [dyn_ss_idx])
 
-    backend = 𝒟.AutoFastDifferentiation()
+    backend = 𝒟.AutoSparse(
+        𝒟.AutoFastDifferentiation();  # any object from ADTypes
+        sparsity_detector = TracerSparsityDetector(),
+        coloring_algorithm = GreedyColoringAlgorithm(),
+    )
 
-    if eltype(𝓂.jacobian[3]) != M
-        hesbuffer_tmp = zeros(M, size(𝓂.hessian[2]))
-    else
+    # if eltype(𝓂.jacobian[3]) != M
+    #     hesbuffer_tmp = zeros(M, size(𝓂.hessian[2]))
+    # else
         hesbuffer_tmp = 𝓂.hessian[2]
-    end
+    # end
 
     𝒟.jacobian!(𝓂.hessian[1], hesbuffer_tmp, 𝓂.hessian[3], backend, ∂, C)
 
