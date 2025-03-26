@@ -6172,10 +6172,17 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
                 coloring_algorithm = GreedyColoringAlgorithm(),
             )
 
-            CC = 𝒟.Constant(C)
             # println(typeof(hesbuffer_tmp))
             # deriv_third_order(x, y) = prephesdense.jac_exe!(hesbuffer_tmp, x::T, y) where T
             # deriv_third_order(x, y) = vec(𝓂.hessian[3].jac_exe(x, y))
+
+            ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
+
+            C = vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))]) # [dyn_ss_idx])
+
+            CC = 𝒟.Constant(C)
+
+            jac_fun = 𝓂.jacobian[4].jac_exe
 
             prephesdense = 𝒟.prepare_jacobian(jac_fun, 𝒟.AutoFastDifferentiation(), ∂, CC)
 
@@ -7075,11 +7082,11 @@ function calculate_third_order_derivatives(parameters::Vector{M},
 
     backend = 𝒟.AutoFastDifferentiation()
 
-    if eltype(𝓂.jacobian[3]) != M
-        thirdbuffer_tmp = zeros(M, size(𝓂.third_order_derivatives[2]))
-    else
+    # if eltype(𝓂.jacobian[3]) != M
+    #     thirdbuffer_tmp = zeros(M, size(𝓂.third_order_derivatives[2]))
+    # else
         thirdbuffer_tmp = 𝓂.third_order_derivatives[2]
-    end
+    # end
 
     𝒟.jacobian!(𝓂.third_order_derivatives[1], thirdbuffer_tmp, 𝓂.third_order_derivatives[3], backend, ∂, C)
 
