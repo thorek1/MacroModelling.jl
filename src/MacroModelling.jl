@@ -5729,7 +5729,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     𝓂.jacobian = (calc!, ϵ, jac, prep)
 
 
-    jac_deriv(SS_and_pars, derivvars) = 𝓂.jacobian[4].jac_exe(derivvars, SS_and_pars)
+    jac_deriv(SS_and_pars, derivvars) = prep.jac_exe(derivvars, SS_and_pars)
 
     backend = 𝒟.AutoSparse(
         𝒟.AutoForwardDiff();  # any object from ADTypes
@@ -5875,6 +5875,65 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     end
     
     if max_perturbation_order >= 1
+        SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+
+        eqs = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
+
+        pars_and_SS = Expr[]
+        for (i, p) in enumerate(SS_and_pars)
+            push!(pars_and_SS, :($p = SS_and_parameters[$i]))
+        end
+
+        deriv_vars = Expr[]
+        for (i, u) in enumerate(𝓂.parameters)
+            push!(deriv_vars, :($u = parameters[$i]))
+        end
+
+        eeqqss = Expr[]
+        for (i, u) in enumerate(eqs)
+            push!(eeqqss, :(ϵ[$i] = $u))
+        end
+
+        funcs = :(function calculate_residual_of_static_equations!(ϵ, parameters, SS_and_parameters)
+            $(pars_and_SS...)
+            $(deriv_vars...)
+            $(𝓂.calibration_equations_no_var...)
+            @inbounds begin
+            $(eeqqss...)
+            end
+            return nothing
+        end)
+
+        calc_SS! = @RuntimeGeneratedFunction(funcs)
+
+        ϵ = zeros(length(eqs))
+
+        ∂ = 𝓂.parameters
+        C = 𝓂.solution.non_stochastic_steady_state # [dyn_ss_idx])
+    
+        jac = zeros(length(eqs), length(∂));
+    
+        backend = 𝒟.AutoFastDifferentiation()
+    
+        prep = 𝒟.prepare_jacobian(calc_SS!, ϵ, backend, ∂, 𝒟.Constant(C));
+        
+        𝓂.∂SS_equations_∂parameters = (calc_SS!, ϵ, jac, prep)
+
+
+        ∂ = 𝓂.solution.non_stochastic_steady_state
+        C = 𝓂.parameters # [dyn_ss_idx])
+    
+        jac = zeros(length(eqs), length(∂));
+    
+        backend = 𝒟.AutoFastDifferentiation()
+    
+        calc_SS_switch!(e,x,y) = calc_SS!(e,y,x)
+
+        prep = 𝒟.prepare_jacobian(calc_SS_switch!, ϵ, backend, ∂, 𝒟.Constant(C));
+        
+        𝓂.∂SS_equations_∂SS_and_pars = (calc_SS_switch!, ϵ, jac, prep)
+
+        
         # if 𝓂.model_jacobian[2] == Int[]
         #     write_auxilliary_indices!(𝓂)
 
@@ -5967,9 +6026,15 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
                 coloring_algorithm = GreedyColoringAlgorithm(),
             )
 
-            prephes = 𝒟.prepare_jacobian(𝓂.jacobian[4].jac_exe, backend, ∂, 𝒟.Constant(C))
+            ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
 
-            prephesdense = 𝒟.prepare_jacobian(𝓂.jacobian[4].jac_exe, 𝒟.AutoFastDifferentiation(), ∂, 𝒟.Constant(C))
+            C = vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))]) # [dyn_ss_idx])
+
+            jac_fun = 𝓂.jacobian[4].jac_exe
+
+            prephes = 𝒟.prepare_jacobian(jac_fun, backend, ∂, 𝒟.Constant(C))
+
+            prephesdense = 𝒟.prepare_jacobian(jac_fun, 𝒟.AutoFastDifferentiation(), ∂, 𝒟.Constant(C))
 
             hesbuffer_tmp = 𝒟.similar(sparsity_pattern(prephes), eltype(ϵ))
 
@@ -5983,9 +6048,40 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
                 coloring_algorithm = GreedyColoringAlgorithm(),
             )
             
-            prephes = 𝒟.prepare_jacobian(𝓂.jacobian[4].jac_exe, backend, ∂, 𝒟.Constant(C))
+            prephes = 𝒟.prepare_jacobian(jac_fun, backend, ∂, 𝒟.Constant(C))
 
-            𝓂.hessian = (𝓂.jacobian[4].jac_exe, hesbuffer_tmp, prephes, hesbuffer)
+            𝓂.hessian = (jac_fun, hesbuffer_tmp, prephes, hesbuffer)
+
+
+            ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
+
+            C = vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))]) # [dyn_ss_idx])
+
+            # hes_deriv(e, x, y) = prephes.jac_exe!(e, y, x)
+            hes_deriv(x, y) = prephes.jac_exe(y, x)
+
+            backend = 𝒟.AutoSparse(
+                𝒟.AutoForwardDiff();  # any object from ADTypes
+                sparsity_detector = TracerSparsityDetector(),
+                coloring_algorithm = GreedyColoringAlgorithm(),
+            )
+
+            ϵ = zeros(length(𝓂.dyn_equations) * length(∂), length(∂))
+
+            prephes_SS_and_pars = 𝒟.prepare_jacobian(hes_deriv, backend, C, 𝒟.Constant(∂))
+
+            hes_buffer = 𝒟.similar(sparsity_pattern(prephes_SS_and_pars), eltype(ϵ))
+
+            
+            backend = 𝒟.AutoSparse(
+                𝒟.AutoFastDifferentiation();  # any object from ADTypes
+                sparsity_detector = TracerSparsityDetector(),
+                coloring_algorithm = GreedyColoringAlgorithm(),
+            )
+
+            prephes = 𝒟.prepare_jacobian(hes_deriv, backend, C, 𝒟.Constant(∂))
+
+            𝓂.hessian_SS_and_pars_vars = (hes_deriv, hes_buffer, prephes_SS_and_pars)
 
             # perm_vals = sortperm(column2) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
 
@@ -6081,7 +6177,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
             # deriv_third_order(x, y) = prephesdense.jac_exe!(hesbuffer_tmp, x::T, y) where T
             # deriv_third_order(x, y) = vec(𝓂.hessian[3].jac_exe(x, y))
 
-            prephesdense = 𝒟.prepare_jacobian(𝓂.jacobian[4].jac_exe, 𝒟.AutoFastDifferentiation(), ∂, CC)
+            prephesdense = 𝒟.prepare_jacobian(jac_fun, 𝒟.AutoFastDifferentiation(), ∂, CC)
 
             prepthird = 𝒟.prepare_jacobian(prephesdense.jac_exe, backend, ∂, CC)
 
@@ -7808,75 +7904,107 @@ function rrule(::typeof(get_NSSS_and_parameters),
     
     # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
     unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-    # ∂SS_equations_∂parameters = try 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-    # catch
-    #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    # end
 
-    X = [parameter_values; SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]]
-    
-    # vals = Float64[]
+    ∂ = parameter_values
+    C = 𝒟.Constant(SS_and_pars) # [dyn_ss_idx])
 
-    # for f in 𝓂.∂SS_equations_∂parameters[1]
-    #     push!(vals, f(X)...)
-    # end
-    
-    vals = zeros(Float64, length(𝓂.∂SS_equations_∂parameters[1]))
+    backend = 𝒟.AutoFastDifferentiation()
 
-    # lk = ReentrantLock()
-
-    # @timeit_debug timer "Loop - parameter derivatives" begin
-
-    Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
-    # for f in 𝓂.∂SS_equations_∂parameters[1]
-        out = f(X)
-        
-        # begin
-        #     lock(lk)
-        #     try
-                @inbounds vals[out[2]] = out[1]
-        #     finally
-        #         unlock(lk)
-        #     end
-        # end
+    if eltype(𝓂.∂SS_equations_∂parameters[3]) != eltype(parameter_values)
+        jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[3]))
+    else
+        jac_buffer = 𝓂.∂SS_equations_∂parameters[3]
     end
 
-    Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
+    𝒟.jacobian!(𝓂.∂SS_equations_∂parameters[1], 𝓂.∂SS_equations_∂parameters[2], jac_buffer, 𝓂.∂SS_equations_∂parameters[4], backend, ∂, C)
+
+    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[3]
+
     
-    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
+    ∂ = SS_and_pars
+    C = 𝒟.Constant(parameter_values) # [dyn_ss_idx])
 
-    # end # timeit_debug
+    backend = 𝒟.AutoFastDifferentiation()
 
-    # vals = Float64[]
-
-    # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-    #     push!(vals, f(X)...)
-    # end
-
-    vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
-
-    # lk = ReentrantLock()
-
-    # @timeit_debug timer "Loop - NSSS derivatives" begin
-
-    Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-    # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-        out = f(X)
-        
-        # begin
-        #     lock(lk)
-        #     try
-                @inbounds vals[out[2]] = out[1]
-        #     finally
-        #         unlock(lk)
-        #     end
-        # end
+    if eltype(𝓂.∂SS_equations_∂SS_and_pars[3]) != eltype(parameter_values)
+        jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂SS_and_pars[3]))
+    else
+        jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[3]
     end
 
-    𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0
-    𝓂.∂SS_equations_∂SS_and_pars[3][𝓂.∂SS_equations_∂SS_and_pars[2]] .+= vals
+    𝒟.jacobian!(𝓂.∂SS_equations_∂SS_and_pars[1], 𝓂.∂SS_equations_∂SS_and_pars[2], jac_buffer, 𝓂.∂SS_equations_∂SS_and_pars[4], backend, ∂, C)
 
     ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
+
+    # # ∂SS_equations_∂parameters = try 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+    # # catch
+    # #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    # # end
+
+    # X = [parameter_values; SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]]
+    
+    # # vals = Float64[]
+
+    # # for f in 𝓂.∂SS_equations_∂parameters[1]
+    # #     push!(vals, f(X)...)
+    # # end
+    
+    # vals = zeros(Float64, length(𝓂.∂SS_equations_∂parameters[1]))
+
+    # # lk = ReentrantLock()
+
+    # # @timeit_debug timer "Loop - parameter derivatives" begin
+
+    # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
+    # # for f in 𝓂.∂SS_equations_∂parameters[1]
+    #     out = f(X)
+        
+    #     # begin
+    #     #     lock(lk)
+    #     #     try
+    #             @inbounds vals[out[2]] = out[1]
+    #     #     finally
+    #     #         unlock(lk)
+    #     #     end
+    #     # end
+    # end
+
+    # Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
+    
+    # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
+
+    # # end # timeit_debug
+
+    # # vals = Float64[]
+
+    # # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+    # #     push!(vals, f(X)...)
+    # # end
+
+    # vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
+
+    # # lk = ReentrantLock()
+
+    # # @timeit_debug timer "Loop - NSSS derivatives" begin
+
+    # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+    # # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+    #     out = f(X)
+        
+    #     # begin
+    #     #     lock(lk)
+    #     #     try
+    #             @inbounds vals[out[2]] = out[1]
+    #     #     finally
+    #     #         unlock(lk)
+    #     #     end
+    #     # end
+    # end
+
+    # 𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0
+    # 𝓂.∂SS_equations_∂SS_and_pars[3][𝓂.∂SS_equations_∂SS_and_pars[2]] .+= vals
+
+    # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
 
     # end # timeit_debug
 
@@ -7937,69 +8065,102 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         
         # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
         unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-        # ∂SS_equations_∂parameters = try 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-        # catch
-        #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-        # end
-
-        X = [parameter_values; SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]]
         
-        # vals = Float64[]
 
-        # for f in 𝓂.∂SS_equations_∂parameters[1]
-        #     push!(vals, f(X)...)
-        # end
-        
-        vals = zeros(Float64, length(𝓂.∂SS_equations_∂parameters[1]))
+        ∂ = parameter_values
+        C = 𝒟.Constant(SS_and_pars) # [dyn_ss_idx])
 
-        # lk = ReentrantLock()
+        backend = 𝒟.AutoFastDifferentiation()
 
-        Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
-        # for f in 𝓂.∂SS_equations_∂parameters[1]
-            out = f(X)
-            
-            # begin
-            #     lock(lk)
-            #     try
-                    @inbounds vals[out[2]] = out[1]
-            #     finally
-            #         unlock(lk)
-            #     end
-            # end
+        if eltype(𝓂.∂SS_equations_∂parameters[3]) != eltype(parameter_values)
+            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[3]))
+        else
+            jac_buffer = 𝓂.∂SS_equations_∂parameters[3]
         end
 
-        Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
+        𝒟.jacobian!(𝓂.∂SS_equations_∂parameters[1], 𝓂.∂SS_equations_∂parameters[2], jac_buffer, 𝓂.∂SS_equations_∂parameters[4], backend, ∂, C)
+
+        ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[3]
+
         
-        ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
+        ∂ = SS_and_pars
+        C = 𝒟.Constant(parameter_values) # [dyn_ss_idx])
 
-        # vals = Float64[]
+        backend = 𝒟.AutoFastDifferentiation()
 
-        # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-        #     push!(vals, f(X)...)
-        # end
-
-        vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
-
-        # lk = ReentrantLock()
-
-        Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-        # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-            out = f(X)
-            
-            # begin
-            #     lock(lk)
-            #     try
-                    @inbounds vals[out[2]] = out[1]
-            #     finally
-            #         unlock(lk)
-            #     end
-            # end
+        if eltype(𝓂.∂SS_equations_∂SS_and_pars[3]) != eltype(parameter_values)
+            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂SS_and_pars[3]))
+        else
+            jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[3]
         end
 
-        𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0
-        𝓂.∂SS_equations_∂SS_and_pars[3][𝓂.∂SS_equations_∂SS_and_pars[2]] .+= vals
+        𝒟.jacobian!(𝓂.∂SS_equations_∂SS_and_pars[1], 𝓂.∂SS_equations_∂SS_and_pars[2], jac_buffer, 𝓂.∂SS_equations_∂SS_and_pars[4], backend, ∂, C)
 
         ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
+
+        # # ∂SS_equations_∂parameters = try 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
+        # # catch
+        # #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        # # end
+
+        # X = [parameter_values; SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]]
+        
+        # # vals = Float64[]
+
+        # # for f in 𝓂.∂SS_equations_∂parameters[1]
+        # #     push!(vals, f(X)...)
+        # # end
+        
+        # vals = zeros(Float64, length(𝓂.∂SS_equations_∂parameters[1]))
+
+        # # lk = ReentrantLock()
+
+        # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
+        # # for f in 𝓂.∂SS_equations_∂parameters[1]
+        #     out = f(X)
+            
+        #     # begin
+        #     #     lock(lk)
+        #     #     try
+        #             @inbounds vals[out[2]] = out[1]
+        #     #     finally
+        #     #         unlock(lk)
+        #     #     end
+        #     # end
+        # end
+
+        # Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
+        
+        # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
+
+        # # vals = Float64[]
+
+        # # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+        # #     push!(vals, f(X)...)
+        # # end
+
+        # vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
+
+        # # lk = ReentrantLock()
+
+        # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+        # # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
+        #     out = f(X)
+            
+        #     # begin
+        #     #     lock(lk)
+        #     #     try
+        #             @inbounds vals[out[2]] = out[1]
+        #     #     finally
+        #     #         unlock(lk)
+        #     #     end
+        #     # end
+        # end
+
+        # 𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0
+        # 𝓂.∂SS_equations_∂SS_and_pars[3][𝓂.∂SS_equations_∂SS_and_pars[2]] .+= vals
+
+        # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
 
         # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
         # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
