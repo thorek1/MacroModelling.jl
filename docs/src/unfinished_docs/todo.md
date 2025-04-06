@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
+- [ ] add to the doc/strings that KeyedArrays are part of the AxisKeyes.jl package so people can look up how to access elements there. otherwise they might confuse it for a format provided by the package and wouldnt know how to access elements from it
 - [ ] fix borrowing_constraint how-to
 - [ ] implement check for plots, that they always return a plot (shocks = :none didnt return a plot)
 - [ ] implement benchmarks
