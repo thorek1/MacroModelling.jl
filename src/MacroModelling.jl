@@ -25,7 +25,6 @@ import Accessors
 import DifferentiationInterface as 𝒟
 import ForwardDiff as ℱ
 backend = 𝒟.AutoForwardDiff()
-import FastDifferentiation
 import SparseMatrixColorings: GreedyColoringAlgorithm, sparsity_pattern
 import SparseConnectivityTracer: TracerSparsityDetector
 # import Diffractor: DiffractorForwardBackend
@@ -47,7 +46,7 @@ import Combinatorics: combinations
 import BlockTriangularForm
 import Subscripts: super, sub
 import Krylov
-import Krylov: GmresSolver, DqgmresSolver, BicgstabSolver
+import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
 import DataStructures: CircularBuffer
 # import SpeedMapping: speedmapping
@@ -68,6 +67,7 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 using Requires
 
 import Reexport
+Reexport.@reexport import Symbolics
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
@@ -5645,6 +5645,336 @@ end
 
 @stable default_mode = "disable" begin
 
+
+function take_nth_order_derivatives(
+    f!::Function,
+    nx::Int,
+    np::Int,
+    nϵ::Int;
+    max_perturbation_order::Int = 1,
+    output_compressed::Bool = true # Controls compression for X derivatives (order >= 2)
+)
+    if max_perturbation_order < 1
+        throw(ArgumentError("max_perturbation_order must be at least 1"))
+    end
+    if np < 0
+         throw(ArgumentError("np must be non-negative"))
+    end
+
+    Symbolics.@variables 𝒳[1:nx] 𝒫[1:np]
+    ϵˢ = zeros(Symbolics.Num, nϵ)
+
+    # Evaluate the function symbolically
+    f!(ϵˢ, 𝒳, 𝒫)
+
+    results = [] # To store pairs of sparse matrices (X_matrix, P_matrix) for each order
+
+    # --- Order 1 ---
+    # Compute the 1st order derivative with respect to X (Jacobian)
+    spX_order_1 = Symbolics.sparsejacobian(ϵˢ, 𝒳) # nϵ x nx
+
+    # Compute the derivative of the non-zeros of the 1st X-derivative w.r.t. P
+    # This is an intermediate step. The final P matrix will be built from this.
+    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1.nzval, 𝒫) # nnz(spX_order_1) x np
+
+    # Determine dimensions for the Order 1 P matrix
+    X_nrows_1 = nϵ
+    X_ncols_1 = nx
+    P_nrows_1 = X_nrows_1 * X_ncols_1
+    P_ncols_1 = np
+
+    # Build the Order 1 P matrix (dimensions nϵ*nx x np)
+    sparse_rows_1_P = Int[] # Row index in the flattened space of spX_order_1
+    sparse_cols_1_P = Int[] # Column index for parameters (1 to np)
+    sparse_vals_1_P = Symbolics.Num[]
+
+    # Map linear index in spX_order_1.nzval to its (row, col) in spX_order_1
+    nz_lin_to_rc_1 = Dict{Int, Tuple{Int, Int}}()
+    k_lin = 1
+    for j = 1:size(spX_order_1, 2) # col
+        for ptr = spX_order_1.colptr[j]:(spX_order_1.colptr[j+1]-1)
+             r = spX_order_1.rowval[ptr] # row
+             nz_lin_to_rc_1[k_lin] = (r, j)
+             k_lin += 1
+        end
+    end
+
+
+    # Iterate through the non-zero entries of spP_of_flatX_nzval_order_1
+    k_temp_P = 1 # linear index counter for nzval
+    for p_col = 1:size(spP_of_flatX_nzval_order_1, 2) # Parameter index
+        for i_ptr_temp_P = spP_of_flatX_nzval_order_1.colptr[p_col]:(spP_of_flatX_nzval_order_1.colptr[p_col+1]-1)
+            temp_row = spP_of_flatX_nzval_order_1.rowval[i_ptr_temp_P] # Row index in spP_of_flatX_nzval (corresponds to temp_row-th nzval of spX_order_1)
+            p_val = spP_of_flatX_nzval_order_1.nzval[i_ptr_temp_P] # Derivative value w.r.t. parameter
+
+            # Get the (row, col) in spX_order_1 corresponding to this derivative
+            r_X1, c_X1 = nz_lin_to_rc_1[temp_row]
+
+            # Calculate the row index in spP_order_1 (flattened index of spX_order_1)
+            P_row_idx = (r_X1 - 1) * X_ncols_1 + c_X1
+            P_col_idx = p_col # Parameter column index
+
+            push!(sparse_rows_1_P, P_row_idx)
+            push!(sparse_cols_1_P, P_col_idx)
+            push!(sparse_vals_1_P, p_val)
+
+            k_temp_P += 1
+        end
+    end
+
+    spP_order_1 = sparse!(sparse_rows_1_P, sparse_cols_1_P, sparse_vals_1_P, P_nrows_1, P_ncols_1)
+
+
+    # Store the pair for order 1
+    push!(results, (spX_order_1, spP_order_1))
+
+    if max_perturbation_order > 1
+        # --- Prepare for higher orders (Order 2 to max_perturbation_order) ---
+        # Initialize map for Order 1: linear index in spX_order_1.nzval -> (row, (v1,))
+        # This map is needed to trace indices for Order 2
+        # We already built nz_lin_to_rc_1 above, reuse it and wrap the variable index in a Tuple
+        nz_to_indices_prev = Dict{Int, Tuple{Int, Tuple{Int}}}()
+        k_lin = 1
+        for j = 1:size(spX_order_1, 2)
+            for ptr = spX_order_1.colptr[j]:(spX_order_1.colptr[j+1]-1)
+                r = spX_order_1.rowval[ptr]
+                nz_to_indices_prev[k_lin] = (r, (j,)) # Store (equation row, (v1,))
+                k_lin += 1
+            end
+        end
+
+        nzvals_prev = spX_order_1.nzval # nzvals from Order 1 X-matrix
+
+        # --- Iterate for orders n = 2, 3, ..., max_perturbation_order ---
+        for n = 2:max_perturbation_order
+
+            # Compute the Jacobian of the previous level's nzval w.r.t. 𝒳
+            # This gives a flat matrix where rows correspond to non-zeros from order n-1 X-matrix
+            # and columns correspond to the n-th variable we differentiate by (x_vn).
+            sp_flat_curr_X = Symbolics.sparsejacobian(nzvals_prev, 𝒳) # nnz(spX_order_(n-1)) x nx
+
+            # Build the nz_to_indices map for the *current* level (order n)
+            # Map: linear index in sp_flat_curr_X.nzval -> (original_row_f, (v_1, ..., v_n))
+            nz_to_indices_curr = Dict{Int, Tuple{Int, Tuple{Vararg{Int}}}}()
+            k_lin_curr = 1 # linear index counter for nzval of sp_flat_curr_X
+            # Iterate through the non-zeros of the current flat Jacobian
+            for col_curr = 1:size(sp_flat_curr_X, 2) # Column index in sp_flat_curr_X (corresponds to v_n)
+                for ptr_curr = sp_flat_curr_X.colptr[col_curr]:(sp_flat_curr_X.colptr[col_curr+1]-1)
+                    row_curr = sp_flat_curr_X.rowval[ptr_curr] # Row index in sp_flat_curr_X (corresponds to the row_curr-th nzval of previous level)
+
+                    # Get previous indices info from the map of order n-1
+                    prev_info = nz_to_indices_prev[row_curr]
+                    orig_row_f = prev_info[1] # Original equation row
+                    vars_prev = prev_info[2] # Tuple of variables from previous order (v_1, ..., v_{n-1})
+
+                    # Append the current variable index (v_n)
+                    vars_curr = (vars_prev..., col_curr) # Full tuple (v_1, ..., v_n)
+
+                    # Store info for the current level's non-zero
+                    nz_to_indices_curr[k_lin_curr] = (orig_row_f, vars_curr)
+                    k_lin_curr += 1
+                end
+            end
+
+            # --- Construct the X-derivative sparse matrix for order n (compressed or uncompressed) ---
+            local spX_order_n # Declare variable to hold the resulting X matrix
+            local X_ncols_n # Number of columns in the resulting spX_order_n matrix
+
+            if output_compressed
+                # COMPRESSED output: nϵ x binomial(nx + n - 1, n)
+                sparse_rows_n = Int[]
+                sparse_cols_n = Int[] # This will store the compressed column index
+                sparse_vals_n = Symbolics.Num[]
+
+                # Calculate the total number of compressed columns for order n
+                X_ncols_n = Int(binomial(nx + n - 1, n))
+
+                # Iterate through the non-zero entries of the current flat Jacobian (sp_flat_curr_X)
+                k_flat_curr = 1 # linear index counter for nzval of sp_flat_curr_X
+                for col_flat_curr = 1:size(sp_flat_curr_X, 2) # This corresponds to the n-th variable (v_n)
+                    for i_ptr_flat_curr = sp_flat_curr_X.colptr[col_flat_curr]:(sp_flat_curr_X.colptr[col_flat_curr+1]-1)
+                        # row_flat_curr = sp_flat_curr_X.rowval[i_ptr_flat_curr] # Row index in sp_flat_curr_X
+                        val = sp_flat_curr_X.nzval[i_ptr_flat_curr] # The derivative value
+
+                        # Get the full info for this non-zero from the map
+                        # The linear index in sp_flat_curr_X.nzval is k_flat_curr
+                        orig_row_f, var_indices_full = nz_to_indices_curr[k_flat_curr] # (v_1, ..., v_n)
+
+                        # Check the compression rule: v_n <= v_{n-1} <= ... <= v_1
+                        is_compressed = true
+                        for k_rule = 1:(n-1)
+                            # Check v_{n-k_rule+1} <= v_{n-k_rule}
+                            if var_indices_full[n-k_rule+1] > var_indices_full[n-k_rule]
+                                is_compressed = false
+                                break
+                            end
+                        end
+
+                        if is_compressed
+                            # Calculate the compressed column index c_n for the tuple (v_1, ..., v_n)
+                            # using the derived formula: c_n = sum_{k=1}^{n-1} binomial(v_k + n - k - 1, n - k + 1) + v_n
+                            compressed_col_idx = 0
+                            for k_formula = 1:(n-1)
+                                term = binomial(var_indices_full[k_formula] + n - k_formula - 1, n - k_formula + 1)
+                                compressed_col_idx += term
+                            end
+                            # Add the last term: v_n (var_indices_full[n])
+                            compressed_col_idx += var_indices_full[n]
+
+                            push!(sparse_rows_n, orig_row_f)
+                            push!(sparse_cols_n, compressed_col_idx)
+                            push!(sparse_vals_n, val)
+                        end
+
+                        k_flat_curr += 1 # Increment linear index counter for sp_flat_curr_X.nzval
+                    end
+                end
+                # Construct the compressed sparse matrix for order n
+                spX_order_n = sparse!(sparse_rows_n, sparse_cols_n, sparse_vals_n, nϵ, X_ncols_n)
+
+            else # output_compressed == false
+                # UNCOMPRESSED output: nϵ x nx^n
+                sparse_rows_n_uncomp = Int[]
+                sparse_cols_n_uncomp = Int[] # Uncompressed column index (1 to nx^n)
+                sparse_vals_n_uncomp = Symbolics.Num[]
+
+                # Total number of uncompressed columns
+                X_ncols_n = Int(BigInt(nx)^n) # Use BigInt for the power calculation, cast to Int
+
+                # Iterate through the non-zero entries of the current flat Jacobian (sp_flat_curr_X)
+                k_flat_curr = 1 # linear index counter for nzval of sp_flat_curr_X
+                for col_flat_curr = 1:size(sp_flat_curr_X, 2) # This corresponds to the n-th variable (v_n)
+                    for i_ptr_flat_curr = sp_flat_curr_X.colptr[col_flat_curr]:(sp_flat_curr_X.colptr[col_flat_curr+1]-1)
+                        # row_flat_curr = sp_flat_curr_X.rowval[i_ptr_flat_curr] # Row index in sp_flat_curr_X
+                        val = sp_flat_curr_X.nzval[i_ptr_flat_curr] # The derivative value
+
+                        # Get the full info for this non-zero from the map
+                        # The linear index in sp_flat_curr_X.nzval is k_flat_curr
+                        orig_row_f, var_indices_full = nz_to_indices_curr[k_flat_curr] # (v_1, ..., v_n)
+
+                        # Calculate the UNCOMPRESSED column index for the tuple (v_1, ..., v_n)
+                        # This maps the tuple (v1, ..., vn) to a unique index from 1 to nx^n
+                        # Formula: 1 + (v1-1)*nx^(n-1) + (v2-1)*nx^(n-2) + ... + (vn-1)*nx^0
+                        uncompressed_col_idx = 1 # 1-based
+                        power_of_nx = BigInt(nx)^(n-1) # Start with nx^(n-1) for v1 term
+                        for i = 1:n
+                            uncompressed_col_col_idx_term = (var_indices_full[i] - 1) * power_of_nx
+                            # Check for overflow before adding
+                            # if (uncompressed_col_idx > 0 && uncompressed_col_col_idx_term > 0 && uncompressed_col_idx + uncompressed_col_col_idx_term <= uncompressed_col_idx) ||
+                            #    (uncompressed_col_idx < 0 && uncompressed_col_col_idx_term < 0 && uncompressed_col_idx + uncompressed_col_col_idx_term >= uncompressed_col_idx)
+                            #    error("Integer overflow calculating uncompressed column index")
+                            # end
+                            uncompressed_col_idx += uncompressed_col_col_idx_term
+
+                            if i < n # Avoid nx^-1
+                                power_of_nx = div(power_of_nx, nx) # Integer division
+                            end
+                        end
+
+                        push!(sparse_rows_n_uncomp, orig_row_f)
+                        push!(sparse_cols_n_uncomp, Int(uncompressed_col_idx)) # Cast to Int
+                        push!(sparse_vals_n_uncomp, val)
+
+                        k_flat_curr += 1 # Increment linear index counter for sp_flat_curr_X.nzval
+                    end
+                end
+                # Construct the uncompressed sparse matrix for order n
+                spX_order_n = sparse!(sparse_rows_n_uncomp, sparse_cols_n_uncomp, sparse_vals_n_uncomp, nϵ, X_ncols_n)
+
+            end # End of if output_compressed / else
+
+
+            # --- Compute the P-derivative sparse matrix for order n ---
+            # This is the Jacobian of the nzval of the intermediate flat X-Jacobian (sp_flat_curr_X) w.r.t. 𝒫.
+            # sp_flat_curr_X.nzval contains expressions for d^n f_i / (dx_v1 ... dx_vn) for all
+            # non-zero such values that were propagated from the previous step.
+            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, 𝒫) # nnz(sp_flat_curr_X) x np
+
+            # Determine the desired dimensions of spP_order_n
+            # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
+            P_nrows_n = nϵ * X_ncols_n
+            P_ncols_n = np
+
+            sparse_rows_n_P = Int[] # Row index in the flattened space of spX_order_n (1 to P_nrows_n)
+            sparse_cols_n_P = Int[] # Column index for parameters (1 to np)
+            sparse_vals_n_P = Symbolics.Num[]
+
+            # Iterate through the non-zero entries of spP_of_flatX_nzval_curr
+            # Its rows correspond to the non-zeros in sp_flat_curr_X
+            k_temp_P = 1 # linear index counter for nzval of spP_of_flatX_nzval_curr
+            for p_col = 1:size(spP_of_flatX_nzval_curr, 2) # Column index in spP_of_flatX_nzval_curr (corresponds to parameter index)
+                for i_ptr_temp_P = spP_of_flatX_nzval_curr.colptr[p_col]:(spP_of_flatX_nzval_curr.colptr[p_col+1]-1)
+                    temp_row = spP_of_flatX_nzval_curr.rowval[i_ptr_temp_P] # Row index in spP_of_flatX_nzval_curr (corresponds to the temp_row-th nzval of sp_flat_curr_X)
+                    p_val = spP_of_flatX_nzval_curr.nzval[i_ptr_temp_P] # The derivative w.r.t. parameter value
+
+                    # Get the full info for the X-derivative term that this P-derivative is from
+                    # temp_row is the linear index in sp_flat_curr_X.nzval
+                    # This corresponds to the derivative d^n f_orig_row_f / (dx_v1 ... dx_vn)
+                    orig_row_f, var_indices_full = nz_to_indices_curr[temp_row] # (v_1, ..., v_n)
+
+                    # We need to find the column index (X_col_idx) this term corresponds to
+                    # in the final spX_order_n matrix (which might be compressed or uncompressed)
+                    local X_col_idx # Column index in the final spX_order_n matrix (1 to X_ncols_n)
+
+                    if output_compressed
+                        # Calculate the compressed column index
+                        compressed_col_idx = 0
+                        for k_formula = 1:(n-1)
+                            term = binomial(var_indices_full[k_formula] + n - k_formula - 1, n - k_formula + 1)
+                            compressed_col_idx += term
+                        end
+                        compressed_col_idx += var_indices_full[n]
+                        X_col_idx = compressed_col_idx # The column in spX_order_n is the compressed one
+
+                    else # output_compressed == false
+                        # Calculate the uncompressed column index
+                        uncompressed_col_idx = 1
+                        power_of_nx = BigInt(nx)^(n-1)
+                        for i = 1:n
+                            uncompressed_col_idx += (var_indices_full[i] - 1) * power_of_nx
+                            if i < n
+                                power_of_nx = div(power_of_nx, nx)
+                            end
+                        end
+                        X_col_idx = Int(uncompressed_col_idx) # The column in spX_order_n is the uncompressed one
+                    end
+
+                    # Calculate the row index in spP_order_n
+                    # This maps the (orig_row_f, X_col_idx) pair in spX_order_n's grid to a linear index
+                    # Formula: (row_in_X - 1) * num_cols_in_X + col_in_X
+                    P_row_idx = (orig_row_f - 1) * X_ncols_n + X_col_idx
+
+                    # The column index in spP_order_n is the parameter index
+                    P_col_idx = p_col
+
+                    push!(sparse_rows_n_P, P_row_idx)
+                    push!(sparse_cols_n_P, P_col_idx)
+                    push!(sparse_vals_n_P, p_val)
+
+                    k_temp_P += 1 # Increment linear index counter for spP_of_flatX_nzval_curr.nzval
+                end
+            end
+
+            # Construct the P-derivative sparse matrix for order n
+            # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
+            spP_order_n = sparse!(sparse_rows_n_P, sparse_cols_n_P, sparse_vals_n_P, P_nrows_n, P_ncols_n)
+
+            # Store the pair (X-matrix, P-matrix) for order n
+            push!(results, (spX_order_n, spP_order_n))
+
+
+            # Prepare for the next iteration (order n+1)
+            # The nzvals for the next X-Jacobian step are the nzvals of the current flat X-Jacobian
+            nzvals_prev = sp_flat_curr_X.nzval
+            # The map for the next step should provide info for order n derivatives
+            nz_to_indices_prev = nz_to_indices_curr
+
+        end # End of loop for orders n = 2 to max_perturbation_order
+    end
+
+    return results, (𝒳, 𝒫) # Return results as a tuple of (X_matrix, P_matrix) pairs
+end
+
 # TODO: check why this takes so much longer than previous implementation
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_exprs_per_func::Int = 1)
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
@@ -5709,171 +6039,30 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
     calc! = @RuntimeGeneratedFunction(funcs)
 
-    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+    nx = length(𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx) + length(𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx) + length(𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx) + length(𝓂.solution.perturbation.auxilliary_indices.shocks_ss)
 
-    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
+    np = length(𝓂.parameter_values) + length(𝓂.solution.non_stochastic_steady_state)
 
-    ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
-    C = vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))]) # [dyn_ss_idx])
+    nϵ = length(𝓂.dyn_equations)
 
-    ϵ = zeros(length(𝓂.dyn_equations))
-    jac = zeros(length(𝓂.dyn_equations), length(deriv_vars));
+    derivatives, xp = take_nth_order_derivatives(calc!, nx, np, nϵ; max_perturbation_order = max_perturbation_order)
 
-    backend = 𝒟.AutoFastDifferentiation()
+    buffer = similar(derivatives[1][1], Float64)
 
-    prep = 𝒟.prepare_jacobian(calc!, ϵ, backend, ∂, 𝒟.Constant(C));
+    func_exprs = Symbolics.build_function(derivatives[1][1], xp..., cse = true, skipzeros = true, expression = Val(false))
+# println(func_exprs[2])
+    # func = @RuntimeGeneratedFunction(func_exprs[2])
+    𝓂.jacobian = buffer, func_exprs[2]
+
+
+    buffer_SS_and_pars_vars = similar(derivatives[1][2], Float64)
     
-    𝓂.jacobian = (calc!, ϵ, jac, prep)
+    func_SS_and_pars_vars = Symbolics.build_function(derivatives[1][2], xp..., cse = true, skipzeros = true, expression = Val(false))
 
-
-    jac_deriv(SS_and_pars, derivvars) = prep.jac_exe(derivvars, SS_and_pars)
-
-    backend = 𝒟.AutoSparse(
-        𝒟.AutoForwardDiff();  # any object from ADTypes
-        sparsity_detector = TracerSparsityDetector(),
-        coloring_algorithm = GreedyColoringAlgorithm(),
-    )
-
-    prepjac = 𝒟.prepare_jacobian(jac_deriv, backend, C, 𝒟.Constant(∂))
-
-    jac_buffer = 𝒟.similar(sparsity_pattern(prepjac), eltype(ϵ))
-
-    
-    backend = 𝒟.AutoSparse(
-        𝒟.AutoFastDifferentiation();  # any object from ADTypes
-        sparsity_detector = TracerSparsityDetector(),
-        coloring_algorithm = GreedyColoringAlgorithm(),
-    )
-
-    prepjac = 𝒟.prepare_jacobian(jac_deriv, backend, C, 𝒟.Constant(∂))
-
-    𝓂.jacobian_SS_and_pars_vars = (jac_deriv, jac_buffer, prepjac)
+    𝓂.jacobian_SS_and_pars_vars = buffer_SS_and_pars_vars, func_SS_and_pars_vars[2]
 
 
 
-    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x) erfc(x) erfcinv(x)
-
-    # overwrite SymPyCall names
-    input_args = vcat(future_varss,
-                        present_varss,
-                        past_varss,
-                        ss_varss,
-                        𝓂.parameters,
-                        𝓂.calibration_equations_parameters,
-                        shock_varss)
-
-    eval(:(Symbolics.@variables $(input_args...)))
-
-    Symbolics.@variables 𝔛[1:length(input_args)]
-
-    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-    
-    calib_eq_no_vars = reduce(union, get_symbols.(𝓂.calibration_equations_no_var), init = []) |> collect
-    
-    eval(:(Symbolics.@variables $((vcat(SS_and_pars_names_lead_lag, calib_eq_no_vars))...)))
-
-    vars = eval(:(Symbolics.@variables $(vars_raw...)))
-
-    eqs = Symbolics.parse_expr_to_symbolic.(𝓂.dyn_equations,(@__MODULE__,))
-
-    final_indices = vcat(𝓂.parameters, SS_and_pars_names_lead_lag)
-
-    input_X = Pair{Symbolics.Num, Symbolics.Num}[]
-    input_X_no_time = Pair{Symbolics.Num, Symbolics.Num}[]
-    
-    for (v,input) in enumerate(input_args)
-        push!(input_X, eval(input) => eval(𝔛[v]))
-    
-        if input ∈ shock_varss
-            push!(input_X_no_time, eval(𝔛[v]) => 0)
-        else
-            input_no_time = Symbol(replace(string(input), r"₍₁₎$"=>"", r"₍₀₎$"=>"" , r"₍₋₁₎$"=>"", r"₍ₛₛ₎$"=>"", r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-
-            vv = indexin([input_no_time], final_indices)
-            
-            if vv[1] isa Int
-                push!(input_X_no_time, eval(𝔛[v]) => eval(𝔛[vv[1]]))
-            end
-        end
-    end
-
-    vars_X = map(x -> Symbolics.substitute(x, input_X), vars)
-
-    calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
-
-    eqs_sub = Symbolics.Num[]
-    for subst in eqs
-        for _ in calib_eqs
-            for calib_eq in calib_eqs
-                subst = Symbolics.substitute(subst, calib_eq)
-            end
-        end
-        # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
-        subst = Symbolics.substitute(subst, input_X)
-        push!(eqs_sub, subst)
-    end
-    
-    if max_perturbation_order >= 2 
-        nk = length(vars_raw)
-        second_order_idxs = [nk * (i-1) + k for i in 1:nk for k in 1:i]
-        if max_perturbation_order == 3
-            third_order_idxs = [nk^2 * (i-1) + nk * (k-1) + l for i in 1:nk for k in 1:i for l in 1:k]
-        end
-    end
-
-    first_order = Symbolics.Num[]
-    second_order = Symbolics.Num[]
-    third_order = Symbolics.Num[]
-    row1 = Int[]
-    row2 = Int[]
-    row3 = Int[]
-    column1 = Int[]
-    column2 = Int[]
-    column3 = Int[]
-
-    # Polyester.@batch for rc1 in 0:length(vars_X) * length(eqs_sub) - 1
-    # for rc1 in 0:length(vars_X) * length(eqs_sub) - 1
-    for (c1, var1) in enumerate(vars_X)
-        for (r, eq) in enumerate(eqs_sub)
-        # r, c1 = divrem(rc1, length(vars_X)) .+ 1
-        # var1 = vars_X[c1]
-        # eq = eqs_sub[r]
-            if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
-                deriv_first = Symbolics.derivative(eq, var1)
-                
-                push!(first_order, deriv_first)
-                push!(row1, r)
-                # push!(row1, r...)
-                push!(column1, c1)
-                if max_perturbation_order >= 2 
-                    for (c2, var2) in enumerate(vars_X)
-                        if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
-                            deriv_second = Symbolics.derivative(deriv_first, var2)
-                            
-                            push!(second_order, deriv_second)
-                            push!(row2, r)
-                            push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
-                            if max_perturbation_order == 3
-                                for (c3, var3) in enumerate(vars_X)
-                                    if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
-                                        deriv_third = Symbolics.derivative(deriv_second,var3)
-
-                                        push!(third_order, deriv_third)
-                                        push!(row3, r)
-                                        push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
     if max_perturbation_order >= 1
         SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
 
@@ -5913,7 +6102,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     
         jac = zeros(length(eqs), length(∂));
     
-        backend = 𝒟.AutoFastDifferentiation()
+        backend = 𝒟.AutoSymbolics()
     
         prep = 𝒟.prepare_jacobian(calc_SS!, ϵ, backend, ∂, 𝒟.Constant(C));
         
@@ -5925,7 +6114,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     
         jac = zeros(length(eqs), length(∂));
     
-        backend = 𝒟.AutoFastDifferentiation()
+        backend = 𝒟.AutoSymbolics()
     
         calc_SS_switch!(e,x,y) = calc_SS!(e,y,x)
 
@@ -5935,82 +6124,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
         
         # if 𝓂.model_jacobian[2] == Int[]
-        #     write_auxilliary_indices!(𝓂)
-
-        #     write_derivatives_of_ss_equations!(𝓂::ℳ, max_exprs_per_func = max_exprs_per_func)
-
-        #     # derivative of jacobian wrt SS_and_pars and parameters
-        #     eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), first_order)
-
-        #     ∂jacobian_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(final_indices))]), simplify = false) # |> findnz
-
-        #     idx_conversion = (row1 + length(eqs) * (column1 .- 1))
-
-        #     cols, rows, vals = findnz(∂jacobian_∂SS_and_pars) #transposed
-
-        #     converted_cols = idx_conversion[cols]
-
-        #     perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
-
-        #     min_n_funcs = length(vals) ÷ max_exprs_per_func + 1
-
-        #     funcs = Function[]
-
-        #     lk = ReentrantLock()
-
-        #     if min_n_funcs == 1
-        #         push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
-        #     else
-        #         # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
-        #         for i in 1:min(min_n_funcs, length(vals))
-        #             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
-
-        #             indices = length(indices) == 1 ? indices[1] : indices
-
-        #             func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
-
-        #             # begin
-        #             #     lock(lk)
-        #             #     try
-        #                     push!(funcs, func)
-        #             #     finally
-        #             #         unlock(lk)
-        #             #     end
-        #             # end
-        #         end
-        #     end
-
         #     𝓂.model_jacobian_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * length(vars)))
-
-        #     # first order
-        #     min_n_funcs = length(first_order) ÷ max_exprs_per_func + 1
-
-        #     funcs = Function[]
-
-        #     lk = ReentrantLock()
-
-        #     if min_n_funcs == 1
-        #         push!(funcs, write_derivatives_function(first_order, 1:length(first_order), Val(:string)))
-        #     else
-        #         # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(first_order))
-        #         for i in 1:min(min_n_funcs, length(first_order))
-        #             indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
-
-        #             indices = length(indices) == 1 ? indices[1] : indices
-
-        #             func = write_derivatives_function(first_order[indices], indices, Val(:string))
-
-        #             # begin
-        #             #     lock(lk)
-        #             #     try
-        #                     push!(funcs, func)
-        #             #     finally
-        #             #         unlock(lk)
-        #             #     end
-        #             # end
-        #         end
-        #     end
-
         #     𝓂.model_jacobian = (funcs, row1 .+ (column1 .- 1) .* length(eqs_sub),  zeros(length(eqs_sub), length(vars)))
         # end
     end
@@ -6020,143 +6134,15 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
 
-            backend = 𝒟.AutoSparse(
-                𝒟.AutoForwardDiff();  # any object from ADTypes
-                sparsity_detector = TracerSparsityDetector(),
-                coloring_algorithm = GreedyColoringAlgorithm(),
-            )
-
-            ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
-
-            C = vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))]) # [dyn_ss_idx])
-
-            jac_fun = 𝓂.jacobian[4].jac_exe
-
-            prephes = 𝒟.prepare_jacobian(jac_fun, backend, ∂, 𝒟.Constant(C))
-
-            prephesdense = 𝒟.prepare_jacobian(jac_fun, 𝒟.AutoFastDifferentiation(), ∂, 𝒟.Constant(C))
-
-            hesbuffer_tmp = 𝒟.similar(sparsity_pattern(prephes), eltype(ϵ))
-
-            # hesbuffer = 𝒟.similar(sparse(reshape(sparsity_pattern(prephes),length(𝓂.dyn_equations), length(∂)^2)), eltype(ϵ))
-
-            hesbuffer = reshape_sparse_matrix(hesbuffer_tmp, length(𝓂.dyn_equations), length(∂), 2)
-
-            backend = 𝒟.AutoSparse(
-                𝒟.AutoFastDifferentiation();  # any object from ADTypes
-                sparsity_detector = TracerSparsityDetector(),
-                coloring_algorithm = GreedyColoringAlgorithm(),
-            )
-            
-            prephes = 𝒟.prepare_jacobian(jac_fun, backend, ∂, 𝒟.Constant(C))
-
             𝓂.hessian = (jac_fun, hesbuffer_tmp, prephes, hesbuffer)
 
 
-            ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
-
-            C = vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))]) # [dyn_ss_idx])
-
-            # hes_deriv(e, x, y) = prephes.jac_exe!(e, y, x)
-            hes_deriv(x, y) = prephes.jac_exe(y, x)
-
-            backend = 𝒟.AutoSparse(
-                𝒟.AutoForwardDiff();  # any object from ADTypes
-                sparsity_detector = TracerSparsityDetector(),
-                coloring_algorithm = GreedyColoringAlgorithm(),
-            )
-
-            ϵ = zeros(length(𝓂.dyn_equations) * length(∂), length(∂))
-
-            prephes_SS_and_pars = 𝒟.prepare_jacobian(hes_deriv, backend, C, 𝒟.Constant(∂))
-
-            hes_buffer = 𝒟.similar(sparsity_pattern(prephes_SS_and_pars), eltype(ϵ))
-
-            
-            backend = 𝒟.AutoSparse(
-                𝒟.AutoFastDifferentiation();  # any object from ADTypes
-                sparsity_detector = TracerSparsityDetector(),
-                coloring_algorithm = GreedyColoringAlgorithm(),
-            )
-
-            prephes = 𝒟.prepare_jacobian(hes_deriv, backend, C, 𝒟.Constant(∂))
-
             𝓂.hessian_SS_and_pars_vars = (hes_deriv, hes_buffer, prephes_SS_and_pars)
-
-            # perm_vals = sortperm(column2) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
-
-            # min_n_funcs = length(second_order) ÷ max_exprs_per_func + 1
-
-            # funcs = Function[]
-        
-            # lk = ReentrantLock()
-
-            # if min_n_funcs == 1
-            #     push!(funcs, write_derivatives_function(second_order[perm_vals], 1:length(second_order), Val(:string)))
-            # else
-            #     # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(second_order))
-            #     for i in 1:min(min_n_funcs, length(second_order))
-            #         indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
-            
-            #         indices = length(indices) == 1 ? indices[1] : indices
-
-            #         func = write_derivatives_function(second_order[perm_vals][indices], indices, Val(:string))
-
-            #         # begin
-            #         #     lock(lk)
-            #         #     try
-            #                 push!(funcs, func)
-            #         #     finally
-            #         #         unlock(lk)
-            #         #     end
-            #         # end
-            #     end
-            # end
 
             # 𝓂.model_hessian = (funcs, sparse(row2, column2, zero(column2), length(eqs_sub), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
         end
 
         # derivative of hessian wrt SS_and_pars and parameters
-        eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), second_order)
-
-        ∂hessian_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(final_indices))]), simplify = false) # |> findnz
-
-        idx_conversion = (row2 + length(eqs) * (column2 .- 1))
-
-        cols, rows, vals = findnz(∂hessian_∂SS_and_pars) #transposed
-
-        converted_cols = idx_conversion[cols]
-
-        perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
-
-        min_n_funcs = length(vals) ÷ max_exprs_per_func + 1
-
-        funcs = Function[]
-
-        lk = ReentrantLock()
-
-        if min_n_funcs == 1
-            push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
-        else
-            # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
-            for i in 1:min(min_n_funcs, length(vals))
-                indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
-
-                indices = length(indices) == 1 ? indices[1] : indices
-
-                func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
-
-                # begin
-                #     lock(lk)
-                #     try
-                        push!(funcs, func)
-                #     finally
-                #         unlock(lk)
-                #     end
-                # end
-            end
-        end
-
         𝓂.model_hessian_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
 
     end
@@ -6166,117 +6152,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
         if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
         
-            backend = 𝒟.AutoSparse(
-                𝒟.AutoForwardDiff();  # any object from ADTypes
-                sparsity_detector = TracerSparsityDetector(),
-                coloring_algorithm = GreedyColoringAlgorithm(),
-            )
-
-            # println(typeof(hesbuffer_tmp))
-            # deriv_third_order(x, y) = prephesdense.jac_exe!(hesbuffer_tmp, x::T, y) where T
-            # deriv_third_order(x, y) = vec(𝓂.hessian[3].jac_exe(x, y))
-
-            ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
-
-            C = vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))]) # [dyn_ss_idx])
-
-            CC = 𝒟.Constant(C)
-
-            jac_fun = 𝓂.jacobian[4].jac_exe
-
-            prephesdense = 𝒟.prepare_jacobian(jac_fun, 𝒟.AutoFastDifferentiation(), ∂, CC)
-
-            prepthird = 𝒟.prepare_jacobian(prephesdense.jac_exe, backend, ∂, CC)
-
-            thirdbuffer_tmp = 𝒟.similar(sparsity_pattern(prepthird), eltype(ϵ))
-
-            thirdbuffer = reshape_sparse_matrix(thirdbuffer_tmp, length(𝓂.dyn_equations), length(∂), 3)
-
-            backend = 𝒟.AutoSparse(
-                𝒟.AutoFastDifferentiation();  # any object from ADTypes
-                sparsity_detector = TracerSparsityDetector(),
-                coloring_algorithm = GreedyColoringAlgorithm(),
-            )
-            
-            prepthird = 𝒟.prepare_jacobian(prephesdense.jac_exe, backend, ∂, CC)
-
             𝓂.third_order_derivatives = (prephesdense.jac_exe, thirdbuffer_tmp, prepthird, thirdbuffer)
 
-
-            perm_vals = sortperm(column3) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
-
-            min_n_funcs = length(third_order) ÷ max_exprs_per_func + 1
-
-            funcs = Function[]
-        
-            lk = ReentrantLock()
-            
-            if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(third_order[perm_vals], 1:length(third_order), Val(:string)))
-            else
-                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(third_order))
-                for i in 1:min(min_n_funcs, length(third_order))
-                    indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
-            
-                    if length(indices) == 1
-                        indices = indices[1]
-                    end
-
-                    func = write_derivatives_function(third_order[perm_vals][indices], indices, Val(:string))
-
-                    # begin
-                    #     lock(lk)
-                    #     try
-                            push!(funcs, func)
-                    #     finally
-                    #         unlock(lk)
-                    #     end
-                    # end
-                end
-            end
-
             𝓂.model_third_order_derivatives = (funcs, sparse(row3, column3, zero(column3), length(eqs_sub), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)))
-        end
-
-        # derivative of third order wrt SS_and_pars and parameters
-        eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), third_order)
-
-        ∂third_order_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(final_indices))]), simplify = false) # |> findnz
-
-        idx_conversion = (row3 + length(eqs) * (column3 .- 1))
-
-        cols, rows, vals = findnz(∂third_order_∂SS_and_pars) #transposed
-
-        converted_cols = idx_conversion[cols]
-
-        perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
-
-        min_n_funcs = length(vals) ÷ max_exprs_per_func + 1
-
-        funcs = Function[]
-
-        lk = ReentrantLock()
-
-        if min_n_funcs == 1
-            push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
-        else
-            # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
-            for i in 1:min(min_n_funcs, length(vals))
-                indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
-
-                indices = length(indices) == 1 ? indices[1] : indices
-
-                func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
-
-                # begin
-                #     lock(lk)
-                #     try
-                        push!(funcs, func)
-                #     finally
-                #         unlock(lk)
-                #     end
-                # end
-            end
         end
 
         𝓂.model_third_order_derivatives_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)))
@@ -6285,132 +6163,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     return nothing
 end
 
-
-function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int = 1)
-    # derivative of SS equations wrt parameters and SS_and_pars
-    # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
-    SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-
-    ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
-
-    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x) erfc(x) erfcinv(x)
-
-    # overwrite SymPyCall names
-    other_pars = setdiff(union(𝓂.parameters_in_equations, 𝓂.parameters_as_function_of_parameters), 𝓂.parameters)
-
-    if length(other_pars) > 0
-        eval(:(Symbolics.@variables $(other_pars...)))
-    end
-
-    vars = eval(:(Symbolics.@variables $(SS_and_pars...)))
-
-    pars = eval(:(Symbolics.@variables $(𝓂.parameters...)))
-
-    input_args = vcat(𝓂.parameters, SS_and_pars)
-    
-    Symbolics.@variables 𝔛[1:length(input_args)]
-
-    input_X_no_time = Pair{Symbolics.Num, Symbolics.Num}[]
-
-    for (v,input) in enumerate(input_args)
-        push!(input_X_no_time, eval(input) => eval(𝔛[v]))
-    end
-
-    ss_eqs = Symbolics.parse_expr_to_symbolic.(ss_equations,(@__MODULE__,))
-
-    calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
-
-    eqs = Symbolics.Num[]
-    for subst in ss_eqs
-        for _ in calib_eqs # to completely substitute all calibration equations
-            for calib_eq in calib_eqs
-                subst = Symbolics.substitute(subst, calib_eq)
-            end
-        end
-        # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
-        subst = Symbolics.substitute(subst, input_X_no_time)
-        push!(eqs, subst)
-    end
-    
-    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(eqs, eval.(𝔛[1:length(pars)])) |> findnz
-
-    min_n_funcs = length(∂SS_equations_∂parameters[3]) ÷ max_exprs_per_func + 1
-
-    funcs = Function[]
-
-    lk = ReentrantLock()
-
-    if min_n_funcs == 1
-        push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3], 1:length(∂SS_equations_∂parameters[3]), Val(:string)))
-    else
-        Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂parameters[3]))
-        # for i in 1:min(min_n_funcs, length(∂SS_equations_∂parameters[3]))
-            indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂parameters[3]) : i * max_exprs_per_func)
-
-            indices = length(indices) == 1 ? indices[1] : indices
-
-            func = write_derivatives_function(∂SS_equations_∂parameters[3][indices], indices, Val(:string))
-
-            begin
-                lock(lk)
-                try
-                    push!(funcs, func)
-                finally
-                    unlock(lk)
-                end
-            end
-        end
-    end
-
-    𝓂.∂SS_equations_∂parameters = (funcs, sparse(∂SS_equations_∂parameters[1], ∂SS_equations_∂parameters[2], zeros(Float64,length(∂SS_equations_∂parameters[3])), length(eqs), length(pars)))
-
-    # 𝓂.∂SS_equations_∂parameters = write_sparse_derivatives_function(∂SS_equations_∂parameters[1], 
-    #                                                                     ∂SS_equations_∂parameters[2], 
-    #                                                                     ∂SS_equations_∂parameters[3],
-    #                                                                     length(eqs), 
-    #                                                                     length(pars),
-    #                                                                     Val(:string));
-
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs, eval.(𝔛[length(pars)+1:end])) |> findnz
-
-    min_n_funcs = length(∂SS_equations_∂SS_and_pars[3]) ÷ max_exprs_per_func + 1
-
-    funcs = Function[]
-
-    lk = ReentrantLock()
-
-    if min_n_funcs == 1
-        push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3], 1:length(∂SS_equations_∂SS_and_pars[3]), Val(:string)))
-    else
-        Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂SS_and_pars[3]))
-        # for i in 1:min(min_n_funcs, length(∂SS_equations_∂SS_and_pars[3]))
-            indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂SS_and_pars[3]) : i * max_exprs_per_func)
-
-            indices = length(indices) == 1 ? indices[1] : indices
-
-            func = write_derivatives_function(∂SS_equations_∂SS_and_pars[3][indices], indices, Val(:string))
-
-            begin
-                lock(lk)
-                try
-                    push!(funcs, func)
-                finally
-                    unlock(lk)
-                end
-            end
-        end
-    end
-
-    𝓂.∂SS_equations_∂SS_and_pars = (funcs, ∂SS_equations_∂SS_and_pars[1] .+ (∂SS_equations_∂SS_and_pars[2] .- 1) .* length(eqs), zeros(length(eqs), length(vars)))
-
-    # 𝓂.∂SS_equations_∂SS_and_pars = write_sparse_derivatives_function(∂SS_equations_∂SS_and_pars[1], 
-    #                                                                     ∂SS_equations_∂SS_and_pars[2], 
-    #                                                                     ∂SS_equations_∂SS_and_pars[3],
-    #                                                                     length(eqs), 
-    #                                                                     length(vars),
-    #                                                                     Val(:string));
-    return nothing
-end
 
 function write_auxilliary_indices!(𝓂::ℳ)
     # write indices in auxiliary objects
@@ -6762,7 +6514,7 @@ function calculate_jacobian(parameters::Vector{M},
     dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
     dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
     dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+    # dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
@@ -6771,61 +6523,16 @@ function calculate_jacobian(parameters::Vector{M},
     deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
     SS_and_pars = vcat(par, SS)#[dyn_ss_idx])
 
-    C = 𝒟.Constant(SS_and_pars)
-
-    backend = 𝒟.AutoFastDifferentiation()
-
-    if eltype(𝓂.jacobian[3]) != M
-        jac_buffer = zeros(M, size(𝓂.jacobian[3]))
+    if eltype(𝓂.jacobian[1]) != M
+        jac_buffer = similar(𝓂.jacobian[1], M)
     else
-        jac_buffer = 𝓂.jacobian[3]
+        jac_buffer = 𝓂.jacobian[1]
     end
 
-    𝒟.jacobian!(𝓂.jacobian[1], 𝓂.jacobian[2], jac_buffer, 𝓂.jacobian[4], backend, deriv_vars, C)
+    𝓂.jacobian[2](jac_buffer, deriv_vars, SS_and_pars)
 
     return jac_buffer
 
-
-
-    # # vals = M[]
-
-    # # for f in 𝓂.model_jacobian[1]
-    # #     push!(vals, f(X)...)
-    # # end
-
-    # vals = zeros(M, length(𝓂.model_jacobian[1]))
-    
-    # # lk = ReentrantLock()
-
-    # # @timeit_debug timer "Loop" begin
-
-    # Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian[1]
-    # # for f in 𝓂.model_jacobian[1]
-    # # for f in 𝓂.model_jacobian[1]
-    #     # val, idx = f(X)#::Tuple{<: Real, Int}
-    #     out = f(X)#::Tuple{Vector{<: Real}, UnitRange{Int64}}
-        
-    #     # begin
-    #     #     lock(lk)
-    #     #     try
-    #             @inbounds vals[out[2]] = out[1]
-    #             # @inbounds vals[idx] = val
-    #     #     finally
-    #     #         unlock(lk)
-    #     #     end
-    #     # end
-    # end
-
-    # if eltype(𝓂.model_jacobian[3]) ≠ M
-    #     Accessors.@reset 𝓂.model_jacobian[3] = convert(Matrix{M}, 𝓂.model_jacobian[3])
-    # end
-
-    # 𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
-
-    # # end # timeit_debug
-    # # end # timeit_debug
-
-    # return 𝓂.model_jacobian[3]
 end
 
 end # dispatch_doctor
@@ -6848,11 +6555,11 @@ function rrule(::typeof(calculate_jacobian),
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    ∂ = 𝒟.Constant(vcat(SS_and_pars[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss))
+    ∂ = vcat(SS_and_pars[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
     C = vcat(parameters, SS_and_pars[(end - length(𝓂.calibration_equations)+1):end], SS_and_pars[1:(end - length(𝓂.calibration_equations))])
 
     backend = 𝒟.AutoSparse(
-        𝒟.AutoFastDifferentiation();  # any object from ADTypes
+        𝒟.AutoSymbolics();  # any object from ADTypes
         sparsity_detector = TracerSparsityDetector(),
         coloring_algorithm = GreedyColoringAlgorithm(),
     )
@@ -6860,9 +6567,11 @@ function rrule(::typeof(calculate_jacobian),
     function calculate_jacobian_pullback(∂∇₁)
         # @timeit_debug timer "Calculate jacobian - reverse" begin
 
-        𝒟.jacobian!(𝓂.jacobian_SS_and_pars_vars[1], 𝓂.jacobian_SS_and_pars_vars[2], 𝓂.jacobian_SS_and_pars_vars[3], backend, C, ∂)
+        # 𝒟.jacobian!(𝓂.jacobian_SS_and_pars_vars[1], 𝓂.jacobian_SS_and_pars_vars[2], 𝓂.jacobian_SS_and_pars_vars[3], backend, C, ∂)
 
-        analytical_jacobian_SS_and_pars_vars = 𝓂.jacobian_SS_and_pars_vars[2]
+        𝓂.jacobian_SS_and_pars_vars[2](𝓂.jacobian_SS_and_pars_vars[1], C, ∂)
+
+        analytical_jacobian_SS_and_pars_vars = 𝓂.jacobian_SS_and_pars_vars[1]
 
         # X = [parameters; SS_and_pars]
 
@@ -6931,7 +6640,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
     C = 𝒟.Constant(vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))])) # [dyn_ss_idx])
 
     backend = 𝒟.AutoSparse(
-        𝒟.AutoFastDifferentiation();  # any object from ADTypes
+        𝒟.AutoSymbolics();  # any object from ADTypes
         sparsity_detector = TracerSparsityDetector(),
         coloring_algorithm = GreedyColoringAlgorithm(),
     )
@@ -7080,7 +6789,7 @@ function calculate_third_order_derivatives(parameters::Vector{M},
     ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
     C = 𝒟.Constant(vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))])) # [dyn_ss_idx])
 
-    backend = 𝒟.AutoFastDifferentiation()
+    backend = 𝒟.AutoSymbolics()
 
     # if eltype(𝓂.jacobian[3]) != M
     #     thirdbuffer_tmp = zeros(M, size(𝓂.third_order_derivatives[2]))
@@ -7919,7 +7628,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂ = parameter_values
     C = 𝒟.Constant(SS_and_pars) # [dyn_ss_idx])
 
-    backend = 𝒟.AutoFastDifferentiation()
+    backend = 𝒟.AutoSymbolics()
 
     if eltype(𝓂.∂SS_equations_∂parameters[3]) != eltype(parameter_values)
         jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[3]))
@@ -7935,7 +7644,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂ = SS_and_pars
     C = 𝒟.Constant(parameter_values) # [dyn_ss_idx])
 
-    backend = 𝒟.AutoFastDifferentiation()
+    backend = 𝒟.AutoSymbolics()
 
     if eltype(𝓂.∂SS_equations_∂SS_and_pars[3]) != eltype(parameter_values)
         jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂SS_and_pars[3]))
@@ -8081,7 +7790,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         ∂ = parameter_values
         C = 𝒟.Constant(SS_and_pars) # [dyn_ss_idx])
 
-        backend = 𝒟.AutoFastDifferentiation()
+        backend = 𝒟.AutoSymbolics()
 
         if eltype(𝓂.∂SS_equations_∂parameters[3]) != eltype(parameter_values)
             jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[3]))
@@ -8097,7 +7806,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         ∂ = SS_and_pars
         C = 𝒟.Constant(parameter_values) # [dyn_ss_idx])
 
-        backend = 𝒟.AutoFastDifferentiation()
+        backend = 𝒟.AutoSymbolics()
 
         if eltype(𝓂.∂SS_equations_∂SS_and_pars[3]) != eltype(parameter_values)
             jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂SS_and_pars[3]))

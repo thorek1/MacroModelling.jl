@@ -385,8 +385,8 @@ mutable struct ℳ
 
     bounds::Dict{Symbol,Tuple{Float64,Float64}}
 
-    jacobian::Tuple{Function, Vector{<: Real}, Matrix{<: Real}, 𝒟.JacobianPrep}
-    jacobian_SS_and_pars_vars::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep}
+    jacobian::Tuple{AbstractMatrix{<: Real},Function}
+    jacobian_SS_and_pars_vars::Tuple{AbstractMatrix{<: Real},Function}
     hessian::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep, SparseMatrixCSC{<: Real, Int}}
     hessian_SS_and_pars_vars::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep}
     third_order_derivatives::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep, SparseMatrixCSC{<: Real, Int}}
