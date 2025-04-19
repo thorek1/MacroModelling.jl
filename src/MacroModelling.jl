@@ -25,8 +25,6 @@ import Accessors
 import DifferentiationInterface as 𝒟
 import ForwardDiff as ℱ
 backend = 𝒟.AutoForwardDiff()
-import SparseMatrixColorings: GreedyColoringAlgorithm, sparsity_pattern
-import SparseConnectivityTracer: TracerSparsityDetector
 # import Diffractor: DiffractorForwardBackend
 # 𝒷 = 𝒜.ForwardDiffBackend
 # 𝒷 = Diffractor.DiffractorForwardBackend
@@ -6647,8 +6645,6 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
 
     backend = 𝒟.AutoSparse(
         𝒟.AutoSymbolics();  # any object from ADTypes
-        sparsity_detector = TracerSparsityDetector(),
-        coloring_algorithm = GreedyColoringAlgorithm(),
     )
 
     # if eltype(𝓂.jacobian[3]) != M
