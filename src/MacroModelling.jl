@@ -7645,17 +7645,29 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂ = parameter_values
     C = SS_and_pars # [dyn_ss_idx])
 
-    𝓂.∂SS_equations_∂parameters[2](𝓂.∂SS_equations_∂parameters[1], ∂, C)
+    if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
+        jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
+    else
+        jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
+    end
 
-    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[1]
+    𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
+
+    ∂SS_equations_∂parameters = jac_buffer
 
     
     ∂ = SS_and_pars
     C = parameter_values # [dyn_ss_idx])
 
-    𝓂.∂SS_equations_∂SS_and_pars[2](𝓂.∂SS_equations_∂SS_and_pars[1], ∂, C)
+    if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(SS_and_pars)
+        jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
+    else
+        jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
+    end
 
-    ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[1]
+    𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
+
+    ∂SS_equations_∂SS_and_pars = jac_buffer
 
     ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
 
@@ -7720,9 +7732,9 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
         end
 
-        𝓂.∂SS_equations_∂parameters[2](𝓂.∂SS_equations_∂parameters[1], ∂, C)
+        𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
 
-        ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[1]
+        ∂SS_equations_∂parameters = jac_buffer
 
         
         if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(parameter_values)
@@ -7731,9 +7743,9 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
         end
 
-        𝓂.∂SS_equations_∂SS_and_pars[2](𝓂.∂SS_equations_∂SS_and_pars[1], ∂, C)
+        𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
 
-        ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[1]
+        ∂SS_equations_∂SS_and_pars = jac_buffer
 
         ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
 
