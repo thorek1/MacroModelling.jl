@@ -5976,7 +5976,10 @@ function take_nth_order_derivatives(
 end
 
 # TODO: check why this takes so much longer than previous implementation
-function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_exprs_per_func::Int = 1)
+function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; 
+                                    density_threshold::Float64 = .1, 
+                                    min_length::Int = 1000)
+
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
     past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
@@ -6047,10 +6050,19 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
 
     derivatives, xp = take_nth_order_derivatives(calc!, nx, np, nϵ; max_perturbation_order = max_perturbation_order)
 
-    buffer = similar(derivatives[1][1], Float64)
+    # lennz = nnz(derivatives[1][1])
 
-    func_exprs = Symbolics.build_function(derivatives[1][1], xp..., cse = true, skipzeros = true, expression = Val(false))
-# println(func_exprs[2])
+    # if (lennz / length(derivatives[1][1]) > density_threshold) || (length(derivatives[1][1]) < min_length)
+        derivatives_mat = convert(Matrix, derivatives[1][1])
+        buffer = zeros(Float64, size(derivatives[1][1]))
+    # else
+    #     derivatives_mat = derivatives[1][1]
+    #     buffer = similar(derivatives[1][1], Float64)
+    # end
+
+
+    func_exprs = Symbolics.build_function(derivatives_mat, xp..., cse = true, skipzeros = false, expression = Val(false))
+
     # func = @RuntimeGeneratedFunction(func_exprs[2])
     𝓂.jacobian = buffer, func_exprs[2]
 
@@ -6524,13 +6536,14 @@ function calculate_jacobian(parameters::Vector{M},
     SS_and_pars = vcat(par, SS)#[dyn_ss_idx])
 
     if eltype(𝓂.jacobian[1]) != M
-        jac_buffer = similar(𝓂.jacobian[1], M)
+        # jac_buffer = similar(𝓂.jacobian[1], M)
+        jac_buffer = zeros(M, size(𝓂.jacobian[1]))
     else
         jac_buffer = 𝓂.jacobian[1]
     end
 
     𝓂.jacobian[2](jac_buffer, deriv_vars, SS_and_pars)
-
+    
     return jac_buffer
 
 end
@@ -6551,18 +6564,11 @@ function rrule(::typeof(calculate_jacobian),
     dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
     dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
     dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
     ∂ = vcat(SS_and_pars[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
     C = vcat(parameters, SS_and_pars[(end - length(𝓂.calibration_equations)+1):end], SS_and_pars[1:(end - length(𝓂.calibration_equations))])
-
-    backend = 𝒟.AutoSparse(
-        𝒟.AutoSymbolics();  # any object from ADTypes
-        sparsity_detector = TracerSparsityDetector(),
-        coloring_algorithm = GreedyColoringAlgorithm(),
-    )
 
     function calculate_jacobian_pullback(∂∇₁)
         # @timeit_debug timer "Calculate jacobian - reverse" begin
