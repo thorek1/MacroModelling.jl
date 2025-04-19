@@ -93,8 +93,8 @@ macro model(𝓂,ex...)
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
     SS_check_func = x->x
-    ∂SS_equations_∂parameters = (x->x, zeros(0), zeros(0,0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0])) # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
-    ∂SS_equations_∂SS_and_pars = (x->x, zeros(0), zeros(0,0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0])) # ([], Int[], zeros(1,1))
+    ∂SS_equations_∂parameters = (zeros(0,0), x->x) # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
+    ∂SS_equations_∂SS_and_pars = (zeros(0,0), x->x)  # ([], Int[], zeros(1,1))
     SS_dependencies = nothing
 
     original_equations = []

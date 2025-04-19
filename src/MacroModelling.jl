@@ -6048,18 +6048,18 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     derivatives, xp = take_nth_order_derivatives(calc!, nx, np, nϵ; max_perturbation_order = max_perturbation_order)
 
-    # lennz = nnz(derivatives[1][1])
+    lennz = nnz(derivatives[1][1])
 
-    # if (lennz / length(derivatives[1][1]) > density_threshold) || (length(derivatives[1][1]) < min_length)
+    if (lennz / length(derivatives[1][1]) > density_threshold) || (length(derivatives[1][1]) < min_length)
         derivatives_mat = convert(Matrix, derivatives[1][1])
         buffer = zeros(Float64, size(derivatives[1][1]))
-    # else
-    #     derivatives_mat = derivatives[1][1]
-    #     buffer = similar(derivatives[1][1], Float64)
-    # end
+    else
+        derivatives_mat = derivatives[1][1]
+        buffer = similar(derivatives[1][1], Float64)
+    end
 
 
-    func_exprs = Symbolics.build_function(derivatives_mat, xp..., cse = true, skipzeros = false, expression = Val(false))
+    func_exprs = Symbolics.build_function(derivatives_mat, xp..., cse = true, skipzeros = true, expression = Val(false))
 
     # func = @RuntimeGeneratedFunction(func_exprs[2])
     𝓂.jacobian = buffer, func_exprs[2]
@@ -6105,38 +6105,53 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
         calc_SS! = @RuntimeGeneratedFunction(funcs)
 
-        ϵ = zeros(length(eqs))
 
-        ∂ = 𝓂.parameters
-        C = 𝓂.solution.non_stochastic_steady_state # [dyn_ss_idx])
+        nx = length(𝓂.parameter_values)
+
+        np = length(SS_and_pars)
+
+        nϵ = length(eqs)
+
+        Symbolics.@variables 𝒳¹[1:nx] 𝒫¹[1:np]
+
+        ϵˢ = zeros(Symbolics.Num, nϵ)
     
-        jac = zeros(length(eqs), length(∂));
+        # Evaluate the function symbolically
+        calc_SS!(ϵˢ, 𝒳¹, 𝒫¹)
     
-        backend = 𝒟.AutoSymbolics()
+        ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ϵˢ, 𝒳¹) # nϵ x nx
     
-        prep = 𝒟.prepare_jacobian(calc_SS!, ϵ, backend, ∂, 𝒟.Constant(C));
-        
-        𝓂.∂SS_equations_∂parameters = (calc_SS!, ϵ, jac, prep)
+        lennz = nnz(∂SS_equations_∂parameters)
+
+        if (lennz / length(∂SS_equations_∂parameters) > density_threshold) || (length(∂SS_equations_∂parameters) < min_length)
+            derivatives_mat = convert(Matrix, ∂SS_equations_∂parameters)
+            buffer = zeros(Float64, size(∂SS_equations_∂parameters))
+        else
+            derivatives_mat = ∂SS_equations_∂parameters
+            buffer = similar(∂SS_equations_∂parameters, Float64)
+        end
+
+        func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, cse = true, skipzeros = true, expression = Val(false))
+
+        𝓂.∂SS_equations_∂parameters = buffer, func_exprs[2]
 
 
-        ∂ = 𝓂.solution.non_stochastic_steady_state
-        C = 𝓂.parameters # [dyn_ss_idx])
-    
-        jac = zeros(length(eqs), length(∂));
-    
-        backend = 𝒟.AutoSymbolics()
-    
-        calc_SS_switch!(e,x,y) = calc_SS!(e,y,x)
 
-        prep = 𝒟.prepare_jacobian(calc_SS_switch!, ϵ, backend, ∂, 𝒟.Constant(C));
-        
-        𝓂.∂SS_equations_∂SS_and_pars = (calc_SS_switch!, ϵ, jac, prep)
+        ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ϵˢ, 𝒫¹) # nϵ x nx
+    
+        lennz = nnz(∂SS_equations_∂SS_and_pars)
 
-        
-        # if 𝓂.model_jacobian[2] == Int[]
-        #     𝓂.model_jacobian_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * length(vars)))
-        #     𝓂.model_jacobian = (funcs, row1 .+ (column1 .- 1) .* length(eqs_sub),  zeros(length(eqs_sub), length(vars)))
-        # end
+        if (lennz / length(∂SS_equations_∂SS_and_pars) > density_threshold) || (length(∂SS_equations_∂SS_and_pars) < min_length)
+            derivatives_mat = convert(Matrix, ∂SS_equations_∂SS_and_pars)
+            buffer = zeros(Float64, size(∂SS_equations_∂SS_and_pars))
+        else
+            derivatives_mat = ∂SS_equations_∂SS_and_pars
+            buffer = similar(∂SS_equations_∂SS_and_pars, Float64)
+        end
+
+        func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, cse = true, skipzeros = true, expression = Val(false))
+
+        𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs[2]
     end
         
     if max_perturbation_order >= 2
@@ -6524,18 +6539,18 @@ function calculate_jacobian(parameters::Vector{M},
     dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
     dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
     dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    # dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
     # X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
     
     deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
-    SS_and_pars = vcat(par, SS)#[dyn_ss_idx])
+    SS_and_pars = vcat(par, SS[dyn_ss_idx])
 
     if eltype(𝓂.jacobian[1]) != M
-        # jac_buffer = similar(𝓂.jacobian[1], M)
-        jac_buffer = zeros(M, size(𝓂.jacobian[1]))
+        jac_buffer = similar(𝓂.jacobian[1], M)
+        # jac_buffer = zeros(M, size(𝓂.jacobian[1]))
     else
         jac_buffer = 𝓂.jacobian[1]
     end
@@ -7628,112 +7643,19 @@ function rrule(::typeof(get_NSSS_and_parameters),
     unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
 
     ∂ = parameter_values
-    C = 𝒟.Constant(SS_and_pars) # [dyn_ss_idx])
+    C = SS_and_pars # [dyn_ss_idx])
 
-    backend = 𝒟.AutoSymbolics()
+    𝓂.∂SS_equations_∂parameters[2](𝓂.∂SS_equations_∂parameters[1], ∂, C)
 
-    if eltype(𝓂.∂SS_equations_∂parameters[3]) != eltype(parameter_values)
-        jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[3]))
-    else
-        jac_buffer = 𝓂.∂SS_equations_∂parameters[3]
-    end
-
-    𝒟.jacobian!(𝓂.∂SS_equations_∂parameters[1], 𝓂.∂SS_equations_∂parameters[2], jac_buffer, 𝓂.∂SS_equations_∂parameters[4], backend, ∂, C)
-
-    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[3]
+    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[1]
 
     
     ∂ = SS_and_pars
-    C = 𝒟.Constant(parameter_values) # [dyn_ss_idx])
+    C = parameter_values # [dyn_ss_idx])
 
-    backend = 𝒟.AutoSymbolics()
+    𝓂.∂SS_equations_∂SS_and_pars[2](𝓂.∂SS_equations_∂SS_and_pars[1], ∂, C)
 
-    if eltype(𝓂.∂SS_equations_∂SS_and_pars[3]) != eltype(parameter_values)
-        jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂SS_and_pars[3]))
-    else
-        jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[3]
-    end
-
-    𝒟.jacobian!(𝓂.∂SS_equations_∂SS_and_pars[1], 𝓂.∂SS_equations_∂SS_and_pars[2], jac_buffer, 𝓂.∂SS_equations_∂SS_and_pars[4], backend, ∂, C)
-
-    ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
-
-    # # ∂SS_equations_∂parameters = try 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-    # # catch
-    # #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    # # end
-
-    # X = [parameter_values; SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]]
-    
-    # # vals = Float64[]
-
-    # # for f in 𝓂.∂SS_equations_∂parameters[1]
-    # #     push!(vals, f(X)...)
-    # # end
-    
-    # vals = zeros(Float64, length(𝓂.∂SS_equations_∂parameters[1]))
-
-    # # lk = ReentrantLock()
-
-    # # @timeit_debug timer "Loop - parameter derivatives" begin
-
-    # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
-    # # for f in 𝓂.∂SS_equations_∂parameters[1]
-    #     out = f(X)
-        
-    #     # begin
-    #     #     lock(lk)
-    #     #     try
-    #             @inbounds vals[out[2]] = out[1]
-    #     #     finally
-    #     #         unlock(lk)
-    #     #     end
-    #     # end
-    # end
-
-    # Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
-    
-    # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
-
-    # # end # timeit_debug
-
-    # # vals = Float64[]
-
-    # # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-    # #     push!(vals, f(X)...)
-    # # end
-
-    # vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
-
-    # # lk = ReentrantLock()
-
-    # # @timeit_debug timer "Loop - NSSS derivatives" begin
-
-    # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-    # # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-    #     out = f(X)
-        
-    #     # begin
-    #     #     lock(lk)
-    #     #     try
-    #             @inbounds vals[out[2]] = out[1]
-    #     #     finally
-    #     #         unlock(lk)
-    #     #     end
-    #     # end
-    # end
-
-    # 𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0
-    # 𝓂.∂SS_equations_∂SS_and_pars[3][𝓂.∂SS_equations_∂SS_and_pars[2]] .+= vals
-
-    # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
-
-    # end # timeit_debug
-
-    # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-    # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-    
-    # @timeit_debug timer "Implicit diff - mat inv" begin
+    ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[1]
 
     ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
 
@@ -7790,103 +7712,29 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         
 
         ∂ = parameter_values
-        C = 𝒟.Constant(SS_and_pars) # [dyn_ss_idx])
+        C = SS_and_pars # [dyn_ss_idx])
 
-        backend = 𝒟.AutoSymbolics()
-
-        if eltype(𝓂.∂SS_equations_∂parameters[3]) != eltype(parameter_values)
-            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[3]))
+        if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
+            jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
         else
-            jac_buffer = 𝓂.∂SS_equations_∂parameters[3]
+            jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
         end
 
-        𝒟.jacobian!(𝓂.∂SS_equations_∂parameters[1], 𝓂.∂SS_equations_∂parameters[2], jac_buffer, 𝓂.∂SS_equations_∂parameters[4], backend, ∂, C)
+        𝓂.∂SS_equations_∂parameters[2](𝓂.∂SS_equations_∂parameters[1], ∂, C)
 
-        ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[3]
+        ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[1]
 
         
-        ∂ = SS_and_pars
-        C = 𝒟.Constant(parameter_values) # [dyn_ss_idx])
-
-        backend = 𝒟.AutoSymbolics()
-
-        if eltype(𝓂.∂SS_equations_∂SS_and_pars[3]) != eltype(parameter_values)
-            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂SS_and_pars[3]))
+        if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(parameter_values)
+            jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(parameter_values))
         else
-            jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[3]
+            jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
         end
 
-        𝒟.jacobian!(𝓂.∂SS_equations_∂SS_and_pars[1], 𝓂.∂SS_equations_∂SS_and_pars[2], jac_buffer, 𝓂.∂SS_equations_∂SS_and_pars[4], backend, ∂, C)
+        𝓂.∂SS_equations_∂SS_and_pars[2](𝓂.∂SS_equations_∂SS_and_pars[1], ∂, C)
 
-        ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
+        ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[1]
 
-        # # ∂SS_equations_∂parameters = try 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-        # # catch
-        # #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-        # # end
-
-        # X = [parameter_values; SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]]
-        
-        # # vals = Float64[]
-
-        # # for f in 𝓂.∂SS_equations_∂parameters[1]
-        # #     push!(vals, f(X)...)
-        # # end
-        
-        # vals = zeros(Float64, length(𝓂.∂SS_equations_∂parameters[1]))
-
-        # # lk = ReentrantLock()
-
-        # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
-        # # for f in 𝓂.∂SS_equations_∂parameters[1]
-        #     out = f(X)
-            
-        #     # begin
-        #     #     lock(lk)
-        #     #     try
-        #             @inbounds vals[out[2]] = out[1]
-        #     #     finally
-        #     #         unlock(lk)
-        #     #     end
-        #     # end
-        # end
-
-        # Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
-        
-        # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
-
-        # # vals = Float64[]
-
-        # # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-        # #     push!(vals, f(X)...)
-        # # end
-
-        # vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
-
-        # # lk = ReentrantLock()
-
-        # Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-        # # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-        #     out = f(X)
-            
-        #     # begin
-        #     #     lock(lk)
-        #     #     try
-        #             @inbounds vals[out[2]] = out[1]
-        #     #     finally
-        #     #         unlock(lk)
-        #     #     end
-        #     # end
-        # end
-
-        # 𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0
-        # 𝓂.∂SS_equations_∂SS_and_pars[3][𝓂.∂SS_equations_∂SS_and_pars[2]] .+= vals
-
-        # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
-
-        # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-        # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-        
         ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
 
         if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
