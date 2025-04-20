@@ -6549,8 +6549,8 @@ function calculate_jacobian(parameters::Vector{M},
     SS_and_pars = vcat(par, SS[dyn_ss_idx])
 
     if eltype(𝓂.jacobian[1]) != M
-        jac_buffer = similar(𝓂.jacobian[1], M)
-        # jac_buffer = zeros(M, size(𝓂.jacobian[1]))
+        # jac_buffer = similar(𝓂.jacobian[1], M)
+        jac_buffer = zeros(M, size(𝓂.jacobian[1]))
     else
         jac_buffer = 𝓂.jacobian[1]
     end
@@ -7656,9 +7656,6 @@ function rrule(::typeof(get_NSSS_and_parameters),
     ∂SS_equations_∂parameters = jac_buffer
 
     
-    ∂ = SS_and_pars
-    C = parameter_values # [dyn_ss_idx])
-
     if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(SS_and_pars)
         jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
     else
@@ -7669,7 +7666,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     ∂SS_equations_∂SS_and_pars = jac_buffer
 
-    ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
+    ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
         return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
