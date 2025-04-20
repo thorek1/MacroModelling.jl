@@ -1341,7 +1341,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, preconditioner!)
 
     if 𝕊ℂ.krylov_caches.dqgmres.m == 0
-        𝕊ℂ.krylov_caches.dqgmres =  DqgmresWorkspace(length(C), length(C), 20, Vector{T})
+        𝕊ℂ.krylov_caches.dqgmres =  DqgmresWorkspace(length(C), length(C), Vector{T})
     end
     # @timeit_debug timer "DQGMRES solve" begin
     # if length(init) == 0
@@ -1503,7 +1503,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # precond = LinearOperators.LinearOperator(Float64, length(C), length(C), true, true, preconditioner!)
 
     if 𝕊ℂ.krylov_caches.gmres.m == 0
-        𝕊ℂ.krylov_caches.gmres =  GmresWorkspace(length(C), length(C), 20, Vector{T})
+        𝕊ℂ.krylov_caches.gmres =  GmresWorkspace(length(C), length(C), Vector{T})
     end
     # @timeit_debug timer "GMRES solve" begin
     # if length(init) == 0
