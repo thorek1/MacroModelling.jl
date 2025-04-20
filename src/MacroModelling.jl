@@ -6549,8 +6549,12 @@ function calculate_jacobian(parameters::Vector{M},
     SS_and_pars = vcat(par, SS[dyn_ss_idx])
 
     if eltype(𝓂.jacobian[1]) != M
-        # jac_buffer = similar(𝓂.jacobian[1], M)
-        jac_buffer = zeros(M, size(𝓂.jacobian[1]))
+        if 𝓂.jacobian[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.jacobian[1],M)
+            jac_buffer.nzval .= 0
+        else
+            jac_buffer = zeros(M, size(𝓂.jacobian[1]))
+        end
     else
         jac_buffer = 𝓂.jacobian[1]
     end
@@ -7646,7 +7650,12 @@ function rrule(::typeof(get_NSSS_and_parameters),
     C = SS_and_pars # [dyn_ss_idx])
 
     if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
-        jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
+        if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
+            jac_buffer.nzval .= 0
+        else
+            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
+        end
     else
         jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
     end
@@ -7657,7 +7666,12 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     
     if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(SS_and_pars)
-        jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
+        if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
+            jac_buffer.nzval .= 0
+        else
+            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
+        end
     else
         jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
     end
@@ -7724,7 +7738,12 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         C = SS_and_pars # [dyn_ss_idx])
 
         if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
-            jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
+            if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
+                jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
+                jac_buffer.nzval .= 0
+            else
+                jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
+            end
         else
             jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
         end
@@ -7735,7 +7754,12 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         
         if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(parameter_values)
-            jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(parameter_values))
+            if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
+                jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
+                jac_buffer.nzval .= 0
+            else
+                jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
+            end
         else
             jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
         end
