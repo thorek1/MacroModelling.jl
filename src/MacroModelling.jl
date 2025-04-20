@@ -7747,7 +7747,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         ∂SS_equations_∂SS_and_pars = jac_buffer
 
-        ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
+        ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
 
         if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
             if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
