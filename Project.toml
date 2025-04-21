@@ -49,6 +49,7 @@ StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
+ADTypes = "1"
 Accessors = "0.1"
 Aqua = "0.8"
 AxisKeys = "0.2"
@@ -67,7 +68,7 @@ FiniteDifferences = "0.12"
 ForwardDiff = "0.10, 1"
 JET = "0.7, 0.8, 0.9"
 JSON = "0.21"
-Krylov = "0.9"
+Krylov = "0.10"
 LaTeXStrings = "1"
 LineSearches = "7"
 LinearAlgebra = "1"
@@ -104,6 +105,7 @@ Zygote = "0.6, 0.7"
 julia = "1.10"
 
 [extras]
+ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
@@ -121,4 +123,4 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["Aqua", "JET", "CSV", "DataFrames", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Zygote", "StatsPlots", "Preferences"]
+test = ["ADTypes", "Aqua", "JET", "CSV", "DataFrames", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Zygote", "StatsPlots", "Preferences"]
