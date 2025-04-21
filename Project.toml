@@ -33,7 +33,6 @@ REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 RecursiveFactorization = "f2c3362d-daeb-58d1-803e-2bc74f2840b4"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
-Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 RuntimeGeneratedFunctions = "7e49a35a-f44a-4d26-94aa-eba1b4ca6b47"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
@@ -46,11 +45,11 @@ Unicode = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [weakdeps]
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
-Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [extensions]
 StatsPlotsExt = "StatsPlots"
-DistributionsExt = "Distributions"
+TuringExt = "Turing"
 
 [compat]
 ADTypes = "1"
@@ -93,7 +92,6 @@ REPL = "1"
 Random = "1"
 RecursiveFactorization = "0.2"
 Reexport = "1"
-Requires = "1"
 RuntimeGeneratedFunctions = "0.5"
 SparseArrays = "1"
 SpecialFunctions = "2"

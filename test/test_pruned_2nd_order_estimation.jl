@@ -2,7 +2,7 @@ using MacroModelling
 import Turing
 import Pigeons
 import Zygote
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, Beta, Normal, InverseGamma
 import ADTypes: AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
@@ -23,15 +23,15 @@ data = data(observables,:)
 
 
 dists = [
-    Beta(0.356, 0.02, μσ = true),           # alp
-    Beta(0.993, 0.002, μσ = true),          # bet
+    Beta(0.356, 0.02, Val(:μσ)),           # alp
+    Beta(0.993, 0.002, Val(:μσ)),          # bet
     Normal(0.0085, 0.003),                  # gam
     Normal(1.0002, 0.007),                  # mst
-    Beta(0.129, 0.223, μσ = true),          # rho
-    Beta(0.65, 0.05, μσ = true),            # psi
-    Beta(0.01, 0.005, μσ = true),           # del
-    InverseGamma(0.035449, Inf, μσ = true), # z_e_a
-    InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
+    Beta(0.129, 0.223, Val(:μσ)),          # rho
+    Beta(0.65, 0.05, Val(:μσ)),            # psi
+    Beta(0.01, 0.005, Val(:μσ)),           # del
+    InverseGamma(0.035449, Inf, Val(:μσ)), # z_e_a
+    InverseGamma(0.008862, Inf, Val(:μσ))  # z_e_m
 ]
 
 Turing.@model function FS2000_loglikelihood_function(data, m, algorithm)
@@ -133,14 +133,14 @@ println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
 # Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
 #     dȳ  ~ Normal(0, 1)
 #     dc̄  ~ Normal(0, 1)
-#     β   ~ Beta(0.95, 0.005, μσ = true)
-#     ζ   ~ Beta(0.33, 0.05, μσ = true)
-#     δ   ~ Beta(0.02, 0.01, μσ = true)
-#     λ   ~ Beta(0.75, 0.01, μσ = true)
-#     ψ   ~ Normal(1, .25)#, μσ = true)
-#     σ̄   ~ InverseGamma(0.021, Inf, μσ = true)
-#     η   ~ InverseGamma(0.1, Inf, μσ = true)
-#     ρ   ~ Beta(0.75, 0.02, μσ = true)
+#     β   ~ Beta(0.95, 0.005, Val(:μσ))
+#     ζ   ~ Beta(0.33, 0.05, Val(:μσ))
+#     δ   ~ Beta(0.02, 0.01, Val(:μσ))
+#     λ   ~ Beta(0.75, 0.01, Val(:μσ))
+#     ψ   ~ Normal(1, .25)#, Val(:μσ))
+#     σ̄   ~ InverseGamma(0.021, Inf, Val(:μσ))
+#     η   ~ InverseGamma(0.1, Inf, Val(:μσ))
+#     ρ   ~ Beta(0.75, 0.02, Val(:μσ))
 
 #     Turing.@addlogprob! get_loglikelihood(m, data, [dȳ, dc̄, β, ζ, δ, λ, ψ, σ̄, η, ρ], algorithm = :pruned_third_order)
 # end
@@ -171,15 +171,15 @@ println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
 #             log_lik -= get_loglikelihood(Caldara_et_al_2012_estim, data, x, algorithm = :pruned_third_order)
 #             log_lik -= logpdf(Normal(0, 1),dȳ)
 #             log_lik -= logpdf(Normal(0, 1),dc̄)
-#             log_lik -= logpdf(Beta(0.993, 0.05, μσ = true),β)
-#             log_lik -= logpdf(Beta(0.356, 0.05, μσ = true),ζ)
-#             log_lik -= logpdf(Beta(0.02, 0.01, μσ = true),δ)
-#             log_lik -= logpdf(Beta(0.5, 0.25, μσ = true),λ)
+#             log_lik -= logpdf(Beta(0.993, 0.05, Val(:μσ)),β)
+#             log_lik -= logpdf(Beta(0.356, 0.05, Val(:μσ)),ζ)
+#             log_lik -= logpdf(Beta(0.02, 0.01, Val(:μσ)),δ)
+#             log_lik -= logpdf(Beta(0.5, 0.25, Val(:μσ)),λ)
 #             log_lik -= logpdf(Normal(1, .25),ψ)
 #             # log_lik -= logpdf(Normal(40, 10),γ)
-#             log_lik -= logpdf(InverseGamma(0.021, Inf, μσ = true),σ̄)
-#             log_lik -= logpdf(InverseGamma(0.1, Inf, μσ = true),η)
-#             log_lik -= logpdf(Beta(0.5, 0.25, μσ = true),ρ)
+#             log_lik -= logpdf(InverseGamma(0.021, Inf, Val(:μσ)),σ̄)
+#             log_lik -= logpdf(InverseGamma(0.1, Inf, Val(:μσ)),η)
+#             log_lik -= logpdf(Beta(0.5, 0.25, Val(:μσ)),ρ)
         
 #             return log_lik
 #         end, parameters)
@@ -190,15 +190,15 @@ println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
 #     log_lik -= get_loglikelihood(Caldara_et_al_2012_estim, data, parameters, algorithm = :pruned_third_order)
 #     log_lik -= logpdf(Normal(0, 1),dȳ)
 #     log_lik -= logpdf(Normal(0, 1),dc̄)
-#     log_lik -= logpdf(Beta(0.95, 0.005, μσ = true),β)
-#     log_lik -= logpdf(Beta(0.33, 0.05, μσ = true),ζ)
-#     log_lik -= logpdf(Beta(0.02, 0.01, μσ = true),δ)
-#     log_lik -= logpdf(Beta(0.75, 0.01, μσ = true),λ)
+#     log_lik -= logpdf(Beta(0.95, 0.005, Val(:μσ)),β)
+#     log_lik -= logpdf(Beta(0.33, 0.05, Val(:μσ)),ζ)
+#     log_lik -= logpdf(Beta(0.02, 0.01, Val(:μσ)),δ)
+#     log_lik -= logpdf(Beta(0.75, 0.01, Val(:μσ)),λ)
 #     log_lik -= logpdf(Normal(1, .25),ψ)
 #     # log_lik -= logpdf(Normal(40, 10),γ)
-#     log_lik -= logpdf(InverseGamma(0.021, Inf, μσ = true),σ̄)
-#     log_lik -= logpdf(InverseGamma(0.1, Inf, μσ = true),η)
-#     log_lik -= logpdf(Beta(0.75, 0.02, μσ = true),ρ)
+#     log_lik -= logpdf(InverseGamma(0.021, Inf, Val(:μσ)),σ̄)
+#     log_lik -= logpdf(InverseGamma(0.1, Inf, Val(:μσ)),η)
+#     log_lik -= logpdf(Beta(0.75, 0.02, Val(:μσ)),ρ)
 #     println(log_lik)
 #     return log_lik
 # end

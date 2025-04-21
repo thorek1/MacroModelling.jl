@@ -1,7 +1,8 @@
-module DistributionsExt
+module TuringExt
 
-import Distributions: Beta, InverseGamma, Gamma, Normal, Cauchy, truncated
+import Turing: Beta, InverseGamma, Gamma, Normal, Cauchy, truncated
 import DocStringExtensions: SIGNATURES
+using DispatchDoctor
 
 @stable default_mode = "disable" begin
 """
@@ -18,10 +19,14 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 # Keyword Arguments
 - `μσ` [Type: `Bool`]: switch whether μ and σ represent the moments of the distribution or their parameters
 """
-function Beta(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool)
-    μσ ? truncated(Beta(((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2, ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2  * (1 / μ - 1)), lower_bound, upper_bound) : truncated(Beta(μ, σ), lower_bound, upper_bound)
+function Beta(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real, ::Val{:μσ})
+    truncated(Beta(((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2, ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2  * (1 / μ - 1)), lower_bound, upper_bound)
 end
 
+
+function Beta(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real)
+    truncated(Beta(μ, σ), lower_bound, upper_bound)
+end
 
 """
 $(SIGNATURES)
@@ -36,8 +41,8 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 - `μσ` [Type: `Bool`]: switch whether μ and σ represent the moments of the distribution or their parameters
 
 """
-function Beta(μ::Real, σ::Real; μσ::Bool)
-    μσ ? Beta(((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2, ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2  * (1 / μ - 1)) : Beta(μ, σ)
+function Beta(μ::Real, σ::Real, ::Val{:μσ})
+    Beta(((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2, ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2  * (1 / μ - 1))
 end
 
 
@@ -56,9 +61,14 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 - `μσ` [Type: `Bool`]: switch whether μ and σ represent the moments of the distribution or their parameters
 
 """
-function InverseGamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool)
-    μσ ? truncated(InverseGamma((μ / σ) ^ 2 + 2, μ * ((μ / σ) ^ 2 + 1)), lower_bound, upper_bound) : truncated(InverseGamma(μ, σ), lower_bound, upper_bound)
+function InverseGamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real, ::Val{:μσ})
+    truncated(InverseGamma((μ / σ) ^ 2 + 2, μ * ((μ / σ) ^ 2 + 1)), lower_bound, upper_bound)
 end
+
+function InverseGamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real)
+    truncated(InverseGamma(μ, σ), lower_bound, upper_bound)
+end
+
 
 """
 $(SIGNATURES)
@@ -73,8 +83,8 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 - `μσ` [Type: `Bool`]: switch whether μ and σ represent the moments of the distribution or their parameters
 
 """
-function InverseGamma(μ::Real, σ::Real; μσ::Bool)
-    μσ ? InverseGamma((μ / σ) ^ 2 + 2, μ * ((μ / σ) ^ 2 + 1)) : InverseGamma(μ, σ)
+function InverseGamma(μ::Real, σ::Real, ::Val{:μσ})
+    InverseGamma((μ / σ) ^ 2 + 2, μ * ((μ / σ) ^ 2 + 1))
 end
 
 
@@ -93,8 +103,12 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 - `μσ` [Type: `Bool`]: switch whether μ and σ represent the moments of the distribution or their parameters
 
 """
-function Gamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool)
-    μσ ? truncated(Gamma(μ^2/σ^2, σ^2 / μ), lower_bound, upper_bound) : truncated(Gamma(μ, σ), lower_bound, upper_bound)
+function Gamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real, ::Val{:μσ})
+    truncated(Gamma(μ^2/σ^2, σ^2 / μ), lower_bound, upper_bound)
+end
+
+function Gamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real)
+    truncated(Gamma(μ, σ), lower_bound, upper_bound)
 end
 
 """
@@ -110,8 +124,8 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 - `μσ` [Type: `Bool`]: switch whether μ and σ represent the moments of the distribution or their parameters
 
 """
-function Gamma(μ::Real, σ::Real; μσ::Bool)
-    μσ ? Gamma(μ^2/σ^2, σ^2 / μ) : Gamma(μ, σ)
+function Gamma(μ::Real, σ::Real, ::Val{:μσ})
+    Gamma(μ^2/σ^2, σ^2 / μ)
 end
 
 
@@ -149,8 +163,6 @@ Convenience wrapper for the truncated Cauchy distribution.
 function Cauchy(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real)
     truncated(Cauchy(μ, σ), lower_bound, upper_bound)
 end
-
-Cauchy(x,y) = Cauchy(x,y)
 
 end # dispatch_doctor
 

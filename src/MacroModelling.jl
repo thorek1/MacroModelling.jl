@@ -62,8 +62,6 @@ import RecursiveFactorization as RF
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
-using Requires
-
 import Reexport
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
@@ -127,11 +125,6 @@ include("./filter/kalman.jl")
 
 # end # DispatchDoctor
 
-function __init__()
-    # @require StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd" include("plotting.jl")
-    @require Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0" include("priors.jl")
-end
-
 
 export @model, @parameters, solve!
 
@@ -150,7 +143,6 @@ export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditiona
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution #, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export get_shock_decomposition, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations, get_loglikelihood
-export Beta, InverseGamma, Gamma, Normal, Cauchy
 export Tolerances
 
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
