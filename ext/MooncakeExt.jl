@@ -19,7 +19,7 @@ import LinearAlgebra as ℒ
 
 @from_rrule DefaultCtx Tuple{typeof(calculate_third_order_derivatives), Vector{M}, Vector{N}, ℳ} where {M <: AbstractFloat, N <: AbstractFloat}
 
-@from_rrule DefaultCtx Tuple{typeof(get_NSSS_and_parameters), ℳ, Vector{Float64}} true
+@from_rrule DefaultCtx Tuple{typeof(get_NSSS_and_parameters), ℳ, Vector{S} where S <: AbstractFloat} true
 
 @from_rrule DefaultCtx Tuple{typeof(calculate_first_order_solution), Matrix{R}} where R <: AbstractFloat true
 

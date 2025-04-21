@@ -129,11 +129,11 @@ include("./filter/kalman.jl")
 export @model, @parameters, solve!
 
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
-export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
+export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plot_conditional_forecast
 export plotlyjs_backend, gr_backend
 
 export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations, get_girf
-export get_conditional_forecast, plot_conditional_forecast
+export get_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS, ss, sss
 export get_non_stochastic_steady_state_residuals, get_residuals, check_residuals
@@ -166,6 +166,7 @@ function plot_forecast_error_variance_decomposition end
 function plot_fevd  end
 function plot_model_estimates   end
 function plot_shock_decomposition   end
+function plot_conditional_forecast end
 function plotlyjs_backend   end
 function gr_backend end
 
@@ -7482,9 +7483,9 @@ end
 end # dispatch_doctor
 
 function rrule(::typeof(get_NSSS_and_parameters), 
-                𝓂, 
-                parameter_values; 
-                opts::CalculationOptions = merge_calculation_options()) 
+                𝓂::ℳ, 
+                parameter_values::Vector{S}; 
+                opts::CalculationOptions = merge_calculation_options()) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
 
