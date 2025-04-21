@@ -46,13 +46,11 @@ Unicode = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [weakdeps]
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
-Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 
 [extensions]
-# name of extension to the left
-# extension dependencies required to load the extension to the right
-# use a list for multiple extension dependencies
 StatsPlotsExt = "StatsPlots"
+DistributionsExt = "Distributions"
 
 [compat]
 ADTypes = "1"
@@ -67,6 +65,7 @@ DataFrames = "1"
 DataStructures = "0.18"
 DifferentiationInterface = "0.6"
 DispatchDoctor = "0.4"
+Distributions = "0.25"
 DocStringExtensions = "0.8, 0.9"
 DynamicPPL = "0.23 - 0.35"
 DynarePreprocessor_jll = "6"

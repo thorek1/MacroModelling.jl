@@ -1,3 +1,8 @@
+module DistributionsExt
+
+import Distributions: Beta, InverseGamma, Gamma, Normal, Cauchy, truncated
+import DocStringExtensions: SIGNATURES
+
 @stable default_mode = "disable" begin
 """
 $(SIGNATURES)
@@ -14,7 +19,7 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 - `μσ` [Type: `Bool`]: switch whether μ and σ represent the moments of the distribution or their parameters
 """
 function Beta(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool)
-    μσ ? Turing.truncated(Turing.Beta(((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2, ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2  * (1 / μ - 1)), lower_bound, upper_bound) : Turing.truncated(Turing.Beta(μ, σ), lower_bound, upper_bound)
+    μσ ? truncated(Beta(((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2, ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2  * (1 / μ - 1)), lower_bound, upper_bound) : truncated(Beta(μ, σ), lower_bound, upper_bound)
 end
 
 
@@ -32,7 +37,7 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 
 """
 function Beta(μ::Real, σ::Real; μσ::Bool)
-    μσ ? Turing.Beta(((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2, ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2  * (1 / μ - 1)) : Turing.Beta(μ, σ)
+    μσ ? Beta(((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2, ((1 - μ) / σ ^ 2 - 1 / μ) * μ ^ 2  * (1 / μ - 1)) : Beta(μ, σ)
 end
 
 
@@ -52,7 +57,7 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 
 """
 function InverseGamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool)
-    μσ ? Turing.truncated(Turing.InverseGamma((μ / σ) ^ 2 + 2, μ * ((μ / σ) ^ 2 + 1)), lower_bound, upper_bound) : Turing.truncated(Turing.InverseGamma(μ, σ), lower_bound, upper_bound)
+    μσ ? truncated(InverseGamma((μ / σ) ^ 2 + 2, μ * ((μ / σ) ^ 2 + 1)), lower_bound, upper_bound) : truncated(InverseGamma(μ, σ), lower_bound, upper_bound)
 end
 
 """
@@ -69,7 +74,7 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 
 """
 function InverseGamma(μ::Real, σ::Real; μσ::Bool)
-    μσ ? Turing.InverseGamma((μ / σ) ^ 2 + 2, μ * ((μ / σ) ^ 2 + 1)) : Turing.InverseGamma(μ, σ)
+    μσ ? InverseGamma((μ / σ) ^ 2 + 2, μ * ((μ / σ) ^ 2 + 1)) : InverseGamma(μ, σ)
 end
 
 
@@ -89,7 +94,7 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 
 """
 function Gamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool)
-    μσ ? Turing.truncated(Turing.Gamma(μ^2/σ^2, σ^2 / μ), lower_bound, upper_bound) : Turing.truncated(Turing.Gamma(μ, σ), lower_bound, upper_bound)
+    μσ ? truncated(Gamma(μ^2/σ^2, σ^2 / μ), lower_bound, upper_bound) : truncated(Gamma(μ, σ), lower_bound, upper_bound)
 end
 
 """
@@ -106,7 +111,7 @@ If `μσ = true` then `μ` and `σ` are translated to the parameters of the dist
 
 """
 function Gamma(μ::Real, σ::Real; μσ::Bool)
-    μσ ? Turing.Gamma(μ^2/σ^2, σ^2 / μ) : Turing.Gamma(μ, σ)
+    μσ ? Gamma(μ^2/σ^2, σ^2 / μ) : Gamma(μ, σ)
 end
 
 
@@ -124,10 +129,10 @@ Convenience wrapper for the truncated Normal distribution.
 
 """
 function Normal(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real)
-    Turing.truncated(Turing.Normal(μ, σ), lower_bound, upper_bound)
+    truncated(Normal(μ, σ), lower_bound, upper_bound)
 end
 
-Normal(x,y) = Turing.Normal(x,y)
+Normal(x,y) = Normal(x,y)
 
 
 """
@@ -142,9 +147,11 @@ Convenience wrapper for the truncated Cauchy distribution.
 
 """
 function Cauchy(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real)
-    Turing.truncated(Turing.Cauchy(μ, σ), lower_bound, upper_bound)
+    truncated(Cauchy(μ, σ), lower_bound, upper_bound)
 end
 
-Cauchy(x,y) = Turing.Cauchy(x,y)
+Cauchy(x,y) = Cauchy(x,y)
 
 end # dispatch_doctor
+
+end # module
