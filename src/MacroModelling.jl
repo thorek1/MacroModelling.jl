@@ -134,8 +134,11 @@ end
 
 
 export @model, @parameters, solve!
+
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
 export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
+export plotlyjs_backend, gr_backend
+
 export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations, get_girf
 export get_conditional_forecast, plot_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution
@@ -147,7 +150,6 @@ export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditiona
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution #, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export get_shock_decomposition, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations, get_loglikelihood
-export plotlyjs_backend, gr_backend
 export Beta, InverseGamma, Gamma, Normal, Cauchy
 export Tolerances
 
@@ -157,6 +159,23 @@ export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare,
 export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxilliary_variables, get_dynamic_auxilliary_variables, get_shocks, get_state_variables, get_jump_variables
 # Internal
 export irf, girf
+
+# StatsPlotsExt
+
+function plot_irfs  end
+function plot_irf   end
+function plot_IRF   end
+function plot_simulations   end
+function plot_solution  end
+function plot_simulation    end
+function plot_girf  end
+function plot_conditional_variance_decomposition    end
+function plot_forecast_error_variance_decomposition end
+function plot_fevd  end
+function plot_model_estimates   end
+function plot_shock_decomposition   end
+function plotlyjs_backend   end
+function gr_backend end
 
 # Remove comment for debugging
 # export block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
