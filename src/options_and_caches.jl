@@ -1,8 +1,7 @@
-
 mutable struct krylov_caches{G <: AbstractFloat}
-    gmres::GmresWorkspace{G,G,Vector{G}}
-    dqgmres::DqgmresWorkspace{G,G,Vector{G}}
-    bicgstab::BicgstabWorkspace{G,G,Vector{G}}
+    gmres::GmresSolver{G,G,Vector{G}}
+    dqgmres::DqgmresSolver{G,G,Vector{G}}
+    bicgstab::BicgstabSolver{G,G,Vector{G}}
 end
 
 mutable struct sylvester_caches{G <: AbstractFloat}
@@ -36,9 +35,9 @@ end
 
 
 function Krylov_caches(;S::Type = Float64)
-    krylov_caches(  GmresWorkspace(0,0,Vector{S}),
-                    DqgmresWorkspace(0,0,Vector{S}),
-                    BicgstabWorkspace(0,0,Vector{S}))
+    krylov_caches(  GmresSolver(0,0,0,Vector{S}),
+                    DqgmresSolver(0,0,0,Vector{S}),
+                    BicgstabSolver(0,0,Vector{S}))
 end
 
 function Sylvester_caches(;S::Type = Float64)
