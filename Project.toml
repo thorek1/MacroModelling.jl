@@ -48,6 +48,12 @@ Unicode = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
+[extensions]
+# name of extension to the left
+# extension dependencies required to load the extension to the right
+# use a list for multiple extension dependencies
+StatsPlotsExt = "StatsPlots"
+
 [compat]
 ADTypes = "1"
 Accessors = "0.1"

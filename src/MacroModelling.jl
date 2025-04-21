@@ -128,7 +128,7 @@ include("./filter/kalman.jl")
 # end # DispatchDoctor
 
 function __init__()
-    @require StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd" include("plotting.jl")
+    # @require StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd" include("plotting.jl")
     @require Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0" include("priors.jl")
 end
 

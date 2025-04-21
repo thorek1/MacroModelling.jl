@@ -1,4 +1,9 @@
+module StatsPlotsExt
+
+import MacroModelling
 import LaTeXStrings
+import StatsPlots
+
 @stable default_mode = "disable" begin
 """
 ```
@@ -1856,3 +1861,5 @@ function plot_conditional_forecast(𝓂::ℳ,
 end
 
 end # dispatch_doctor
+
+end # module
