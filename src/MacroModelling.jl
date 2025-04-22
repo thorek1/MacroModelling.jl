@@ -4125,7 +4125,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int 
                             Optim.SAMIN(verbosity = verbosity, nt = 5, ns = 5), 
                             Optim.Options(time_limit = maxtime, iterations = maxiter))
 
-    pars = Optim.minimizer(sol)
+    pars = Optim.minimizer(sol)::Vector{Float64}
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
