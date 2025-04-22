@@ -166,7 +166,7 @@ function plot_forecast_error_variance_decomposition end
 function plot_fevd  end
 function plot_model_estimates   end
 function plot_shock_decomposition   end
-function plot_conditional_forecast end
+function plot_conditional_forecast  end
 function plotlyjs_backend   end
 function gr_backend end
 
