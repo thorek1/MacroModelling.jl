@@ -129,7 +129,7 @@ include("./filter/kalman.jl")
 export @model, @parameters, solve!
 
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
-export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plot_conditional_forecast
+export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
 export plotlyjs_backend, gr_backend
 
 export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations, get_girf
@@ -157,16 +157,16 @@ export irf, girf
 function plot_irfs  end
 function plot_irf   end
 function plot_IRF   end
-function plot_simulations   end
-function plot_solution  end
-function plot_simulation    end
 function plot_girf  end
+function plot_solution  end
+function plot_simulations   end
+function plot_simulation    end
 function plot_conditional_variance_decomposition    end
 function plot_forecast_error_variance_decomposition end
 function plot_fevd  end
+function plot_conditional_forecast  end
 function plot_model_estimates   end
 function plot_shock_decomposition   end
-function plot_conditional_forecast  end
 function plotlyjs_backend   end
 function gr_backend end
 
@@ -4123,7 +4123,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int 
     sol = Optim.optimize(x -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂, tol = tol), 
                             lbs, ubs, pars, 
                             Optim.SAMIN(verbosity = verbosity, nt = 5, ns = 5), 
-                            Optim.Options(time_limit = maxtime, iterations = maxiter))
+                            Optim.Options(time_limit = maxtime, iterations = maxiter))::Optim.MultivariateOptimizationResults
 
     pars = Optim.minimizer(sol)::Vector{Float64}
 
