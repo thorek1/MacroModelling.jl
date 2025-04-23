@@ -5643,7 +5643,6 @@ end
 
 @stable default_mode = "disable" begin
 
-
 function take_nth_order_derivatives(
     f!::Function,
     nx::Int,
@@ -5651,7 +5650,8 @@ function take_nth_order_derivatives(
     nϵ::Int;
     max_perturbation_order::Int = 1,
     output_compressed::Bool = true # Controls compression for X derivatives (order >= 2)
-)
+)::Tuple{Vector{SparseMatrixCSC{Symbolics.Num, Int}}, Tuple{Symbolics.Arr{Symbolics.Num, 1}, Symbolics.Arr{Symbolics.Num, 1}}}
+
     if max_perturbation_order < 1
         throw(ArgumentError("max_perturbation_order must be at least 1"))
     end
@@ -5665,79 +5665,27 @@ function take_nth_order_derivatives(
     # Evaluate the function symbolically
     f!(ϵˢ, 𝒳, 𝒫)
 
-    results = [] # To store pairs of sparse matrices (X_matrix, P_matrix) for each order
+    # To store sparse matrices for X derivatives for each order
+    results = SparseMatrixCSC{Symbolics.Num, Int}[]
 
     # --- Order 1 ---
     # Compute the 1st order derivative with respect to X (Jacobian)
     spX_order_1 = Symbolics.sparsejacobian(ϵˢ, 𝒳) # nϵ x nx
 
-    # Compute the derivative of the non-zeros of the 1st X-derivative w.r.t. P
-    # This is an intermediate step. The final P matrix will be built from this.
-    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1.nzval, 𝒫) # nnz(spX_order_1) x np
-
-    # Determine dimensions for the Order 1 P matrix
-    X_nrows_1 = nϵ
-    X_ncols_1 = nx
-    P_nrows_1 = X_nrows_1 * X_ncols_1
-    P_ncols_1 = np
-
-    # Build the Order 1 P matrix (dimensions nϵ*nx x np)
-    sparse_rows_1_P = Int[] # Row index in the flattened space of spX_order_1
-    sparse_cols_1_P = Int[] # Column index for parameters (1 to np)
-    sparse_vals_1_P = Symbolics.Num[]
-
-    # Map linear index in spX_order_1.nzval to its (row, col) in spX_order_1
-    nz_lin_to_rc_1 = Dict{Int, Tuple{Int, Int}}()
-    k_lin = 1
-    for j = 1:size(spX_order_1, 2) # col
-        for ptr = spX_order_1.colptr[j]:(spX_order_1.colptr[j+1]-1)
-             r = spX_order_1.rowval[ptr] # row
-             nz_lin_to_rc_1[k_lin] = (r, j)
-             k_lin += 1
-        end
-    end
-
-
-    # Iterate through the non-zero entries of spP_of_flatX_nzval_order_1
-    k_temp_P = 1 # linear index counter for nzval
-    for p_col = 1:size(spP_of_flatX_nzval_order_1, 2) # Parameter index
-        for i_ptr_temp_P = spP_of_flatX_nzval_order_1.colptr[p_col]:(spP_of_flatX_nzval_order_1.colptr[p_col+1]-1)
-            temp_row = spP_of_flatX_nzval_order_1.rowval[i_ptr_temp_P] # Row index in spP_of_flatX_nzval (corresponds to temp_row-th nzval of spX_order_1)
-            p_val = spP_of_flatX_nzval_order_1.nzval[i_ptr_temp_P] # Derivative value w.r.t. parameter
-
-            # Get the (row, col) in spX_order_1 corresponding to this derivative
-            r_X1, c_X1 = nz_lin_to_rc_1[temp_row]
-
-            # Calculate the row index in spP_order_1 (flattened index of spX_order_1)
-            P_row_idx = (r_X1 - 1) * X_ncols_1 + c_X1
-            P_col_idx = p_col # Parameter column index
-
-            push!(sparse_rows_1_P, P_row_idx)
-            push!(sparse_cols_1_P, P_col_idx)
-            push!(sparse_vals_1_P, p_val)
-
-            k_temp_P += 1
-        end
-    end
-
-    spP_order_1 = sparse!(sparse_rows_1_P, sparse_cols_1_P, sparse_vals_1_P, P_nrows_1, P_ncols_1)
-
-
-    # Store the pair for order 1
-    push!(results, (spX_order_1, spP_order_1))
+    # Store the result for order 1
+    push!(results, spX_order_1)
 
     if max_perturbation_order > 1
         # --- Prepare for higher orders (Order 2 to max_perturbation_order) ---
         # Initialize map for Order 1: linear index in spX_order_1.nzval -> (row, (v1,))
         # This map is needed to trace indices for Order 2
-        # We already built nz_lin_to_rc_1 above, reuse it and wrap the variable index in a Tuple
         nz_to_indices_prev = Dict{Int, Tuple{Int, Tuple{Int}}}()
         k_lin = 1
         for j = 1:size(spX_order_1, 2)
             for ptr = spX_order_1.colptr[j]:(spX_order_1.colptr[j+1]-1)
-                r = spX_order_1.rowval[ptr]
-                nz_to_indices_prev[k_lin] = (r, (j,)) # Store (equation row, (v1,))
-                k_lin += 1
+                 r = spX_order_1.rowval[ptr]
+                 nz_to_indices_prev[k_lin] = (r, (j,)) # Store (equation row, (v1,))
+                 k_lin += 1
             end
         end
 
@@ -5791,7 +5739,6 @@ function take_nth_order_derivatives(
                 k_flat_curr = 1 # linear index counter for nzval of sp_flat_curr_X
                 for col_flat_curr = 1:size(sp_flat_curr_X, 2) # This corresponds to the n-th variable (v_n)
                     for i_ptr_flat_curr = sp_flat_curr_X.colptr[col_flat_curr]:(sp_flat_curr_X.colptr[col_flat_curr+1]-1)
-                        # row_flat_curr = sp_flat_curr_X.rowval[i_ptr_flat_curr] # Row index in sp_flat_curr_X
                         val = sp_flat_curr_X.nzval[i_ptr_flat_curr] # The derivative value
 
                         # Get the full info for this non-zero from the map
@@ -5843,7 +5790,6 @@ function take_nth_order_derivatives(
                 k_flat_curr = 1 # linear index counter for nzval of sp_flat_curr_X
                 for col_flat_curr = 1:size(sp_flat_curr_X, 2) # This corresponds to the n-th variable (v_n)
                     for i_ptr_flat_curr = sp_flat_curr_X.colptr[col_flat_curr]:(sp_flat_curr_X.colptr[col_flat_curr+1]-1)
-                        # row_flat_curr = sp_flat_curr_X.rowval[i_ptr_flat_curr] # Row index in sp_flat_curr_X
                         val = sp_flat_curr_X.nzval[i_ptr_flat_curr] # The derivative value
 
                         # Get the full info for this non-zero from the map
@@ -5857,11 +5803,6 @@ function take_nth_order_derivatives(
                         power_of_nx = BigInt(nx)^(n-1) # Start with nx^(n-1) for v1 term
                         for i = 1:n
                             uncompressed_col_col_idx_term = (var_indices_full[i] - 1) * power_of_nx
-                            # Check for overflow before adding
-                            # if (uncompressed_col_idx > 0 && uncompressed_col_col_idx_term > 0 && uncompressed_col_idx + uncompressed_col_col_idx_term <= uncompressed_col_idx) ||
-                            #    (uncompressed_col_idx < 0 && uncompressed_col_col_idx_term < 0 && uncompressed_col_idx + uncompressed_col_col_idx_term >= uncompressed_col_idx)
-                            #    error("Integer overflow calculating uncompressed column index")
-                            # end
                             uncompressed_col_idx += uncompressed_col_col_idx_term
 
                             if i < n # Avoid nx^-1
@@ -5881,85 +5822,8 @@ function take_nth_order_derivatives(
 
             end # End of if output_compressed / else
 
-
-            # --- Compute the P-derivative sparse matrix for order n ---
-            # This is the Jacobian of the nzval of the intermediate flat X-Jacobian (sp_flat_curr_X) w.r.t. 𝒫.
-            # sp_flat_curr_X.nzval contains expressions for d^n f_i / (dx_v1 ... dx_vn) for all
-            # non-zero such values that were propagated from the previous step.
-            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, 𝒫) # nnz(sp_flat_curr_X) x np
-
-            # Determine the desired dimensions of spP_order_n
-            # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
-            P_nrows_n = nϵ * X_ncols_n
-            P_ncols_n = np
-
-            sparse_rows_n_P = Int[] # Row index in the flattened space of spX_order_n (1 to P_nrows_n)
-            sparse_cols_n_P = Int[] # Column index for parameters (1 to np)
-            sparse_vals_n_P = Symbolics.Num[]
-
-            # Iterate through the non-zero entries of spP_of_flatX_nzval_curr
-            # Its rows correspond to the non-zeros in sp_flat_curr_X
-            k_temp_P = 1 # linear index counter for nzval of spP_of_flatX_nzval_curr
-            for p_col = 1:size(spP_of_flatX_nzval_curr, 2) # Column index in spP_of_flatX_nzval_curr (corresponds to parameter index)
-                for i_ptr_temp_P = spP_of_flatX_nzval_curr.colptr[p_col]:(spP_of_flatX_nzval_curr.colptr[p_col+1]-1)
-                    temp_row = spP_of_flatX_nzval_curr.rowval[i_ptr_temp_P] # Row index in spP_of_flatX_nzval_curr (corresponds to the temp_row-th nzval of sp_flat_curr_X)
-                    p_val = spP_of_flatX_nzval_curr.nzval[i_ptr_temp_P] # The derivative w.r.t. parameter value
-
-                    # Get the full info for the X-derivative term that this P-derivative is from
-                    # temp_row is the linear index in sp_flat_curr_X.nzval
-                    # This corresponds to the derivative d^n f_orig_row_f / (dx_v1 ... dx_vn)
-                    orig_row_f, var_indices_full = nz_to_indices_curr[temp_row] # (v_1, ..., v_n)
-
-                    # We need to find the column index (X_col_idx) this term corresponds to
-                    # in the final spX_order_n matrix (which might be compressed or uncompressed)
-                    local X_col_idx # Column index in the final spX_order_n matrix (1 to X_ncols_n)
-
-                    if output_compressed
-                        # Calculate the compressed column index
-                        compressed_col_idx = 0
-                        for k_formula = 1:(n-1)
-                            term = binomial(var_indices_full[k_formula] + n - k_formula - 1, n - k_formula + 1)
-                            compressed_col_idx += term
-                        end
-                        compressed_col_idx += var_indices_full[n]
-                        X_col_idx = compressed_col_idx # The column in spX_order_n is the compressed one
-
-                    else # output_compressed == false
-                        # Calculate the uncompressed column index
-                        uncompressed_col_idx = 1
-                        power_of_nx = BigInt(nx)^(n-1)
-                        for i = 1:n
-                            uncompressed_col_idx += (var_indices_full[i] - 1) * power_of_nx
-                            if i < n
-                                power_of_nx = div(power_of_nx, nx)
-                            end
-                        end
-                        X_col_idx = Int(uncompressed_col_idx) # The column in spX_order_n is the uncompressed one
-                    end
-
-                    # Calculate the row index in spP_order_n
-                    # This maps the (orig_row_f, X_col_idx) pair in spX_order_n's grid to a linear index
-                    # Formula: (row_in_X - 1) * num_cols_in_X + col_in_X
-                    P_row_idx = (orig_row_f - 1) * X_ncols_n + X_col_idx
-
-                    # The column index in spP_order_n is the parameter index
-                    P_col_idx = p_col
-
-                    push!(sparse_rows_n_P, P_row_idx)
-                    push!(sparse_cols_n_P, P_col_idx)
-                    push!(sparse_vals_n_P, p_val)
-
-                    k_temp_P += 1 # Increment linear index counter for spP_of_flatX_nzval_curr.nzval
-                end
-            end
-
-            # Construct the P-derivative sparse matrix for order n
-            # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
-            spP_order_n = sparse!(sparse_rows_n_P, sparse_cols_n_P, sparse_vals_n_P, P_nrows_n, P_ncols_n)
-
-            # Store the pair (X-matrix, P-matrix) for order n
-            push!(results, (spX_order_n, spP_order_n))
-
+            # Store the X-matrix for order n
+            push!(results, spX_order_n)
 
             # Prepare for the next iteration (order n+1)
             # The nzvals for the next X-Jacobian step are the nzvals of the current flat X-Jacobian
@@ -5970,7 +5834,8 @@ function take_nth_order_derivatives(
         end # End of loop for orders n = 2 to max_perturbation_order
     end
 
-    return results, (𝒳, 𝒫) # Return results as a tuple of (X_matrix, P_matrix) pairs
+    # Return results as a vector of X_matrix and the symbolic variables
+    return results, (𝒳, 𝒫)
 end
 
 # TODO: check why this takes so much longer than previous implementation
@@ -6048,14 +5913,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     derivatives, xp = take_nth_order_derivatives(calc!, nx, np, nϵ; max_perturbation_order = max_perturbation_order)
 
-    lennz = nnz(derivatives[1][1])
+    lennz = nnz(derivatives[1])
 
-    if (lennz / length(derivatives[1][1]) > density_threshold) || (length(derivatives[1][1]) < min_length)
-        derivatives_mat = convert(Matrix, derivatives[1][1])
-        buffer = zeros(Float64, size(derivatives[1][1]))
+    if (lennz / length(derivatives[1]) > density_threshold) || (length(derivatives[1]) < min_length)
+        derivatives_mat = convert(Matrix, derivatives[1])
+        buffer = zeros(Float64, size(derivatives[1]))
     else
-        derivatives_mat = derivatives[1][1]
-        buffer = similar(derivatives[1][1], Float64)
+        derivatives_mat = derivatives[1]
+        buffer = similar(derivatives[1], Float64)
     end
 
 
@@ -6065,11 +5930,25 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     𝓂.jacobian = buffer, func_exprs[2]
 
 
-    buffer_SS_and_pars_vars = similar(derivatives[1][2], Float64)
-    
-    func_SS_and_pars_vars = Symbolics.build_function(derivatives[1][2], xp..., cse = true, skipzeros = true, expression = Val(false))
 
-    𝓂.jacobian_SS_and_pars_vars = buffer_SS_and_pars_vars, func_SS_and_pars_vars[2]
+    SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+
+    Symbolics.@variables 𝒳𝒳[1:length(SS_and_pars)] 𝒫𝒫[1:length(𝓂.parameter_values)]
+
+    ∇₁ᵉ = calculate_jacobian(Symbolics.scalarize(𝒫𝒫), Symbolics.scalarize(𝒳𝒳), 𝓂)#|>sparse
+
+    ∇₁_parameters =  Symbolics.sparsejacobian(vec(∇₁ᵉ), 𝒫𝒫)
+    ∇₁_SS_and_pars = Symbolics.sparsejacobian(vec(∇₁ᵉ), 𝒳𝒳)
+
+    buffer_parameters = similar(∇₁_parameters, Float64)
+    buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
+
+    func_∇₁_parameters = Symbolics.build_function(∇₁_parameters, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
+    func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
+
+    𝓂.jacobian_parameters =  buffer_parameters, func_∇₁_parameters[2]
+    𝓂.jacobian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars[2]
+
 
 
 
@@ -6576,69 +6455,19 @@ function rrule(::typeof(calculate_jacobian),
 
     jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
-    # end # timeit_debug
-
-    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-
-    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-
-    ∂ = vcat(SS_and_pars[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
-    C = vcat(parameters, SS_and_pars[(end - length(𝓂.calibration_equations)+1):end], SS_and_pars[1:(end - length(𝓂.calibration_equations))])
-
     function calculate_jacobian_pullback(∂∇₁)
         # @timeit_debug timer "Calculate jacobian - reverse" begin
 
-        # 𝒟.jacobian!(𝓂.jacobian_SS_and_pars_vars[1], 𝓂.jacobian_SS_and_pars_vars[2], 𝓂.jacobian_SS_and_pars_vars[3], backend, C, ∂)
+        𝓂.jacobian_parameters[2](𝓂.jacobian_parameters[1], parameters, SS_and_pars)
+        𝓂.jacobian_SS_and_pars[2](𝓂.jacobian_SS_and_pars[1], parameters, SS_and_pars)
 
-        𝓂.jacobian_SS_and_pars_vars[2](𝓂.jacobian_SS_and_pars_vars[1], C, ∂)
-
-        analytical_jacobian_SS_and_pars_vars = 𝓂.jacobian_SS_and_pars_vars[1]
-
-        # X = [parameters; SS_and_pars]
-
-        # # vals = Float64[]
-
-        # # for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
-        # #     push!(vals, f(X)...)
-        # # end
-
-        # vals = zeros(Float64, length(𝓂.model_jacobian_SS_and_pars_vars[1]))
-
-        # # lk = ReentrantLock()
-
-        # # @timeit_debug timer "Loop" begin
-
-        # Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
-        # # for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
-        #     out = f(X)
-
-        #     # begin
-        #     #     lock(lk)
-        #     #     try
-        #             @inbounds vals[out[2]] = out[1]
-        #     #     finally
-        #     #         unlock(lk)
-        #     #     end
-        #     # end
-        # end
-    
-        # Accessors.@reset 𝓂.model_jacobian_SS_and_pars_vars[2].nzval = vals
-        
-        # analytical_jacobian_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-
-        # cols_unique = unique(findnz(analytical_jacobian_SS_and_pars_vars)[2])
-
-        # v∂∇₁ = ∂∇₁[cols_unique]
-        
-        # ∂parameters_and_SS_and_pars = analytical_jacobian_SS_and_pars_vars[:,cols_unique] * v∂∇₁
-        ∂parameters_and_SS_and_pars = analytical_jacobian_SS_and_pars_vars' * vec(∂∇₁)
+        ∂parameters = 𝓂.jacobian_parameters[1]' * vec(∂∇₁)
+        ∂SS_and_pars = 𝓂.jacobian_SS_and_pars[1]' * vec(∂∇₁)
 
         # end # timeit_debug
         # end # timeit_debug
 
-        return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
     end
 
     return jacobian, calculate_jacobian_pullback
