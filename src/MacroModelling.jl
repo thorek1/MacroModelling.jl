@@ -5975,9 +5975,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
 
 
-    SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-
-    Symbolics.@variables 𝒳𝒳[1:length(SS_and_pars)] 𝒫𝒫[1:length(𝓂.parameter_values)]
+    Symbolics.@variables 𝒳𝒳[1:length(𝓂.solution.non_stochastic_steady_state)] 𝒫𝒫[1:length(𝓂.parameter_values)]
 
     ∇₁ᵉ = calculate_jacobian(Symbolics.scalarize(𝒫𝒫), Symbolics.scalarize(𝒳𝒳), 𝓂)#|>sparse
 
@@ -6121,9 +6119,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
 
 
-            SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-
-            Symbolics.@variables 𝒳𝒳[1:length(SS_and_pars)] 𝒫𝒫[1:length(𝓂.parameter_values)]
+            Symbolics.@variables 𝒳𝒳[1:length(𝓂.solution.non_stochastic_steady_state)] 𝒫𝒫[1:length(𝓂.parameter_values)]
 
             ∇₁ᵉ = calculate_hessian(Symbolics.scalarize(𝒫𝒫), Symbolics.scalarize(𝒳𝒳), 𝓂)#|>sparse
 
