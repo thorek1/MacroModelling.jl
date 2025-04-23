@@ -388,9 +388,9 @@ mutable struct ℳ
     jacobian::Tuple{AbstractMatrix{<: Real},Function}
     jacobian_parameters::Tuple{AbstractMatrix{<: Real},Function}
     jacobian_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
-    # jacobian_SS_and_pars_vars::Tuple{AbstractMatrix{<: Real},Function}
-    hessian::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep, SparseMatrixCSC{<: Real, Int}}
-    hessian_SS_and_pars_vars::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep}
+    hessian::Tuple{AbstractMatrix{<: Real},Function}
+    hessian_parameters::Tuple{AbstractMatrix{<: Real},Function}
+    hessian_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
     third_order_derivatives::Tuple{Function, SparseMatrixCSC{<: Real, Int}, 𝒟.JacobianPrep, SparseMatrixCSC{<: Real, Int}}
 
     # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}

@@ -5838,6 +5838,50 @@ function take_nth_order_derivatives(
     return results, (𝒳, 𝒫)
 end
 
+
+function full_sparsejacobian(S::Matrix{<:Number}, x::AbstractVector)
+    Symbolics.sparsejacobian(vec(S), x)
+end
+
+function full_sparsejacobian(S::SparseMatrixCSC{<:Number,Int}, x::AbstractVector)
+    m, n    = size(S)
+    nnz     = length(S.nzval)
+    rowval  = S.rowval
+    colptr  = S.colptr
+
+    # 1) For each non-zero entry k, compute its linear index in vec(S):
+    idx = Vector{Int}(undef, nnz)
+    for col in 1:n
+        for k in colptr[col]:(colptr[col+1]-1)
+            idx[k] = rowval[k] + (col-1)*m
+        end
+    end
+
+    # 2) Differentiate the non-zero values:
+    Jnz = Symbolics.sparsejacobian(S.nzval, x)
+    #    — a sparse (nnz × length(x)) matrix
+
+    # 3) Re-assemble into full sparse Jacobian:
+    row_Jnz    = Jnz.rowval
+    ptr_Jnz    = Jnz.colptr
+    Jfull_i    = Int[]
+    Jfull_j    = Int[]
+    Jfull_vals = eltype(Jnz.nzval)[]
+
+    p = size(Jnz, 2)
+    for j in 1:p
+        for ptr in ptr_Jnz[j]:(ptr_Jnz[j+1]-1)
+            k_nz = row_Jnz[ptr]               # which non-zero entry
+            push!(Jfull_i, idx[k_nz])         # mapped to full row index
+            push!(Jfull_j, j)                 # column index in x
+            push!(Jfull_vals, Jnz.nzval[ptr]) # derivative value
+        end
+    end
+
+    sparse!(Jfull_i, Jfull_j, Jfull_vals, m*n, p)
+end
+
+
 # TODO: check why this takes so much longer than previous implementation
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; 
                                     density_threshold::Float64 = .1, 
@@ -5911,7 +5955,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     nϵ = length(𝓂.dyn_equations)
 
-    derivatives, xp = take_nth_order_derivatives(calc!, nx, np, nϵ; max_perturbation_order = max_perturbation_order)
+    derivatives, xp = take_nth_order_derivatives(calc!, nx, np, nϵ; max_perturbation_order = max_perturbation_order, output_compressed = false)
 
     lennz = nnz(derivatives[1])
 
@@ -5937,16 +5981,37 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     ∇₁ᵉ = calculate_jacobian(Symbolics.scalarize(𝒫𝒫), Symbolics.scalarize(𝒳𝒳), 𝓂)#|>sparse
 
-    ∇₁_parameters =  Symbolics.sparsejacobian(vec(∇₁ᵉ), 𝒫𝒫)
-    ∇₁_SS_and_pars = Symbolics.sparsejacobian(vec(∇₁ᵉ), 𝒳𝒳)
+    ∇₁_parameters =  full_sparsejacobian(∇₁ᵉ, 𝒫𝒫)
 
-    buffer_parameters = similar(∇₁_parameters, Float64)
-    buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
+    lennz = nnz(∇₁_parameters)
 
-    func_∇₁_parameters = Symbolics.build_function(∇₁_parameters, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
-    func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
+    if (lennz / length(∇₁_parameters) > density_threshold) || (length(∇₁_parameters) < min_length)
+        ∇₁_parameters_mat = convert(Matrix, ∇₁_parameters)
+        buffer_parameters = zeros(Float64, size(∇₁_parameters))
+    else
+        ∇₁_parameters_mat = ∇₁_parameters
+        buffer_parameters = similar(∇₁_parameters, Float64)
+    end
+
+    func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
 
     𝓂.jacobian_parameters =  buffer_parameters, func_∇₁_parameters[2]
+ 
+
+    ∇₁_SS_and_pars =  full_sparsejacobian(∇₁ᵉ, 𝒳𝒳)
+
+    lennz = nnz(∇₁_SS_and_pars)
+
+    if (lennz / length(∇₁_SS_and_pars) > density_threshold) || (length(∇₁_SS_and_pars) < min_length)
+        ∇₁_SS_and_pars_mat = convert(Matrix, ∇₁_SS_and_pars)
+        buffer_SS_and_pars = zeros(Float64, size(∇₁_SS_and_pars))
+    else
+        ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
+        buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
+    end
+
+    func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
+
     𝓂.jacobian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars[2]
 
 
@@ -6038,17 +6103,72 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
 
-            𝓂.hessian = (jac_fun, hesbuffer_tmp, prephes, hesbuffer)
+            lennz = nnz(derivatives[2])
+
+            if (lennz / length(derivatives[2]) > density_threshold) || (length(derivatives[2]) < min_length)
+                derivatives_mat = convert(Matrix, derivatives[2])
+                buffer = zeros(Float64, size(derivatives[2]))
+            else
+                derivatives_mat = derivatives[2]
+                buffer = similar(derivatives[2], Float64)
+            end
 
 
-            𝓂.hessian_SS_and_pars_vars = (hes_deriv, hes_buffer, prephes_SS_and_pars)
+            func_exprs = Symbolics.build_function(derivatives_mat, xp..., cse = true, skipzeros = true, expression = Val(false))
+
+            # func = @RuntimeGeneratedFunction(func_exprs[2])
+            𝓂.hessian = buffer, func_exprs[2]
+
+
+
+            SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+
+            Symbolics.@variables 𝒳𝒳[1:length(SS_and_pars)] 𝒫𝒫[1:length(𝓂.parameter_values)]
+
+            ∇₁ᵉ = calculate_hessian(Symbolics.scalarize(𝒫𝒫), Symbolics.scalarize(𝒳𝒳), 𝓂)#|>sparse
+
+
+            ∇₁_parameters =  full_sparsejacobian(∇₁ᵉ, 𝒫𝒫)
+
+            lennz = nnz(∇₁_parameters)
+
+            if (lennz / length(∇₁_parameters) > density_threshold) || (length(∇₁_parameters) < min_length)
+                ∇₁_parameters_mat = convert(Matrix, ∇₁_parameters)
+                buffer_parameters = zeros(Float64, size(∇₁_parameters))
+            else
+                ∇₁_parameters_mat = ∇₁_parameters
+                buffer_parameters = similar(∇₁_parameters, Float64)
+            end
+
+            func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
+
+            𝓂.hessian_parameters =  buffer_parameters, func_∇₁_parameters[2]
+        
+
+            ∇₁_SS_and_pars = full_sparsejacobian(∇₁ᵉ, 𝒳𝒳)
+
+            lennz = nnz(∇₁_SS_and_pars)
+
+            if (lennz / length(∇₁_SS_and_pars) > density_threshold) || (length(∇₁_SS_and_pars) < min_length)
+                ∇₁_SS_and_pars_mat = convert(Matrix, ∇₁_SS_and_pars)
+                buffer_SS_and_pars = zeros(Float64, size(∇₁_SS_and_pars))
+            else
+                ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
+                buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
+            end
+
+            func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
+
+            𝓂.hessian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars[2]
+
+
+            # 𝓂.hessian = (jac_fun, hesbuffer_tmp, prephes, hesbuffer)
+
+
+            # 𝓂.hessian_SS_and_pars_vars = (hes_deriv, hes_buffer, prephes_SS_and_pars)
 
             # 𝓂.model_hessian = (funcs, sparse(row2, column2, zero(column2), length(eqs_sub), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
         end
-
-        # derivative of hessian wrt SS_and_pars and parameters
-        𝓂.model_hessian_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
-
     end
 
     if max_perturbation_order == 3
@@ -6422,8 +6542,6 @@ function calculate_jacobian(parameters::Vector{M},
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    # X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-    
     deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
     SS_and_pars = vcat(par, SS[dyn_ss_idx])
 
@@ -6488,98 +6606,23 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
-    C = 𝒟.Constant(vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))])) # [dyn_ss_idx])
+    deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
+    SS_and_pars = vcat(par, SS[dyn_ss_idx])
 
-    backend = 𝒟.AutoSparse(
-        𝒟.AutoSymbolics();  # any object from ADTypes
-    )
+    if eltype(𝓂.hessian[1]) != M
+        if 𝓂.hessian[1] isa SparseMatrixCSC
+            hes_buffer = similar(𝓂.hessian[1],M)
+            hes_buffer.nzval .= 0
+        else
+            hes_buffer = zeros(M, size(𝓂.hessian[1]))
+        end
+    else
+        hes_buffer = 𝓂.hessian[1]
+    end
 
-    # if eltype(𝓂.jacobian[3]) != M
-    #     hesbuffer_tmp = zeros(M, size(𝓂.hessian[2]))
-    # else
-        hesbuffer_tmp = 𝓂.hessian[2]
-    # end
-
-    𝒟.jacobian!(𝓂.hessian[1], hesbuffer_tmp, 𝓂.hessian[3], backend, ∂, C)
-
-    tmp = nonzeros(𝓂.hessian[4])
-
-    tmp .= hesbuffer_tmp.nzval
-
-    return 𝓂.hessian[4]
+    𝓂.hessian[2](hes_buffer, deriv_vars, SS_and_pars)
     
-
-    # SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    # calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-    
-    # par = vcat(parameters,calibrated_parameters)
-
-    # dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    # dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    # dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    # dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
-
-    # shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-
-    # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-        
-    # # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
-    # # return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
-
-    # # second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) for f in 𝓂.model_hessian]
-    
-    # # vals = [i[1] for i in second_out]
-    # # rows = [i[2] for i in second_out]
-    # # cols = [i[3] for i in second_out]
-
-    # X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-    
-    # # vals = M[]
-
-    # # for f in 𝓂.model_hessian[1]
-    # #     push!(vals, f(X)...)
-    # # end
-
-    # vals = zeros(M, length(𝓂.model_hessian[1]))
-
-    # # lk = ReentrantLock()
-
-    # Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian[1]
-    # # for f in 𝓂.model_hessian[1]
-    #     out = f(X)
-        
-    #     # begin
-    #     #     lock(lk)
-    #     #     try
-    #             @inbounds vals[out[2]] = out[1]
-    #     #     finally
-    #     #         unlock(lk)
-    #     #     end
-    #     # end
-    # end
-
-    # Accessors.@reset 𝓂.model_hessian[2].nzval = vals
-    
-    # return 𝓂.model_hessian[2] * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
-
-    # vals = M[]
-    # rows = Int[]
-    # cols = Int[]
-
-    # for f in 𝓂.model_hessian
-    #     output = f(input)
-
-    #     push!(vals, output[1]...)
-    #     push!(rows, output[2]...)
-    #     push!(cols, output[3]...)
-    # end
-
-    # vals = convert(Vector{M}, vals)
-
-    # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-    # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
-    # sparse!(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+    return hes_buffer
 end
 
 end # dispatch_doctor
@@ -6587,31 +6630,19 @@ end # dispatch_doctor
 function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
     hessian = calculate_hessian(parameters, SS_and_pars, 𝓂)
 
-    function calculate_hessian_pullback(∂∇₁)
-        ∂∇₁ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂'
+    function calculate_hessian_pullback(∂∇₂)
+        # @timeit_debug timer "Calculate hessian - reverse" begin
 
-        X = [parameters; SS_and_pars]
+        𝓂.hessian_parameters[2](𝓂.hessian_parameters[1], parameters, SS_and_pars)
+        𝓂.hessian_SS_and_pars[2](𝓂.hessian_SS_and_pars[1], parameters, SS_and_pars)
 
-        vals = zeros(Float64, length(𝓂.model_hessian_SS_and_pars_vars[1]))
+        ∂parameters = 𝓂.hessian_parameters[1]' * vec(∂∇₂)
+        ∂SS_and_pars = 𝓂.hessian_SS_and_pars[1]' * vec(∂∇₂)
 
-        Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian_SS_and_pars_vars[1]
-        # for f in 𝓂.model_hessian_SS_and_pars_vars[1]
-            out = f(X)
-            
-            @inbounds vals[out[2]] = out[1]
-        end
-    
-        Accessors.@reset 𝓂.model_hessian_SS_and_pars_vars[2].nzval = vals
-        
-        analytical_hessian_SS_and_pars_vars = 𝓂.model_hessian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        # end # timeit_debug
+        # end # timeit_debug
 
-        cols_unique = unique(findnz(analytical_hessian_SS_and_pars_vars)[2])
-
-        v∂∇₁ = ∂∇₁[cols_unique]
-
-        ∂parameters_and_SS_and_pars = analytical_hessian_SS_and_pars_vars[:,cols_unique] * v∂∇₁
-
-        return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
     end
 
     return hessian, calculate_hessian_pullback
