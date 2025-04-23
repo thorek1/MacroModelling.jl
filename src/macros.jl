@@ -891,7 +891,10 @@ macro model(𝓂,ex...)
                         (zeros(0,0), x->x), # hessian
                         (zeros(0,0), x->x), # hessian_parameters
                         (zeros(0,0), x->x), # hessian_SS_and_pars
-                        (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
+                        (zeros(0,0), x->x), # third_order_derivatives
+                        (zeros(0,0), x->x), # third_order_derivatives_parameters
+                        (zeros(0,0), x->x), # third_order_derivatives_SS_and_pars
+                        # (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
                         ([], Int[], zeros(1,1)), # model_jacobian
                         # x->x, # model_jacobian_parameters

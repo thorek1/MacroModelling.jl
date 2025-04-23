@@ -6121,63 +6121,104 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
             Symbolics.@variables 𝒳𝒳[1:length(𝓂.solution.non_stochastic_steady_state)] 𝒫𝒫[1:length(𝓂.parameter_values)]
 
-            ∇₁ᵉ = calculate_hessian(Symbolics.scalarize(𝒫𝒫), Symbolics.scalarize(𝒳𝒳), 𝓂)#|>sparse
+            ∇₂ᵉ = calculate_hessian(Symbolics.scalarize(𝒫𝒫), Symbolics.scalarize(𝒳𝒳), 𝓂)#|>sparse
 
 
-            ∇₁_parameters =  full_sparsejacobian(∇₁ᵉ, 𝒫𝒫)
+            ∇₂_parameters =  full_sparsejacobian(∇₂ᵉ, 𝒫𝒫)
 
-            lennz = nnz(∇₁_parameters)
+            lennz = nnz(∇₂_parameters)
 
-            if (lennz / length(∇₁_parameters) > density_threshold) || (length(∇₁_parameters) < min_length)
-                ∇₁_parameters_mat = convert(Matrix, ∇₁_parameters)
-                buffer_parameters = zeros(Float64, size(∇₁_parameters))
+            if (lennz / length(∇₂_parameters) > density_threshold) || (length(∇₂_parameters) < min_length)
+                ∇₂_parameters_mat = convert(Matrix, ∇₂_parameters)
+                buffer_parameters = zeros(Float64, size(∇₂_parameters))
             else
-                ∇₁_parameters_mat = ∇₁_parameters
-                buffer_parameters = similar(∇₁_parameters, Float64)
+                ∇₂_parameters_mat = ∇₂_parameters
+                buffer_parameters = similar(∇₂_parameters, Float64)
             end
 
-            func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
+            func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
 
-            𝓂.hessian_parameters =  buffer_parameters, func_∇₁_parameters[2]
+            𝓂.hessian_parameters =  buffer_parameters, func_∇₂_parameters[2]
         
 
-            ∇₁_SS_and_pars = full_sparsejacobian(∇₁ᵉ, 𝒳𝒳)
+            ∇₂_SS_and_pars = full_sparsejacobian(∇₂ᵉ, 𝒳𝒳)
 
-            lennz = nnz(∇₁_SS_and_pars)
+            lennz = nnz(∇₂_SS_and_pars)
 
-            if (lennz / length(∇₁_SS_and_pars) > density_threshold) || (length(∇₁_SS_and_pars) < min_length)
-                ∇₁_SS_and_pars_mat = convert(Matrix, ∇₁_SS_and_pars)
-                buffer_SS_and_pars = zeros(Float64, size(∇₁_SS_and_pars))
+            if (lennz / length(∇₂_SS_and_pars) > density_threshold) || (length(∇₂_SS_and_pars) < min_length)
+                ∇₂_SS_and_pars_mat = convert(Matrix, ∇₂_SS_and_pars)
+                buffer_SS_and_pars = zeros(Float64, size(∇₂_SS_and_pars))
             else
-                ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
-                buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
+                ∇₂_SS_and_pars_mat = ∇₂_SS_and_pars
+                buffer_SS_and_pars = similar(∇₂_SS_and_pars, Float64)
             end
 
-            func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
+            func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
 
-            𝓂.hessian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars[2]
-
-
-            # 𝓂.hessian = (jac_fun, hesbuffer_tmp, prephes, hesbuffer)
-
-
-            # 𝓂.hessian_SS_and_pars_vars = (hes_deriv, hes_buffer, prephes_SS_and_pars)
-
-            # 𝓂.model_hessian = (funcs, sparse(row2, column2, zero(column2), length(eqs_sub), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
+            𝓂.hessian_SS_and_pars = buffer_SS_and_pars, func_∇₂_SS_and_pars[2]
         end
     end
 
     if max_perturbation_order == 3
     # third order
         if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-            𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
+            𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(derivatives[3].colptr))
         
-            𝓂.third_order_derivatives = (prephesdense.jac_exe, thirdbuffer_tmp, prepthird, thirdbuffer)
+            lennz = nnz(derivatives[3])
 
-            𝓂.model_third_order_derivatives = (funcs, sparse(row3, column3, zero(column3), length(eqs_sub), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)))
+            if (lennz / length(derivatives[3]) > density_threshold) || (length(derivatives[3]) < min_length)
+                derivatives_mat = convert(Matrix, derivatives[3])
+                buffer = zeros(Float64, size(derivatives[3]))
+            else
+                derivatives_mat = derivatives[3]
+                buffer = similar(derivatives[3], Float64)
+            end
+
+
+            func_exprs = Symbolics.build_function(derivatives_mat, xp..., cse = true, skipzeros = true, expression = Val(false))
+
+            𝓂.third_order_derivatives = buffer, func_exprs[2]
+
+
+
+            Symbolics.@variables 𝒳𝒳[1:length(𝓂.solution.non_stochastic_steady_state)] 𝒫𝒫[1:length(𝓂.parameter_values)]
+
+            ∇₃ᵉ = calculate_third_order_derivatives(Symbolics.scalarize(𝒫𝒫), Symbolics.scalarize(𝒳𝒳), 𝓂)#|>sparse
+
+
+            ∇₃_parameters =  full_sparsejacobian(∇₃ᵉ, 𝒫𝒫)
+
+            lennz = nnz(∇₃_parameters)
+
+            if (lennz / length(∇₃_parameters) > density_threshold) || (length(∇₃_parameters) < min_length)
+                ∇₃_parameters_mat = convert(Matrix, ∇₃_parameters)
+                buffer_parameters = zeros(Float64, size(∇₃_parameters))
+            else
+                ∇₃_parameters_mat = ∇₃_parameters
+                buffer_parameters = similar(∇₃_parameters, Float64)
+            end
+
+            func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
+
+            𝓂.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters[2]
+        
+
+            ∇₃_SS_and_pars = full_sparsejacobian(∇₃ᵉ, 𝒳𝒳)
+
+            lennz = nnz(∇₃_SS_and_pars)
+
+            if (lennz / length(∇₃_SS_and_pars) > density_threshold) || (length(∇₃_SS_and_pars) < min_length)
+                ∇₃_SS_and_pars_mat = convert(Matrix, ∇₃_SS_and_pars)
+                buffer_SS_and_pars = zeros(Float64, size(∇₃_SS_and_pars))
+            else
+                ∇₃_SS_and_pars_mat = ∇₃_SS_and_pars
+                buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
+            end
+            
+            func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
+
+            𝓂.third_order_derivatives_SS_and_pars = buffer_SS_and_pars, func_∇₃_SS_and_pars[2]
         end
-
-        𝓂.model_third_order_derivatives_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)))
     end
 
     return nothing
@@ -6648,9 +6689,7 @@ end
 
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
-                                            𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N} #; 
-    # timer::TimerOutput = TimerOutput()) where {M,N}
-    # @timeit_debug timer "3rd order derivatives" begin
+                                            𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
     calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
@@ -6663,104 +6702,23 @@ function calculate_third_order_derivatives(parameters::Vector{M},
 
     shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    ∂ = vcat(𝓂.solution.non_stochastic_steady_state[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)], shocks_ss)
-    C = 𝒟.Constant(vcat(𝓂.parameter_values, 𝓂.solution.non_stochastic_steady_state[(end - length(𝓂.calibration_equations)+1):end], 𝓂.solution.non_stochastic_steady_state[1:(end - length(𝓂.calibration_equations))])) # [dyn_ss_idx])
+    deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
+    SS_and_pars = vcat(par, SS[dyn_ss_idx])
 
-    backend = 𝒟.AutoSymbolics()
+    if eltype(𝓂.third_order_derivatives[1]) != M
+        if 𝓂.third_order_derivatives[1] isa SparseMatrixCSC
+            third_buffer = similar(𝓂.third_order_derivatives[1],M)
+            third_buffer.nzval .= 0
+        else
+            third_buffer = zeros(M, size(𝓂.third_order_derivatives[1]))
+        end
+    else
+        third_buffer = 𝓂.third_order_derivatives[1]
+    end
 
-    # if eltype(𝓂.jacobian[3]) != M
-    #     thirdbuffer_tmp = zeros(M, size(𝓂.third_order_derivatives[2]))
-    # else
-        thirdbuffer_tmp = 𝓂.third_order_derivatives[2]
-    # end
-
-    𝒟.jacobian!(𝓂.third_order_derivatives[1], thirdbuffer_tmp, 𝓂.third_order_derivatives[3], backend, ∂, C)
-
-    tmp = nonzeros(𝓂.third_order_derivatives[4])
-
-    tmp .= thirdbuffer_tmp.nzval
-
-    return 𝓂.third_order_derivatives[4] * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂∇₃
-
-
-    # SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    # calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+    𝓂.third_order_derivatives[2](third_buffer, deriv_vars, SS_and_pars)
     
-    # par = vcat(parameters,calibrated_parameters)
-
-    # dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    # dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    # dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    # dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
-
-    # shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-
-    # # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
-    # # return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
-    
-    
-    # # third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
-    
-    # # vals = [i[1] for i in third_out]
-    # # rows = [i[2] for i in third_out]
-    # # cols = [i[3] for i in third_out]
-
-    # # vals = convert(Vector{M}, vals)
-    
-    # X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-    
-    # # vals = M[]
-
-    # # for f in 𝓂.model_third_order_derivatives[1]
-    # #     push!(vals, f(X)...)
-    # # end
-    
-    # vals = zeros(M, length(𝓂.model_third_order_derivatives[1]))
-
-    # # lk = ReentrantLock()
-
-    # # @timeit_debug timer "Loop" begin
-
-    # Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives[1]
-    # # for f in 𝓂.model_third_order_derivatives[1]
-    #     out = f(X)
-        
-    #     # begin
-    #     #     lock(lk)
-    #     #     try
-    #             @inbounds vals[out[2]] = out[1]
-    #     #     finally
-    #     #         unlock(lk)
-    #     #     end
-    #     # end
-    # end
-
-    # # end # timeit_debug
-
-    # # @timeit_debug timer "Allocation" begin
-
-    # Accessors.@reset 𝓂.model_third_order_derivatives[2].nzval = vals
-    
-    # # end # timeit_debug
-    # # end # timeit_debug
-
-    # return 𝓂.model_third_order_derivatives[2]# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
-
-    # # vals = M[]
-    # # rows = Int[]
-    # # cols = Int[]
-
-    # # for f in 𝓂.model_third_order_derivatives
-    # #     output = f(input)
-
-    # #     push!(vals, output[1]...)
-    # #     push!(rows, output[2]...)
-    # #     push!(cols, output[3]...)
-    # # end
-
-    # # # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-    # # # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
-    # # sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    return third_buffer
 end
 
 end # dispatch_doctor
@@ -6771,41 +6729,18 @@ function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_p
     third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)
     # end # timeit_debug
 
-    function calculate_third_order_derivatives_pullback(∂∇₁)
+    function calculate_third_order_derivatives_pullback(∂∇₃)
         # @timeit_debug timer "3rd order derivatives - pullback" begin
-        X = [parameters; SS_and_pars]
+        𝓂.third_order_derivatives_parameters[2](𝓂.third_order_derivatives_parameters[1], parameters, SS_and_pars)
+        𝓂.third_order_derivatives_SS_and_pars[2](𝓂.third_order_derivatives_SS_and_pars[1], parameters, SS_and_pars)
 
-        vals = zeros(Float64, length(𝓂.model_third_order_derivatives_SS_and_pars_vars[1]))
-        
-        # @timeit_debug timer "Loop" begin
-    
-        Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives_SS_and_pars_vars[1]
-        # for f in 𝓂.model_third_order_derivatives_SS_and_pars_vars[1]
-            out = f(X)
-            
-            @inbounds vals[out[2]] = out[1]
-        end
-    
-        # end # timeit_debug
-        # @timeit_debug timer "Allocation" begin
-
-        Accessors.@reset 𝓂.model_third_order_derivatives_SS_and_pars_vars[2].nzval = vals
-        
-        # end # timeit_debug
-        # @timeit_debug timer "Post process" begin
-
-        analytical_third_order_derivatives_SS_and_pars_vars = 𝓂.model_third_order_derivatives_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-
-        cols_unique = unique(findnz(analytical_third_order_derivatives_SS_and_pars_vars)[2])
-
-        v∂∇₁ = ∂∇₁[cols_unique]
-
-        ∂parameters_and_SS_and_pars = analytical_third_order_derivatives_SS_and_pars_vars[:,cols_unique] * v∂∇₁
+        ∂parameters = 𝓂.third_order_derivatives_parameters[1]' * vec(∂∇₃)
+        ∂SS_and_pars = 𝓂.third_order_derivatives_SS_and_pars[1]' * vec(∂∇₃)
 
         # end # timeit_debug
         # end # timeit_debug
 
-        return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
     end
 
     return third_order_derivatives, calculate_third_order_derivatives_pullback
