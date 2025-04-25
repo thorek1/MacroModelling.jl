@@ -5955,7 +5955,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     nϵ = length(𝓂.dyn_equations)
 
-    derivatives, xp = take_nth_order_derivatives(calc!, nx, np, nϵ; max_perturbation_order = max_perturbation_order, output_compressed = max_perturbation_order > 2 ? true : false)
+    derivatives, xp = take_nth_order_derivatives(calc!, nx, np, nϵ; max_perturbation_order = max_perturbation_order, output_compressed = true)
 
     lennz = nnz(derivatives[1])
 
