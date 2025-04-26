@@ -5663,18 +5663,25 @@ function take_nth_order_derivatives(
 
     ϵˢ = zeros(Symbolics.Num, nϵ)
 
+    Symbolics.@variables 𝒳𝒳[1:length(𝒳ᵈ)]
+
     # Evaluate the function symbolically
-    f!(ϵˢ, 𝒳ᵈ, 𝒫ᵈ)
+    f!(ϵˢ, 𝒳𝒳, 𝒫ᵈ)
 
     results = [] # To store pairs of sparse matrices (X_matrix, P_matrix) for each order
 
     # --- Order 1 ---
     # Compute the 1st order derivative with respect to X (Jacobian)
-    spX_order_1 = Symbolics.sparsejacobian(ϵˢ, 𝒳ᵈ) # nϵ x nx
+    spX_order_1 = Symbolics.sparsejacobian(ϵˢ, 𝒳𝒳) # nϵ x nx
+
+
+    spX_order_1_sub = spX_order_1
+
+    spX_order_1_sub.nzval .= Symbolics.fast_substitute(spX_order_1_sub.nzval,Dict(Symbolics.scalarize(𝒳𝒳).=>𝒳ᵈ))
 
     # Compute the derivative of the non-zeros of the 1st X-derivative w.r.t. P
     # This is an intermediate step. The final P matrix will be built from this.
-    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1.nzval, vcat(𝒳ˢ, 𝒫ˢ)) # nnz(spX_order_1) x np
+    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1_sub.nzval, vcat(𝒳ˢ, 𝒫ˢ)) # nnz(spX_order_1) x np
 
     # Determine dimensions for the Order 1 P matrix
     X_nrows_1 = nϵ
@@ -5725,7 +5732,7 @@ function take_nth_order_derivatives(
 
 
     # Store the pair for order 1
-    push!(results, (spX_order_1, spP_order_1))
+    push!(results, (spX_order_1_sub, spP_order_1))
 
     if max_perturbation_order > 1
         # --- Prepare for higher orders (Order 2 to max_perturbation_order) ---
