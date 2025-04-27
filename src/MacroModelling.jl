@@ -5681,7 +5681,7 @@ function take_nth_order_derivatives(
 
     # Compute the derivative of the non-zeros of the 1st X-derivative w.r.t. P
     # This is an intermediate step. The final P matrix will be built from this.
-    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1_sub.nzval, vcat(𝒳ˢ, 𝒫ˢ)) # nnz(spX_order_1) x np
+    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1_sub.nzval, vcat(𝒫ˢ, 𝒳ˢ)) # nnz(spX_order_1) x np
 
     # Determine dimensions for the Order 1 P matrix
     X_nrows_1 = nϵ
@@ -5894,7 +5894,7 @@ function take_nth_order_derivatives(
             # This is the Jacobian of the nzval of the intermediate flat X-Jacobian (sp_flat_curr_X) w.r.t. 𝒫.
             # sp_flat_curr_X.nzval contains expressions for d^n f_i / (dx_v1 ... dx_vn) for all
             # non-zero such values that were propagated from the previous step.
-            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, vcat(𝒳ˢ, 𝒫ˢ)) # nnz(sp_flat_curr_X) x np
+            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, vcat(𝒫ˢ, 𝒳ˢ)) # nnz(sp_flat_curr_X) x np
             
             # Determine the desired dimensions of spP_order_n
             # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
@@ -6133,13 +6133,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     end
 
 
-    func_exprs = Symbolics.build_function(derivatives_mat, 𝒳ˢ, 𝒫ˢ, cse = true, skipzeros = true, expression = Val(false))
+    func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
 
     # func = @RuntimeGeneratedFunction(func_exprs[2])
     𝓂.jacobian = buffer, func_exprs[2]
 
 
-    ∇₁_parameters = derivatives[1][2][:,1:length(𝒳ˢ)]
+    ∇₁_parameters = derivatives[1][2][:,1:length(𝒫ˢ)]
 
     lennz = nnz(∇₁_parameters)
 
@@ -6151,12 +6151,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         buffer_parameters = similar(∇₁_parameters, Float64)
     end
 
-    func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒳ˢ, 𝒫ˢ, cse = true, skipzeros = true, expression = Val(false))
+    func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
 
     𝓂.jacobian_parameters =  buffer_parameters, func_∇₁_parameters[2]
  
 
-    ∇₁_SS_and_pars = derivatives[1][2][:,length(𝒳ˢ)+1:end]
+    ∇₁_SS_and_pars = derivatives[1][2][:,length(𝒫ˢ)+1:end]
 
     lennz = nnz(∇₁_SS_and_pars)
 
@@ -6168,7 +6168,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
     end
 
-    func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝒳ˢ, 𝒫ˢ, cse = true, skipzeros = true, expression = Val(false))
+    func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
 
     𝓂.jacobian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars[2]
 
@@ -6273,12 +6273,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer = similar(∇₂_dyn, Float64)
             end
 
-            func_exprs = Symbolics.build_function(derivatives_mat, 𝒳ˢ, 𝒫ˢ, cse = true, skipzeros = true, expression = Val(false))
+            func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
 
             𝓂.hessian = buffer, func_exprs[2]
 
 
-            ∇₂_parameters = derivatives[2][2][:,1:length(𝒳ˢ)]
+            ∇₂_parameters = derivatives[2][2][:,1:length(𝒫ˢ)]
 
             lennz = nnz(∇₂_parameters)
 
@@ -6290,12 +6290,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_parameters = similar(∇₂_parameters, Float64)
             end
 
-            func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝒳ˢ, 𝒫ˢ, cse = true, skipzeros = true, expression = Val(false))
+            func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
 
             𝓂.hessian_parameters =  buffer_parameters, func_∇₂_parameters[2]
         
 
-            ∇₂_SS_and_pars = derivatives[2][2][:,length(𝒳ˢ)+1:end]
+            ∇₂_SS_and_pars = derivatives[2][2][:,length(𝒫ˢ)+1:end]
 
             lennz = nnz(∇₂_SS_and_pars)
 
@@ -6307,7 +6307,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_SS_and_pars = similar(∇₂_SS_and_pars, Float64)
             end
 
-            func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝒳ˢ, 𝒫ˢ, cse = true, skipzeros = true, expression = Val(false))
+            func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
 
             𝓂.hessian_SS_and_pars = buffer_SS_and_pars, func_∇₂_SS_and_pars[2]
         end
@@ -6330,12 +6330,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer = similar(∇₃_dyn, Float64)
             end
 
-            func_exprs = Symbolics.build_function(derivatives_mat, 𝒳ˢ, 𝒫ˢ, cse = true, skipzeros = true, expression = Val(false))
+            func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
 
             𝓂.third_order_derivatives = buffer, func_exprs[2]
 
 
-            ∇₃_parameters = derivatives[3][2][:,1:length(𝒳ˢ)]
+            ∇₃_parameters = derivatives[3][2][:,1:length(𝒫ˢ)]
 
             lennz = nnz(∇₃_parameters)
 
@@ -6347,12 +6347,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_parameters = similar(∇₃_parameters, Float64)
             end
 
-            func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝒳ˢ, 𝒫ˢ, cse = true, skipzeros = true, expression = Val(false))
+            func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
 
             𝓂.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters[2]
         
 
-            ∇₃_SS_and_pars = derivatives[3][2][:,length(𝒳ˢ)+1:end]
+            ∇₃_SS_and_pars = derivatives[3][2][:,length(𝒫ˢ)+1:end]
 
             lennz = nnz(∇₃_SS_and_pars)
 
@@ -6364,7 +6364,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
             end
 
-            func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝒳ˢ, 𝒫ˢ, cse = true, skipzeros = true, expression = Val(false))
+            func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
 
             𝓂.third_order_derivatives_SS_and_pars = buffer_SS_and_pars, func_∇₃_SS_and_pars[2]
 
@@ -6799,7 +6799,7 @@ function calculate_jacobian(parameters::Vector{M},
         jac_buffer = 𝓂.jacobian[1]
     end
 
-    𝓂.jacobian[2](jac_buffer, SS_and_pars, parameters)
+    𝓂.jacobian[2](jac_buffer, parameters, SS_and_pars)
     
     return jac_buffer
 
@@ -6819,8 +6819,8 @@ function rrule(::typeof(calculate_jacobian),
     function calculate_jacobian_pullback(∂∇₁)
         # @timeit_debug timer "Calculate jacobian - reverse" begin
 
-        𝓂.jacobian_parameters[2](𝓂.jacobian_parameters[1], SS_and_pars, parameters)
-        𝓂.jacobian_SS_and_pars[2](𝓂.jacobian_SS_and_pars[1], SS_and_pars, parameters)
+        𝓂.jacobian_parameters[2](𝓂.jacobian_parameters[1], parameters, SS_and_pars)
+        𝓂.jacobian_SS_and_pars[2](𝓂.jacobian_SS_and_pars[1], parameters, SS_and_pars)
 
         ∂parameters = 𝓂.jacobian_parameters[1]' * vec(∂∇₁)
         ∂SS_and_pars = 𝓂.jacobian_SS_and_pars[1]' * vec(∂∇₁)
