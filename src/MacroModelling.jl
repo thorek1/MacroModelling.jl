@@ -6819,8 +6819,8 @@ function rrule(::typeof(calculate_jacobian),
     function calculate_jacobian_pullback(∂∇₁)
         # @timeit_debug timer "Calculate jacobian - reverse" begin
 
-        𝓂.jacobian_parameters[2](𝓂.jacobian_parameters[1], parameters, SS_and_pars)
-        𝓂.jacobian_SS_and_pars[2](𝓂.jacobian_SS_and_pars[1], parameters, SS_and_pars)
+        𝓂.jacobian_parameters[2](𝓂.jacobian_parameters[1], SS_and_pars, parameters)
+        𝓂.jacobian_SS_and_pars[2](𝓂.jacobian_SS_and_pars[1], SS_and_pars, parameters)
 
         ∂parameters = 𝓂.jacobian_parameters[1]' * vec(∂∇₁)
         ∂SS_and_pars = 𝓂.jacobian_SS_and_pars[1]' * vec(∂∇₁)
