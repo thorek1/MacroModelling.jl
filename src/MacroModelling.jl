@@ -5677,7 +5677,7 @@ function take_nth_order_derivatives(
 
     spX_order_1_sub = spX_order_1
 
-    spX_order_1_sub.nzval .= Symbolics.fast_substitute(spX_order_1_sub.nzval,Dict(Symbolics.scalarize(𝒳𝒳).=>𝒳ᵈ))
+    spX_order_1_sub.nzval .= Symbolics.fast_substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝒳𝒳) .=> 𝒳ᵈ))
 
     # Compute the derivative of the non-zeros of the 1st X-derivative w.r.t. P
     # This is an intermediate step. The final P matrix will be built from this.
@@ -5717,7 +5717,8 @@ function take_nth_order_derivatives(
             r_X1, c_X1 = nz_lin_to_rc_1[temp_row]
 
             # Calculate the row index in spP_order_1 (flattened index of spX_order_1)
-            P_row_idx = (r_X1 - 1) * X_ncols_1 + c_X1
+            # P_row_idx = (r_X1 - 1) * X_ncols_1 + c_X1
+            P_row_idx = (c_X1 - 1) * X_nrows_1 + r_X1
             P_col_idx = p_col # Parameter column index
 
             push!(sparse_rows_1_P, P_row_idx)
@@ -5757,7 +5758,7 @@ function take_nth_order_derivatives(
             # Compute the Jacobian of the previous level's nzval w.r.t. 𝒳
             # This gives a flat matrix where rows correspond to non-zeros from order n-1 X-matrix
             # and columns correspond to the n-th variable we differentiate by (x_vn).
-            sp_flat_curr_X = Symbolics.sparsejacobian(nzvals_prev, 𝒳ᵈ) # nnz(spX_order_(n-1)) x nx
+            sp_flat_curr_X = Symbolics.sparsejacobian(nzvals_prev, 𝒳𝒳) # nnz(spX_order_(n-1)) x nx
 
             # Build the nz_to_indices map for the *current* level (order n)
             # Map: linear index in sp_flat_curr_X.nzval -> (original_row_f, (v_1, ..., v_n))
@@ -5948,7 +5949,8 @@ function take_nth_order_derivatives(
                     # Calculate the row index in spP_order_n
                     # This maps the (orig_row_f, X_col_idx) pair in spX_order_n's grid to a linear index
                     # Formula: (row_in_X - 1) * num_cols_in_X + col_in_X
-                    P_row_idx = (orig_row_f - 1) * X_ncols_n + X_col_idx
+                    # P_row_idx = (orig_row_f - 1) * X_ncols_n + X_col_idx
+                    P_row_idx = (X_col_idx - 1) * nϵ + orig_row_f
 
                     # The column index in spP_order_n is the parameter index
                     P_col_idx = p_col
@@ -6095,12 +6097,15 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     np = length(𝓂.parameter_values)
     
+    nε = 𝓂.timings.nExo
+        
     nϵ = length(𝓂.dyn_equations)
 
-    Symbolics.@variables 𝒳[1:nx] 𝒫[1:np]
+    Symbolics.@variables 𝒳[1:nx] 𝒫[1:np] # ε[1:nε]
 
     𝒳ˢ = Symbolics.scalarize(𝒳)
     𝒫ˢ = Symbolics.scalarize(𝒫)
+    εˢ = zeros(nε)
 
     ϵˢ = zeros(Symbolics.Num, nϵ)
 
@@ -6112,9 +6117,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
     dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
 
-    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-
-    𝒳ᵈ = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
+    𝒳ᵈ = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],εˢ)
     𝒫ᵈ = vcat(par, SS[dyn_ss_idx])
 
     derivatives = take_nth_order_derivatives(calc!, 𝒳ᵈ, 𝒫ᵈ, 𝒳ˢ, 𝒫ˢ, nϵ; max_perturbation_order = max_perturbation_order, output_compressed = true)
@@ -6124,13 +6127,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     lennz = nnz(∇₁_dyn)
 
-    if (lennz / length(∇₁_dyn) > density_threshold) || (length(∇₁_dyn) < min_length)
+    # if (lennz / length(∇₁_dyn) > density_threshold) || (length(∇₁_dyn) < min_length)
         derivatives_mat = convert(Matrix, ∇₁_dyn)
         buffer = zeros(Float64, size(∇₁_dyn))
-    else
-        derivatives_mat = ∇₁_dyn
-        buffer = similar(∇₁_dyn, Float64)
-    end
+    # else
+    #     derivatives_mat = ∇₁_dyn
+    #     buffer = similar(∇₁_dyn, Float64)
+    # end
 
 
     func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
@@ -6143,13 +6146,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     lennz = nnz(∇₁_parameters)
 
-    if (lennz / length(∇₁_parameters) > density_threshold) || (length(∇₁_parameters) < min_length)
+    # if (lennz / length(∇₁_parameters) > density_threshold) || (length(∇₁_parameters) < min_length)
         ∇₁_parameters_mat = convert(Matrix, ∇₁_parameters)
         buffer_parameters = zeros(Float64, size(∇₁_parameters))
-    else
-        ∇₁_parameters_mat = ∇₁_parameters
-        buffer_parameters = similar(∇₁_parameters, Float64)
-    end
+    # else
+    #     ∇₁_parameters_mat = ∇₁_parameters
+    #     buffer_parameters = similar(∇₁_parameters, Float64)
+    # end
 
     func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
 
@@ -6160,13 +6163,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     lennz = nnz(∇₁_SS_and_pars)
 
-    if (lennz / length(∇₁_SS_and_pars) > density_threshold) || (length(∇₁_SS_and_pars) < min_length)
+    # if (lennz / length(∇₁_SS_and_pars) > density_threshold) || (length(∇₁_SS_and_pars) < min_length)
         ∇₁_SS_and_pars_mat = convert(Matrix, ∇₁_SS_and_pars)
         buffer_SS_and_pars = zeros(Float64, size(∇₁_SS_and_pars))
-    else
-        ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
-        buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
-    end
+    # else
+    #     ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
+    #     buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
+    # end
 
     func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
 
