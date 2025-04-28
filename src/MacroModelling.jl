@@ -5675,7 +5675,7 @@ function take_nth_order_derivatives(
     spX_order_1 = Symbolics.sparsejacobian(ϵˢ, 𝒳𝒳) # nϵ x nx
 
 
-    spX_order_1_sub = spX_order_1
+    spX_order_1_sub = copy(spX_order_1)
 
     # spX_order_1_sub.nzval .= Symbolics.fast_substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝒳𝒳) .=> 𝒳ᵈ))
     spX_order_1_sub.nzval .= Symbolics.substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝒳𝒳) .=> 𝒳ᵈ))
@@ -5759,7 +5759,11 @@ function take_nth_order_derivatives(
             # Compute the Jacobian of the previous level's nzval w.r.t. 𝒳
             # This gives a flat matrix where rows correspond to non-zeros from order n-1 X-matrix
             # and columns correspond to the n-th variable we differentiate by (x_vn).
-            sp_flat_curr_X = Symbolics.sparsejacobian(nzvals_prev, 𝒳𝒳) # nnz(spX_order_(n-1)) x nx
+            sp_flat_curr_X_rn = Symbolics.sparsejacobian(nzvals_prev, 𝒳𝒳) # nnz(spX_order_(n-1)) x nx
+
+            sp_flat_curr_X = copy(sp_flat_curr_X_rn)
+
+            sp_flat_curr_X.nzval .= Symbolics.substitute(sp_flat_curr_X.nzval, Dict(Symbolics.scalarize(𝒳𝒳) .=> 𝒳ᵈ))
 
             # Build the nz_to_indices map for the *current* level (order n)
             # Map: linear index in sp_flat_curr_X.nzval -> (original_row_f, (v_1, ..., v_n))
@@ -5974,7 +5978,7 @@ function take_nth_order_derivatives(
 
             # Prepare for the next iteration (order n+1)
             # The nzvals for the next X-Jacobian step are the nzvals of the current flat X-Jacobian
-            nzvals_prev = sp_flat_curr_X.nzval
+            nzvals_prev = sp_flat_curr_X_rn.nzval
             # The map for the next step should provide info for order n derivatives
             nz_to_indices_prev = nz_to_indices_curr
 
@@ -6274,6 +6278,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             ∇₂_dyn = derivatives[2][1]
 
             lennz = nnz(∇₂_dyn)
+            println(lennz)
 
             if (lennz / length(∇₂_dyn) > density_threshold) || (length(∇₂_dyn) < min_length)
                 derivatives_mat = convert(Matrix, ∇₂_dyn)
@@ -6375,63 +6380,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             end
 
             func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))
-
-            𝓂.third_order_derivatives_SS_and_pars = buffer_SS_and_pars, func_∇₃_SS_and_pars[2]
-
-
-
-            lennz = nnz(derivatives[3])
-
-            if (lennz / length(derivatives[3]) > density_threshold) || (length(derivatives[3]) < min_length)
-                derivatives_mat = convert(Matrix, derivatives[3])
-                buffer = zeros(Float64, size(derivatives[3]))
-            else
-                derivatives_mat = derivatives[3]
-                buffer = similar(derivatives[3], Float64)
-            end
-
-
-            func_exprs = Symbolics.build_function(derivatives_mat, xp..., cse = true, skipzeros = true, expression = Val(false))
-
-            𝓂.third_order_derivatives = buffer, func_exprs[2]
-
-
-
-            Symbolics.@variables 𝒳𝒳[1:length(𝓂.solution.non_stochastic_steady_state)] 𝒫𝒫[1:length(𝓂.parameter_values)]
-
-            ∇₃ᵉ = calculate_third_order_derivatives(Symbolics.scalarize(𝒫𝒫), Symbolics.scalarize(𝒳𝒳), 𝓂)#|>sparse
-
-
-            ∇₃_parameters =  full_sparsejacobian(∇₃ᵉ, 𝒫𝒫)
-
-            lennz = nnz(∇₃_parameters)
-
-            if (lennz / length(∇₃_parameters) > density_threshold) || (length(∇₃_parameters) < min_length)
-                ∇₃_parameters_mat = convert(Matrix, ∇₃_parameters)
-                buffer_parameters = zeros(Float64, size(∇₃_parameters))
-            else
-                ∇₃_parameters_mat = ∇₃_parameters
-                buffer_parameters = similar(∇₃_parameters, Float64)
-            end
-
-            func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
-
-            𝓂.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters[2]
-        
-
-            ∇₃_SS_and_pars = full_sparsejacobian(∇₃ᵉ, 𝒳𝒳)
-
-            lennz = nnz(∇₃_SS_and_pars)
-
-            if (lennz / length(∇₃_SS_and_pars) > density_threshold) || (length(∇₃_SS_and_pars) < min_length)
-                ∇₃_SS_and_pars_mat = convert(Matrix, ∇₃_SS_and_pars)
-                buffer_SS_and_pars = zeros(Float64, size(∇₃_SS_and_pars))
-            else
-                ∇₃_SS_and_pars_mat = ∇₃_SS_and_pars
-                buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
-            end
-            
-            func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝒫𝒫, 𝒳𝒳, cse = true, skipzeros = true, expression = Val(false))
 
             𝓂.third_order_derivatives_SS_and_pars = buffer_SS_and_pars, func_∇₃_SS_and_pars[2]
         end
@@ -6847,20 +6795,20 @@ end
 @stable default_mode = "disable" begin
 
 function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
-    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
+    # SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
+    # calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
     
-    par = vcat(parameters, calibrated_parameters)
+    # par = vcat(parameters, calibrated_parameters)
     
-    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+    # dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+    # dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+    # dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+    # dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
 
-    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
+    # shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
 
-    deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
-    SS_and_pars = vcat(par, SS[dyn_ss_idx])
+    # deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
+    # SS_and_pars = vcat(par, SS[dyn_ss_idx])
 
     if eltype(𝓂.hessian[1]) != M
         if 𝓂.hessian[1] isa SparseMatrixCSC
@@ -6873,7 +6821,7 @@ function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::
         hes_buffer = 𝓂.hessian[1]
     end
 
-    𝓂.hessian[2](hes_buffer, deriv_vars, SS_and_pars)
+    𝓂.hessian[2](hes_buffer, parameters, SS_and_pars)
     
     return hes_buffer
 end
