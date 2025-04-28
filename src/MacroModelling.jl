@@ -6079,10 +6079,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     eeqqss = Expr[]
     for (i, u) in enumerate(𝓂.dyn_equations)
-        push!(eeqqss, :(ϵ[$i] = $u))
+        push!(eeqqss, :(ℰ[$i] = $u))
     end
 
-    funcs = :(function calculate_residual_of_dynamic_equations!(ϵ, variables, parameters_and_SS)
+    funcs = :(function calculate_residual_of_dynamic_equations!(ℰ, variables, parameters_and_SS)
         $(pars_and_SS...)
         $(𝓂.calibration_equations_no_var...)
         $(deriv_vars...)
@@ -6202,10 +6202,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
         eeqqss = Expr[]
         for (i, u) in enumerate(eqs)
-            push!(eeqqss, :(ϵ[$i] = $u))
+            push!(eeqqss, :(ℰ[$i] = $u))
         end
 
-        funcs = :(function calculate_residual_of_static_equations!(ϵ, parameters, SS_and_parameters)
+        funcs = :(function calculate_residual_of_static_equations!(ℰ, parameters, SS_and_parameters)
             $(pars_and_SS...)
             $(deriv_vars...)
             $(𝓂.calibration_equations_no_var...)
