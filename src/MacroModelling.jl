@@ -6326,7 +6326,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     if max_perturbation_order == 3
     # third order
         if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-            𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(derivatives[3].colptr))
+            𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(derivatives[3][1].colptr))
         
             ∇₃_dyn = derivatives[3][1]
 
