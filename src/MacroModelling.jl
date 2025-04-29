@@ -6047,13 +6047,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     lennz = nnz(∇₁_parameters)
 
-    # if (lennz / length(∇₁_parameters) > density_threshold) || (length(∇₁_parameters) < min_length)
+    if (lennz / length(∇₁_parameters) > density_threshold) || (length(∇₁_parameters) < min_length)
         ∇₁_parameters_mat = convert(Matrix, ∇₁_parameters)
         buffer_parameters = zeros(Float64, size(∇₁_parameters))
-    # else
-    #     ∇₁_parameters_mat = ∇₁_parameters
-    #     buffer_parameters = similar(∇₁_parameters, Float64)
-    # end
+    else
+        ∇₁_parameters_mat = ∇₁_parameters
+        buffer_parameters = similar(∇₁_parameters, Float64)
+    end
 
     _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
                                                         cse = cse, 
@@ -6068,13 +6068,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     lennz = nnz(∇₁_SS_and_pars)
 
-    # if (lennz / length(∇₁_SS_and_pars) > density_threshold) || (length(∇₁_SS_and_pars) < min_length)
+    if (lennz / length(∇₁_SS_and_pars) > density_threshold) || (length(∇₁_SS_and_pars) < min_length)
         ∇₁_SS_and_pars_mat = convert(Matrix, ∇₁_SS_and_pars)
         buffer_SS_and_pars = zeros(Float64, size(∇₁_SS_and_pars))
-    # else
-    #     ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
-    #     buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
-    # end
+    else
+        ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
+        buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
+    end
 
     _, func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
                                                         cse = cse, 
