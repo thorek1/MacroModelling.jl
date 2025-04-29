@@ -5922,7 +5922,11 @@ end
 # TODO: check why this takes so much longer than previous implementation
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; 
                                     density_threshold::Float64 = .1, 
-                                    min_length::Int = 1000)
+                                    min_length::Int = 1000,
+                                    cse = true,
+                                    skipzeros = true,
+                                    parallel = Symbolics.SerialForm())
+
 
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
@@ -6030,8 +6034,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
 
     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
-                                            cse = true, 
-                                            skipzeros = true, 
+                                            cse = cse, 
+                                            skipzeros = skipzeros, 
+                                            parallel = parallel,
                                             expression = Val(false))::Tuple{<:Function, <:Function}
 
     # func = @RuntimeGeneratedFunction(func_exprs[2])
@@ -6050,7 +6055,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #     buffer_parameters = similar(∇₁_parameters, Float64)
     # end
 
-    _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))::Tuple{<:Function, <:Function}
+    _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
+                                                        cse = cse, 
+                                                        skipzeros = skipzeros, 
+                                                        parallel = parallel,
+                                                        expression = Val(false))::Tuple{<:Function, <:Function}
 
     𝓂.jacobian_parameters =  buffer_parameters, func_∇₁_parameters
  
@@ -6068,9 +6077,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     # end
 
     _, func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
-                                                    cse = true, 
-                                                    skipzeros = true, 
-                                                    expression = Val(false))::Tuple{<:Function, <:Function}
+                                                        cse = cse, 
+                                                        skipzeros = skipzeros, 
+                                                        parallel = parallel,
+                                                        expression = Val(false))::Tuple{<:Function, <:Function}
 
     𝓂.jacobian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars
 
@@ -6135,7 +6145,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             buffer = similar(∂SS_equations_∂parameters, Float64)
         end
 
-        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, cse = true, skipzeros = true, expression = Val(false))::Tuple{<:Function, <:Function}
+        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, 
+                                                    cse = cse, 
+                                                    skipzeros = skipzeros, 
+                                                    parallel = parallel,
+                                                    expression = Val(false))::Tuple{<:Function, <:Function}
 
         𝓂.∂SS_equations_∂parameters = buffer, func_exprs
 
@@ -6153,7 +6167,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             buffer = similar(∂SS_equations_∂SS_and_pars, Float64)
         end
 
-        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, cse = true, skipzeros = true, expression = Val(false))::Tuple{<:Function, <:Function}
+        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, 
+                                                    cse = cse, 
+                                                    skipzeros = skipzeros, 
+                                                    parallel = parallel,
+                                                    expression = Val(false))::Tuple{<:Function, <:Function}
 
         𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs
     end
@@ -6175,7 +6193,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer = similar(∇₂_dyn, Float64)
             end
 
-            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))::Tuple{<:Function, <:Function}
+            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
+                                                        cse = cse, 
+                                                        skipzeros = skipzeros, 
+                                                        parallel = parallel,
+                                                        expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.hessian = buffer, func_exprs
 
@@ -6192,7 +6214,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_parameters = similar(∇₂_parameters, Float64)
             end
 
-            _, func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))::Tuple{<:Function, <:Function}
+            _, func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
+                                                                cse = cse, 
+                                                                skipzeros = skipzeros, 
+                                                                parallel = parallel,
+                                                                expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.hessian_parameters =  buffer_parameters, func_∇₂_parameters
         
@@ -6209,7 +6235,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_SS_and_pars = similar(∇₂_SS_and_pars, Float64)
             end
 
-            _, func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))::Tuple{<:Function, <:Function}
+            _, func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
+                                                                cse = cse, 
+                                                                skipzeros = skipzeros, 
+                                                                parallel = parallel,
+                                                                expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.hessian_SS_and_pars = buffer_SS_and_pars, func_∇₂_SS_and_pars
         end
@@ -6234,7 +6264,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer = similar(∇₃_dyn, Float64)
             end
 
-            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))::Tuple{<:Function, <:Function}
+            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
+                                                        cse = cse, 
+                                                        skipzeros = skipzeros, 
+                                                        parallel = parallel,
+                                                        expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.third_order_derivatives = buffer, func_exprs
 
@@ -6251,7 +6285,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_parameters = similar(∇₃_parameters, Float64)
             end
 
-            _, func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))::Tuple{<:Function, <:Function}
+            _, func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
+                                                                cse = cse, 
+                                                                skipzeros = skipzeros, 
+                                                                parallel = parallel,
+                                                                expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters
         
@@ -6268,7 +6306,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
             end
 
-            _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))::Tuple{<:Function, <:Function}
+            _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
+                                                                cse = cse, 
+                                                                skipzeros = skipzeros, 
+                                                                parallel = parallel,
+                                                                expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.third_order_derivatives_SS_and_pars = buffer_SS_and_pars, func_∇₃_SS_and_pars
         end
