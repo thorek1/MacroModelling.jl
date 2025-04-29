@@ -4160,6 +4160,10 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
     pars[1:2] = sort(pars[1:2], rev = true)
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
+    
+    while length(𝓂.NSSS_solver_cache) > 1
+        pop!(𝓂.NSSS_solver_cache)
+    end
 
     runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
 
