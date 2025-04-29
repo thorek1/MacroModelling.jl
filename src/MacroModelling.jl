@@ -65,7 +65,6 @@ RuntimeGeneratedFunctions.init(@__MODULE__)
 using Requires
 
 import Reexport
-Reexport.@reexport import Symbolics
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
@@ -906,79 +905,6 @@ function fill_kron_adjoint_∂A!(∂X::AbstractSparseMatrix{R}, ∂A::AbstractMa
     end
 end
 
-function reshape_sparse_matrix(A::SparseMatrixCSC, n::Int, m::Int, order::Int)
-#     # Let A be of size (n*m) x m. Deduce n and m.
-#     R, C = size(A)           # R = n*m
-#     # @assert R % m == 0 "Number of rows must be a multiple of number of columns."
-#     # n = div(R, m)
-
-#     # m = div(length(A), n)
-
-#     # Number of nonzeros and their values.
-#     nz = nonzeros(A)
-#     N = length(nz)
-    
-#     # Reconstruct the column indices for each nonzero from A.colptr.
-#     col_indices = Vector{Int}(undef, N)
-#     for j in 1:m^(order-1)
-#         for k in A.colptr[j]:(A.colptr[j+1]-1)
-#             col_indices[k] = j
-#         end
-#     end
-#     # Row indices are available from A.rowval.
-#     row_indices = A.rowval
-    
-#     # In column-major order, the linear index for A[r,c] is:
-#     #   k = r + (c - 1) * (n*m)  where n*m = R.
-#     linear_indices = row_indices .+ (col_indices .- 1) .* R
-    
-#     # When reshaping into an n x (m*m) matrix, the new indices are given by:
-#     #   new row: i = (k - 1) % n + 1
-#     #   new col: j = (k - 1) ÷ n + 1
-#     newI = (linear_indices .- 1) .% n .+ 1
-#     newJ = ((linear_indices .- 1) .÷ n) .+ 1
-    
-#     # Build the reshaped sparse matrix B.
-#     B = sparse(newI, newJ, nz, n, m^order)
-#     return B
-# end
-
-
-    # Expected dimensions for A are (n * m^(order-1)) x m.
-    expected_rows = n * m^(order - 1)
-    @assert size(A, 1) == expected_rows "Matrix A must have n*m^(order-1) rows."
-    @assert size(A, 2) == m "Matrix A must have m columns."
-    
-    # Extract nonzero values.
-    nz = nonzeros(A)
-    N = length(nz)
-    
-    # Reconstruct column indices from A.colptr.
-    col_indices = Vector{Int}(undef, N)
-    for j in 1:m
-        for k in A.colptr[j]:(A.colptr[j+1]-1)
-            col_indices[k] = j
-        end
-    end
-    # Row indices come directly from A.rowval.
-    row_indices = A.rowval
-    
-    # Compute the dense linear indices in A (column-major order).
-    # For an element at (r, c) in A (with r ∈ [1, expected_rows] and c ∈ [1, m]),
-    # the linear index is: k = r + (c - 1)*expected_rows.
-    linear_indices = row_indices .+ (col_indices .- 1) .* expected_rows
-    
-    # When reshaping into a matrix of size n x m^order,
-    # the new row and column indices are given by:
-    #   new row: i = (linear_index - 1) % n + 1
-    #   new col: j = (linear_index - 1) ÷ n + 1
-    newI = (linear_indices .- 1) .% n .+ 1
-    newJ = ((linear_indices .- 1) .÷ n) .+ 1
-    
-    # Construct the reshaped sparse matrix B with dimensions n x m^order.
-    B = sparse(newI, newJ, nz, n, m^order)
-    return B
-end
 
 function choose_matrix_format(A::ℒ.Diagonal{S, Vector{S}}; 
                                 density_threshold::Float64 = .1, 
@@ -4160,7 +4086,7 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
     pars[1:2] = sort(pars[1:2], rev = true)
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
-    
+
     while length(𝓂.NSSS_solver_cache) > 1
         pop!(𝓂.NSSS_solver_cache)
     end
@@ -5556,7 +5482,7 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
             end
         end
     end
-
+    
     𝐒𝐏 = sparse(collect(nonnull_columns), collect(nonnull_columns), 1, n̄, n̄)
 
     return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
@@ -5990,48 +5916,6 @@ function take_nth_order_derivatives(
     end
 
     return results #, (𝒳, 𝒫) # Return results as a tuple of (X_matrix, P_matrix) pairs
-end
-
-function full_sparsejacobian(S::Matrix{<:Number}, x::AbstractVector)
-    Symbolics.sparsejacobian(vec(S), x)
-end
-
-function full_sparsejacobian(S::SparseMatrixCSC{<:Number,Int}, x::AbstractVector)
-    m, n    = size(S)
-    nnz     = length(S.nzval)
-    rowval  = S.rowval
-    colptr  = S.colptr
-
-    # 1) For each non-zero entry k, compute its linear index in vec(S):
-    idx = Vector{Int}(undef, nnz)
-    for col in 1:n
-        for k in colptr[col]:(colptr[col+1]-1)
-            idx[k] = rowval[k] + (col-1)*m
-        end
-    end
-
-    # 2) Differentiate the non-zero values:
-    Jnz = Symbolics.sparsejacobian(S.nzval, x)
-    #    — a sparse (nnz × length(x)) matrix
-
-    # 3) Re-assemble into full sparse Jacobian:
-    row_Jnz    = Jnz.rowval
-    ptr_Jnz    = Jnz.colptr
-    Jfull_i    = Int[]
-    Jfull_j    = Int[]
-    Jfull_vals = eltype(Jnz.nzval)[]
-
-    p = size(Jnz, 2)
-    for j in 1:p
-        for ptr in ptr_Jnz[j]:(ptr_Jnz[j+1]-1)
-            k_nz = row_Jnz[ptr]               # which non-zero entry
-            push!(Jfull_i, idx[k_nz])         # mapped to full row index
-            push!(Jfull_j, j)                 # column index in x
-            push!(Jfull_vals, Jnz.nzval[ptr]) # derivative value
-        end
-    end
-
-    sparse!(Jfull_i, Jfull_j, Jfull_vals, m*n, p)
 end
 
 
@@ -6734,22 +6618,6 @@ function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
                             𝓂::ℳ)::Matrix{M} where {M,N}
                             # timer::TimerOutput = TimerOutput())::Matrix{M} where {M,N}
-    # @timeit_debug timer "Calculate jacobian" begin
-    # SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    # calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-    
-    # par = vcat(parameters, calibrated_parameters)
-    
-    # dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    # dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    # dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    # dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
-
-    # shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-
-    # deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
-    # SS_and_pars = vcat(par, SS[dyn_ss_idx])
-
     if eltype(𝓂.jacobian[1]) != M
         if 𝓂.jacobian[1] isa SparseMatrixCSC
             jac_buffer = similar(𝓂.jacobian[1],M)
@@ -6764,7 +6632,6 @@ function calculate_jacobian(parameters::Vector{M},
     𝓂.jacobian[2](jac_buffer, parameters, SS_and_pars)
     
     return jac_buffer
-
 end
 
 end # dispatch_doctor
@@ -6799,21 +6666,6 @@ end
 @stable default_mode = "disable" begin
 
 function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
-    # SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    # calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-    
-    # par = vcat(parameters, calibrated_parameters)
-    
-    # dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    # dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    # dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    # dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
-
-    # shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-
-    # deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
-    # SS_and_pars = vcat(par, SS[dyn_ss_idx])
-
     if eltype(𝓂.hessian[1]) != M
         if 𝓂.hessian[1] isa SparseMatrixCSC
             hes_buffer = similar(𝓂.hessian[1],M)
@@ -6858,21 +6710,6 @@ end
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
                                             𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
-    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-    
-    par = vcat(parameters, calibrated_parameters)
-    
-    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
-
-    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-
-    deriv_vars = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],shocks_ss)
-    SS_and_pars = vcat(par, SS[dyn_ss_idx])
-
     if eltype(𝓂.third_order_derivatives[1]) != M
         if 𝓂.third_order_derivatives[1] isa SparseMatrixCSC
             third_buffer = similar(𝓂.third_order_derivatives[1],M)
@@ -6884,7 +6721,7 @@ function calculate_third_order_derivatives(parameters::Vector{M},
         third_buffer = 𝓂.third_order_derivatives[1]
     end
 
-    𝓂.third_order_derivatives[2](third_buffer, deriv_vars, SS_and_pars)
+    𝓂.third_order_derivatives[2](third_buffer, parameters, SS_and_pars)
     
     return third_buffer
 end
