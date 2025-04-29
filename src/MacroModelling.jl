@@ -5772,7 +5772,7 @@ function take_nth_order_derivatives(
                     end
                 end
                 # Construct the compressed sparse matrix for order n
-                spX_order_n = sparse!(sparse_rows_n, sparse_cols_n, sparse_vals_n, nϵ, X_ncols_n)
+                spX_order_n = sparse!(sparse_rows_n, sparse_cols_n, sparse_vals_n, X_nrows_1, X_ncols_n)
 
             else # output_compressed == false
                 # UNCOMPRESSED output: nϵ x nx^n
@@ -5821,7 +5821,7 @@ function take_nth_order_derivatives(
                     end
                 end
                 # Construct the uncompressed sparse matrix for order n
-                spX_order_n = sparse!(sparse_rows_n_uncomp, sparse_cols_n_uncomp, sparse_vals_n_uncomp, nϵ, X_ncols_n)
+                spX_order_n = sparse!(sparse_rows_n_uncomp, sparse_cols_n_uncomp, sparse_vals_n_uncomp, X_nrows_1, X_ncols_n)
 
             end # End of if output_compressed / else
 
@@ -6114,11 +6114,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
         np = length(SS_and_pars)
 
-        nϵ = length(eqs)
+        nϵˢ = length(eqs)
 
         Symbolics.@variables 𝒳¹[1:nx] 𝒫¹[1:np]
 
-        ϵˢ = zeros(Symbolics.Num, nϵ)
+        ϵˢ = zeros(Symbolics.Num, nϵˢ)
     
         # Evaluate the function symbolically
         calc_SS!(ϵˢ, 𝒳¹, 𝒫¹)
@@ -6243,13 +6243,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
             lennz = nnz(∇₃_parameters)
 
-            # if (lennz / length(∇₃_parameters) > density_threshold) || (length(∇₃_parameters) < min_length)
+            if (lennz / length(∇₃_parameters) > density_threshold) || (length(∇₃_parameters) < min_length)
                 ∇₃_parameters_mat = convert(Matrix, ∇₃_parameters)
                 buffer_parameters = zeros(Float64, size(∇₃_parameters))
-            # else
-            #     ∇₃_parameters_mat = ∇₃_parameters
-            #     buffer_parameters = similar(∇₃_parameters, Float64)
-            # end
+            else
+                ∇₃_parameters_mat = ∇₃_parameters
+                buffer_parameters = similar(∇₃_parameters, Float64)
+            end
 
             _, func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))::Tuple{<:Function, <:Function}
 
@@ -6260,13 +6260,13 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
             lennz = nnz(∇₃_SS_and_pars)
 
-            # if (lennz / length(∇₃_SS_and_pars) > density_threshold) || (length(∇₃_SS_and_pars) < min_length)
+            if (lennz / length(∇₃_SS_and_pars) > density_threshold) || (length(∇₃_SS_and_pars) < min_length)
                 ∇₃_SS_and_pars_mat = convert(Matrix, ∇₃_SS_and_pars)
                 buffer_SS_and_pars = zeros(Float64, size(∇₃_SS_and_pars))
-            # else
-            #     ∇₃_SS_and_pars_mat = ∇₃_SS_and_pars
-            #     buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
-            # end
+            else
+                ∇₃_SS_and_pars_mat = ∇₃_SS_and_pars
+                buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
+            end
 
             _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, cse = true, skipzeros = true, expression = Val(false))::Tuple{<:Function, <:Function}
 
