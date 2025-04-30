@@ -356,7 +356,17 @@ mutable struct ℳ
     # solved_sub_vals
     # solved_sub_values
     ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
-    ss_solve_blocks_in_place::Vector{Tuple{Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}}}
+    ss_solve_blocks_in_place::Vector{Tuple{
+        Tuple{
+            Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
+            Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
+            }, 
+        Tuple{
+            Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
+            Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
+            }
+        }
+    }
     # ss_solve_blocks_no_transform::Vector#{RuntimeGeneratedFunction}
     #ss_solve_blocks_optim::Vector#{RuntimeGeneratedFunction}
     # SS_init_guess::Vector{Real}
