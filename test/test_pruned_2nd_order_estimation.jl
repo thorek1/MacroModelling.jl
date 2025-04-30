@@ -55,7 +55,7 @@ sample_nuts = mean(samps).nt.mean
 # generate a Pigeons log potential
 FS2000_pruned2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order))
 
-init_params = FS2000.parameter_values
+init_params = sample_nuts
 
 LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order), (all_params = init_params,))
 
