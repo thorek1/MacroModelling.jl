@@ -5924,9 +5924,10 @@ end
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; 
                                     density_threshold::Float64 = .1, 
                                     min_length::Int = 1000,
+                                    parallel = Symbolics.SerialForm(),
+                                    # parallel = Symbolics.ShardedForm(),
                                     cse = true,
-                                    skipzeros = true,
-                                    parallel = Symbolics.SerialForm())
+                                    skipzeros = true)
 
 
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
