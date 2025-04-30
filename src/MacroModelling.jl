@@ -5924,8 +5924,8 @@ end
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; 
                                     density_threshold::Float64 = .1, 
                                     min_length::Int = 1000,
-                                    parallel = Symbolics.SerialForm(),
-                                    # parallel = Symbolics.ShardedForm(),
+                                    # parallel = Symbolics.SerialForm(),
+                                    # parallel = Symbolics.ShardedForm(1500,4),
                                     cse = true,
                                     skipzeros = true)
 
@@ -6036,7 +6036,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         buffer = similar(∇₁_dyn, Float64)
         buffer.nzval .= 0
     end
-
+    
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
 
     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
                                             cse = cse, 
@@ -6061,6 +6066,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         buffer_parameters.nzval .= 0
     end
 
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
     _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
@@ -6081,6 +6092,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
         buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
         buffer_SS_and_pars.nzval .= 0
+    end
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
     end
 
     _, func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
@@ -6153,6 +6170,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             buffer.nzval .= 0
         end
 
+        if lennz > 1500
+            parallel = Symbolics.ShardedForm(1500,4)
+        else
+            parallel = Symbolics.SerialForm()
+        end
+        
         _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, 
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
@@ -6174,6 +6197,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             derivatives_mat = ∂SS_equations_∂SS_and_pars
             buffer = similar(∂SS_equations_∂SS_and_pars, Float64)
             buffer.nzval .= 0
+        end
+
+        if lennz > 1500
+            parallel = Symbolics.ShardedForm(1500,4)
+        else
+            parallel = Symbolics.SerialForm()
         end
 
         _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, 
@@ -6203,6 +6232,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer.nzval .= 0
             end
 
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
+            end
+
             _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
@@ -6225,6 +6260,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_parameters.nzval .= 0
             end
 
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
+            end
+
             _, func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
@@ -6245,6 +6286,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 ∇₂_SS_and_pars_mat = ∇₂_SS_and_pars
                 buffer_SS_and_pars = similar(∇₂_SS_and_pars, Float64)
                 buffer_SS_and_pars.nzval .= 0
+            end
+
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
             end
 
             _, func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
@@ -6277,6 +6324,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer.nzval .= 0
             end
 
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
+            end
+
             _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
@@ -6299,6 +6352,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_parameters.nzval .= 0
             end
 
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
+            end
+
             _, func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
@@ -6319,6 +6378,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 ∇₃_SS_and_pars_mat = ∇₃_SS_and_pars
                 buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
                 buffer_SS_and_pars.nzval .= 0
+            end
+
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
             end
 
             _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
