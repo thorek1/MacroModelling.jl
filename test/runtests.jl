@@ -2510,8 +2510,8 @@ if test_set == "basic"
             # 0 < y < 10
             # 0 < c < 10
         end
-        plot_irf(RBC_CME)
-        @test true
+        plots = plot_irf(RBC_CME)
+        @test plots[1] isa Plots.Plot{Plots.GRBackend}
 
         RBC_CME = nothing
     end
