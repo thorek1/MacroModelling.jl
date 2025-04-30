@@ -61,27 +61,20 @@ sample_nuts = mean(samps).nt.mean
 # generate a Pigeons log potential
 FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000))
 
-# find a feasible starting point
-pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
+init_params = FS2000.parameter_values
 
-replica = pt.replicas[end]
-XMAX = deepcopy(replica.state)
-LPmax = FS2000_lp(XMAX)
+const FS2000_LP = typeof(FS2000_lp)
 
-i = 0
+function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
+    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+    # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
+    
+    result = DynamicPPL.initialize_parameters!!(result, init_params, DynamicPPL.SampleFromPrior(), target.model)
 
-while !isfinite(LPmax) && i < 1000
-    Pigeons.sample_iid!(FS2000_lp, replica, pt.shared)
-    new_LP = FS2000_lp(replica.state)
-    if new_LP > LPmax
-        LPmax = new_LP
-        XMAX  = deepcopy(replica.state)
-    end
-    i += 1
+    return result
 end
 
-# define a specific initialization for this model
-Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
+pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
 
 pt = @time Pigeons.pigeons(target = FS2000_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
