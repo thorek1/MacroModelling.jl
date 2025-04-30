@@ -5990,7 +5990,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     calc! = @RuntimeGeneratedFunction(funcs)
 
-    nx = length(𝓂.solution.non_stochastic_steady_state)
+    SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+    
+    nx = length(SS_and_pars_names)
 
     np = length(𝓂.parameter_values)
     
