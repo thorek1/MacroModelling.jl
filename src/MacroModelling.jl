@@ -6028,13 +6028,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     lennz = nnz(∇₁_dyn)
 
-    # if (lennz / length(∇₁_dyn) > density_threshold) || (length(∇₁_dyn) < min_length)
+    if (lennz / length(∇₁_dyn) > density_threshold) || (length(∇₁_dyn) < min_length)
         derivatives_mat = convert(Matrix, ∇₁_dyn)
         buffer = zeros(Float64, size(∇₁_dyn))
-    # else
-    #     derivatives_mat = ∇₁_dyn
-    #     buffer = similar(∇₁_dyn, Float64)
-    # end
+    else
+        derivatives_mat = ∇₁_dyn
+        buffer = similar(∇₁_dyn, Float64)
+        buffer.nzval .= 0
+    end
 
 
     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
@@ -6057,6 +6058,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     else
         ∇₁_parameters_mat = ∇₁_parameters
         buffer_parameters = similar(∇₁_parameters, Float64)
+        buffer_parameters.nzval .= 0
     end
 
     _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
@@ -6078,6 +6080,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     else
         ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
         buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
+        buffer_SS_and_pars.nzval .= 0
     end
 
     _, func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
@@ -6147,6 +6150,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         else
             derivatives_mat = ∂SS_equations_∂parameters
             buffer = similar(∂SS_equations_∂parameters, Float64)
+            buffer.nzval .= 0
         end
 
         _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, 
@@ -6169,6 +6173,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         else
             derivatives_mat = ∂SS_equations_∂SS_and_pars
             buffer = similar(∂SS_equations_∂SS_and_pars, Float64)
+            buffer.nzval .= 0
         end
 
         _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, 
@@ -6195,6 +6200,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 derivatives_mat = ∇₂_dyn
                 buffer = similar(∇₂_dyn, Float64)
+                buffer.nzval .= 0
             end
 
             _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
@@ -6216,6 +6222,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 ∇₂_parameters_mat = ∇₂_parameters
                 buffer_parameters = similar(∇₂_parameters, Float64)
+                buffer_parameters.nzval .= 0
             end
 
             _, func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
@@ -6237,6 +6244,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 ∇₂_SS_and_pars_mat = ∇₂_SS_and_pars
                 buffer_SS_and_pars = similar(∇₂_SS_and_pars, Float64)
+                buffer_SS_and_pars.nzval .= 0
             end
 
             _, func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
@@ -6266,6 +6274,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 derivatives_mat = ∇₃_dyn
                 buffer = similar(∇₃_dyn, Float64)
+                buffer.nzval .= 0
             end
 
             _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
@@ -6287,6 +6296,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 ∇₃_parameters_mat = ∇₃_parameters
                 buffer_parameters = similar(∇₃_parameters, Float64)
+                buffer_parameters.nzval .= 0
             end
 
             _, func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
@@ -6308,6 +6318,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 ∇₃_SS_and_pars_mat = ∇₃_SS_and_pars
                 buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
+                buffer_SS_and_pars.nzval .= 0
             end
 
             _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
