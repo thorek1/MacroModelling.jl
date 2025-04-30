@@ -4081,7 +4081,8 @@ end
 function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, 𝓂::ℳ; tol::Tolerances = Tolerances())::Float64
     log_lik = 0.0
     log_lik -= -sum(pars[1:19])                                 # logpdf of a gamma dist with mean and variance 1
-    log_lik -= -log(5 * sqrt(2 * π)) - (pars[20]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and variance = 5^2
+    σ = 5
+    log_lik -= -log(σ * sqrt(2 * π)) - (pars[20]^2 / (2 * σ^2)) # logpdf of a normal dist with mean = 0 and variance = 5^2
 
     pars[1:2] = sort(pars[1:2], rev = true)
 

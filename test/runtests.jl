@@ -515,8 +515,8 @@ if test_set == "basic"
         init[2] *= 1.5
         get_irf(m, initial_state = init, shocks = :none)
 
-        plot_irf(m, initial_state = init, shocks = :none)
-        @test true
+        plots = plot_irf(m, initial_state = init, shocks = :none)
+        @test plots[1] isa Plots.Plot{Plots.GRBackend}
     end
     m = nothing
 
