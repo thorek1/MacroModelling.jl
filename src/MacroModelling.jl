@@ -2902,14 +2902,15 @@ function write_block_solution!(𝓂,
     push!(SS_solve_func,:(lbs = [$(lbs...)]))
     push!(SS_solve_func,:(ubs = [$(ubs...)]))
             
+    # n_block = length(𝓂.ss_solve_blocks) + 1 
     n_block = length(𝓂.ss_solve_blocks_in_place) + 1   
         
     push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
 
     push!(SS_solve_func,:(solution = block_solver(params_and_solved_vars,
                                                             $(n_block), 
-                                                            # 𝓂.ss_solve_blocks_in_place[$(n_block)], 
-                                                            𝓂.ss_solve_blocks[$(n_block)], 
+                                                            𝓂.ss_solve_blocks_in_place[$(n_block)], 
+                                                            # 𝓂.ss_solve_blocks[$(n_block)], 
                                                             # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
                                                             # f, 
                                                             inits,
@@ -2937,7 +2938,13 @@ function write_block_solution!(𝓂,
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
     push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
-    push!(𝓂.ss_solve_blocks_in_place, (((ϵ, calc_block!), (buffer, func_exprs)), ((ϵᵉ, calc_ext_block!), (ext_buffer, ext_func_exprs))))
+
+    
+    push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
+            function_and_jacobian(calc_block!, ϵ, func_exprs, buffer),
+            function_and_jacobian(calc_ext_block!, ϵᵉ, ext_func_exprs, ext_buffer)
+        )
+    )
     
     return nothing
 end
@@ -4117,8 +4124,8 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
 
         push!(SS_solve_func,:(solution = block_solver(length(params_and_solved_vars) == 0 ? [0.0] : params_and_solved_vars,
                                                                 $(n_block), 
-                                                                # 𝓂.ss_solve_blocks_in_place[$(n_block)], 
-                                                                𝓂.ss_solve_blocks[$(n_block)], 
+                                                                𝓂.ss_solve_blocks_in_place[$(n_block)], 
+                                                                # 𝓂.ss_solve_blocks[$(n_block)], 
                                                                 # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
                                                                 # f, 
                                                                 inits,
@@ -4436,8 +4443,8 @@ end
 
 
 function solve_ss(SS_optimizer::Function,
-                    ss_solve_blocks::Function,
-                    # ss_solve_blocks::Tuple{Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}},
+                    # ss_solve_blocks::Function,
+                    SS_solve_block::ss_solve_block,
                     parameters_and_solved_vars::Vector{T},
                     closest_parameters_and_solved_vars::Vector{T},
                     lbs::Vector{T},
@@ -4461,24 +4468,24 @@ function solve_ss(SS_optimizer::Function,
         sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : solver_params.starting_value for g in guess]))
     end
 
-    # sol_new_tmp, info = SS_optimizer(   extended_problem ? ss_solve_blocks[3] : ss_solve_blocks[2],
+    sol_new_tmp, info = SS_optimizer(   extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
+    # if extended_problem
+    #     function ext_function_to_optimize(guesses)
+    #         gss = guesses[1:length(guess)]
+    
+    #         parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
+    
+    #         res = ss_solve_blocks(parameters_and_solved_vars, gss)
+    
+    #         return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
+    #     end
+    # else
+    #     function function_to_optimize(guesses) ss_solve_blocks(parameters_and_solved_vars, guesses) end
+    # end
 
-    if extended_problem
-        function ext_function_to_optimize(guesses)
-            gss = guesses[1:length(guess)]
-    
-            parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
-    
-            res = ss_solve_blocks(parameters_and_solved_vars, gss)
-    
-            return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
-        end
-    else
-        function function_to_optimize(guesses) ss_solve_blocks(parameters_and_solved_vars, guesses) end
-    end
-
-    sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
+    # sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
                                         extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
+                                        parameters_and_solved_vars,
                                         extended_problem ? lbs : lbs[1:length(guess)],
                                         extended_problem ? ubs : ubs[1:length(guess)],
                                         solver_params,
@@ -4511,11 +4518,13 @@ function solve_ss(SS_optimizer::Function,
         any_guess_str = ""
     end
 
-    max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
+    # max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
 
-    # ss_solve_blocks[1][2](ss_solve_blocks[1][1],parameters_and_solved_vars, sol_values)
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, sol_values, parameters_and_solved_vars, 0)
+    
+    sol_values = SS_solve_block.ss_problem.func_buffer
 
-    # max_resid = maximum(abs, ss_solve_blocks[1][1])
+    max_resid = maximum(abs, sol_values)
 
     if sol_minimum < ftol && verbose
         println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
@@ -4527,8 +4536,8 @@ end
 
 function block_solver(parameters_and_solved_vars::Vector{T}, 
                         n_block::Int, 
-                        ss_solve_blocks::Function, 
-                        # ss_solve_blocks::Tuple{Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}},
+                        # ss_solve_blocks::Function, 
+                        SS_solve_block::ss_solve_block,
                         # SS_optimizer, 
                         # f::OptimizationFunction, 
                         guess_and_pars_solved_vars::Vector{Vector{T}}, 
@@ -4556,24 +4565,24 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
     closest_parameters_and_solved_vars = sum(abs, guess_and_pars_solved_vars[2]) == Inf ? parameters_and_solved_vars : guess_and_pars_solved_vars[2]
 
-    res = ss_solve_blocks(parameters_and_solved_vars, guess)
+    # res = ss_solve_blocks(parameters_and_solved_vars, guess)
 
-    # ss_solve_blocks[1][2](ss_solve_blocks[1][1],parameters_and_solved_vars, guess)
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars, 0) # TODO: make the block a struct
+    # TODO: do the function creation with Symbolics as this will solve the compilation bottleneck for large functions
 
-    # res = ss_solve_blocks[1][1]
+    res = SS_solve_block.ss_problem.func_buffer
 
     sol_minimum  = ℒ.norm(res)
 
     if !cold_start
         if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol
-            ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
+            # ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
 
-            ∇̂ = ℒ.lu!(∇, check = false)
+            # ∇̂ = ℒ.lu!(∇, check = false)
 
-            # ss_solve_blocks[2][2](ss_solve_blocks[2][1], parameters_and_solved_vars, guess)
+            SS_solve_block.ss_problem.jac(SS_solve_block.ss_problem.jac_buffer, guess, parameters_and_solved_vars, 0)
 
-            # ∇ = ss_solve_blocks[2][1]
-            # # ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
+            ∇ = SS_solve_block.ss_problem.jac_buffer
 
             # ∇̂ = ℒ.lu(∇, check = false)
             
@@ -4613,7 +4622,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                 for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
                     if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
                         if solved_yet continue end
-                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                             g, 
                                                             p,
                                                             ext,
@@ -4633,7 +4642,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                     if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol
                         if solved_yet continue end
                         # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
-                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
+                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
                                                                             total_iters, 
                                                                             n_block, 
                                                                             false, # verbose

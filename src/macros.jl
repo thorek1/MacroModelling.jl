@@ -89,17 +89,7 @@ macro model(𝓂,ex...)
     solved_vals = []
     
     ss_solve_blocks = []
-    ss_solve_blocks_in_place = Tuple{
-        Tuple{
-            Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
-            Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
-            },
-        Tuple{
-            Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
-            Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
-            }
-        }[]
-    
+    ss_solve_blocks_in_place = ss_solve_block[]
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
     SS_check_func = x->x

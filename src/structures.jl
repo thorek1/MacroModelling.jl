@@ -224,6 +224,17 @@ mutable struct perturbation
     third_order_auxilliary_matrices::third_order_auxilliary_matrices
 end
 
+mutable struct function_and_jacobian
+    func::Function
+    func_buffer::Vector{<:Real}
+    jac::Function
+    jac_buffer::AbstractMatrix{<:Real}
+end
+
+struct ss_solve_block
+    ss_problem::function_and_jacobian
+    extended_ss_problem::function_and_jacobian
+end
 
 mutable struct solution
     perturbation::perturbation
@@ -356,17 +367,18 @@ mutable struct ℳ
     # solved_sub_vals
     # solved_sub_values
     ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
-    ss_solve_blocks_in_place::Vector{Tuple{
-        Tuple{
-            Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
-            Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
-            }, 
-        Tuple{
-            Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
-            Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
-            }
-        }
-    }
+    ss_solve_blocks_in_place::Vector{ss_solve_block}
+    # Vector{Tuple{
+    #     Tuple{
+    #         Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
+    #         Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
+    #         }, 
+    #     Tuple{
+    #         Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
+    #         Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
+    #         }
+    #     }
+    # }
     # ss_solve_blocks_no_transform::Vector#{RuntimeGeneratedFunction}
     #ss_solve_blocks_optim::Vector#{RuntimeGeneratedFunction}
     # SS_init_guess::Vector{Real}
