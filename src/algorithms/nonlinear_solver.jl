@@ -1,8 +1,10 @@
 @stable default_mode = "disable" begin
 
-function levenberg_marquardt(fnj::function_and_jacobian, 
+function levenberg_marquardt(
+    # fnj::function_and_jacobian,
+    f::Function, 
     initial_guess::Array{T,1}, 
-    parameters_and_solved_vars::Array{T,1},
+    # parameters_and_solved_vars::Array{T,1},
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1},
     parameters::solver_parameters;
@@ -45,10 +47,10 @@ function levenberg_marquardt(fnj::function_and_jacobian,
 
     max_linesearch_iterations = 600
 
-    # function f̂(x) 
-    #     f(undo_transform(x,transformation_level))  
+    function f̂(x) 
+        f(undo_transform(x,transformation_level))  
     #     # f(undo_transform(x,transformation_level,shift))  
-    # end
+    end
 
     upper_bounds  = transform(upper_bounds,transformation_level)
     # upper_bounds  = transform(upper_bounds,transformation_level,shift)
@@ -60,10 +62,11 @@ function levenberg_marquardt(fnj::function_and_jacobian,
     previous_guess = similar(current_guess)
     guess_update = similar(current_guess)
 
-    ∇ = fnj.jac_buffer
+    ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
+    # ∇ = fnj.jac_buffer
     ∇̂ = similar(∇)
 
-    # prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
+    prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
 
     largest_step = T(1.0)
     largest_residual = T(1.0)
@@ -78,10 +81,10 @@ function levenberg_marquardt(fnj::function_and_jacobian,
     grad_iter = 0
     func_iter = 0
 
-	for iter in 1:iterations
+    for iter in 1:iterations
         # make the jacobian and f calls nonallocating
-        fnj.jac(∇, current_guess, parameters_and_solved_vars, transformation_level)
-        # 𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
+        # fnj.jac(∇, current_guess, parameters_and_solved_vars, transformation_level)
+        𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
         grad_iter += 1
 
         previous_guess .= current_guess
@@ -89,9 +92,10 @@ function levenberg_marquardt(fnj::function_and_jacobian,
         # ∇̂ .= ∇' * ∇
         ℒ.mul!(∇̂, ∇', ∇)
 
-        fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
+        # fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
 
-        μ¹s = μ¹ * sum(abs2, fnj.func_buffer)^p¹
+        # μ¹s = μ¹ * sum(abs2, fnj.func_buffer)^p¹
+        μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
         func_iter += 1
 
         for i in 1:size(∇̂,1)
@@ -114,23 +118,26 @@ function levenberg_marquardt(fnj::function_and_jacobian,
             break
         end
 
-        fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
+        # fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
 
-        ℒ.mul!(guess_update, ∇', fnj.func_buffer)
+        # ℒ.mul!(guess_update, ∇', fnj.func_buffer)
+        ℒ.mul!(guess_update, ∇', f̂(current_guess))
         ℒ.ldiv!(∇̄, guess_update)
         ℒ.axpy!(-1, guess_update, current_guess)
         # current_guess .-= ∇̄ \ ∇' * f̂(current_guess)
 
         minmax!(current_guess, lower_bounds, upper_bounds)
 
-        fnj.func(fnj.func_buffer, previous_guess, parameters_and_solved_vars, transformation_level)
+        # fnj.func(fnj.func_buffer, previous_guess, parameters_and_solved_vars, transformation_level)
 
-        P = sum(abs2, fnj.func_buffer)
+        # P = sum(abs2, fnj.func_buffer)
+        P = sum(abs2, f̂(previous_guess))
         P̃ = P
         
-        fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
+        # fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
 
-        P̋ = sum(abs2, fnj.func_buffer)
+        # P̋ = sum(abs2, fnj.func_buffer)
+        P̋ = sum(abs2, f̂(current_guess))
 
         func_iter += 3
 
@@ -140,10 +147,10 @@ function levenberg_marquardt(fnj::function_and_jacobian,
         ν̂ = ν
 
         guess_update .= current_guess - previous_guess
+        # fnj.func(fnj.func_buffer, previous_guess, parameters_and_solved_vars, transformation_level)
 
-        fnj.func(fnj.func_buffer, previous_guess, parameters_and_solved_vars, transformation_level)
-
-        g = fnj.func_buffer' * ∇ * guess_update
+        # g = fnj.func_buffer' * ∇ * guess_update
+        g = f̂(previous_guess)' * ∇ * guess_update
         U = sum(abs2,guess_update)
         func_iter += 1
 
@@ -180,9 +187,10 @@ function levenberg_marquardt(fnj::function_and_jacobian,
                 
                 P = P̋
 
-                fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
+                # fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
 
-                P̋ = sum(abs2, fnj.func_buffer)
+                # P̋ = sum(abs2, fnj.func_buffer)
+                P̋ = sum(abs2, f̂(current_guess))
                 func_iter += 1
 
                 ν̂ *= α
@@ -209,9 +217,10 @@ function levenberg_marquardt(fnj::function_and_jacobian,
         largest_step = ℒ.norm(best_previous_guess - best_current_guess) # maximum(abs, previous_guess - current_guess)
         largest_relative_step = largest_step / max(ℒ.norm(best_previous_guess), ℒ.norm(best_current_guess)) # maximum(abs, (previous_guess - current_guess) ./ previous_guess)
         
-        fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
+        # fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
 
-        largest_residual = ℒ.norm(fnj.func_buffer) # maximum(abs, f(undo_transform(current_guess,transformation_level)))
+        # largest_residual = ℒ.norm(fnj.func_buffer)    
+        largest_residual = ℒ.norm(f̂(current_guess)) # maximum(abs, f(undo_transform(current_guess,transformation_level)))
         # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
 
         # allow for norm increases (in both measures) as this can lead to the solution
@@ -230,9 +239,10 @@ function levenberg_marquardt(fnj::function_and_jacobian,
 end
 
 
-function newton(fnj::function_and_jacobian, 
+function newton(f::Function, 
+    # fnj::function_and_jacobian, 
     initial_guess::Array{T,1}, 
-    parameters_and_solved_vars::Array{T,1},
+    # parameters_and_solved_vars::Array{T,1},
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1},
     parameters::solver_parameters;
@@ -245,7 +255,7 @@ function newton(fnj::function_and_jacobian,
     rel_xtol = tol.NSSS_rel_xtol
 
     iterations = 250
-    transformation_level = 0 # parameters.transformation_level
+    # transformation_level = 0 # parameters.transformation_level
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
     @assert all(lower_bounds .< upper_bounds)
@@ -261,14 +271,15 @@ function newton(fnj::function_and_jacobian,
 
     new_guess = copy(initial_guess)
 
-    fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars, transformation_level)
+    # fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars, transformation_level)
 
-    new_residuals = fnj.func_buffer
-    
-    ∇ = fnj.jac_buffer
-    # ∇ = Array{T,2}(undef, length(new_guess), length(new_guess))
+    # new_residuals = fnj.func_buffer
+    new_residuals = f(new_guess)
 
-    # prep = 𝒟.prepare_jacobian(f, backend, new_guess)
+    # ∇ = fnj.jac_buffer
+    ∇ = Array{T,2}(undef, length(new_guess), length(new_guess))
+
+    prep = 𝒟.prepare_jacobian(f, backend, new_guess)
 
     # largest_step = zero(T) + 1
     # largest_residual = zero(T) + 1
@@ -282,21 +293,22 @@ function newton(fnj::function_and_jacobian,
     # resnorm = 1.0
     # relresnorm = 1.0
 
-	for iter in 1:iterations
+    for iter in 1:iterations
     # while iter < iterations
-        fnj.jac(∇, new_guess, parameters_and_solved_vars, transformation_level)
-        # 𝒟.jacobian!(f, ∇, prep, backend, new_guess)
+        # fnj.jac(∇, new_guess, parameters_and_solved_vars, transformation_level)
+        𝒟.jacobian!(f, ∇, prep, backend, new_guess)
 
         # old_residuals_norm = ℒ.norm(new_residuals)
 
         # old_residuals = copy(new_residuals)
 
-        fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars, transformation_level)
+        # fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars, transformation_level)
 
-        new_residuals = fnj.func_buffer
+        # new_residuals = fnj.func_buffer
+        new_residuals = f(new_guess)
 
         if !all(isfinite,new_residuals) 
-            println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
+            # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
             new_residuals_norm = 1.0
@@ -310,8 +322,7 @@ function newton(fnj::function_and_jacobian,
 
             new_residuals_norm = ℒ.norm(new_residuals)
         
-            # ∇̂ = ℒ.lu!(∇, check = false)
-            ∇̂ = ℒ.lu(∇, check = false)
+            ∇̂ = ℒ.lu!(∇, check = false)
         
             ℒ.ldiv!(∇̂, new_residuals)
 
@@ -324,7 +335,7 @@ function newton(fnj::function_and_jacobian,
             iters[1] += 1
             iters[2] += 1
 
-            println("GN worked with $(iter+1) iterations - xtol ($xtol): $guess_update_norm; ftol ($ftol): $new_residuals_norm; rel_xtol ($rel_xtol): $rel_xtol_reached")# rel_ftol: $rel_ftol_reached")
+            # println("GN worked with $(iter+1) iterations - xtol ($xtol): $guess_update_norm; ftol ($ftol): $new_residuals_norm; rel_xtol ($rel_xtol): $rel_xtol_reached")# rel_ftol: $rel_ftol_reached")
             break
         end
 
@@ -335,7 +346,7 @@ function newton(fnj::function_and_jacobian,
         new_residuals_norm = ℒ.norm(new_residuals)
         
         if iter > 5 && ℒ.norm(rel_xtol_reached) > sqrt(rel_xtol) && new_residuals_norm > old_residuals_norm
-            println("GN: $iter, Norm increase")
+            # println("GN: $iter, Norm increase")
             break
         end
         # if resnorm < ftol # && iter > 4
@@ -343,11 +354,10 @@ function newton(fnj::function_and_jacobian,
         #     return undo_transform(new_guess,transformation_level), (iter, zero(T), zero(T), resnorm) # f(undo_transform(new_guess,transformation_level)))
         # end
 
-        ∇̂ = ℒ.lu(∇, check = false)
-        # ∇̂ = ℒ.lu!(∇, check = false)
+        ∇̂ = ℒ.lu!(∇, check = false)
         
         if !ℒ.issuccess(∇̂)
-            println("GN factorisation failed after $iter iterations; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
+            # println("GN factorisation failed after $iter iterations; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
             new_residuals_norm = 1.0
@@ -378,7 +388,7 @@ function newton(fnj::function_and_jacobian,
         ℒ.axpy!(-1, guess_update, new_guess)
 
         if !all(isfinite,new_guess) 
-            println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
+            # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
             new_residuals_norm = 1.0
@@ -394,7 +404,7 @@ function newton(fnj::function_and_jacobian,
         iters[1] += 1
         iters[2] += 1
 
-        println("GN: $(iters[1]) iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")
+        # println("GN: $(iters[1]) iterations - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")
     end
 
     # if iters[1] == iterations
