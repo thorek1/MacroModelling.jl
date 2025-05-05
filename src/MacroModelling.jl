@@ -2941,8 +2941,8 @@ function write_block_solution!(𝓂,
 
     
     push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
-            function_and_jacobian(calc_block!, ϵ, func_exprs, buffer),
-            function_and_jacobian(calc_ext_block!, ϵᵉ, ext_func_exprs, ext_buffer)
+            function_and_jacobian(calc_block!, ϵ, func_exprs::Function, buffer),
+            function_and_jacobian(calc_ext_block!, ϵᵉ, ext_func_exprs::Function, ext_buffer)
         )
     )
     
@@ -3802,7 +3802,12 @@ end
 
 
 
-function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
+function solve_steady_state!(𝓂::ℳ;
+                            cse = true,
+                            skipzeros = true,
+                            density_threshold::Float64 = .1,
+                            min_length::Int = 1000,
+                            verbose::Bool = false)
     unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(𝓂.ss_aux_equations) + length(𝓂.calibration_equations) "Unable to solve steady state. More unknowns than equations."
@@ -3884,13 +3889,14 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         end
 
 
-        guess = []
-        result = []
+        guess = Expr[]
+        untransformed_guess = Expr[]
+        result = Expr[]
         sorted_vars = sort(𝓂.solved_vars[end])
         # sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.➕_vars))
         for (i, parss) in enumerate(sorted_vars) 
             push!(guess,:($parss = guess[$i]))
-            # push!(guess,:($parss = undo_transformer(guess[$i])))
+            push!(untransformed_guess,:($parss = undo_transform(guess[$i],transformation_level)))
             push!(result,:($parss = sol[$i]))
         end
 
@@ -3918,6 +3924,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
                     push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
                     push!(other_vrs_eliminated_by_sympy, val.args[2])
                     push!(nnaux_linear,:($val))
+                    push!(solved_vals_in_place,:(ℰ[$i] = $val))
                     push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
                 else
                     push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
@@ -3979,24 +3986,24 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
             end)
 
             
+        in_place_funcs = :(function block(ℰ::Vector, guess::Vector, parameters_and_solved_vars::Vector, transformation_level::Int)
+            $(untransformed_guess...) 
+            $(calib_pars...) # add those variables which were previously solved and are used in the equations
+            $(other_vars...) # take only those that appear in equations - DONE
 
-        in_place_funcs = :(function block(ℰ::Vector, parameters_and_solved_vars::Vector, guess::Vector, transformation_level::Int)
-                $(untransformed_guess...) 
-                $(calib_pars...) # add those variables which were previously solved and are used in the equations
-                $(other_vars...) # take only those that appear in equations - DONE
+            # $(ss_and_aux_equations_dep...)
+            @inbounds begin
+                $(solved_vals_in_place...)
+                # $(nnaux_linear...)
+            end
+            return nothing
+        end)
 
-                $(ss_and_aux_equations_dep...)
-                @inbounds begin
-                    $(solved_vals_in_place...)
-                end
-                return nothing
-            end)
+        nx = length(sorted_vars)
 
-        np = length(sorted_vars)
+        np = iii - 1
 
-        nx = iii - 1
-
-        nϵˢ = length(rewritten_eqs)
+        nϵˢ = length(solved_vals_in_place)
 
         ϵ = zeros(nϵˢ)
 
@@ -4027,60 +4034,64 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         else
             parallel = Symbolics.SerialForm()
         end
-        
+
         _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, tl,
-                                                    cse = cse, 
-                                                    skipzeros = skipzeros, 
-                                                    parallel = parallel,
-                                                    expression = Val(false))::Tuple{<:Function, <:Function}
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                parallel = parallel,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
 
 
+        ext_diff = Expr[]
+        for i in 1:iii-1
+            push!(ext_diff, :(ℰ[$(length(solved_vals_in_place) + i)] = parameters_and_solved_vars[$i] - undo_transform(guess[$(length(solved_vals_in_place) + i)], transformation_level)
+            ))
+        end
 
+        ext_in_place_funcs = :(function block(ℰ::Vector, guess::Vector, parameters_and_solved_vars::Vector, transformation_level::Int)
+            $(untransformed_guess...) 
+            # $(guess...) 
+            $(calib_pars...) # add those variables which were previously solved and are used in the equations
+            $(other_vars...) # take only those that appear in equations - DONE
 
-        ext_in_place_funcs = :(function block(ℰ::Vector, parameters_and_solved_vars::Vector, guess::Vector, parameters_and_solved_vars_guess::Vector, transformation_level::Int)
-                $(untransformed_guess...) 
-                $(guess...) 
-                $(calib_pars...) # add those variables which were previously solved and are used in the equations
-                $(other_vars...) # take only those that appear in equations - DONE
-
-                $(ss_and_aux_equations_dep...)
-                @inbounds begin
-                    $(solved_vals_in_place...)
-                    ℰ[$(length(rewritten_eqs) + 1):end] = parameters_and_solved_vars .- parameters_and_solved_vars_guess
-                end
-                
-                return nothing
-            end)
+            # $(ss_and_aux_equations_dep...)
+            @inbounds begin
+                $(solved_vals_in_place...)
+                $(ext_diff...)
+            end
+            
+            return nothing
+        end)
 
         np = length(sorted_vars)
 
         nx = iii - 1
 
-        nϵˢ = length(rewritten_eqs) + nx
-        
+        nϵˢᵉ = length(solved_vals_in_place) + nx
 
-        ϵ = zeros(nϵˢ)
+
+        ϵᵉ = zeros(nϵˢᵉ)
 
         calc_ext_block! = @RuntimeGeneratedFunction(ext_in_place_funcs)
 
-        Symbolics.@variables 𝒳¹ᵉ[1:nx] 
+        Symbolics.@variables 𝒳¹ᵉ[1:np+nx] 
 
-        ϵˢ = zeros(Symbolics.Num, nϵˢ)
+        ϵˢᵉ = zeros(Symbolics.Num, nϵˢᵉ)
 
         # Evaluate the function symbolically
-        calc_ext_block!(ϵˢ, 𝒳¹, 𝒫¹, 𝒳¹ᵉ, tl)
+        calc_ext_block!(ϵˢᵉ, 𝒳¹ᵉ, 𝒫¹, tl)
 
-        ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢ, vcat(Symbolics.scalarize(𝒳¹), Symbolics.scalarize(𝒳¹ᵉ))) # nϵ x nx
+        ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢᵉ, 𝒳¹ᵉ) # nϵ x nx
 
         lennz = nnz(∂ext_block_∂parameters_and_solved_vars)
 
         if (lennz / length(∂ext_block_∂parameters_and_solved_vars) > density_threshold) || (length(∂ext_block_∂parameters_and_solved_vars) < min_length)
-            derivatives_mat = convert(Matrix, ∂ext_block_∂parameters_and_solved_vars)
+            derivatives_mat_ext = convert(Matrix, ∂ext_block_∂parameters_and_solved_vars)
             ext_buffer = zeros(Float64, size(∂ext_block_∂parameters_and_solved_vars))
         else
-            derivatives_mat = ∂ext_block_∂parameters_and_solved_vars
+            derivatives_mat_ext = ∂ext_block_∂parameters_and_solved_vars
             ext_buffer = similar(∂ext_block_∂parameters_and_solved_vars, Float64)
-            buffer.nzval .= 0
+            ext_buffer.nzval .= 0
         end
 
         if lennz > 1500
@@ -4088,12 +4099,12 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         else
             parallel = Symbolics.SerialForm()
         end
-        
-        _, ext_func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, 𝒳¹ᵉ, tl,
-                                                    cse = cse, 
-                                                    skipzeros = skipzeros, 
-                                                    parallel = parallel,
-                                                    expression = Val(false))::Tuple{<:Function, <:Function}
+
+        _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝒳¹ᵉ, 𝒫¹, tl,
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                parallel = parallel,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
 
 
         push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(sorted_vars)))
@@ -4152,8 +4163,12 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
         push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
-        push!(𝓂.ss_solve_blocks_in_place, ((ϵ, calc_block!), (buffer, func_exprs), (ext_buffer, ext_func_exprs)))
-        
+        push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
+                function_and_jacobian(calc_block!, ϵ, func_exprs::Function, buffer),
+                function_and_jacobian(calc_ext_block!, ϵᵉ, ext_func_exprs::Function, ext_buffer)
+            )
+        )
+
         n_block += 1
         
         n -= 1
