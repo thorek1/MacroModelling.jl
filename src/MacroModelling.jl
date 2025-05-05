@@ -4522,12 +4522,10 @@ function solve_ss(SS_optimizer::Function,
 
     SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, sol_values, parameters_and_solved_vars, 0)
     
-    sol_values = SS_solve_block.ss_problem.func_buffer
-
-    max_resid = maximum(abs, sol_values)
+    max_resid = maximum(abs, SS_solve_block.ss_problem.func_buffer)
 
     if sol_minimum < ftol && verbose
-        println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
+        println("Block: $n_block - Solved $(extended_problem_str) using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
     end
 
     return sol_values, total_iters, rel_sol_minimum, sol_minimum
@@ -4622,15 +4620,14 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                 for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
                     if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
                         if solved_yet continue end
-                        println(g)
-                        println(p)
-                        println(ext)
+
                         sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                         # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                             g, 
                                                             p,
                                                             ext,
                                                             false)
+                                                            
                         if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
                             solved_yet = true
                         end

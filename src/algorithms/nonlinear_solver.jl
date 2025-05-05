@@ -89,7 +89,7 @@ function levenberg_marquardt(
         grad_iter += 1
 
         previous_guess .= current_guess
-println(∇)
+
         # ∇̂ .= ∇' * ∇
         ℒ.mul!(∇̂, ∇', ∇)
 
@@ -146,7 +146,7 @@ println(∇)
         ᾱ = 1.0
 
         ν̂ = ν
-println(current_guess)
+
         guess_update .= current_guess - previous_guess
         fnj.func(fnj.func_buffer, previous_guess, parameters_and_solved_vars, transformation_level)
 
@@ -233,7 +233,7 @@ println(current_guess)
             # end
         end
     end
-
+    
     best_guess = undo_transform(current_guess, transformation_level)
 
     return best_guess, (grad_iter, func_iter, largest_relative_step, largest_residual)#, f(best_guess))
