@@ -111,7 +111,11 @@ function levenberg_marquardt(
             break
         end
 
-        ∇̄ = ℒ.cholesky!(∇̂, check = false)
+        if ∇̂ isa SparseMatrixCSC
+            ∇̄ = ℒ.cholesky(ℒ.Symmetric(∇̂), check = false)
+        else
+            ∇̄ = ℒ.cholesky!(∇̂, check = false)
+        end
 
         if !ℒ.issuccess(∇̄)
             largest_relative_step = 1.0
