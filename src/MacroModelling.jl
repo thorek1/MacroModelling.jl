@@ -2656,7 +2656,7 @@ function write_block_solution!(𝓂,
     push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
 
     guess = Expr[]
-    untransformed_guess = Expr[]
+    # untransformed_guess = Expr[]
     result = Expr[]
     calib_pars = Expr[]
 
@@ -2670,7 +2670,7 @@ function write_block_solution!(𝓂,
 
     for (i, parss) in enumerate(sorted_vars) 
         push!(guess,:($parss = guess[$i]))
-        push!(untransformed_guess,:($parss = undo_transform(guess[$i],transformation_level)))
+        # push!(untransformed_guess,:($parss = undo_transform(guess[$i],transformation_level)))
         push!(result,:($parss = sol[$i]))
     end
 
@@ -2757,7 +2757,8 @@ function write_block_solution!(𝓂,
 
 
     in_place_funcs = :(function block(ℰ::Vector, guess::Vector, parameters_and_solved_vars::Vector, transformation_level::Int)
-            $(untransformed_guess...) 
+            # $(untransformed_guess...) 
+            $(guess...) 
             $(calib_pars...) # add those variables which were previously solved and are used in the equations
             $(other_vars...) # take only those that appear in equations - DONE
 
@@ -2813,13 +2814,13 @@ function write_block_solution!(𝓂,
 
     ext_diff = Expr[]
     for i in 1:iii-1
-        push!(ext_diff, :(ℰ[$(length(rewritten_eqs) + i)] = parameters_and_solved_vars[$i] - undo_transform(guess[$(length(rewritten_eqs) + i)], transformation_level)
+        push!(ext_diff, :(ℰ[$(length(rewritten_eqs) + i)] = parameters_and_solved_vars[$i] - guess[$(length(rewritten_eqs) + i)]
         ))
     end
 
     ext_in_place_funcs = :(function block(ℰ::Vector, guess::Vector, parameters_and_solved_vars::Vector, transformation_level::Int)
-            $(untransformed_guess...) 
-            # $(guess...) 
+            # $(untransformed_guess...) 
+            $(guess...) 
             $(calib_pars...) # add those variables which were previously solved and are used in the equations
             $(other_vars...) # take only those that appear in equations - DONE
 
@@ -3890,13 +3891,13 @@ function solve_steady_state!(𝓂::ℳ;
 
 
         guess = Expr[]
-        untransformed_guess = Expr[]
+        # untransformed_guess = Expr[]
         result = Expr[]
         sorted_vars = sort(𝓂.solved_vars[end])
         # sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.➕_vars))
         for (i, parss) in enumerate(sorted_vars) 
             push!(guess,:($parss = guess[$i]))
-            push!(untransformed_guess,:($parss = undo_transform(guess[$i],transformation_level)))
+            # push!(untransformed_guess,:($parss = undo_transform(guess[$i],transformation_level)))
             push!(result,:($parss = sol[$i]))
         end
 
@@ -3987,7 +3988,8 @@ function solve_steady_state!(𝓂::ℳ;
 
             
         in_place_funcs = :(function block(ℰ::Vector, guess::Vector, parameters_and_solved_vars::Vector, transformation_level::Int)
-            $(untransformed_guess...) 
+            # $(untransformed_guess...) 
+            $(guess...) 
             $(calib_pars...) # add those variables which were previously solved and are used in the equations
             $(other_vars...) # take only those that appear in equations - DONE
 
@@ -4044,13 +4046,13 @@ function solve_steady_state!(𝓂::ℳ;
 
         ext_diff = Expr[]
         for i in 1:iii-1
-            push!(ext_diff, :(ℰ[$(length(solved_vals_in_place) + i)] = parameters_and_solved_vars[$i] - undo_transform(guess[$(length(solved_vals_in_place) + i)], transformation_level)
+            push!(ext_diff, :(ℰ[$(length(solved_vals_in_place) + i)] = parameters_and_solved_vars[$i] - guess[$(length(solved_vals_in_place) + i)]
             ))
         end
 
         ext_in_place_funcs = :(function block(ℰ::Vector, guess::Vector, parameters_and_solved_vars::Vector, transformation_level::Int)
-            $(untransformed_guess...) 
-            # $(guess...) 
+            # $(untransformed_guess...) 
+            $(guess...) 
             $(calib_pars...) # add those variables which were previously solved and are used in the equations
             $(other_vars...) # take only those that appear in equations - DONE
 

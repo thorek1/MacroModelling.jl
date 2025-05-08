@@ -58,8 +58,10 @@ function levenberg_marquardt(
     # lower_bounds  = transform(lower_bounds,transformation_level,shift)
 
     current_guess = copy(transform(initial_guess,transformation_level))
+    current_guess_untransformed = copy(transform(initial_guess,transformation_level))
     # current_guess = copy(transform(initial_guess,transformation_level,shift))
     previous_guess = similar(current_guess)
+    previous_guess_untransformed = similar(current_guess)
     guess_update = similar(current_guess)
 
     # ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
@@ -83,8 +85,18 @@ function levenberg_marquardt(
 
     for iter in 1:iterations
         # make the jacobian and f calls nonallocating
-        fnj.jac(∇, current_guess, parameters_and_solved_vars, transformation_level)
+        copy!(current_guess_untransformed, current_guess)
+
+        for _ in 1:transformation_level
+            current_guess_untransformed .= sinh.(current_guess_untransformed)
+        end
+
+        fnj.jac(∇, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
         # 𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
+
+        for _ in 1:transformation_level
+            ∇ .*= cosh.(current_guess)
+        end
 
         grad_iter += 1
 
@@ -93,7 +105,7 @@ function levenberg_marquardt(
         # ∇̂ .= ∇' * ∇
         ℒ.mul!(∇̂, ∇', ∇)
 
-        fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
 
         μ¹s = μ¹ * sum(abs2, fnj.func_buffer)^p¹
         # μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
@@ -119,7 +131,7 @@ function levenberg_marquardt(
             break
         end
 
-        fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
 
         ℒ.mul!(guess_update, ∇', fnj.func_buffer)
         # ℒ.mul!(guess_update, ∇', f̂(current_guess))
@@ -129,13 +141,19 @@ function levenberg_marquardt(
 
         minmax!(current_guess, lower_bounds, upper_bounds)
 
-        fnj.func(fnj.func_buffer, previous_guess, parameters_and_solved_vars, transformation_level)
+        copy!(previous_guess_untransformed, previous_guess)
+
+        for _ in 1:transformation_level
+            previous_guess_untransformed .= sinh.(previous_guess_untransformed)
+        end
+        
+        fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars, transformation_level)
 
         P = sum(abs2, fnj.func_buffer)
         # P = sum(abs2, f̂(previous_guess))
         P̃ = P
         
-        fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
 
         P̋ = sum(abs2, fnj.func_buffer)
         # P̋ = sum(abs2, f̂(current_guess))
@@ -148,7 +166,7 @@ function levenberg_marquardt(
         ν̂ = ν
 
         guess_update .= current_guess - previous_guess
-        fnj.func(fnj.func_buffer, previous_guess, parameters_and_solved_vars, transformation_level)
+        fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars, transformation_level)
 
         g = fnj.func_buffer' * ∇ * guess_update
         # g = f̂(previous_guess)' * ∇ * guess_update
@@ -188,7 +206,13 @@ function levenberg_marquardt(
                 
                 P = P̋
 
-                fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
+                copy!(current_guess_untransformed, current_guess)
+
+                for _ in 1:transformation_level
+                    current_guess_untransformed .= sinh.(current_guess_untransformed)
+                end
+
+                fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
 
                 P̋ = sum(abs2, fnj.func_buffer)
                 # P̋ = sum(abs2, f̂(current_guess))
@@ -218,7 +242,13 @@ function levenberg_marquardt(
         largest_step = ℒ.norm(best_previous_guess - best_current_guess) # maximum(abs, previous_guess - current_guess)
         largest_relative_step = largest_step / max(ℒ.norm(best_previous_guess), ℒ.norm(best_current_guess)) # maximum(abs, (previous_guess - current_guess) ./ previous_guess)
         
-        fnj.func(fnj.func_buffer, current_guess, parameters_and_solved_vars, transformation_level)
+        copy!(current_guess_untransformed, current_guess)
+
+        for _ in 1:transformation_level
+            current_guess_untransformed .= sinh.(current_guess_untransformed)
+        end
+
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
 
         largest_residual = ℒ.norm(fnj.func_buffer)    
         # largest_residual = ℒ.norm(f̂(current_guess)) # maximum(abs, f(undo_transform(current_guess,transformation_level)))
