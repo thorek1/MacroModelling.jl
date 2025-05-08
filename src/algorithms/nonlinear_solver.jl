@@ -63,7 +63,7 @@ function levenberg_marquardt(
     previous_guess = similar(current_guess)
     previous_guess_untransformed = similar(current_guess)
     guess_update = similar(current_guess)
-
+    factor = similar(current_guess)
     # ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
     ∇ = fnj.jac_buffer
     ∇̂ = similar(∇)
@@ -86,16 +86,20 @@ function levenberg_marquardt(
     for iter in 1:iterations
         # make the jacobian and f calls nonallocating
         copy!(current_guess_untransformed, current_guess)
-
-        for _ in 1:transformation_level
-            current_guess_untransformed .= sinh.(current_guess_untransformed)
+        
+        if transformation_level > 0
+            factor .= 1
+            for _ in 1:transformation_level
+                factor .*= cosh.(current_guess_untransformed)
+                current_guess_untransformed .= sinh.(current_guess_untransformed)
+            end
         end
 
         fnj.jac(∇, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
         # 𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
 
-        for _ in 1:transformation_level
-            ∇ .*= cosh.(current_guess)
+        if transformation_level > 0
+            ∇ .*= factor'
         end
 
         grad_iter += 1
@@ -124,7 +128,7 @@ function levenberg_marquardt(
         end
 
         if ∇̂ isa SparseMatrixCSC
-            ∇̄ = ℒ.cholesky(ℒ.Symmetric(∇̂), check = false)
+            ∇̄ = ℒ.lu((∇̂), check = false)
         else
             ∇̄ = ℒ.cholesky!(∇̂, check = false)
         end
