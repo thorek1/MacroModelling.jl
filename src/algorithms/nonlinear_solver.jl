@@ -68,6 +68,14 @@ function levenberg_marquardt(
     ∇ = fnj.jac_buffer
     ∇̂ = similar(∇)
 
+    if ∇ isa SparseMatrixCSC
+        prob = 𝒮.LinearProblem(∇, guess_update, 𝒮.UMFPACKFactorization())
+    else
+        prob = 𝒮.LinearProblem(∇, guess_update)#, 𝒮.CholeskyFactorization)
+    end
+
+    sol_cache = 𝒮.init(prob)
+    
     # prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
 
     largest_step = T(1.0)
@@ -127,23 +135,21 @@ function levenberg_marquardt(
             break
         end
 
-        if ∇̂ isa SparseMatrixCSC
-            ∇̄ = ℒ.lu((∇̂), check = false)
-        else
-            ∇̄ = ℒ.cholesky!(∇̂, check = false)
-        end
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
 
-        if !ℒ.issuccess(∇̄)
+        ℒ.mul!(guess_update, ∇', fnj.func_buffer)
+
+        sol_cache.A = ∇̂
+        sol_cache.b = guess_update
+        𝒮.solve!(sol_cache)
+        copy!(guess_update, sol_cache.u)
+
+        if !isfinite(sum(guess_update))
             largest_relative_step = 1.0
             largest_residual = 1.0
             break
         end
 
-        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
-
-        ℒ.mul!(guess_update, ∇', fnj.func_buffer)
-        # ℒ.mul!(guess_update, ∇', f̂(current_guess))
-        ℒ.ldiv!(∇̄, guess_update)
         ℒ.axpy!(-1, guess_update, current_guess)
         # current_guess .-= ∇̄ \ ∇' * f̂(current_guess)
 

@@ -36,6 +36,7 @@ import Optim, LineSearches
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse, nonzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
+import LinearSolve as 𝒮
 # import LinearAlgebra: mul!
 # import Octavian: matmul!
 # import TriangularSolve as TS
