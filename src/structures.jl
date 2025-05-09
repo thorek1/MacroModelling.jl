@@ -167,7 +167,8 @@ struct third_order_auxilliary_matrices
     𝐂₃::SparseMatrixCSC{Int}
     𝐔₃::SparseMatrixCSC{Int}
     𝐈₃::Dict{Vector{Int}, Int}
-    
+
+    𝐂∇₃::SparseMatrixCSC{Int}
     𝐔∇₃::SparseMatrixCSC{Int}
 
     𝐏::SparseMatrixCSC{Int}
@@ -223,6 +224,17 @@ mutable struct perturbation
     third_order_auxilliary_matrices::third_order_auxilliary_matrices
 end
 
+mutable struct function_and_jacobian
+    func::Function
+    func_buffer::Vector{<:Real}
+    jac::Function
+    jac_buffer::AbstractMatrix{<:Real}
+end
+
+struct ss_solve_block
+    ss_problem::function_and_jacobian
+    extended_ss_problem::function_and_jacobian
+end
 
 mutable struct solution
     perturbation::perturbation
@@ -355,14 +367,26 @@ mutable struct ℳ
     # solved_sub_vals
     # solved_sub_values
     ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
+    ss_solve_blocks_in_place::Vector{ss_solve_block}
+    # Vector{Tuple{
+    #     Tuple{
+    #         Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
+    #         Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
+    #         }, 
+    #     Tuple{
+    #         Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
+    #         Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
+    #         }
+    #     }
+    # }
     # ss_solve_blocks_no_transform::Vector#{RuntimeGeneratedFunction}
     #ss_solve_blocks_optim::Vector#{RuntimeGeneratedFunction}
     # SS_init_guess::Vector{Real}
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func::Function
     SS_check_func::Function
-    ∂SS_equations_∂parameters::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
-    ∂SS_equations_∂SS_and_pars::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
+    ∂SS_equations_∂parameters::Tuple{AbstractMatrix{<: Real}, Function}
+    ∂SS_equations_∂SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
     # nonlinear_solution_helper
     SS_dependencies::Any
 
@@ -383,6 +407,16 @@ mutable struct ℳ
     calibration_equations_parameters::Vector{Symbol}
 
     bounds::Dict{Symbol,Tuple{Float64,Float64}}
+
+    jacobian::Tuple{AbstractMatrix{<: Real},Function}
+    jacobian_parameters::Tuple{AbstractMatrix{<: Real},Function}
+    jacobian_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
+    hessian::Tuple{AbstractMatrix{<: Real},Function}
+    hessian_parameters::Tuple{AbstractMatrix{<: Real},Function}
+    hessian_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
+    third_order_derivatives::Tuple{AbstractMatrix{<: Real},Function}
+    third_order_derivatives_parameters::Tuple{AbstractMatrix{<: Real},Function}
+    third_order_derivatives_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
 
     # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
     model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}

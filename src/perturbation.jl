@@ -16,7 +16,7 @@ function calculate_first_order_solution(∇₁::Matrix{R};
 
     future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
     past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
-  
+ 
     Ir = ℒ.I(length(comb))
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
@@ -597,7 +597,7 @@ function rrule(::typeof(calculate_second_order_solution),
     end
 
     # end # timeit_debug
-  
+
     # sp⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋t = choose_matrix_format(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋', density_threshold = 1.0)
 
     # sp𝐒₁₊╱𝟎t = choose_matrix_format(𝐒₁₊╱𝟎', density_threshold = 1.0)
@@ -641,7 +641,7 @@ function rrule(::typeof(calculate_second_order_solution),
                                                 𝕊ℂ = ℂ.sylvester_caches,
                                                 acceptance_tol = opts.tol.sylvester_acceptance_tol,
                                                 verbose = opts.verbose)
-       
+
         if !solved
             return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
@@ -1581,4 +1581,3 @@ function rrule(::typeof(calculate_third_order_solution),
 
     return (𝐒₃, solved), third_order_solution_pullback
 end
-

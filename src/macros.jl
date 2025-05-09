@@ -89,12 +89,12 @@ macro model(𝓂,ex...)
     solved_vals = []
     
     ss_solve_blocks = []
-    
+    ss_solve_blocks_in_place = ss_solve_block[]
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
     SS_check_func = x->x
-    ∂SS_equations_∂parameters = ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
-    ∂SS_equations_∂SS_and_pars = ([], Int[], zeros(1,1))
+    ∂SS_equations_∂parameters = (zeros(0,0), x->x) # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
+    ∂SS_equations_∂SS_and_pars = (zeros(0,0), x->x)  # ([], Int[], zeros(1,1))
     SS_dependencies = nothing
 
     original_equations = []
@@ -865,6 +865,7 @@ macro model(𝓂,ex...)
                         $solved_vals, 
 
                         $ss_solve_blocks,
+                        $ss_solve_blocks_in_place,
                         $NSSS_solver_cache,
                         $SS_solve_func,
                         $SS_check_func,
@@ -885,6 +886,16 @@ macro model(𝓂,ex...)
 
                         $bounds,
 
+                        (zeros(0,0), x->x), # jacobian
+                        (zeros(0,0), x->x), # jacobian_parameters
+                        (zeros(0,0), x->x), # jacobian_SS_and_pars
+                        (zeros(0,0), x->x), # hessian
+                        (zeros(0,0), x->x), # hessian_parameters
+                        (zeros(0,0), x->x), # hessian_SS_and_pars
+                        (zeros(0,0), x->x), # third_order_derivatives
+                        (zeros(0,0), x->x), # third_order_derivatives_parameters
+                        (zeros(0,0), x->x), # third_order_derivatives_SS_and_pars
+                        # (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
                         ([], Int[], zeros(1,1)), # model_jacobian
                         # x->x, # model_jacobian_parameters
@@ -924,7 +935,12 @@ macro model(𝓂,ex...)
                             1, 0.0, 2),
 
                             solver_parameters(0.29645150804713516, 0.15969019747689142, 0.2693496924553368, 0.0034970496426367293, 0.5008694464959978, 0.6699637884425756, 1.611285608601616, 0.6899397454094642, 0.029431947073776017, 0.3142583183135748, 0.42018256598233805, 0.06924215548968618, 0.7804883376691316, 0.06394988937558344, 0.15004023218157433, 1.1769307574775534, 1.262653860526411, 0.029216109042280492, 0.5838043687191993, -6.690519495126307, 
-                            1, 0.0, 2)
+                            1, 0.0, 2),
+
+                            solver_parameters(86.68744085399935, 44.356034936019704, 3.0248550511209418, 2.5434387875674105, 0.44177199922855287, 11.258039640546523, 59.1538457315958, 50.22390673260303, 45.699696761126376, 76.139237123852, 7.474593067106561, 95.69459863829196, 6.651922334973468, 18.01104269012316, 7.843038549255355, 42.350869207246724, 12.544216405091063, 64.54315767944557, 11.098496176990707, 0.7910630794135145, 
+                            1, 0.0, 2),
+
+                            solver_parameters(4.1784912636092235, 1.8166012668623566, 0.5168801279930487, 78.18194336881028, 2.139580134601701, 0.4617967010780055, 33.95219683424897, 17.315839925955242, 2.220446049250313e-16, 12.287343174930065, 2.220446049250313e-16, 6.185479065850274, 88.3014875814592, 36.31304631280673, 5.262437586106421, 2.220446049250313e-16, 2.220446049250313e-16, 6.347784900438273, 0.7130503478600859, 0.6594888633818169, 1, 0.0, 2)
                         ],
 
                         solution(
@@ -938,7 +954,7 @@ macro model(𝓂,ex...)
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 3rd order sol
                                             auxilliary_indices(Int[],Int[],Int[],Int[],Int[]),
                                             second_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
-                                            third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
+                                            third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
                             ),
                             Float64[], 
                             # Set([:first_order]),
@@ -1502,27 +1518,6 @@ macro parameters(𝓂,ex...)
 
         start_time = time()
 
-        if !$silent
-            if $perturbation_order == 1
-                print("Take symbolic derivatives up to first order:\t\t\t\t")
-            elseif $perturbation_order == 2
-                print("Take symbolic derivatives up to second order:\t\t\t\t")
-            elseif $perturbation_order == 3
-                print("Take symbolic derivatives up to third order:\t\t\t\t")
-            end
-        end
-
-        # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, $perturbation_order)
-
-        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-        
-        if !$silent
-            println(round(time() - start_time, digits = 3), " seconds")
-        end
-
-        start_time = time()
-
         mod.$𝓂.solution.functions_written = true
 
         opts = merge_calculation_options(verbose = $verbose)
@@ -1557,6 +1552,30 @@ macro parameters(𝓂,ex...)
 
             mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
             mod.$𝓂.solution.outdated_NSSS = false
+        end
+
+
+        start_time = time()
+
+        if !$silent
+            if $perturbation_order == 1
+                print("Take symbolic derivatives up to first order:\t\t\t\t")
+            elseif $perturbation_order == 2
+                print("Take symbolic derivatives up to second order:\t\t\t\t")
+            elseif $perturbation_order == 3
+                print("Take symbolic derivatives up to third order:\t\t\t\t")
+            end
+        end
+
+        write_auxilliary_indices!(mod.$𝓂)
+
+        # time_dynamic_derivs = @elapsed 
+        write_functions_mapping!(mod.$𝓂, $perturbation_order)
+
+        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        
+        if !$silent
+            println(round(time() - start_time, digits = 3), " seconds")
         end
 
         if !$silent Base.show(mod.$𝓂) end

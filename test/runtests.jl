@@ -515,8 +515,8 @@ if test_set == "basic"
         init[2] *= 1.5
         get_irf(m, initial_state = init, shocks = :none)
 
-        plot_irf(m, initial_state = init, shocks = :none)
-        @test true
+        plots = plot_irf(m, initial_state = init, shocks = :none)
+        @test plots[1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
     end
     m = nothing
 
@@ -2510,8 +2510,8 @@ if test_set == "basic"
             # 0 < y < 10
             # 0 < c < 10
         end
-        plot_irf(RBC_CME)
-        @test true
+        plots = plot_irf(RBC_CME)
+        @test plots[1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
 
         RBC_CME = nothing
     end
