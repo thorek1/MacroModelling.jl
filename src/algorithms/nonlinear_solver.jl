@@ -66,12 +66,15 @@ function levenberg_marquardt(
     factor = similar(current_guess)
     # ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
     ∇ = fnj.jac_buffer
-    ∇̂ = similar(∇)
+    # ∇̂ = similar(fnj.jac_buffer)
+    ∇̄ = similar(fnj.jac_buffer)
 
-    if ∇ isa SparseMatrixCSC
-        prob = 𝒮.LinearProblem(∇, guess_update, 𝒮.UMFPACKFactorization())
+    ∇̂ = choose_matrix_format(∇' * ∇, multithreaded = false)
+    
+    if ∇̂ isa SparseMatrixCSC
+        prob = 𝒮.LinearProblem(∇̂, guess_update, 𝒮.UMFPACKFactorization())
     else
-        prob = 𝒮.LinearProblem(∇, guess_update)#, 𝒮.CholeskyFactorization)
+        prob = 𝒮.LinearProblem(∇̂, guess_update)#, 𝒮.CholeskyFactorization)
     end
 
     sol_cache = 𝒮.init(prob)
@@ -107,7 +110,21 @@ function levenberg_marquardt(
         # 𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
 
         if transformation_level > 0
-            ∇ .*= factor'
+            if ∇ isa SparseMatrixCSC
+                # ∇̄ = ∇ .* factor'
+                copy!(∇̄.nzval, ∇.nzval)
+                @inbounds for j in 1:size(∇, 2)
+                    col_start = ∇̄.colptr[j]
+                    col_end = ∇̄.colptr[j+1] - 1
+                    for k in col_start:col_end
+                        ∇̄.nzval[k] *= factor[j]
+                    end
+                end
+            else
+                # ℒ.mul!(∇̄, ∇, factor')
+                @. ∇̄ = ∇ * factor'
+                # ∇ .*= factor'
+            end
         end
 
         grad_iter += 1
@@ -115,7 +132,11 @@ function levenberg_marquardt(
         previous_guess .= current_guess
 
         # ∇̂ .= ∇' * ∇
-        ℒ.mul!(∇̂, ∇', ∇)
+        if ∇̄ isa SparseMatrixCSC && ∇̂ isa SparseMatrixCSC
+            ∇̂ = ∇̄' * ∇̄
+        else
+            ℒ.mul!(∇̂, ∇̄', ∇̄)
+        end
 
         fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
 
@@ -137,7 +158,7 @@ function levenberg_marquardt(
 
         fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
 
-        ℒ.mul!(guess_update, ∇', fnj.func_buffer)
+        ℒ.mul!(guess_update, ∇̄', fnj.func_buffer)
 
         sol_cache.A = ∇̂
         sol_cache.b = guess_update
@@ -182,7 +203,7 @@ function levenberg_marquardt(
         guess_update .= current_guess - previous_guess
         fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars, transformation_level)
 
-        g = fnj.func_buffer' * ∇ * guess_update
+        g = fnj.func_buffer' * ∇̄ * guess_update
         # g = f̂(previous_guess)' * ∇ * guess_update
         U = sum(abs2,guess_update)
         func_iter += 1
@@ -323,6 +344,15 @@ function newton(
     # new_residuals = f(new_guess)
 
     ∇ = fnj.jac_buffer
+
+    if ∇ isa SparseMatrixCSC
+        prob = 𝒮.LinearProblem(∇, new_guess, 𝒮.UMFPACKFactorization())
+    else
+        prob = 𝒮.LinearProblem(∇, new_guess)#, 𝒮.CholeskyFactorization)
+    end
+
+    sol_cache = 𝒮.init(prob)
+
     # ∇ = Array{T,2}(undef, length(new_guess), length(new_guess))
 
     # prep = 𝒟.prepare_jacobian(f, backend, new_guess)
@@ -368,10 +398,15 @@ function newton(
 
             new_residuals_norm = ℒ.norm(new_residuals)
         
-            ∇̂ = ℒ.lu(∇, check = false)
+            sol_cache.A = ∇
+            sol_cache.b = new_residuals
+            𝒮.solve!(sol_cache)
+            copy!(new_residuals, sol_cache.u)
+            
+            # ∇̂ = ℒ.lu(∇, check = false)
             # ∇̂ = ℒ.lu!(∇, check = false)
         
-            ℒ.ldiv!(∇̂, new_residuals)
+            # ℒ.ldiv!(∇̂, new_residuals)
 
             guess_update = new_residuals
     

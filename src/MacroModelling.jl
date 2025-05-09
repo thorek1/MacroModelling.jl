@@ -2622,7 +2622,7 @@ function write_block_solution!(𝓂,
                                 cse = true,
                                 skipzeros = true, 
                                 density_threshold::Float64 = .1,
-                                min_length::Int = 50000)
+                                min_length::Int = 10000)
 
     # ➕_vars = Symbol[]
     unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
