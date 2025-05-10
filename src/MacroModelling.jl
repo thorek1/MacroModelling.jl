@@ -2754,49 +2754,88 @@ function write_block_solution!(𝓂,
         iii += 1
     end
 
-    # solved_vals[end] = Expr(:call, :+, solved_vals[end], ss_and_aux_equations_error_dep...)
+    parameters_and_solved_vars = vcat(calib_pars_input, other_vrs)
 
-    funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
-            $(guess...) 
-            $(calib_pars...) # add those variables which were previously solved and are used in the equations
-            $(other_vars...) # take only those that appear in equations - DONE
+    ng = length(sorted_vars)
+    np = length(parameters_and_solved_vars)
+    nd = length(ss_and_aux_equations_dep)
+    nx = iii - 1
 
-            $(ss_and_aux_equations_dep...)
-            return [$(solved_vals...)]
-        end)
+    aux_vars = Symbol[]
+    aux_expr = []
+
+    for eq in ss_and_aux_equations_dep
+        push!(aux_vars, eq.args[1])
+        push!(aux_expr, (eq.args[2]))
+    end
+
+    Symbolics.@variables 𝔊[1:ng] 𝔓[1:np] 𝔇[1:nd]
 
 
-    in_place_funcs = :(function block(ℰ::Vector, guess::Vector, parameters_and_solved_vars::Vector, transformation_level::Int)
-            # $(untransformed_guess...) 
-            $(guess...) 
-            $(calib_pars...) # add those variables which were previously solved and are used in the equations
-            $(other_vars...) # take only those that appear in equations - DONE
+    parameter_dict = Dict{Symbol, Expr}()
 
-            $(ss_and_aux_equations_dep...)
-            @inbounds begin
-                $(solved_vals_in_place...)
-            end
-            return nothing
-        end)
+    for (i,v) in enumerate(sorted_vars)
+        push!(parameter_dict, v => :(𝔊[$i]))
+    end
 
-    nx = length(sorted_vars)
+    for (i,v) in enumerate(parameters_and_solved_vars)
+        push!(parameter_dict, v => :(𝔓[$i]))
+    end
 
-    np = iii - 1
+    for (i,v) in enumerate(aux_vars)
+        push!(parameter_dict, v => :(𝔇[$i]))
+    end
 
-    nϵˢ = length(rewritten_eqs)
 
-    ϵ = zeros(nϵˢ)
-    
-    calc_block! = @RuntimeGeneratedFunction(in_place_funcs)
 
-    Symbolics.@variables 𝔛¹[1:nx] 𝔓¹[1:np] tl
+    replaced_aux_expr = replace_symbols(aux_expr, parameter_dict)
 
-    ϵˢ = zeros(Symbolics.Num, nϵˢ)
 
-    # Evaluate the function symbolically
-    calc_block!(ϵˢ, 𝔛¹, 𝔓¹, tl)
+    lennz = length(replaced_aux_expr)
 
-    ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢ, 𝔛¹) # nϵ x nx
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, calc_block_aux! = Symbolics.build_function(replaced_aux_expr, 𝔊, 𝔓,
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                parallel = parallel,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+
+    replaced_solved_vals = replace_symbols(solved_vals, parameter_dict)
+
+    lennz = length(replaced_solved_vals)
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓, 𝔇,
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    𝐷 = zeros(Symbolics.Num, nd)
+
+    ϵᵃ = zeros(nd)
+
+    calc_block_aux!(𝐷, 𝔊, 𝔓)
+
+    ϵˢ = zeros(Symbolics.Num, ng)
+
+    ϵ = zeros(ng)
+
+    calc_block!(ϵˢ, 𝔊, 𝔓, 𝐷)
+
+    ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢ, 𝔊) # nϵ x nx
 
     lennz = nnz(∂block_∂parameters_and_solved_vars)
 
@@ -2815,7 +2854,7 @@ function write_block_solution!(𝓂,
         parallel = Symbolics.SerialForm()
     end
     
-    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, tl,
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔊, 𝔓,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
@@ -2823,46 +2862,31 @@ function write_block_solution!(𝓂,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
 
+    Symbolics.@variables 𝔊[1:ng+nx]
+
     ext_diff = Expr[]
-    for i in 1:iii-1
-        push!(ext_diff, :(ℰ[$(length(rewritten_eqs) + i)] = parameters_and_solved_vars[$i] - guess[$(length(rewritten_eqs) + i)]
+    for i in 1:nx
+        push!(ext_diff, :(𝔓[$i] - 𝔊[$(ng + i)]
         ))
     end
 
-    ext_in_place_funcs = :(function block(ℰ::Vector, guess::Vector, parameters_and_solved_vars::Vector, transformation_level::Int)
-            # $(untransformed_guess...) 
-            $(guess...) 
-            $(calib_pars...) # add those variables which were previously solved and are used in the equations
-            $(other_vars...) # take only those that appear in equations - DONE
+    _, calc_ext_block! = Symbolics.build_function(vcat(replaced_solved_vals, ext_diff), 𝔊, 𝔓, 𝔇,
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
 
-            $(ss_and_aux_equations_dep...)
-            @inbounds begin
-                $(solved_vals_in_place...)
-                $(ext_diff...)
-            end
-            
-            return nothing
-        end)
-
-    np = length(sorted_vars)
-
-    nx = iii - 1
-
-    nϵˢᵉ = length(rewritten_eqs) + nx
+    ϵᵉ = zeros(ng + nx)
     
+    ϵˢᵉ = zeros(Symbolics.Num, ng + nx)
 
-    ϵᵉ = zeros(nϵˢᵉ)
-    
-    calc_ext_block! = @RuntimeGeneratedFunction(ext_in_place_funcs)
-
-    Symbolics.@variables 𝔛¹ᵉ[1:np+nx] 
-
-    ϵˢᵉ = zeros(Symbolics.Num, nϵˢᵉ)
+    calc_block_aux!(𝐷, 𝔊, 𝔓)
 
     # Evaluate the function symbolically
-    calc_ext_block!(ϵˢᵉ, 𝔛¹ᵉ, 𝔓¹, tl)
+    calc_ext_block!(ϵˢᵉ, 𝔊, 𝔓, 𝐷)
 
-    ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢᵉ, 𝔛¹ᵉ) # nϵ x nx
+    ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢᵉ, 𝔊) # nϵ x nx
 
     lennz = nnz(∂ext_block_∂parameters_and_solved_vars)
 
@@ -2881,14 +2905,14 @@ function write_block_solution!(𝓂,
         parallel = Symbolics.SerialForm()
     end
     
-    _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝔛¹ᵉ, 𝔓¹, tl,
+    _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝔊, 𝔓,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-
+    
     push!(NSSS_solver_cache_init_tmp, [haskey(𝓂.guess, v) ? 𝓂.guess[v] : Inf for v in sorted_vars])
     push!(NSSS_solver_cache_init_tmp, [Inf])
 
@@ -2950,12 +2974,12 @@ function write_block_solution!(𝓂,
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
-    push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
+    # push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
 
     
     push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
-            function_and_jacobian(calc_block!, ϵ, func_exprs::Function, buffer),
-            function_and_jacobian(calc_ext_block!, ϵᵉ, ext_func_exprs::Function, ext_buffer)
+            function_and_jacobian(calc_block!, calc_block_aux!, ϵ, ϵᵃ, func_exprs::Function, buffer),
+            function_and_jacobian(calc_ext_block!, calc_block_aux!, ϵᵉ, ϵᵃ, ext_func_exprs::Function, ext_buffer)
         )
     )
     
@@ -4612,7 +4636,9 @@ function solve_ss(SS_optimizer::Function,
 
     # max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
 
-    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, sol_values, parameters_and_solved_vars, 0)
+    SS_solve_block.ss_problem.func_aux(SS_solve_block.ss_problem.func_aux_buffer, sol_values, parameters_and_solved_vars)
+    
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, sol_values, parameters_and_solved_vars, SS_solve_block.ss_problem.func_aux_buffer)
     
     max_resid = maximum(abs, SS_solve_block.ss_problem.func_buffer)
 
@@ -4657,7 +4683,9 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
     # res = ss_solve_blocks(parameters_and_solved_vars, guess)
 
-    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars, 0) # TODO: make the block a struct
+    SS_solve_block.ss_problem.func_aux(SS_solve_block.ss_problem.func_aux_buffer, guess, parameters_and_solved_vars)
+
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars, SS_solve_block.ss_problem.func_aux_buffer) # TODO: make the block a struct
     # TODO: do the function creation with Symbolics as this will solve the compilation bottleneck for large functions
 
     res = SS_solve_block.ss_problem.func_buffer
@@ -4670,7 +4698,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
             # ∇̂ = ℒ.lu!(∇, check = false)
 
-            SS_solve_block.ss_problem.jac(SS_solve_block.ss_problem.jac_buffer, guess, parameters_and_solved_vars, 0)
+            SS_solve_block.ss_problem.jac(SS_solve_block.ss_problem.jac_buffer, guess, parameters_and_solved_vars)
 
             ∇ = SS_solve_block.ss_problem.jac_buffer
 
@@ -7147,7 +7175,7 @@ function calculate_jacobian(parameters::Vector{M},
     else
         jac_buffer = 𝓂.jacobian[1]
     end
-
+    
     𝓂.jacobian[2](jac_buffer, parameters, SS_and_pars)
     
     return jac_buffer
