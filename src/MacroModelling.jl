@@ -48,6 +48,8 @@ import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
 import DataStructures: CircularBuffer
+import MacroTools: unblock, postwalk, @capture, flatten
+
 # import SpeedMapping: speedmapping
 import Suppressor: @suppress
 import REPL
@@ -198,7 +200,14 @@ function dnorm(p::T)::T where T <: Number
     normpdf(p) 
 end
 
-
+Symbolics.@register_symbolic norminvcdf(x)
+Symbolics.@register_symbolic norminv(x)
+Symbolics.@register_symbolic qnorm(x)
+Symbolics.@register_symbolic normlogpdf(x)
+Symbolics.@register_symbolic normpdf(x)
+Symbolics.@register_symbolic normcdf(x)
+Symbolics.@register_symbolic pnorm(x)
+Symbolics.@register_symbolic dnorm(x)
 
 
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
@@ -2810,6 +2819,7 @@ function write_block_solution!(𝓂,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
+                                                expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
 
@@ -2875,6 +2885,7 @@ function write_block_solution!(𝓂,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
+                                                expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
 
@@ -3358,33 +3369,94 @@ function make_equation_robust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
 end
 
 
+function replace_symbols(exprs::Union{Vector{Any}, Vector{Expr}}, remap::Dict{Symbol,Expr})
+    [ postwalk(ex) do node
+          if node isa Symbol && haskey(remap, node)
+              remap[node]
+          else
+              node
+          end
+      end for ex in exprs ]
+end
 
 
-function write_ss_check_function!(𝓂::ℳ)
-    # vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
-
+function write_ss_check_function!(𝓂::ℳ; cse = true, skipzeros = true)
     unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
-    pars = Expr[]
-    for (i, p) in enumerate(𝓂.parameters)
-        push!(pars, :($p = parameters[$i]))
+    calib_vars = Symbol[]
+    calib_expr = []
+
+    for eq in 𝓂.calibration_equations_no_var
+        push!(calib_vars, eq.args[1])
+        push!(calib_expr, (eq.args[2]))
     end
 
-    unknwns = Expr[]
-    for (i, u) in enumerate(unknowns)
-        push!(unknwns, :($u = unknowns[$i]))
+    np = length(𝓂.parameters)
+    nu = length(unknowns)
+    nc = length(calib_expr)
+
+    Symbolics.@variables 𝔓[1:np] 𝔘[1:nu] ℭ[1:nc]
+
+    parameter_dict = Dict{Symbol, Expr}()
+
+    for (i,v) in enumerate(𝓂.parameters)
+        push!(parameter_dict, v => :(𝔓[$i]))
     end
 
-    solve_exp = :(function solve_SS(parameters::Vector{Real}, unknowns::Vector{Real})
-        $(pars...)
-        $(𝓂.calibration_equations_no_var...)
-        $(unknwns...)
-        return [$(ss_equations...)]
-    end)
+    for (i,v) in enumerate(unknowns)
+        push!(parameter_dict, v => :(𝔘[$i]))
+    end
 
-    𝓂.SS_check_func = @RuntimeGeneratedFunction(solve_exp)
+    for (i,v) in enumerate(calib_vars)
+        push!(parameter_dict, v => :(ℭ[$i]))
+    end
+
+    replaced_calib_expr = replace_symbols(calib_expr, parameter_dict)
+
+    # replaced_calib_expr = Symbolics.parse_expr_to_symbolic.(replaced_calib_expr, (@__MODULE__,)) 
+
+
+    lennz = length(replaced_calib_expr)
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, calib_func_exprs = Symbolics.build_function(replaced_calib_expr, 𝔓,
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    𝓂.SS_calib_func = calib_func_exprs
+
+
+    replaced_ss_equations = replace_symbols(ss_equations, parameter_dict)
+
+    # replaced_ss_equations = Symbolics.parse_expr_to_symbolic.(replaced_ss_equations, (@__MODULE__,)) 
+
+    lennz = length(replaced_ss_equations)
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, func_exprs = Symbolics.build_function(replaced_ss_equations, 𝔓, 𝔘, ℭ,
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+
+    𝓂.SS_check_func = func_exprs
 
     return nothing
 end
@@ -4042,6 +4114,7 @@ function solve_steady_state!(𝓂::ℳ;
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
+                                                expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
 
@@ -4107,6 +4180,7 @@ function solve_steady_state!(𝓂::ℳ;
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
+                                                expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
 
@@ -6358,6 +6432,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                             cse = cse, 
                                             skipzeros = skipzeros, 
                                             parallel = parallel,
+                                            expression_module = @__MODULE__,
                                             expression = Val(false))::Tuple{<:Function, <:Function}
 
     # func = @RuntimeGeneratedFunction(func_exprs[2])
@@ -6387,6 +6462,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
+                                                        expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
     𝓂.jacobian_parameters =  buffer_parameters, func_∇₁_parameters
@@ -6415,6 +6491,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
+                                                        expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
     𝓂.jacobian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars
@@ -6491,6 +6568,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
                                                     parallel = parallel,
+                                                    expression_module = @__MODULE__,
                                                     expression = Val(false))::Tuple{<:Function, <:Function}
 
         𝓂.∂SS_equations_∂parameters = buffer, func_exprs
@@ -6520,6 +6598,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
                                                     parallel = parallel,
+                                                    expression_module = @__MODULE__,
                                                     expression = Val(false))::Tuple{<:Function, <:Function}
 
         𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs
@@ -6553,6 +6632,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
+                                                        expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.hessian = buffer, func_exprs
@@ -6581,6 +6661,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
+                                                                expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.hessian_parameters =  buffer_parameters, func_∇₂_parameters
@@ -6609,6 +6690,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
+                                                                expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.hessian_SS_and_pars = buffer_SS_and_pars, func_∇₂_SS_and_pars
@@ -6645,6 +6727,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
+                                                        expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.third_order_derivatives = buffer, func_exprs
@@ -6673,6 +6756,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
+                                                                expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters
@@ -6701,6 +6785,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
+                                                                expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
             𝓂.third_order_derivatives_SS_and_pars = buffer_SS_and_pars, func_∇₃_SS_and_pars

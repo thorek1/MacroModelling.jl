@@ -1,6 +1,3 @@
-
-import MacroTools: unblock, postwalk, @capture, flatten
-
 const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
 
@@ -92,6 +89,7 @@ macro model(𝓂,ex...)
     ss_solve_blocks_in_place = ss_solve_block[]
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
+    SS_calib_func = x->x
     SS_check_func = x->x
     ∂SS_equations_∂parameters = (zeros(0,0), x->x) # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
     ∂SS_equations_∂SS_and_pars = (zeros(0,0), x->x)  # ([], Int[], zeros(1,1))
@@ -868,6 +866,7 @@ macro model(𝓂,ex...)
                         $ss_solve_blocks_in_place,
                         $NSSS_solver_cache,
                         $SS_solve_func,
+                        $SS_calib_func,
                         $SS_check_func,
                         $∂SS_equations_∂parameters,
                         $∂SS_equations_∂SS_and_pars,
