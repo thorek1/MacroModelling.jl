@@ -2780,14 +2780,14 @@ function write_block_solution!(𝓂,
     
     calc_block! = @RuntimeGeneratedFunction(in_place_funcs)
 
-    Symbolics.@variables 𝒳¹[1:nx] 𝒫¹[1:np] tl
+    Symbolics.@variables 𝔛¹[1:nx] 𝔓¹[1:np] tl
 
     ϵˢ = zeros(Symbolics.Num, nϵˢ)
 
     # Evaluate the function symbolically
-    calc_block!(ϵˢ, 𝒳¹, 𝒫¹, tl)
+    calc_block!(ϵˢ, 𝔛¹, 𝔓¹, tl)
 
-    ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢ, 𝒳¹) # nϵ x nx
+    ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢ, 𝔛¹) # nϵ x nx
 
     lennz = nnz(∂block_∂parameters_and_solved_vars)
 
@@ -2806,7 +2806,7 @@ function write_block_solution!(𝓂,
         parallel = Symbolics.SerialForm()
     end
     
-    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, tl,
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, tl,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
@@ -2845,14 +2845,14 @@ function write_block_solution!(𝓂,
     
     calc_ext_block! = @RuntimeGeneratedFunction(ext_in_place_funcs)
 
-    Symbolics.@variables 𝒳¹ᵉ[1:np+nx] 
+    Symbolics.@variables 𝔛¹ᵉ[1:np+nx] 
 
     ϵˢᵉ = zeros(Symbolics.Num, nϵˢᵉ)
 
     # Evaluate the function symbolically
-    calc_ext_block!(ϵˢᵉ, 𝒳¹ᵉ, 𝒫¹, tl)
+    calc_ext_block!(ϵˢᵉ, 𝔛¹ᵉ, 𝔓¹, tl)
 
-    ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢᵉ, 𝒳¹ᵉ) # nϵ x nx
+    ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢᵉ, 𝔛¹ᵉ) # nϵ x nx
 
     lennz = nnz(∂ext_block_∂parameters_and_solved_vars)
 
@@ -2871,7 +2871,7 @@ function write_block_solution!(𝓂,
         parallel = Symbolics.SerialForm()
     end
     
-    _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝒳¹ᵉ, 𝒫¹, tl,
+    _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝔛¹ᵉ, 𝔓¹, tl,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
@@ -4012,14 +4012,14 @@ function solve_steady_state!(𝓂::ℳ;
 
         calc_block! = @RuntimeGeneratedFunction(in_place_funcs)
 
-        Symbolics.@variables 𝒳¹[1:nx] 𝒫¹[1:np] tl
+        Symbolics.@variables 𝔛¹[1:nx] 𝔓¹[1:np] tl
 
         ϵˢ = zeros(Symbolics.Num, nϵˢ)
 
         # Evaluate the function symbolically
-        calc_block!(ϵˢ, 𝒳¹, 𝒫¹, tl)
+        calc_block!(ϵˢ, 𝔛¹, 𝔓¹, tl)
 
-        ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢ, 𝒳¹) # nϵ x nx
+        ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢ, 𝔛¹) # nϵ x nx
 
         lennz = nnz(∂block_∂parameters_and_solved_vars)
 
@@ -4038,7 +4038,7 @@ function solve_steady_state!(𝓂::ℳ;
             parallel = Symbolics.SerialForm()
         end
 
-        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, tl,
+        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, tl,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
@@ -4077,14 +4077,14 @@ function solve_steady_state!(𝓂::ℳ;
 
         calc_ext_block! = @RuntimeGeneratedFunction(ext_in_place_funcs)
 
-        Symbolics.@variables 𝒳¹ᵉ[1:np+nx] 
+        Symbolics.@variables 𝔛¹ᵉ[1:np+nx] 
 
         ϵˢᵉ = zeros(Symbolics.Num, nϵˢᵉ)
 
         # Evaluate the function symbolically
-        calc_ext_block!(ϵˢᵉ, 𝒳¹ᵉ, 𝒫¹, tl)
+        calc_ext_block!(ϵˢᵉ, 𝔛¹ᵉ, 𝔓¹, tl)
 
-        ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢᵉ, 𝒳¹ᵉ) # nϵ x nx
+        ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢᵉ, 𝔛¹ᵉ) # nϵ x nx
 
         lennz = nnz(∂ext_block_∂parameters_and_solved_vars)
 
@@ -4103,7 +4103,7 @@ function solve_steady_state!(𝓂::ℳ;
             parallel = Symbolics.SerialForm()
         end
 
-        _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝒳¹ᵉ, 𝒫¹, tl,
+        _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝔛¹ᵉ, 𝔓¹, tl,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
@@ -5887,17 +5887,17 @@ end
 
 function take_nth_order_derivatives(
     f!::Function,
-    𝒳ᵈ::Vector{Symbolics.Num},
-    𝒫ᵈ::Vector{Symbolics.Num},
-    𝒳ˢ::Vector{Symbolics.Num},
-    𝒫ˢ::Vector{Symbolics.Num},
+    𝔛ᵈ::Vector{Symbolics.Num},
+    𝔓ᵈ::Vector{Symbolics.Num},
+    𝔛ˢ::Vector{Symbolics.Num},
+    𝔓ˢ::Vector{Symbolics.Num},
     nϵ::Int;
     max_perturbation_order::Int = 1,
     output_compressed::Bool = true # Controls compression for X derivatives (order >= 2)
 )::Vector{Tuple{SparseMatrixCSC{Symbolics.Num, Int}, SparseMatrixCSC{Symbolics.Num, Int}}}#, Tuple{Symbolics.Arr{Symbolics.Num, 1}, Symbolics.Arr{Symbolics.Num, 1}}}
 
-    nx = length(𝒳ᵈ)
-    np = length(𝒳ˢ) + length(𝒫ˢ)
+    nx = length(𝔛ᵈ)
+    np = length(𝔛ˢ) + length(𝔓ˢ)
 
     if max_perturbation_order < 1
         throw(ArgumentError("max_perturbation_order must be at least 1"))
@@ -5905,26 +5905,26 @@ function take_nth_order_derivatives(
 
     ϵˢ = zeros(Symbolics.Num, nϵ)
 
-    Symbolics.@variables 𝒳𝒳[1:length(𝒳ᵈ)]
+    Symbolics.@variables 𝔛𝔛[1:length(𝔛ᵈ)]
 
     # Evaluate the function symbolically
-    f!(ϵˢ, 𝒳𝒳, 𝒫ᵈ)
+    f!(ϵˢ, 𝔛𝔛, 𝔓ᵈ)
 
     results = [] # To store pairs of sparse matrices (X_matrix, P_matrix) for each order
 
     # --- Order 1 ---
     # Compute the 1st order derivative with respect to X (Jacobian)
-    spX_order_1 = Symbolics.sparsejacobian(ϵˢ, 𝒳𝒳) # nϵ x nx
+    spX_order_1 = Symbolics.sparsejacobian(ϵˢ, 𝔛𝔛) # nϵ x nx
 
 
     spX_order_1_sub = copy(spX_order_1)
 
-    # spX_order_1_sub.nzval .= Symbolics.fast_substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝒳𝒳) .=> 𝒳ᵈ))
-    spX_order_1_sub.nzval .= Symbolics.substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝒳𝒳) .=> 𝒳ᵈ))
+    # spX_order_1_sub.nzval .= Symbolics.fast_substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝔛𝔛) .=> 𝔛ᵈ))
+    spX_order_1_sub.nzval .= Symbolics.substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝔛𝔛) .=> 𝔛ᵈ))
 
     # Compute the derivative of the non-zeros of the 1st X-derivative w.r.t. P
     # This is an intermediate step. The final P matrix will be built from this.
-    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1_sub.nzval, vcat(𝒫ˢ, 𝒳ˢ)) # nnz(spX_order_1) x np
+    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1_sub.nzval, vcat(𝔓ˢ, 𝔛ˢ)) # nnz(spX_order_1) x np
 
     # Determine dimensions for the Order 1 P matrix
     X_nrows_1 = nϵ
@@ -5998,14 +5998,14 @@ function take_nth_order_derivatives(
         # --- Iterate for orders n = 2, 3, ..., max_perturbation_order ---
         for n = 2:max_perturbation_order
 
-            # Compute the Jacobian of the previous level's nzval w.r.t. 𝒳
+            # Compute the Jacobian of the previous level's nzval w.r.t. 𝔛
             # This gives a flat matrix where rows correspond to non-zeros from order n-1 X-matrix
             # and columns correspond to the n-th variable we differentiate by (x_vn).
-            sp_flat_curr_X_rn = Symbolics.sparsejacobian(nzvals_prev, 𝒳𝒳) # nnz(spX_order_(n-1)) x nx
+            sp_flat_curr_X_rn = Symbolics.sparsejacobian(nzvals_prev, 𝔛𝔛) # nnz(spX_order_(n-1)) x nx
 
             sp_flat_curr_X = copy(sp_flat_curr_X_rn)
 
-            sp_flat_curr_X.nzval .= Symbolics.substitute(sp_flat_curr_X.nzval, Dict(Symbolics.scalarize(𝒳𝒳) .=> 𝒳ᵈ))
+            sp_flat_curr_X.nzval .= Symbolics.substitute(sp_flat_curr_X.nzval, Dict(Symbolics.scalarize(𝔛𝔛) .=> 𝔛ᵈ))
 
             # Build the nz_to_indices map for the *current* level (order n)
             # Map: linear index in sp_flat_curr_X.nzval -> (original_row_f, (v_1, ..., v_n))
@@ -6139,10 +6139,10 @@ function take_nth_order_derivatives(
 
 
             # --- Compute the P-derivative sparse matrix for order n ---
-            # This is the Jacobian of the nzval of the intermediate flat X-Jacobian (sp_flat_curr_X) w.r.t. 𝒫.
+            # This is the Jacobian of the nzval of the intermediate flat X-Jacobian (sp_flat_curr_X) w.r.t. 𝔓.
             # sp_flat_curr_X.nzval contains expressions for d^n f_i / (dx_v1 ... dx_vn) for all
             # non-zero such values that were propagated from the previous step.
-            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, vcat(𝒫ˢ, 𝒳ˢ)) # nnz(sp_flat_curr_X) x np
+            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, vcat(𝔓ˢ, 𝔛ˢ)) # nnz(sp_flat_curr_X) x np
             
             # Determine the desired dimensions of spP_order_n
             # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
@@ -6227,7 +6227,7 @@ function take_nth_order_derivatives(
         end # End of loop for orders n = 2 to max_perturbation_order
     end
 
-    return results #, (𝒳, 𝒫) # Return results as a tuple of (X_matrix, P_matrix) pairs
+    return results #, (𝔛, 𝔓) # Return results as a tuple of (X_matrix, P_matrix) pairs
 end
 
 
@@ -6313,26 +6313,26 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         
     nϵ = length(𝓂.dyn_equations)
 
-    Symbolics.@variables 𝒳[1:nx] 𝒫[1:np] # ε[1:nε]
+    Symbolics.@variables 𝔛[1:nx] 𝔓[1:np] # ε[1:nε]
 
-    𝒳ˢ = Symbolics.scalarize(𝒳)
-    𝒫ˢ = Symbolics.scalarize(𝒫)
+    𝔛ˢ = Symbolics.scalarize(𝔛)
+    𝔓ˢ = Symbolics.scalarize(𝔓)
     εˢ = zeros(nε)
 
     ϵˢ = zeros(Symbolics.Num, nϵ)
 
-    SS = 𝒳ˢ[1:end - length(𝓂.calibration_equations)]
-    par = vcat(𝒫ˢ, 𝒳ˢ[(end - length(𝓂.calibration_equations)+1):end])
+    SS = 𝔛ˢ[1:end - length(𝓂.calibration_equations)]
+    par = vcat(𝔓ˢ, 𝔛ˢ[(end - length(𝓂.calibration_equations)+1):end])
 
     dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
     dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
     dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
     dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
 
-    𝒳ᵈ = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],εˢ)
-    𝒫ᵈ = vcat(par, SS[dyn_ss_idx])
+    𝔛ᵈ = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],εˢ)
+    𝔓ᵈ = vcat(par, SS[dyn_ss_idx])
 
-    derivatives = take_nth_order_derivatives(calc!, 𝒳ᵈ, 𝒫ᵈ, 𝒳ˢ, 𝒫ˢ, nϵ; max_perturbation_order = min(max_perturbation_order,2), output_compressed = false)
+    derivatives = take_nth_order_derivatives(calc!, 𝔛ᵈ, 𝔓ᵈ, 𝔛ˢ, 𝔓ˢ, nϵ; max_perturbation_order = min(max_perturbation_order,2), output_compressed = false)
 
 
     ∇₁_dyn = derivatives[1][1]
@@ -6354,7 +6354,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         parallel = Symbolics.SerialForm()
     end
 
-    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓ˢ, 𝔛ˢ, 
                                             cse = cse, 
                                             skipzeros = skipzeros, 
                                             parallel = parallel,
@@ -6364,7 +6364,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     𝓂.jacobian = buffer, func_exprs
 
 
-    ∇₁_parameters = derivatives[1][2][:,1:length(𝒫ˢ)]
+    ∇₁_parameters = derivatives[1][2][:,1:length(𝔓ˢ)]
 
     lennz = nnz(∇₁_parameters)
 
@@ -6383,7 +6383,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         parallel = Symbolics.SerialForm()
     end
 
-    _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
+    _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝔓ˢ, 𝔛ˢ, 
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
@@ -6392,7 +6392,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     𝓂.jacobian_parameters =  buffer_parameters, func_∇₁_parameters
  
 
-    ∇₁_SS_and_pars = derivatives[1][2][:,length(𝒫ˢ)+1:end]
+    ∇₁_SS_and_pars = derivatives[1][2][:,length(𝔓ˢ)+1:end]
 
     lennz = nnz(∇₁_SS_and_pars)
 
@@ -6411,7 +6411,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         parallel = Symbolics.SerialForm()
     end
 
-    _, func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
+    _, func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝔓ˢ, 𝔛ˢ, 
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
@@ -6461,14 +6461,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
         nϵˢ = length(eqs)
 
-        Symbolics.@variables 𝒳¹[1:nx] 𝒫¹[1:np]
+        Symbolics.@variables 𝔛¹[1:nx] 𝔓¹[1:np]
 
         ϵˢ = zeros(Symbolics.Num, nϵˢ)
     
         # Evaluate the function symbolically
-        calc_SS!(ϵˢ, 𝒳¹, 𝒫¹)
+        calc_SS!(ϵˢ, 𝔛¹, 𝔓¹)
     
-        ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ϵˢ, 𝒳¹) # nϵ x nx
+        ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ϵˢ, 𝔛¹) # nϵ x nx
     
         lennz = nnz(∂SS_equations_∂parameters)
 
@@ -6487,7 +6487,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             parallel = Symbolics.SerialForm()
         end
         
-        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, 
+        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, 
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
                                                     parallel = parallel,
@@ -6497,7 +6497,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
 
 
-        ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ϵˢ, 𝒫¹) # nϵ x nx
+        ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ϵˢ, 𝔓¹) # nϵ x nx
     
         lennz = nnz(∂SS_equations_∂SS_and_pars)
 
@@ -6516,7 +6516,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             parallel = Symbolics.SerialForm()
         end
 
-        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒳¹, 𝒫¹, 
+        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, 
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
                                                     parallel = parallel,
@@ -6549,7 +6549,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
+            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓ˢ, 𝔛ˢ, 
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
@@ -6558,7 +6558,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.hessian = buffer, func_exprs
 
 
-            ∇₂_parameters = derivatives[2][2][:,1:length(𝒫ˢ)]
+            ∇₂_parameters = derivatives[2][2][:,1:length(𝔓ˢ)]
 
             lennz = nnz(∇₂_parameters)
 
@@ -6577,7 +6577,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
+            _, func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝔓ˢ, 𝔛ˢ, 
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
@@ -6586,7 +6586,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.hessian_parameters =  buffer_parameters, func_∇₂_parameters
         
 
-            ∇₂_SS_and_pars = derivatives[2][2][:,length(𝒫ˢ)+1:end]
+            ∇₂_SS_and_pars = derivatives[2][2][:,length(𝔓ˢ)+1:end]
 
             lennz = nnz(∇₂_SS_and_pars)
 
@@ -6605,7 +6605,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
+            _, func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝔓ˢ, 𝔛ˢ, 
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
@@ -6616,7 +6616,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     end
 
     if max_perturbation_order == 3
-        derivatives = take_nth_order_derivatives(calc!, 𝒳ᵈ, 𝒫ᵈ, 𝒳ˢ, 𝒫ˢ, nϵ; max_perturbation_order = max_perturbation_order, output_compressed = true)
+        derivatives = take_nth_order_derivatives(calc!, 𝔛ᵈ, 𝔓ᵈ, 𝔛ˢ, 𝔓ˢ, nϵ; max_perturbation_order = max_perturbation_order, output_compressed = true)
     # third order
         if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             I,J,V = findnz(derivatives[3][1])
@@ -6641,7 +6641,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝒫ˢ, 𝒳ˢ, 
+            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓ˢ, 𝔛ˢ, 
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
@@ -6650,7 +6650,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.third_order_derivatives = buffer, func_exprs
 
 
-            ∇₃_parameters = derivatives[3][2][:,1:length(𝒫ˢ)]
+            ∇₃_parameters = derivatives[3][2][:,1:length(𝔓ˢ)]
 
             lennz = nnz(∇₃_parameters)
 
@@ -6669,7 +6669,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝒫ˢ, 𝒳ˢ, 
+            _, func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝔓ˢ, 𝔛ˢ, 
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
@@ -6678,7 +6678,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters
         
 
-            ∇₃_SS_and_pars = derivatives[3][2][:,length(𝒫ˢ)+1:end]
+            ∇₃_SS_and_pars = derivatives[3][2][:,length(𝔓ˢ)+1:end]
 
             lennz = nnz(∇₃_SS_and_pars)
 
@@ -6697,7 +6697,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝒫ˢ, 𝒳ˢ, 
+            _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝔓ˢ, 𝔛ˢ, 
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
