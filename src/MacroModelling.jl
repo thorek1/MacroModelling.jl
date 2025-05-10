@@ -2665,10 +2665,10 @@ function write_block_solution!(𝓂,
 
     push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
 
-    guess = Expr[]
+    # guess = Expr[]
     # untransformed_guess = Expr[]
     result = Expr[]
-    calib_pars = Expr[]
+    # calib_pars = Expr[]
 
     calib_pars_input = Symbol[]
 
@@ -2679,7 +2679,7 @@ function write_block_solution!(𝓂,
     sorted_vars = sort(Symbol.(vars_to_solve))
 
     for (i, parss) in enumerate(sorted_vars) 
-        push!(guess,:($parss = guess[$i]))
+        # push!(guess,:($parss = guess[$i]))
         # push!(untransformed_guess,:($parss = undo_transform(guess[$i],transformation_level)))
         push!(result,:($parss = sol[$i]))
     end
@@ -2687,7 +2687,7 @@ function write_block_solution!(𝓂,
     iii = 1
     for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters)
         if :($parss) ∈ relevant_pars
-            push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
+            # push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
             push!(calib_pars_input, :($parss))
             iii += 1
         end
@@ -2699,8 +2699,8 @@ function write_block_solution!(𝓂,
     # nnaux_error = []
     # push!(nnaux_error, :(aux_error = 0))
     solved_vals = Expr[]
-    solved_vals_in_place = Expr[]
-    partially_solved_block = Expr[]
+    # solved_vals_in_place = Expr[]
+    # partially_solved_block = Expr[]
 
     other_vrs_eliminated_by_sympy = Set{Symbol}()
 
@@ -2718,7 +2718,7 @@ function write_block_solution!(𝓂,
     
     for (i,val) in enumerate(rewritten_eqs)
         push!(solved_vals, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
-        push!(solved_vals_in_place, :(ℰ[$i] = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
+        # push!(solved_vals_in_place, :(ℰ[$i] = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
     end
 
 
@@ -2741,7 +2741,7 @@ function write_block_solution!(𝓂,
     #     nnaux_linear = nnaux_linear[QQ]
     # end
 
-    other_vars = Expr[]
+    # other_vars = Expr[]
     other_vars_input = Symbol[]
     other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
                                         sort(𝓂.solved_vars[end]) ),
@@ -2749,7 +2749,7 @@ function write_block_solution!(𝓂,
                                 # union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
 
     for var in other_vrs
-        push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
+        # push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
         push!(other_vars_input,:($(var)))
         iii += 1
     end
