@@ -3906,6 +3906,8 @@ function solve_steady_state!(𝓂::ℳ;
                             density_threshold::Float64 = .1,
                             min_length::Int = 1000,
                             verbose::Bool = false)
+    write_ss_check_function!(𝓂)
+
     unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(𝓂.ss_aux_equations) + length(𝓂.calibration_equations) "Unable to solve steady state. More unknowns than equations."
