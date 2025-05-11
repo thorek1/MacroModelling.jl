@@ -200,15 +200,54 @@ function dnorm(p::T)::T where T <: Number
     normpdf(p) 
 end
 
-Symbolics.@register_symbolic norminvcdf(x)
-Symbolics.@register_symbolic norminv(x)
-Symbolics.@register_symbolic qnorm(x)
-Symbolics.@register_symbolic normlogpdf(x)
-Symbolics.@register_symbolic normpdf(x)
-Symbolics.@register_symbolic normcdf(x)
-Symbolics.@register_symbolic pnorm(x)
-Symbolics.@register_symbolic dnorm(x)
+Symbolics.@register_symbolic norminvcdf(p)
+Symbolics.@register_symbolic norminv(p)
+Symbolics.@register_symbolic qnorm(p)
+Symbolics.@register_symbolic normlogpdf(z)
+Symbolics.@register_symbolic normpdf(z)
+Symbolics.@register_symbolic normcdf(z)
+Symbolics.@register_symbolic pnorm(p)
+Symbolics.@register_symbolic dnorm(p)
 
+
+# ── norminvcdf, norminv & qnorm ──
+# d/dp (norminvcdf(p)) = 1 / normpdf(norminvcdf(p))
+function Symbolics.derivative(::typeof(norminvcdf), args::NTuple{1,Any}, ::Val{1})
+    p = args[1]
+    1 / normpdf(norminvcdf(p))
+end
+# norminv and qnorm are aliases of norminvcdf, so they share the same rule:
+Symbolics.derivative(::typeof(norminv), args::NTuple{1,Any}, ::Val{1}) = 
+    Symbolics.derivative(norminvcdf, args, Val{1}())
+Symbolics.derivative(::typeof(qnorm),  args::NTuple{1,Any}, ::Val{1}) =
+    Symbolics.derivative(norminvcdf, args, Val{1}())
+
+# ── normlogpdf ──
+# d/dz (normlogpdf(z)) = −z
+function Symbolics.derivative(::typeof(normlogpdf), args::NTuple{1,Any}, ::Val{1})
+    z = args[1]
+    -z
+end
+
+# ── normpdf & dnorm ──
+# normpdf(z) = (1/√(2π)) e^(−z²/2) ⇒ derivative = −z * normpdf(z)
+function Symbolics.derivative(::typeof(normpdf), args::NTuple{1,Any}, ::Val{1})
+    z = args[1]
+    -z * normpdf(z)
+end
+# alias:
+Symbolics.derivative(::typeof(dnorm), args::NTuple{1,Any}, ::Val{1}) = 
+    Symbolics.derivative(normpdf, args, Val{1}())
+
+# ── normcdf & pnorm ──
+# d/dz (normcdf(z)) = normpdf(z)
+function Symbolics.derivative(::typeof(normcdf), args::NTuple{1,Any}, ::Val{1})
+    z = args[1]
+    normpdf(z)
+end
+# alias:
+Symbolics.derivative(::typeof(pnorm), args::NTuple{1,Any}, ::Val{1}) = 
+    Symbolics.derivative(normcdf, args, Val{1}())
 
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
                 "Model:        ", 𝓂.model_name, 
@@ -2803,6 +2842,7 @@ function write_block_solution!(𝓂,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
+                                                expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
 
@@ -3404,7 +3444,11 @@ function replace_symbols(exprs::Union{Vector{Any}, Vector{Expr}}, remap::Dict{Sy
 end
 
 
-function write_ss_check_function!(𝓂::ℳ; cse = true, skipzeros = true)
+function write_ss_check_function!(𝓂::ℳ;
+                                    cse = true,
+                                    skipzeros = true, 
+                                    density_threshold::Float64 = .1,
+                                    min_length::Int = 10000)
     unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
@@ -3479,8 +3523,88 @@ function write_ss_check_function!(𝓂::ℳ; cse = true, skipzeros = true)
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-
     𝓂.SS_check_func = func_exprs
+
+
+    # SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+
+    # eqs = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
+
+    # nx = length(𝓂.parameter_values)
+
+    # np = length(SS_and_pars)
+
+    nϵˢ = length(ss_equations)
+
+    # nc = length(𝓂.calibration_equations_no_var)
+
+    # Symbolics.@variables 𝔛¹[1:nx] 𝔓¹[1:np]
+
+    ϵˢ = zeros(Symbolics.Num, nϵˢ)
+
+    calib_vals = zeros(Symbolics.Num, nc)
+
+    𝓂.SS_calib_func(calib_vals, 𝔓)
+
+    𝓂.SS_check_func(ϵˢ, 𝔓, 𝔘, calib_vals)
+
+    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ϵˢ, 𝔓) # nϵ x nx
+
+    lennz = nnz(∂SS_equations_∂parameters)
+
+    if (lennz / length(∂SS_equations_∂parameters) > density_threshold) || (length(∂SS_equations_∂parameters) < min_length)
+        derivatives_mat = convert(Matrix, ∂SS_equations_∂parameters)
+        buffer = zeros(Float64, size(∂SS_equations_∂parameters))
+    else
+        derivatives_mat = ∂SS_equations_∂parameters
+        buffer = similar(∂SS_equations_∂parameters, Float64)
+        buffer.nzval .= 0
+    end
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+    
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔘, 
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    𝓂.∂SS_equations_∂parameters = buffer, func_exprs
+
+
+
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ϵˢ, 𝔘) # nϵ x nx
+
+    lennz = nnz(∂SS_equations_∂SS_and_pars)
+
+    if (lennz / length(∂SS_equations_∂SS_and_pars) > density_threshold) || (length(∂SS_equations_∂SS_and_pars) < min_length)
+        derivatives_mat = convert(Matrix, ∂SS_equations_∂SS_and_pars)
+        buffer = zeros(Float64, size(∂SS_equations_∂SS_and_pars))
+    else
+        derivatives_mat = ∂SS_equations_∂SS_and_pars
+        buffer = similar(∂SS_equations_∂SS_and_pars, Float64)
+        buffer.nzval .= 0
+    end
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔘, 
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs
 
     return nothing
 end
@@ -4121,6 +4245,7 @@ function solve_steady_state!(𝓂::ℳ;
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
                                                     parallel = parallel,
+                                                    expression_module = @__MODULE__,
                                                     expression = Val(false))::Tuple{<:Function, <:Function}
     
         replaced_solved_vals = replace_symbols(solved_vals, parameter_dict)
@@ -4183,8 +4308,7 @@ function solve_steady_state!(𝓂::ℳ;
     
         ext_diff = Expr[]
         for i in 1:nx
-            push!(ext_diff, :(𝔓[$i] - 𝔊[$(ng + i)]
-            ))
+            push!(ext_diff, :(𝔓[$i] - 𝔊[$(ng + i)]))
         end
     
         _, calc_ext_block! = Symbolics.build_function(vcat(replaced_solved_vals, ext_diff), 𝔊, 𝔓, 𝔇,
@@ -4287,7 +4411,8 @@ function solve_steady_state!(𝓂::ℳ;
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
         # push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
-        push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
+        push!(𝓂.ss_solve_blocks_in_place, 
+            ss_solve_block(
                 function_and_jacobian(calc_block!, calc_block_aux!, ϵ, ϵᵃ, func_exprs::Function, buffer),
                 function_and_jacobian(calc_ext_block!, calc_block_aux!, ϵᵉ, ϵᵃ, ext_func_exprs::Function, ext_buffer)
             )
@@ -6550,110 +6675,87 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
 
 
-    if max_perturbation_order >= 1
-        SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+    # if max_perturbation_order >= 1
+    #     SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
 
-        eqs = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
+    #     eqs = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
-        pars_and_SS = Expr[]
-        for (i, p) in enumerate(SS_and_pars)
-            push!(pars_and_SS, :($p = SS_and_parameters[$i]))
-        end
+    #     nx = length(𝓂.parameter_values)
 
-        deriv_vars = Expr[]
-        for (i, u) in enumerate(𝓂.parameters)
-            push!(deriv_vars, :($u = parameters[$i]))
-        end
+    #     np = length(SS_and_pars)
 
-        eeqqss = Expr[]
-        for (i, u) in enumerate(eqs)
-            push!(eeqqss, :(ℰ[$i] = $u))
-        end
+    #     nϵˢ = length(eqs)
 
-        funcs = :(function calculate_residual_of_static_equations!(ℰ, parameters, SS_and_parameters)
-            $(pars_and_SS...)
-            $(deriv_vars...)
-            $(𝓂.calibration_equations_no_var...)
-            @inbounds begin
-            $(eeqqss...)
-            end
-            return nothing
-        end)
+    #     nc = length(𝓂.calibration_equations_no_var)
 
-        calc_SS! = @RuntimeGeneratedFunction(funcs)
+    #     Symbolics.@variables 𝔛¹[1:nx] 𝔓¹[1:np]
 
-
-        nx = length(𝓂.parameter_values)
-
-        np = length(SS_and_pars)
-
-        nϵˢ = length(eqs)
-
-        Symbolics.@variables 𝔛¹[1:nx] 𝔓¹[1:np]
-
-        ϵˢ = zeros(Symbolics.Num, nϵˢ)
+    #     ϵˢ = zeros(Symbolics.Num, nϵˢ)
     
-        # Evaluate the function symbolically
-        calc_SS!(ϵˢ, 𝔛¹, 𝔓¹)
-    
-        ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ϵˢ, 𝔛¹) # nϵ x nx
-    
-        lennz = nnz(∂SS_equations_∂parameters)
+    #     calib_vals = zeros(Symbolics.Num, nc)
 
-        if (lennz / length(∂SS_equations_∂parameters) > density_threshold) || (length(∂SS_equations_∂parameters) < min_length)
-            derivatives_mat = convert(Matrix, ∂SS_equations_∂parameters)
-            buffer = zeros(Float64, size(∂SS_equations_∂parameters))
-        else
-            derivatives_mat = ∂SS_equations_∂parameters
-            buffer = similar(∂SS_equations_∂parameters, Float64)
-            buffer.nzval .= 0
-        end
+    #     𝓂.SS_calib_func(calib_vals, 𝔛¹)
+    
+    #     𝓂.SS_check_func(ϵˢ, 𝔛¹, 𝔓¹, calib_vals)
+    # println(ϵˢ)
+    #     ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ϵˢ, 𝔛¹) # nϵ x nx
+    
+    #     lennz = nnz(∂SS_equations_∂parameters)
 
-        if lennz > 1500
-            parallel = Symbolics.ShardedForm(1500,4)
-        else
-            parallel = Symbolics.SerialForm()
-        end
+    #     if (lennz / length(∂SS_equations_∂parameters) > density_threshold) || (length(∂SS_equations_∂parameters) < min_length)
+    #         derivatives_mat = convert(Matrix, ∂SS_equations_∂parameters)
+    #         buffer = zeros(Float64, size(∂SS_equations_∂parameters))
+    #     else
+    #         derivatives_mat = ∂SS_equations_∂parameters
+    #         buffer = similar(∂SS_equations_∂parameters, Float64)
+    #         buffer.nzval .= 0
+    #     end
+
+    #     if lennz > 1500
+    #         parallel = Symbolics.ShardedForm(1500,4)
+    #     else
+    #         parallel = Symbolics.SerialForm()
+    #     end
         
-        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, 
-                                                    cse = cse, 
-                                                    skipzeros = skipzeros, 
-                                                    parallel = parallel,
-                                                    expression_module = @__MODULE__,
-                                                    expression = Val(false))::Tuple{<:Function, <:Function}
+    #     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, 
+    #                                                 cse = cse, 
+    #                                                 skipzeros = skipzeros, 
+    #                                                 parallel = parallel,
+    #                                                 expression_module = @__MODULE__,
+    #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-        𝓂.∂SS_equations_∂parameters = buffer, func_exprs
+    #     𝓂.∂SS_equations_∂parameters = buffer, func_exprs
 
 
 
-        ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ϵˢ, 𝔓¹) # nϵ x nx
+    #     ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ϵˢ, 𝔓¹) # nϵ x nx
     
-        lennz = nnz(∂SS_equations_∂SS_and_pars)
+    #     lennz = nnz(∂SS_equations_∂SS_and_pars)
 
-        if (lennz / length(∂SS_equations_∂SS_and_pars) > density_threshold) || (length(∂SS_equations_∂SS_and_pars) < min_length)
-            derivatives_mat = convert(Matrix, ∂SS_equations_∂SS_and_pars)
-            buffer = zeros(Float64, size(∂SS_equations_∂SS_and_pars))
-        else
-            derivatives_mat = ∂SS_equations_∂SS_and_pars
-            buffer = similar(∂SS_equations_∂SS_and_pars, Float64)
-            buffer.nzval .= 0
-        end
+    #     if (lennz / length(∂SS_equations_∂SS_and_pars) > density_threshold) || (length(∂SS_equations_∂SS_and_pars) < min_length)
+    #         derivatives_mat = convert(Matrix, ∂SS_equations_∂SS_and_pars)
+    #         buffer = zeros(Float64, size(∂SS_equations_∂SS_and_pars))
+    #     else
+    #         derivatives_mat = ∂SS_equations_∂SS_and_pars
+    #         buffer = similar(∂SS_equations_∂SS_and_pars, Float64)
+    #         buffer.nzval .= 0
+    #     end
 
-        if lennz > 1500
-            parallel = Symbolics.ShardedForm(1500,4)
-        else
-            parallel = Symbolics.SerialForm()
-        end
+    #     if lennz > 1500
+    #         parallel = Symbolics.ShardedForm(1500,4)
+    #     else
+    #         parallel = Symbolics.SerialForm()
+    #     end
 
-        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, 
-                                                    cse = cse, 
-                                                    skipzeros = skipzeros, 
-                                                    parallel = parallel,
-                                                    expression_module = @__MODULE__,
-                                                    expression = Val(false))::Tuple{<:Function, <:Function}
+    #     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, 
+    #                                                 cse = cse, 
+    #                                                 skipzeros = skipzeros, 
+    #                                                 parallel = parallel,
+    #                                                 expression_module = @__MODULE__,
+    #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-        𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs
-    end
+    #     𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs
+    # end
         
     if max_perturbation_order >= 2
     # second order
