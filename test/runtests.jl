@@ -448,7 +448,7 @@ if test_set == "basic"
     GC.gc()
 
     @testset verbose = true "FS2000 precompile = true" begin
-        @model FS2000 precompile = true begin
+        @model FS2000_pre precompile = true begin
             dA[0] = exp(gam + z_e_a  *  e_a[x])
             log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
             - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
@@ -466,8 +466,8 @@ if test_set == "basic"
             log_gy_obs[0] = log(gy_obs[0])
             log_gp_obs[0] = log(gp_obs[0])
         end
-    
-        @parameters FS2000 silent = true precompile = true begin  
+        
+        @parameters FS2000_pre silent = true precompile = true begin  
             alp     = 0.356
             bet     = 0.993
             gam     = 0.0085
@@ -478,17 +478,71 @@ if test_set == "basic"
             z_e_a   = 0.035449
             z_e_m   = 0.008862
         end
-    
-        get_SS(FS2000, silent = true)
-        get_SS(FS2000, parameters = :alp => 0.36, silent = true)
-        get_solution(FS2000, silent = true)
-        get_solution(FS2000, parameters = :alp => 0.35)
-        get_standard_deviation(FS2000)
-        get_correlation(FS2000)
-        get_autocorrelation(FS2000)
-        get_variance_decomposition(FS2000)
-        get_conditional_variance_decomposition(FS2000)
-        get_irf(FS2000)  
+        
+        
+        SS_pre =    get_SS(FS2000_pre, silent = true)
+        SS_change_pre =    get_SS(FS2000_pre, parameters = :alp => 0.36, silent = true)
+        solution_pre =  get_solution(FS2000_pre, silent = true)
+        solution_change_pre =  get_solution(FS2000_pre, parameters = :alp => 0.35)
+        standard_deviation_pre =    get_standard_deviation(FS2000_pre)
+        correlation_pre =   get_correlation(FS2000_pre)
+        autocorrelation_pre =   get_autocorrelation(FS2000_pre)
+        variance_decomposition_pre =    get_variance_decomposition(FS2000_pre)
+        conditional_variance_decomposition_pre =    get_conditional_variance_decomposition(FS2000_pre)
+        irf_pre =   get_irf(FS2000_pre)  
+        
+        @model FS2000 begin
+            dA[0] = exp(gam + z_e_a  *  e_a[x])
+            log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+            - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+            W[0] = l[0] / n[0]
+            - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+            R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+            1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+            c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+            P[0] * c[0] = m[0]
+            m[0] - 1 + d[0] = l[0]
+            e[0] = exp(z_e_a  *  e_a[x])
+            y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+            gy_obs[0] = dA[0] * y[0] / y[-1]
+            gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+            log_gy_obs[0] = log(gy_obs[0])
+            log_gp_obs[0] = log(gp_obs[0])
+        end
+        
+        @parameters FS2000 begin  
+            alp     = 0.356
+            bet     = 0.993
+            gam     = 0.0085
+            mst     = 1.0002
+            rho     = 0.129
+            psi     = 0.65
+            del     = 0.01
+            z_e_a   = 0.035449
+            z_e_m   = 0.008862
+        end
+        
+        SS_nopre =    get_SS(FS2000, silent = true)
+        SS_change_nopre =    get_SS(FS2000, parameters = :alp => 0.36, silent = true)
+        solution_nopre =  get_solution(FS2000, silent = true)
+        solution_change_nopre =  get_solution(FS2000, parameters = :alp => 0.35)
+        standard_deviation_nopre =    get_standard_deviation(FS2000)
+        correlation_nopre =   get_correlation(FS2000)
+        autocorrelation_nopre =   get_autocorrelation(FS2000)
+        variance_decomposition_nopre =    get_variance_decomposition(FS2000)
+        conditional_variance_decomposition_nopre =    get_conditional_variance_decomposition(FS2000)
+        irf_nopre =   get_irf(FS2000)  
+        
+        @test isapprox(SS_nopre, SS_pre)
+        @test isapprox(SS_change_nopre, SS_change_pre)
+        @test isapprox(solution_nopre, solution_pre)
+        @test isapprox(solution_change_nopre, solution_change_pre)
+        @test isapprox(standard_deviation_nopre, standard_deviation_pre)
+        @test isapprox(correlation_nopre, correlation_pre)
+        @test isapprox(autocorrelation_nopre, autocorrelation_pre)
+        @test isapprox(variance_decomposition_nopre, variance_decomposition_pre)
+        @test isapprox(conditional_variance_decomposition_nopre, conditional_variance_decomposition_pre)
+        @test isapprox(irf_nopre, irf_pre)
     end
 
     @testset verbose = true "Model without shocks" begin
