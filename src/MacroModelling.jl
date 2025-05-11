@@ -2815,8 +2815,11 @@ function write_block_solution!(𝓂,
 
 
 
-    replaced_aux_expr = replace_symbols(aux_expr, parameter_dict)
+    replaced_aux_expr = []
 
+    for eq in aux_expr
+        push!(replaced_aux_expr, replace_symbols(eq, parameter_dict))
+    end
 
     lennz = length(replaced_aux_expr)
 
@@ -2834,7 +2837,11 @@ function write_block_solution!(𝓂,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
 
-    replaced_solved_vals = replace_symbols(solved_vals, parameter_dict)
+    replaced_solved_vals = []
+
+    for eq in solved_vals
+        push!(replaced_solved_vals, replace_symbols(eq, parameter_dict))
+    end
 
     lennz = length(replaced_solved_vals)
 
@@ -3421,16 +3428,16 @@ function make_equation_robust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
 end
 
 
-function replace_symbols(exprs::Vector{T}, remap::Dict{Symbol,Expr}) where T
-    [ postwalk(ex) do node
+
+function replace_symbols(exprs::T, remap::Dict{Symbol,Expr}) where T
+    postwalk(node ->
           if node isa Symbol && haskey(remap, node)
               remap[node]
           else
               node
-          end
-      end for ex in exprs ]
+          end, 
+          exprs)
 end
-
 
 function write_ss_check_function!(𝓂::ℳ;
                                     cse = true,
@@ -3469,7 +3476,11 @@ function write_ss_check_function!(𝓂::ℳ;
         push!(parameter_dict, v => :(ℭ[$i]))
     end
 
-    replaced_calib_expr = replace_symbols(calib_expr, parameter_dict)
+    replaced_calib_expr = []
+
+    for eq in calib_expr
+        push!(replaced_calib_expr, replace_symbols(eq, parameter_dict))
+    end
 
     # replaced_calib_expr = Symbolics.parse_expr_to_symbolic.(replaced_calib_expr, (@__MODULE__,)) 
 
@@ -3492,8 +3503,11 @@ function write_ss_check_function!(𝓂::ℳ;
     𝓂.SS_calib_func = calib_func_exprs
 
 
-    replaced_ss_equations = replace_symbols(ss_equations, parameter_dict)
+    replaced_ss_equations = []
 
+    for eq in ss_equations
+        push!(replaced_ss_equations, replace_symbols(eq, parameter_dict))
+    end
     # replaced_ss_equations = Symbolics.parse_expr_to_symbolic.(replaced_ss_equations, (@__MODULE__,)) 
 
     lennz = length(replaced_ss_equations)
@@ -4217,8 +4231,11 @@ function solve_steady_state!(𝓂::ℳ;
         end
     
     
-    
-        replaced_aux_expr = replace_symbols(aux_expr, parameter_dict)
+        replaced_aux_expr = []
+
+        for eq in aux_expr
+            push!(replaced_aux_expr, replace_symbols(eq, parameter_dict))
+        end
     
     
         lennz = length(replaced_aux_expr)
@@ -4236,7 +4253,11 @@ function solve_steady_state!(𝓂::ℳ;
                                                     expression_module = @__MODULE__,
                                                     expression = Val(false))::Tuple{<:Function, <:Function}
     
-        replaced_solved_vals = replace_symbols(solved_vals, parameter_dict)
+        replaced_solved_vals = []
+
+        for eq in solved_vals
+            push!(replaced_solved_vals, replace_symbols(eq, parameter_dict))
+        end
     
         lennz = length(replaced_solved_vals)
     
