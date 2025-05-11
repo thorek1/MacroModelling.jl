@@ -5,7 +5,7 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 # import StatsFuns: normcdf
 import ThreadedSparseArrays
 using PrecompileTools
-import SpecialFunctions: erfcinv, erfc
+import SpecialFunctions: erfcinv, erfc # can't use constants because of SymPy (e.g. sqrt2)
 import SpecialFunctions
 import SymPyPythonCall as SPyPyC
 import PythonCall
@@ -168,37 +168,24 @@ export irf, girf
 @stable default_mode = "disable" begin
 
 # StatsFuns
-function norminvcdf(p::T)::T where T  
-    -erfcinv(2*p) * 1.4142135623730951 
+function norminvcdf(p::T)::T where T
+    -erfcinv(2*p) * 1.4142135623730951
+end
+norminv(p) = norminvcdf(p)
+qnorm(p)= norminvcdf(p)
+
+function normlogpdf(z::T)::T where T
+    -(abs2(z) + 1.8378770664093453) / 2
+end
+function normpdf(z::T)::T where T
+    exp(-abs2(z)/2) * 0.3989422804014327
 end
 
-function norminv(p::T)::T where T <: Number  
-    norminvcdf(p) 
+function normcdf(z::T)::T where T
+    erfc(-z * 0.7071067811865475) / 2
 end
-
-function qnorm(p::T)::T where T <: Number  
-    norminvcdf(p) 
-end
-
-function normlogpdf(z::T)::T where T  
-    -(abs2(z) + 1.8378770664093453)/2 
-end
-
-function normpdf(z::T)::T where T  
-    exp(-abs2(z)/2) * 0.3989422804014327 
-end
-
-function normcdf(z::T)::T where T  
-    erfc(-z * 0.7071067811865475)/2 
-end
-
-function pnorm(p::T)::T where T <: Number  
-    normcdf(p) 
-end
-
-function dnorm(p::T)::T where T <: Number  
-    normpdf(p) 
-end
+pnorm(p) = normcdf(p)
+dnorm(p) = normpdf(p)
 
 Symbolics.@register_symbolic norminvcdf(p)
 Symbolics.@register_symbolic norminv(p)
@@ -248,6 +235,7 @@ end
 # alias:
 Symbolics.derivative(::typeof(pnorm), args::NTuple{1,Any}, ::Val{1}) = 
     Symbolics.derivative(normcdf, args, Val{1}())
+
 
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
                 "Model:        ", 𝓂.model_name, 
