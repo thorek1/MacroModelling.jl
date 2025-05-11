@@ -3421,7 +3421,7 @@ function make_equation_robust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
 end
 
 
-function replace_symbols(exprs::Union{Vector{Any}, Vector{Expr}}, remap::Dict{Symbol,Expr})
+function replace_symbols(exprs::Vector{T}, remap::Dict{Symbol,Expr}) where T
     [ postwalk(ex) do node
           if node isa Symbol && haskey(remap, node)
               remap[node]
