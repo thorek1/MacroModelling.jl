@@ -4000,7 +4000,7 @@ function solve_steady_state!(𝓂::ℳ;
 
         
         # separate out auxilliary variables (nonnegativity)
-        # nnaux = []
+        nnaux = []
         # nnaux_linear = []
         # nnaux_error = []
         # push!(nnaux_error, :(aux_error = 0))
@@ -4019,7 +4019,7 @@ function solve_steady_state!(𝓂::ℳ;
             else
                 if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
                     val = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
-                    # push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
+                    push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
                     push!(other_vrs_eliminated_by_sympy, val.args[2])
                     # push!(nnaux_linear,:($val))
                     push!(solved_vals,:($val))
@@ -4035,24 +4035,24 @@ function solve_steady_state!(𝓂::ℳ;
         # println(other_vrs_eliminated_by_sympy)
         # sort nnaux vars so that they enter in right order. avoid using a variable before it is declared
         # println(nnaux)
-        # if length(nnaux) > 1
-        #     all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
+        if length(nnaux) > 1
+            all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
 
-        #     nn_symbols = map(x->intersect(all_symbols,x), get_symbols.(nnaux))
+            nn_symbols = map(x->intersect(all_symbols,x), get_symbols.(nnaux))
             
-        #     inc_matrix = fill(0,length(all_symbols),length(all_symbols))
+            inc_matrix = fill(0,length(all_symbols),length(all_symbols))
 
-        #     for i in 1:length(all_symbols)
-        #         for k in 1:length(nn_symbols)
-        #             inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
-        #         end
-        #     end
+            for i in 1:length(all_symbols)
+                for k in 1:length(nn_symbols)
+                    inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
+                end
+            end
 
-        #     QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
+            QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
 
-        #     nnaux = nnaux[QQ]
-        #     # nnaux_linear = nnaux_linear[QQ]
-        # end
+            nnaux = nnaux[QQ]
+            # nnaux_linear = nnaux_linear[QQ]
+        end
 
 
         # other_vars = []
