@@ -2788,60 +2788,45 @@ function write_block_solution!(𝓂,
     nd = length(ss_and_aux_equations_dep)
     nx = iii - 1
 
+    Symbolics.@variables 𝔊[1:ng] 𝔓[1:np]
+
+
+    parameter_dict = Dict{Symbol, Symbol}()
+    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
     aux_vars = Symbol[]
     aux_expr = []
 
-    for eq in ss_and_aux_equations_dep
-        push!(aux_vars, eq.args[1])
-        push!(aux_expr, (eq.args[2]))
-    end
-
-    Symbolics.@variables 𝔊[1:ng] 𝔓[1:np] 𝔇[1:nd]
-
-
-    parameter_dict = Dict{Symbol, Expr}()
 
     for (i,v) in enumerate(sorted_vars)
-        push!(parameter_dict, v => :(𝔊[$i]))
+        push!(parameter_dict, v => :($(Symbol("𝔊_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔊_$i"))), @__MODULE__) => 𝔊[i])
     end
 
     for (i,v) in enumerate(parameters_and_solved_vars)
-        push!(parameter_dict, v => :(𝔓[$i]))
+        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
     end
 
-    for (i,v) in enumerate(aux_vars)
-        push!(parameter_dict, v => :(𝔇[$i]))
+    for (i,v) in enumerate(ss_and_aux_equations_dep)
+        push!(aux_vars, v.args[1])
+        push!(aux_expr, v.args[2])
     end
-
-
-
-    replaced_aux_expr = []
-
-    for eq in aux_expr
-        push!(replaced_aux_expr, replace_symbols(eq, parameter_dict))
+    
+    aux_replacements = Dict{Symbol,Any}()
+    for (i,x) in enumerate(aux_vars)
+        replacement = Dict(x => aux_expr[i])
+        for ii in i+1:length(aux_vars)
+            aux_expr[ii] = replace_symbols(aux_expr[ii], replacement)
+        end
+        push!(aux_replacements, x => aux_expr[i])
     end
+    # aux_replacements = Dict{Symbol,Any}(aux_vars .=> aux_expr)
 
-    lennz = length(replaced_aux_expr)
-
-    if lennz > 1500
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
-
-    _, calc_block_aux! = Symbolics.build_function(replaced_aux_expr, 𝔊, 𝔓,
-                                                cse = cse, 
-                                                skipzeros = skipzeros, 
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
-
-
-    replaced_solved_vals = []
-
-    for eq in solved_vals
-        push!(replaced_solved_vals, replace_symbols(eq, parameter_dict))
-    end
+    replaced_solved_vals = solved_vals |> 
+        x -> replace_symbols.(x, Ref(aux_replacements)) |> 
+        x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
 
     lennz = length(replaced_solved_vals)
 
@@ -2851,26 +2836,26 @@ function write_block_solution!(𝓂,
         parallel = Symbolics.SerialForm()
     end
 
-    _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓, 𝔇,
+    _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝐷 = zeros(Symbolics.Num, nd)
+    # 𝐷 = zeros(Symbolics.Num, nd)
 
-    ϵᵃ = zeros(nd)
+    # ϵᵃ = zeros(nd)
 
-    calc_block_aux!(𝐷, 𝔊, 𝔓)
+    # calc_block_aux!(𝐷, 𝔊, 𝔓)
 
     ϵˢ = zeros(Symbolics.Num, ng)
 
     ϵ = zeros(ng)
 
-    calc_block!(ϵˢ, 𝔊, 𝔓, 𝐷)
+    # calc_block!(ϵˢ, 𝔊, 𝔓, 𝐷)
 
-    ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢ, 𝔊) # nϵ x nx
+    ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals, 𝔊) # nϵ x nx
 
     lennz = nnz(∂block_∂parameters_and_solved_vars)
 
@@ -2899,13 +2884,13 @@ function write_block_solution!(𝓂,
 
     Symbolics.@variables 𝔊[1:ng+nx]
 
-    ext_diff = Expr[]
+    ext_diff = Symbolics.Num[]
     for i in 1:nx
-        push!(ext_diff, :(𝔓[$i] - 𝔊[$(ng + i)]
-        ))
+        push!(ext_diff, 𝔓[i] - 𝔊[ng + i])
     end
+    replaced_solved_vals_ext = vcat(replaced_solved_vals, ext_diff)
 
-    _, calc_ext_block! = Symbolics.build_function(vcat(replaced_solved_vals, ext_diff), 𝔊, 𝔓, 𝔇,
+    _, calc_ext_block! = Symbolics.build_function(replaced_solved_vals_ext, 𝔊, 𝔓,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
@@ -2914,14 +2899,14 @@ function write_block_solution!(𝓂,
 
     ϵᵉ = zeros(ng + nx)
     
-    ϵˢᵉ = zeros(Symbolics.Num, ng + nx)
+    # ϵˢᵉ = zeros(Symbolics.Num, ng + nx)
 
-    calc_block_aux!(𝐷, 𝔊, 𝔓)
+    # calc_block_aux!(𝐷, 𝔊, 𝔓)
 
     # Evaluate the function symbolically
-    calc_ext_block!(ϵˢᵉ, 𝔊, 𝔓, 𝐷)
+    # calc_ext_block!(ϵˢᵉ, 𝔊, 𝔓, 𝐷)
 
-    ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢᵉ, 𝔊) # nϵ x nx
+    ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals_ext, 𝔊) # nϵ x nx
 
     lennz = nnz(∂ext_block_∂parameters_and_solved_vars)
 
@@ -3013,8 +2998,8 @@ function write_block_solution!(𝓂,
 
     
     push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
-            function_and_jacobian(calc_block!, calc_block_aux!, ϵ, ϵᵃ, func_exprs::Function, buffer),
-            function_and_jacobian(calc_ext_block!, calc_block_aux!, ϵᵉ, ϵᵃ, ext_func_exprs::Function, ext_buffer)
+            function_and_jacobian(calc_block!, ϵ, func_exprs::Function, buffer),
+            function_and_jacobian(calc_ext_block!, ϵᵉ, ext_func_exprs::Function, ext_buffer)
         )
     )
     
@@ -4192,59 +4177,38 @@ function solve_steady_state!(𝓂::ℳ;
         nd = 0
         nx = iii - 1
     
-        aux_vars = Symbol[]
-        aux_expr = []
+
+        Symbolics.@variables 𝔊[1:ng] 𝔓[1:np]
+
+
+        parameter_dict = Dict{Symbol, Symbol}()
+        back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+        # aux_vars = Symbol[]
+        # aux_expr = []
     
-        # for eq in ss_and_aux_equations_dep
-        #     push!(aux_vars, eq.args[1])
-        #     push!(aux_expr, (eq.args[2]))
-        # end
-    
-        Symbolics.@variables 𝔊[1:ng] 𝔓[1:np] 𝔇[1:nd]
-    
-    
-        parameter_dict = Dict{Symbol, Expr}()
     
         for (i,v) in enumerate(sorted_vars)
-            push!(parameter_dict, v => :(𝔊[$i]))
+            push!(parameter_dict, v => :($(Symbol("𝔊_$i"))))
+            push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔊_$i"))), @__MODULE__) => 𝔊[i])
         end
     
         for (i,v) in enumerate(parameters_and_solved_vars)
-            push!(parameter_dict, v => :(𝔓[$i]))
+            push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+            push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔘_$i"))), @__MODULE__) => 𝔘[i])
         end
     
-        for (i,v) in enumerate(aux_vars)
-            push!(parameter_dict, v => :(𝔇[$i]))
-        end
+        # for (i,v) in enumerate(ss_and_aux_equations_dep)
+        #     push!(aux_vars, v.args[1])
+        #     push!(aux_expr, v.args[2])
+        # end
     
+        # aux_replacements = Dict(aux_vars .=> aux_expr)
     
-        replaced_aux_expr = []
-
-        for eq in aux_expr
-            push!(replaced_aux_expr, replace_symbols(eq, parameter_dict))
-        end
-    
-    
-        lennz = length(replaced_aux_expr)
-    
-        if lennz > 1500
-            parallel = Symbolics.ShardedForm(1500,4)
-        else
-            parallel = Symbolics.SerialForm()
-        end
-    
-        _, calc_block_aux! = Symbolics.build_function(replaced_aux_expr, 𝔊, 𝔓,
-                                                    cse = cse, 
-                                                    skipzeros = skipzeros, 
-                                                    parallel = parallel,
-                                                    expression_module = @__MODULE__,
-                                                    expression = Val(false))::Tuple{<:Function, <:Function}
-    
-        replaced_solved_vals = []
-
-        for eq in solved_vals
-            push!(replaced_solved_vals, replace_symbols(eq, parameter_dict))
-        end
+        replaced_solved_vals = solved_vals |> 
+            # x -> replace_symbols.(x, Ref(aux_replacements)) |> 
+            x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+            x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+            x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
     
         lennz = length(replaced_solved_vals)
     
@@ -4254,26 +4218,26 @@ function solve_steady_state!(𝓂::ℳ;
             parallel = Symbolics.SerialForm()
         end
     
-        _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓, 𝔇,
+        _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓,
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
                                                     parallel = parallel,
                                                     expression_module = @__MODULE__,
                                                     expression = Val(false))::Tuple{<:Function, <:Function}
     
-        𝐷 = zeros(Symbolics.Num, nd)
+        # 𝐷 = zeros(Symbolics.Num, nd)
     
-        ϵᵃ = zeros(nd)
+        # ϵᵃ = zeros(nd)
     
-        calc_block_aux!(𝐷, 𝔊, 𝔓)
+        # calc_block_aux!(𝐷, 𝔊, 𝔓)
     
         ϵˢ = zeros(Symbolics.Num, ng)
     
         ϵ = zeros(ng)
     
-        calc_block!(ϵˢ, 𝔊, 𝔓, 𝐷)
+        # calc_block!(ϵˢ, 𝔊, 𝔓, 𝐷)
     
-        ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢ, 𝔊) # nϵ x nx
+        ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals, 𝔊) # nϵ x nx
     
         lennz = nnz(∂block_∂parameters_and_solved_vars)
     
@@ -4302,12 +4266,13 @@ function solve_steady_state!(𝓂::ℳ;
     
         Symbolics.@variables 𝔊[1:ng+nx]
     
-        ext_diff = Expr[]
+        ext_diff = Symbolics.Num[]
         for i in 1:nx
-            push!(ext_diff, :(𝔓[$i] - 𝔊[$(ng + i)]))
+            push!(ext_diff, 𝔓[i] - 𝔊[ng + i])
         end
+        replaced_solved_vals_ext = vcat(replaced_solved_vals, ext_diff)
     
-        _, calc_ext_block! = Symbolics.build_function(vcat(replaced_solved_vals, ext_diff), 𝔊, 𝔓, 𝔇,
+        _, calc_ext_block! = Symbolics.build_function(replaced_solved_vals_ext, 𝔊, 𝔓,
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
                                                     parallel = parallel,
@@ -4316,14 +4281,14 @@ function solve_steady_state!(𝓂::ℳ;
     
         ϵᵉ = zeros(ng + nx)
         
-        ϵˢᵉ = zeros(Symbolics.Num, ng + nx)
+        # ϵˢᵉ = zeros(Symbolics.Num, ng + nx)
     
-        calc_block_aux!(𝐷, 𝔊, 𝔓)
+        # calc_block_aux!(𝐷, 𝔊, 𝔓)
     
         # Evaluate the function symbolically
-        calc_ext_block!(ϵˢᵉ, 𝔊, 𝔓, 𝐷)
+        # calc_ext_block!(ϵˢᵉ, 𝔊, 𝔓, 𝐷)
     
-        ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(ϵˢᵉ, 𝔊) # nϵ x nx
+        ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals_ext, 𝔊) # nϵ x nx
     
         lennz = nnz(∂ext_block_∂parameters_and_solved_vars)
     
@@ -4409,8 +4374,8 @@ function solve_steady_state!(𝓂::ℳ;
         # push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
         push!(𝓂.ss_solve_blocks_in_place, 
             ss_solve_block(
-                function_and_jacobian(calc_block!, calc_block_aux!, ϵ, ϵᵃ, func_exprs::Function, buffer),
-                function_and_jacobian(calc_ext_block!, calc_block_aux!, ϵᵉ, ϵᵃ, ext_func_exprs::Function, ext_buffer)
+                function_and_jacobian(calc_block!, ϵ, func_exprs::Function, buffer),
+                function_and_jacobian(calc_ext_block!, ϵᵉ, ext_func_exprs::Function, ext_buffer)
             )
         )
 
@@ -4780,9 +4745,7 @@ function solve_ss(SS_optimizer::Function,
 
     # max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
 
-    SS_solve_block.ss_problem.func_aux(SS_solve_block.ss_problem.func_aux_buffer, sol_values, parameters_and_solved_vars)
-    
-    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, sol_values, parameters_and_solved_vars, SS_solve_block.ss_problem.func_aux_buffer)
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, sol_values, parameters_and_solved_vars)
     
     max_resid = maximum(abs, SS_solve_block.ss_problem.func_buffer)
 
@@ -4827,9 +4790,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
     # res = ss_solve_blocks(parameters_and_solved_vars, guess)
 
-    SS_solve_block.ss_problem.func_aux(SS_solve_block.ss_problem.func_aux_buffer, guess, parameters_and_solved_vars)
-
-    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars, SS_solve_block.ss_problem.func_aux_buffer) # TODO: make the block a struct
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars) # TODO: make the block a struct
     # TODO: do the function creation with Symbolics as this will solve the compilation bottleneck for large functions
 
     res = SS_solve_block.ss_problem.func_buffer

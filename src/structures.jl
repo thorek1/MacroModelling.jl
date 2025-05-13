@@ -226,9 +226,9 @@ end
 
 mutable struct function_and_jacobian
     func::Function
-    func_aux::Function
+    # func_aux::Function
     func_buffer::Vector{<:Real}
-    func_aux_buffer::Vector{<:Real}
+    # func_aux_buffer::Vector{<:Real}
     jac::Function
     jac_buffer::AbstractMatrix{<:Real}
 end

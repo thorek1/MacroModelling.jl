@@ -138,9 +138,7 @@ function levenberg_marquardt(
             ℒ.mul!(∇̂, ∇̄', ∇̄)
         end
 
-        fnj.func_aux(fnj.func_aux_buffer, current_guess_untransformed, parameters_and_solved_vars)
-
-        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, fnj.func_aux_buffer)
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
 
         μ¹s = μ¹ * sum(abs2, fnj.func_buffer)^p¹
         # μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
@@ -158,9 +156,7 @@ function levenberg_marquardt(
             break
         end
 
-        fnj.func_aux(fnj.func_aux_buffer, current_guess_untransformed, parameters_and_solved_vars)
-
-        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, fnj.func_aux_buffer)
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
 
         ℒ.mul!(guess_update, ∇̄', fnj.func_buffer)
 
@@ -186,17 +182,13 @@ function levenberg_marquardt(
             previous_guess_untransformed .= sinh.(previous_guess_untransformed)
         end
         
-        fnj.func_aux(fnj.func_aux_buffer, previous_guess_untransformed, parameters_and_solved_vars)
-
-        fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars, fnj.func_aux_buffer)
+        fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
 
         P = sum(abs2, fnj.func_buffer)
         # P = sum(abs2, f̂(previous_guess))
         P̃ = P
         
-        fnj.func_aux(fnj.func_aux_buffer, current_guess_untransformed, parameters_and_solved_vars)
-
-        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, fnj.func_aux_buffer)
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
 
         P̋ = sum(abs2, fnj.func_buffer)
         # P̋ = sum(abs2, f̂(current_guess))
@@ -210,9 +202,7 @@ function levenberg_marquardt(
 
         guess_update .= current_guess - previous_guess
 
-        fnj.func_aux(fnj.func_aux_buffer, previous_guess_untransformed, parameters_and_solved_vars)
-
-        fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars, fnj.func_aux_buffer)
+        fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
 
         g = fnj.func_buffer' * ∇̄ * guess_update
         # g = f̂(previous_guess)' * ∇ * guess_update
@@ -258,9 +248,7 @@ function levenberg_marquardt(
                     current_guess_untransformed .= sinh.(current_guess_untransformed)
                 end
 
-                fnj.func_aux(fnj.func_aux_buffer, current_guess_untransformed, parameters_and_solved_vars)
-
-                fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, fnj.func_aux_buffer)
+                fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
 
                 P̋ = sum(abs2, fnj.func_buffer)
                 # P̋ = sum(abs2, f̂(current_guess))
@@ -296,9 +284,7 @@ function levenberg_marquardt(
             current_guess_untransformed .= sinh.(current_guess_untransformed)
         end
 
-        fnj.func_aux(fnj.func_aux_buffer, current_guess_untransformed, parameters_and_solved_vars)
-
-        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars, fnj.func_aux_buffer)
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
 
         largest_residual = ℒ.norm(fnj.func_buffer)    
         # largest_residual = ℒ.norm(f̂(current_guess)) # maximum(abs, f(undo_transform(current_guess,transformation_level)))
@@ -353,9 +339,7 @@ function newton(
 
     new_guess = copy(initial_guess)
 
-    fnj.func_aux(fnj.func_aux_buffer, new_guess, parameters_and_solved_vars)
-
-    fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars, fnj.func_aux_buffer)
+    fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars)
 
     new_residuals = fnj.func_buffer
     # new_residuals = f(new_guess)
@@ -395,9 +379,7 @@ function newton(
 
         # old_residuals = copy(new_residuals)
 
-        fnj.func_aux(fnj.func_aux_buffer, new_guess, parameters_and_solved_vars)
-
-        fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars, fnj.func_aux_buffer)
+        fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars)
 
         new_residuals = fnj.func_buffer
         # new_residuals = f(new_guess)
