@@ -3429,7 +3429,7 @@ end
 
 
 
-function replace_symbols(exprs::T, remap::Dict{Symbol,Expr}) where T
+function replace_symbols(exprs::T, remap::Dict{Symbol,S}) where {T,S}
     postwalk(node ->
           if node isa Symbol && haskey(remap, node)
               remap[node]
@@ -3448,44 +3448,55 @@ function write_ss_check_function!(𝓂::ℳ;
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
-    calib_vars = Symbol[]
-    calib_expr = []
 
-    for eq in 𝓂.calibration_equations_no_var
-        push!(calib_vars, eq.args[1])
-        push!(calib_expr, (eq.args[2]))
-    end
 
     np = length(𝓂.parameters)
     nu = length(unknowns)
-    nc = length(calib_expr)
+    nc = length(𝓂.calibration_equations_no_var)
 
     Symbolics.@variables 𝔓[1:np] 𝔘[1:nu] ℭ[1:nc]
 
-    parameter_dict = Dict{Symbol, Expr}()
+    parameter_dict = Dict{Symbol, Symbol}()
+    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+    calib_vars = Symbol[]
+    calib_expr = []
+
 
     for (i,v) in enumerate(𝓂.parameters)
-        push!(parameter_dict, v => :(𝔓[$i]))
+        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
     end
 
     for (i,v) in enumerate(unknowns)
-        push!(parameter_dict, v => :(𝔘[$i]))
+        push!(parameter_dict, v => :($(Symbol("𝔘_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔘_$i"))), @__MODULE__) => 𝔘[i])
     end
 
-    for (i,v) in enumerate(calib_vars)
-        push!(parameter_dict, v => :(ℭ[$i]))
+    for (i,v) in enumerate(𝓂.calibration_equations_no_var)
+        push!(calib_vars, v.args[1])
+        push!(calib_expr, v.args[2])
+        push!(parameter_dict, v.args[1] => :($(Symbol("ℭ_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("ℭ_$i"))), @__MODULE__) => ℭ[i])
     end
 
-    replaced_calib_expr = []
-
-    for eq in calib_expr
-        push!(replaced_calib_expr, replace_symbols(eq, parameter_dict))
+    calib_replacements = Dict{Symbol,Any}()
+    for (i,x) in enumerate(calib_vars)
+        replacement = Dict(x => calib_expr[i])
+        for ii in i+1:length(calib_vars)
+            calib_expr[ii] = replace_symbols(calib_expr[ii], replacement)
+        end
+        push!(calib_replacements, x => calib_expr[i])
     end
 
-    # replaced_calib_expr = Symbolics.parse_expr_to_symbolic.(replaced_calib_expr, (@__MODULE__,)) 
+
+    ss_equations_sub = ss_equations |> 
+        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+        x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
 
 
-    lennz = length(replaced_calib_expr)
+    lennz = length(ss_equations_sub)
 
     if lennz > 1500
         parallel = Symbolics.ShardedForm(1500,4)
@@ -3493,37 +3504,13 @@ function write_ss_check_function!(𝓂::ℳ;
         parallel = Symbolics.SerialForm()
     end
 
-    _, calib_func_exprs = Symbolics.build_function(replaced_calib_expr, 𝔓,
+    _, func_exprs = Symbolics.build_function(ss_equations_sub, 𝔓, 𝔘,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
                                                 parallel = parallel,
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
-    𝓂.SS_calib_func = calib_func_exprs
-
-
-    replaced_ss_equations = []
-
-    for eq in ss_equations
-        push!(replaced_ss_equations, replace_symbols(eq, parameter_dict))
-    end
-    # replaced_ss_equations = Symbolics.parse_expr_to_symbolic.(replaced_ss_equations, (@__MODULE__,)) 
-
-    lennz = length(replaced_ss_equations)
-
-    if lennz > 1500
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
-
-    _, func_exprs = Symbolics.build_function(replaced_ss_equations, 𝔓, 𝔘, ℭ,
-                                                cse = cse, 
-                                                skipzeros = skipzeros, 
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
 
     𝓂.SS_check_func = func_exprs
 
@@ -3542,15 +3529,15 @@ function write_ss_check_function!(𝓂::ℳ;
 
     # Symbolics.@variables 𝔛¹[1:nx] 𝔓¹[1:np]
 
-    ϵˢ = zeros(Symbolics.Num, nϵˢ)
+    # ϵˢ = zeros(Symbolics.Num, nϵˢ)
 
-    calib_vals = zeros(Symbolics.Num, nc)
+    # calib_vals = zeros(Symbolics.Num, nc)
 
-    𝓂.SS_calib_func(calib_vals, 𝔓)
+    # 𝓂.SS_calib_func(calib_vals, 𝔓)
 
-    𝓂.SS_check_func(ϵˢ, 𝔓, 𝔘, calib_vals)
+    # 𝓂.SS_check_func(ϵˢ, 𝔓, 𝔘, calib_vals)
 
-    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ϵˢ, 𝔓) # nϵ x nx
+    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ss_equations_sub, 𝔓) # nϵ x nx
 
     lennz = nnz(∂SS_equations_∂parameters)
 
@@ -3580,7 +3567,7 @@ function write_ss_check_function!(𝓂::ℳ;
 
 
 
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ϵˢ, 𝔘) # nϵ x nx
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ss_equations_sub, 𝔘) # nϵ x nx
 
     lennz = nnz(∂SS_equations_∂SS_and_pars)
 
