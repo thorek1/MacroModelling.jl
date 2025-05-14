@@ -6093,45 +6093,37 @@ end
 @stable default_mode = "disable" begin
 
 function take_nth_order_derivatives(
-    f!::Function,
-    𝔛ᵈ::Vector{Symbolics.Num},
-    𝔓ᵈ::Vector{Symbolics.Num},
-    𝔛ˢ::Vector{Symbolics.Num},
-    𝔓ˢ::Vector{Symbolics.Num},
-    nϵ::Int;
+    dyn_equations::Vector{T},
+    𝔙::Vector{T},
+    𝔓::Vector{T},
+    SS_mapping::Dict{T, T},
+    nSS::Int;
     max_perturbation_order::Int = 1,
     output_compressed::Bool = true # Controls compression for X derivatives (order >= 2)
-)::Vector{Tuple{SparseMatrixCSC{Symbolics.Num, Int}, SparseMatrixCSC{Symbolics.Num, Int}}}#, Tuple{Symbolics.Arr{Symbolics.Num, 1}, Symbolics.Arr{Symbolics.Num, 1}}}
-
-    nx = length(𝔛ᵈ)
-    np = length(𝔛ˢ) + length(𝔓ˢ)
+)::Vector{Tuple{SparseMatrixCSC{T, Int}, SparseMatrixCSC{T, Int}}} where T <: Symbolics.Num#, Tuple{Symbolics.Arr{Symbolics.Num, 1}, Symbolics.Arr{Symbolics.Num, 1}}}
+    nx = length(𝔙)
+    np = length(𝔓)
+    nϵ = length(dyn_equations)
 
     if max_perturbation_order < 1
         throw(ArgumentError("max_perturbation_order must be at least 1"))
     end
 
-    ϵˢ = zeros(Symbolics.Num, nϵ)
-
-    Symbolics.@variables 𝔛𝔛[1:length(𝔛ᵈ)]
-
-    # Evaluate the function symbolically
-    f!(ϵˢ, 𝔛𝔛, 𝔓ᵈ)
-
     results = [] # To store pairs of sparse matrices (X_matrix, P_matrix) for each order
 
     # --- Order 1 ---
     # Compute the 1st order derivative with respect to X (Jacobian)
-    spX_order_1 = Symbolics.sparsejacobian(ϵˢ, 𝔛𝔛) # nϵ x nx
+    spX_order_1 = Symbolics.sparsejacobian(dyn_equations, 𝔙) # nϵ x nx
 
 
     spX_order_1_sub = copy(spX_order_1)
 
-    # spX_order_1_sub.nzval .= Symbolics.fast_substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝔛𝔛) .=> 𝔛ᵈ))
-    spX_order_1_sub.nzval .= Symbolics.substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝔛𝔛) .=> 𝔛ᵈ))
+    # spX_order_1_sub.nzval .= Symbolics.fast_substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝔛𝔛) .=> 𝔙))
+    spX_order_1_sub.nzval .= Symbolics.substitute(spX_order_1_sub.nzval, SS_mapping)
 
     # Compute the derivative of the non-zeros of the 1st X-derivative w.r.t. P
     # This is an intermediate step. The final P matrix will be built from this.
-    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1_sub.nzval, vcat(𝔓ˢ, 𝔛ˢ)) # nnz(spX_order_1) x np
+    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1_sub.nzval, 𝔓[1:end-nSS]) # nnz(spX_order_1) x np
 
     # Determine dimensions for the Order 1 P matrix
     X_nrows_1 = nϵ
@@ -6208,11 +6200,11 @@ function take_nth_order_derivatives(
             # Compute the Jacobian of the previous level's nzval w.r.t. 𝔛
             # This gives a flat matrix where rows correspond to non-zeros from order n-1 X-matrix
             # and columns correspond to the n-th variable we differentiate by (x_vn).
-            sp_flat_curr_X_rn = Symbolics.sparsejacobian(nzvals_prev, 𝔛𝔛) # nnz(spX_order_(n-1)) x nx
+            sp_flat_curr_X_rn = Symbolics.sparsejacobian(nzvals_prev, 𝔙) # nnz(spX_order_(n-1)) x nx
 
             sp_flat_curr_X = copy(sp_flat_curr_X_rn)
 
-            sp_flat_curr_X.nzval .= Symbolics.substitute(sp_flat_curr_X.nzval, Dict(Symbolics.scalarize(𝔛𝔛) .=> 𝔛ᵈ))
+            sp_flat_curr_X.nzval .= Symbolics.substitute(sp_flat_curr_X.nzval, SS_mapping)
 
             # Build the nz_to_indices map for the *current* level (order n)
             # Map: linear index in sp_flat_curr_X.nzval -> (original_row_f, (v_1, ..., v_n))
@@ -6349,7 +6341,7 @@ function take_nth_order_derivatives(
             # This is the Jacobian of the nzval of the intermediate flat X-Jacobian (sp_flat_curr_X) w.r.t. 𝔓.
             # sp_flat_curr_X.nzval contains expressions for d^n f_i / (dx_v1 ... dx_vn) for all
             # non-zero such values that were propagated from the previous step.
-            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, vcat(𝔓ˢ, 𝔛ˢ)) # nnz(sp_flat_curr_X) x np
+            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, 𝔓[1:end-nSS]) # nnz(sp_flat_curr_X) x np
             
             # Determine the desired dimensions of spP_order_n
             # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
@@ -6447,7 +6439,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                     cse = true,
                                     skipzeros = true)
 
-
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
     past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
@@ -6459,87 +6450,91 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     sort!(past_varss    ,by = x->replace(string(x),r"₍₋₁₎$"=>""))
     sort!(shock_varss   ,by = x->replace(string(x),r"₍ₓ₎$"=>""))
     sort!(ss_varss      ,by = x->replace(string(x),r"₍ₛₛ₎$"=>""))
-    
+
     dyn_future_list = collect(reduce(union, 𝓂.dyn_future_list))
     dyn_present_list = collect(reduce(union, 𝓂.dyn_present_list))
     dyn_past_list = collect(reduce(union, 𝓂.dyn_past_list))
     dyn_exo_list = collect(reduce(union,𝓂.dyn_exo_list))
     dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
-    
+
     future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_future_list))
     present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_present_list))
     past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")),string.(dyn_past_list))
     exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")),string.(dyn_exo_list))
     stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")),string.(dyn_ss_list))
-    
+
     vars_raw = vcat(dyn_future_list[indexin(sort(future),future)],
                     dyn_present_list[indexin(sort(present),present)],
                     dyn_past_list[indexin(sort(past),past)],
                     dyn_exo_list[indexin(sort(exo),exo)])
-
-    pars_and_SS = Expr[]
-    for (i, p) in enumerate(vcat(𝓂.parameters, 𝓂.calibration_equations_parameters))
-        push!(pars_and_SS, :($p = parameters_and_SS[$i]))
-    end
-
-    nn = length(pars_and_SS)
-
-    for (i, p) in enumerate(dyn_ss_list[indexin(sort(stst),stst)])
-        push!(pars_and_SS, :($p = parameters_and_SS[$(i + nn)]))
-    end
-
-    deriv_vars = Expr[]
-    for (i, u) in enumerate(vars_raw)
-        push!(deriv_vars, :($u = variables[$i]))
-    end
-
-    eeqqss = Expr[]
-    for (i, u) in enumerate(𝓂.dyn_equations)
-        push!(eeqqss, :(ℰ[$i] = $u))
-    end
-
-    funcs = :(function calculate_residual_of_dynamic_equations!(ℰ, variables, parameters_and_SS)
-        $(pars_and_SS...)
-        $(𝓂.calibration_equations_no_var...)
-        $(deriv_vars...)
-        @inbounds begin
-        $(eeqqss...)
-        end
-        return nothing
-    end)
-
-    calc! = @RuntimeGeneratedFunction(funcs)
-
-    SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-    
-    nx = length(SS_and_pars_names)
-
-    np = length(𝓂.parameter_values)
-    
-    nε = 𝓂.timings.nExo
-        
-    nϵ = length(𝓂.dyn_equations)
-
-    Symbolics.@variables 𝔛[1:nx] 𝔓[1:np] # ε[1:nε]
-
-    𝔛ˢ = Symbolics.scalarize(𝔛)
-    𝔓ˢ = Symbolics.scalarize(𝔓)
-    εˢ = zeros(nε)
-
-    ϵˢ = zeros(Symbolics.Num, nϵ)
-
-    SS = 𝔛ˢ[1:end - length(𝓂.calibration_equations)]
-    par = vcat(𝔓ˢ, 𝔛ˢ[(end - length(𝓂.calibration_equations)+1):end])
 
     dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
     dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
     dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
     dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
 
-    𝔛ᵈ = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],εˢ)
-    𝔓ᵈ = vcat(par, SS[dyn_ss_idx])
+    dyn_var_idxs = vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)
 
-    derivatives = take_nth_order_derivatives(calc!, 𝔛ᵈ, 𝔓ᵈ, 𝔛ˢ, 𝔓ˢ, nϵ; max_perturbation_order = min(max_perturbation_order,2), output_compressed = false)
+    pars_ext = vcat(𝓂.parameters, 𝓂.calibration_equations_parameters)
+    parameters_and_SS = vcat(pars_ext, dyn_ss_list[indexin(sort(stst),stst)])
+
+    np = length(parameters_and_SS)
+    nv = length(vars_raw)
+    # nc = length(𝓂.calibration_equations_no_var)
+
+    Symbolics.@variables 𝔓[1:np] 𝔙[1:nv]
+
+    parameter_dict = Dict{Symbol, Symbol}()
+    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+    calib_vars = Symbol[]
+    calib_expr = []
+    SS_mapping = Dict{Symbolics.Num, Symbolics.Num}()
+
+
+    for (i,v) in enumerate(parameters_and_SS)
+        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+        if i > length(pars_ext)
+            push!(SS_mapping, 𝔓[i] => 𝔙[dyn_ss_idx[i-length(pars_ext)]])
+        end
+    end
+
+    nSS = length(SS_mapping)
+
+    for (i,v) in enumerate(vars_raw)
+        push!(parameter_dict, v => :($(Symbol("𝔙_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔙_$i"))), @__MODULE__) => 𝔙[i])
+        if i <= length(dyn_var_idxs)
+            push!(SS_mapping, 𝔙[i] => 𝔙[dyn_var_idxs[i]])
+        else
+            push!(SS_mapping, 𝔙[i] => 0)
+        end
+    end
+
+
+    for v in 𝓂.calibration_equations_no_var
+        push!(calib_vars, v.args[1])
+        push!(calib_expr, v.args[2])
+    end
+
+
+    calib_replacements = Dict{Symbol,Any}()
+    for (i,x) in enumerate(calib_vars)
+        replacement = Dict(x => calib_expr[i])
+        for ii in i+1:length(calib_vars)
+            calib_expr[ii] = replace_symbols(calib_expr[ii], replacement)
+        end
+        push!(calib_replacements, x => calib_expr[i])
+    end
+
+
+    dyn_equations = 𝓂.dyn_equations |> 
+        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+        x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+
+    derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nSS)
 
 
     ∇₁_dyn = derivatives[1][1]
