@@ -4194,7 +4194,7 @@ function solve_steady_state!(𝓂::ℳ;
     
         for (i,v) in enumerate(parameters_and_solved_vars)
             push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
-            push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔘_$i"))), @__MODULE__) => 𝔘[i])
+            push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
         end
     
         # for (i,v) in enumerate(ss_and_aux_equations_dep)
