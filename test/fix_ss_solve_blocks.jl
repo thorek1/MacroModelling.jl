@@ -2,41 +2,357 @@ using Revise
 # ENV["JULIA_CONDAPKG_BACKEND"] = "MicroMamba"
 using MacroModelling
 using BenchmarkTools
-import MacroModelling: clear_solution_caches!
+import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, get_symbols, replace_symbols, match_pattern
 
 
-@model FS2000 precompile = true begin
-    dA[0] = exp(gam + z_e_a  *  e_a[x])
-    log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-    - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-    W[0] = l[0] / n[0]
-    - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-    R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-    1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-    c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-    P[0] * c[0] = m[0]
-    m[0] - 1 + d[0] = l[0]
-    e[0] = exp(z_e_a  *  e_a[x])
-    y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-    gy_obs[0] = dA[0] * y[0] / y[-1]
-    gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-    log_gy_obs[0] = log(gy_obs[0])
-    log_gp_obs[0] = log(gp_obs[0])
+
+import Symbolics
+import MacroTools
+import RuntimeGeneratedFunctions
+include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+𝓂 = m
+SS(𝓂)
+
+
+𝓂 = Caldara_et_al_2012
+
+
+future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
+present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
+past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
+shock_varss   = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₓ₎$")))
+ss_varss      = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍ₛₛ₎$")))
+
+sort!(future_varss  ,by = x->replace(string(x),r"₍₁₎$"=>"")) #sort by name without time index because otherwise eps_zᴸ⁽⁻¹⁾₍₋₁₎ comes before eps_z₍₋₁₎
+sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
+sort!(past_varss    ,by = x->replace(string(x),r"₍₋₁₎$"=>""))
+sort!(shock_varss   ,by = x->replace(string(x),r"₍ₓ₎$"=>""))
+sort!(ss_varss      ,by = x->replace(string(x),r"₍ₛₛ₎$"=>""))
+
+dyn_future_list = collect(reduce(union, 𝓂.dyn_future_list))
+dyn_present_list = collect(reduce(union, 𝓂.dyn_present_list))
+dyn_past_list = collect(reduce(union, 𝓂.dyn_past_list))
+dyn_exo_list = collect(reduce(union,𝓂.dyn_exo_list))
+dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+
+future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_future_list))
+present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_present_list))
+past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")),string.(dyn_past_list))
+exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")),string.(dyn_exo_list))
+stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")),string.(dyn_ss_list))
+
+vars_raw = vcat(dyn_future_list[indexin(sort(future),future)],
+                dyn_present_list[indexin(sort(present),present)],
+                dyn_past_list[indexin(sort(past),past)],
+                dyn_exo_list[indexin(sort(exo),exo)])
+
+pars_and_SS = Expr[]
+for (i, p) in enumerate(vcat(𝓂.parameters, 𝓂.calibration_equations_parameters))
+    push!(pars_and_SS, :($p = parameters_and_SS[$i]))
 end
 
-@parameters FS2000 silent = true precompile = true begin  
-    alp     = 0.356
-    bet     = 0.993
-    gam     = 0.0085
-    mst     = 1.0002
-    rho     = 0.129
-    psi     = 0.65
-    del     = 0.01
-    z_e_a   = 0.035449
-    z_e_m   = 0.008862
+nn = length(pars_and_SS)
+
+for (i, p) in enumerate(dyn_ss_list[indexin(sort(stst),stst)])
+    push!(pars_and_SS, :($p = parameters_and_SS[$(i + nn)]))
 end
-m = FS2000
-m = NAWM_EAUS_2008 
+
+deriv_vars = Expr[]
+for (i, u) in enumerate(vars_raw)
+    push!(deriv_vars, :($u = variables[$i]))
+end
+
+eeqqss = Expr[]
+for (i, u) in enumerate(𝓂.dyn_equations)
+    push!(eeqqss, :(ℰ[$i] = $u))
+end
+
+funcs = :(function calculate_residual_of_dynamic_equations!(ℰ, variables, parameters_and_SS)
+    $(pars_and_SS...)
+    $(𝓂.calibration_equations_no_var...)
+    $(deriv_vars...)
+    @inbounds begin
+    $(eeqqss...)
+    end
+    return nothing
+end)
+
+
+parameters_and_SS = vcat(𝓂.parameters, 𝓂.calibration_equations_parameters, dyn_ss_list[indexin(sort(stst),stst)])
+
+np = length(parameters_and_SS)
+nv = length(vars_raw)
+# nc = length(𝓂.calibration_equations_no_var)
+
+Symbolics.@variables 𝔓[1:np] 𝔙[1:nv]
+
+parameter_dict = Dict{Symbol, Symbol}()
+back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+calib_vars = Symbol[]
+calib_expr = []
+
+
+for (i,v) in enumerate(parameters_and_SS)
+    push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+    push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+end
+
+vars_raw = vcat(dyn_future_list[indexin(sort(future),future)],
+                dyn_present_list[indexin(sort(present),present)],
+                dyn_past_list[indexin(sort(past),past)])
+
+
+
+for (i,v) in enumerate(vars_raw)
+    push!(parameter_dict, v => :($(Symbol("𝔙_$i"))))
+    push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔙_$i"))), @__MODULE__) => 𝔙[vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)[i]])
+end
+
+
+for (i,v) in enumerate(dyn_exo_list[indexin(sort(exo),exo)])
+    push!(parameter_dict, v => :($(Symbol("𝔢_$i"))))
+    push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔢_$i"))), @__MODULE__) => 0)
+end
+
+
+for (i,v) in enumerate(𝓂.calibration_equations_no_var)
+    push!(calib_vars, v.args[1])
+    push!(calib_expr, v.args[2])
+end
+
+
+calib_replacements = Dict{Symbol,Any}()
+for (i,x) in enumerate(calib_vars)
+    replacement = Dict(x => calib_expr[i])
+    for ii in i+1:length(calib_vars)
+        calib_expr[ii] = replace_symbols(calib_expr[ii], replacement)
+    end
+    push!(calib_replacements, x => calib_expr[i])
+end
+
+
+dyn_equations_sub = 𝓂.dyn_equations |> 
+    x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+    x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+    x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+    x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+
+
+
+    union(𝓂.var,𝓂.exo_past,𝓂.exo_future,𝓂.exo)
+
+SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+
+nx = length(SS_and_pars_names)
+
+np = length(𝓂.parameter_values)
+
+nε = 𝓂.timings.nExo
+    
+nϵ = length(𝓂.dyn_equations)
+
+Symbolics.@variables 𝔛[1:nx] 𝔓[1:np] # ε[1:nε]
+
+𝔛ˢ = Symbolics.scalarize(𝔛)
+𝔓ˢ = Symbolics.scalarize(𝔓)
+εˢ = zeros(nε)
+
+ϵˢ = zeros(Symbolics.Num, nϵ)
+
+StSt = 𝔛ˢ[1:end - length(𝓂.calibration_equations)]
+par = vcat(𝔓ˢ, 𝔛ˢ[(end - length(𝓂.calibration_equations)+1):end])
+
+dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+
+𝔛ᵈ = vcat(StSt[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],εˢ)
+𝔓ᵈ = vcat(par, StSt[dyn_ss_idx])
+
+calc! = @RuntimeGeneratedFunction(funcs)
+
+SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+
+nx = length(SS_and_pars_names)
+
+np = length(𝓂.parameter_values)
+
+nε = 𝓂.timings.nExo
+    
+nϵ = length(𝓂.dyn_equations)
+
+Symbolics.@variables 𝔛[1:nx] 𝔓[1:np] # ε[1:nε]
+
+𝔛ˢ = Symbolics.scalarize(𝔛)
+𝔓ˢ = Symbolics.scalarize(𝔓)
+εˢ = zeros(nε)
+
+ϵˢ = zeros(Symbolics.Num, nϵ)
+
+SS = 𝔛ˢ[1:end - length(𝓂.calibration_equations)]
+par = vcat(𝔓ˢ, 𝔛ˢ[(end - length(𝓂.calibration_equations)+1):end])
+
+dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
+
+𝔛ᵈ = vcat(SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]],εˢ)
+𝔓ᵈ = vcat(par, SS[dyn_ss_idx])
+
+
+
+
+
+
+
+
+include("../models/Guerrieri_Iacoviello_2017.jl")
+𝓂 = Guerrieri_Iacoviello_2017
+
+SS(𝓂)
+
+using LinearAlgebra
+Guerrieri_Iacoviello_2017.∂SS_equations_∂parameters[1]
+lusp = lu(Guerrieri_Iacoviello_2017.∂SS_equations_∂SS_and_pars[1])
+
+
+
+
+include("../models/NAWM_EAUS_2008.jl")
+SS(NAWM_EAUS_2008)
+
+include("../models/QUEST3_2009.jl")
+SS(QUEST3_2009)
+
+include("../models/Caldara_et_al_2012.jl")
+SS(Caldara_et_al_2012)
+
+include("../models/Smets_Wouters_2003.jl")
+SS(Smets_Wouters_2003)
+
+include("../models/Smets_Wouters_2007.jl")
+SS(Smets_Wouters_2007)
+
+include("../models/GNSS_2010.jl")
+SS(GNSS_2010)
+
+include("../models/Baxter_King_1993.jl")
+SS(Baxter_King_1993)
+
+include("../models/Backus_Kehoe_Kydland_1992.jl")
+SS(Backus_Kehoe_Kydland_1992)
+
+include("../models/Aguiar_Gopinath_2007.jl")
+SS(Aguiar_Gopinath_2007)
+
+
+RuntimeGeneratedFunctions.init(@__MODULE__)
+cse = true
+skipzeros = true
+density_threshold::Float64 = .1
+min_length::Int = 10000
+
+
+
+unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
+
+ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
+
+
+
+np = length(𝓂.parameters)
+nu = length(unknowns)
+nc = length(𝓂.calibration_equations_no_var)
+
+Symbolics.@variables 𝔓[1:np] 𝔘[1:nu] ℭ[1:nc]
+
+parameter_dict = Dict{Symbol, Symbol}()
+back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+calib_vars = Symbol[]
+calib_expr = []
+
+
+for (i,v) in enumerate(𝓂.parameters)
+    push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+    push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+end
+
+for (i,v) in enumerate(unknowns)
+    push!(parameter_dict, v => :($(Symbol("𝔘_$i"))))
+    push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔘_$i"))), @__MODULE__) => 𝔘[i])
+end
+
+for (i,v) in enumerate(𝓂.calibration_equations_no_var)
+    push!(calib_vars, v.args[1])
+    push!(calib_expr, v.args[2])
+    push!(parameter_dict, v.args[1] => :($(Symbol("ℭ_$i"))))
+    push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("ℭ_$i"))), @__MODULE__) => ℭ[i])
+end
+
+calib_replacements = Dict{Symbol,Any}()
+for (i,x) in enumerate(calib_vars)
+    replacement = Dict(x => calib_expr[i])
+    for ii in i+1:length(calib_vars)
+        calib_expr[ii] = replace_symbols(calib_expr[ii], replacement)
+    end
+    push!(calib_replacements, x => calib_expr[i])
+end
+
+
+ss_equations_sub = ss_equations |> 
+    x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+    x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+    x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+    x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+
+
+lennz = length(ss_equations_sub)
+
+if lennz > 1500
+    parallel = Symbolics.ShardedForm(1500,4)
+else
+    parallel = Symbolics.SerialForm()
+end
+
+_, func_exprs = Symbolics.build_function(ss_equations_sub, 𝔓, 𝔘,
+                                            cse = cse, 
+                                            skipzeros = skipzeros, 
+                                            parallel = parallel,
+                                            expression_module = @__MODULE__,
+                                            expression = Val(false))::Tuple{<:Function, <:Function}
+
+
+
+
+SS(m, derivatives = false)
+
+SS(m, derivatives = true)
+
+get_solution(m)
+get_std(m)
+
+𝓂.∂SS_equations_∂SS_and_pars[2]
+𝓂.∂SS_equations_∂SS_and_pars[1]
+
+
+𝓂 = m
+𝓂 = Smets_Wouters_2003
+SS_and_pars = SS(𝓂, derivatives = false)
+
+get_non_stochastic_steady_state_residuals(𝓂, collect(SS_and_pars))
+
+m.SS_check_func
+
+
+m.SS_solve_func
+m.ss_solve_blocks
+𝓂 = FS2000
+𝓂 = NAWM_EAUS_2008
+𝓂 = QUEST3_2009
+
+
 @benchmark begin
     # clear_solution_caches!(m, :first_order)
     get_SS(m, silent = true, derivatives = false)
@@ -58,10 +374,118 @@ m.ss_solve_blocks_in_place[1].ss_problem.jac_buffer
 
 m.ss_solve_blocks_in_place[1].extended_ss_problem.jac_buffer
 
+
+import MacroModelling: get_NSSS_and_parameters, clear_solution_caches!
+
+include("../models/Smets_Wouters_2007.jl")
+
+m = Smets_Wouters_2007
+
+
+include("../models/NAWM_EAUS_2008.jl")
+
+m = NAWM_EAUS_2008
+
+
+m.SS_solve_func
+SS(m, derivatives = false)
+
+clear_solution_caches!(m, :first_order)
+get_NSSS_and_parameters(m, m.parameter_values)
+
+@benchmark get_NSSS_and_parameters(m, m.parameter_values) setup = clear_solution_caches!(m, :first_order)
+
+@profview for i in 1:10
+    clear_solution_caches!(m, :first_order)
+    get_NSSS_and_parameters(m, m.parameter_values)
+end
+
 m.NSSS_solver_cache[end][1]
 
 m.SS_solve_func
 
+b = copy(m.ss_solve_blocks_in_place[1].ss_problem.func_buffer)
+A = copy(m.ss_solve_blocks_in_place[1].ss_problem.jac_buffer)
+# b = copy(m.parameter_values)
+
+
+A \ A
+dA = collect(A)
+n = 200
+A = rand(n,n)
+B = rand(n,n)
+X = rand(n,n)
+
+@benchmark begin
+prob = LinearProblem(A, B[:, 1])
+
+sol_cache = init(prob)
+# Solve for each column of B
+for i in 1:3
+    # Create a linear problem for the i-th column of B
+    sol_cache.b = B[:, i]
+    # Solve the system for the i-th column
+    sol = LinearSolve.solve!(sol_cache)
+
+    # Store the solution vector in the i-th column of X
+    X[:, i] = sol.u
+end
+end
+@benchmark A\B
+
+using SparseArrays
+spA = sprand(n,n,.1)
+
+spB = sprand(n,n,.1)
+B = collect(spB)
+
+@benchmark spA\B
+
+
+@benchmark begin
+    prob = LinearProblem(spA, spB[:, 1])
+    
+    sol_cache = init(prob, UMFPACKFactorization())
+    # Solve for each column of B
+    for i in 1:n
+        # Create a linear problem for the i-th column of B
+        sol_cache.b .= spB[:, i]
+        # Solve the system for the i-th column
+        sol = LinearSolve.solve!(sol_cache)
+    
+        # Store the solution vector in the i-th column of X
+        X[:, i] = sol.u
+    end
+end
+
+# Create a linear problem
+prob = LinearSolve.LinearProblem(A, B, MetalLUFactorization())
+
+# Solve the system
+sol = solve(prob)
+
+# Access the solution matrix X
+X = sol.u
+
+prob = LinearProblem(A,b)
+sol_cache = LinearSolve.init(prob, UMFPACKFactorization())
+sol = LinearSolve.solve!(sol_cache)
+
+A\b
+
+prob = LinearProblem(dA,b)
+sol_cache = LinearSolve.init(prob)
+sol = LinearSolve.solve!(sol_cache)
+
+
+A*sol - b
+A\b - sol
+A .= 1
+sol_cache.A = A
+sol = LinearSolve.solve!(sol_cache)
+
+sum(sol)
+LinearSolve.LinearProblem(A,b)
 guess = [ 0.15666405734651248
 1.2082329932960632
 0.022590361445783146
@@ -95,6 +519,658 @@ verbose = true
 initial_parameters = 𝓂.parameter_values
 cold_start = true
 solver_parameters  = 𝓂.solver_parameters[2:end]
+
+ initial_parameters = if typeof(initial_parameters) == Vector{Float64}
+                  initial_parameters
+              else
+                  ℱ.value.(initial_parameters)
+              end
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3682 =#
+          initial_parameters_tmp = copy(initial_parameters)
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3684 =#
+          parameters = copy(initial_parameters)
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3685 =#
+          params_flt = copy(initial_parameters)
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3687 =#
+          current_best = sum(abs2, (𝓂.NSSS_solver_cache[end])[end] - initial_parameters)
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3688 =#
+          closest_solution_init = 𝓂.NSSS_solver_cache[end]
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3690 =#
+          for pars = 𝓂.NSSS_solver_cache
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3691 =#
+              copy!(initial_parameters_tmp, pars[end])
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3693 =#
+              ℒ.axpy!(-1, initial_parameters, initial_parameters_tmp)
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3695 =#
+              latest = sum(abs2, initial_parameters_tmp)
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3696 =#
+              if latest <= current_best
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3697 =#
+                  current_best = latest
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3698 =#
+                  closest_solution_init = pars
+              end
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3700 =#
+          end
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3705 =#
+          range_iters = 0
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3706 =#
+          solution_error = 1.0
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3707 =#
+          solved_scale = 0
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3709 =#
+          scale = 1.0
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3711 =#
+          NSSS_solver_cache_scale = CircularBuffer{Vector{Vector{Float64}}}(500)
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3712 =#
+          push!(NSSS_solver_cache_scale, closest_solution_init)
+          #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3714 =#
+        #   while range_iters <= if cold_start
+        #                   1
+        #               else
+        #                   500
+        #               end && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3715 =#
+              range_iters += 1
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3716 =#
+              fail_fast_solvers_only = if range_iters > 1
+                      true
+                  else
+                      false
+                  end
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3718 =#
+              if abs(solved_scale - scale) < 0.0001
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3720 =#
+                  # break
+              end
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3733 =#
+              current_best = sum(abs2, (NSSS_solver_cache_scale[end])[end] - initial_parameters)
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3734 =#
+              closest_solution = NSSS_solver_cache_scale[end]
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3736 =#
+              for pars = NSSS_solver_cache_scale
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3737 =#
+                  copy!(initial_parameters_tmp, pars[end])
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3739 =#
+                  ℒ.axpy!(-1, initial_parameters, initial_parameters_tmp)
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3741 =#
+                  latest = sum(abs2, initial_parameters_tmp)
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3743 =#
+                  if latest <= current_best
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3744 =#
+                      current_best = latest
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3745 =#
+                      closest_solution = pars
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3747 =#
+              end
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3751 =#
+              if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3752 =#
+                  parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
+              else
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3754 =#
+                  parameters = copy(initial_parameters)
+              end
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3756 =#
+              params_flt = parameters
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3760 =#
+              EA_SIZE = parameters[22]
+              EA_OMEGA = parameters[23]
+              EA_BETA = parameters[24]
+              EA_SIGMA = parameters[25]
+              EA_KAPPA = parameters[26]
+              EA_ZETA = parameters[27]
+              EA_DELTA = parameters[28]
+              EA_ETA = parameters[29]
+              EA_ETAI = parameters[30]
+              EA_ETAJ = parameters[31]
+              EA_XII = parameters[32]
+              EA_XIJ = parameters[33]
+              EA_CHII = parameters[34]
+              EA_CHIJ = parameters[35]
+              EA_ALPHA = parameters[36]
+              EA_THETA = parameters[38]
+              EA_XIH = parameters[39]
+              EA_XIX = parameters[40]
+              EA_CHIH = parameters[41]
+              EA_CHIX = parameters[42]
+              EA_NUC = parameters[43]
+              EA_MUC = parameters[44]
+              EA_NUI = parameters[45]
+              EA_MUI = parameters[46]
+              EA_GAMMAV1 = parameters[47]
+              EA_GAMMAV2 = parameters[48]
+              EA_GAMMAU2 = parameters[51]
+              EA_GAMMAB1 = parameters[54]
+              EA_BYTARGET = parameters[55]
+              EA_PHITB = parameters[56]
+              EA_GYBAR = parameters[57]
+              EA_TRYBAR = parameters[58]
+              EA_TAUCBAR = parameters[59]
+              EA_TAUKBAR = parameters[60]
+              EA_TAUNBAR = parameters[61]
+              EA_TAUWHBAR = parameters[62]
+              EA_TAUWFBAR = parameters[63]
+              EA_UPSILONT = parameters[64]
+              EA_UPSILONTR = parameters[65]
+              EA_PI4TARGET = parameters[66]
+              EA_PHIRR = parameters[67]
+              EA_PHIRPI = parameters[68]
+              EA_BFYTARGET = parameters[70]
+              EA_PYBAR = parameters[81]
+              EA_YBAR = parameters[82]
+              EA_PIBAR = parameters[84]
+              EA_PSIBAR = parameters[85]
+              EA_QBAR = parameters[86]
+              EA_TAUDBAR = parameters[87]
+              EA_ZBAR = parameters[88]
+              US_SIZE = parameters[89]
+              US_OMEGA = parameters[90]
+              US_BETA = parameters[91]
+              US_SIGMA = parameters[92]
+              US_KAPPA = parameters[93]
+              US_ZETA = parameters[94]
+              US_DELTA = parameters[95]
+              US_ETA = parameters[96]
+              US_ETAI = parameters[97]
+              US_ETAJ = parameters[98]
+              US_XII = parameters[99]
+              US_XIJ = parameters[100]
+              US_CHII = parameters[101]
+              US_CHIJ = parameters[102]
+              US_ALPHA = parameters[103]
+              US_THETA = parameters[105]
+              US_XIH = parameters[106]
+              US_XIX = parameters[107]
+              US_CHIH = parameters[108]
+              US_CHIX = parameters[109]
+              US_NUC = parameters[110]
+              US_MUC = parameters[111]
+              US_NUI = parameters[112]
+              US_MUI = parameters[113]
+              US_GAMMAV1 = parameters[114]
+              US_GAMMAV2 = parameters[115]
+              US_GAMMAU2 = parameters[118]
+              US_BYTARGET = parameters[122]
+              US_PHITB = parameters[123]
+              US_GYBAR = parameters[124]
+              US_TRYBAR = parameters[125]
+              US_TAUCBAR = parameters[126]
+              US_TAUKBAR = parameters[127]
+              US_TAUNBAR = parameters[128]
+              US_TAUWHBAR = parameters[129]
+              US_TAUWFBAR = parameters[130]
+              US_UPSILONT = parameters[131]
+              US_UPSILONTR = parameters[132]
+              US_PI4TARGET = parameters[133]
+              US_PHIRR = parameters[134]
+              US_PHIRPI = parameters[135]
+              US_PYBAR = parameters[147]
+              US_TAUDBAR = parameters[148]
+              US_YBAR = parameters[149]
+              US_PIBAR = parameters[150]
+              US_PSIBAR = parameters[151]
+              US_QBAR = parameters[152]
+              US_ZBAR = parameters[153]
+              US_RER = parameters[154]
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3761 =#
+              EA_OMEGA = min(max(EA_OMEGA, 2.220446049250313e-16), 1.0e12)
+              EA_ALPHA = min(max(EA_ALPHA, 2.220446049250313e-16), 1.0e12)
+              EA_NUC = min(max(EA_NUC, 2.220446049250313e-16), 1.0e12)
+              EA_NUI = min(max(EA_NUI, 2.220446049250313e-16), 1.0e12)
+              EA_PI4TARGET = min(max(EA_PI4TARGET, 2.220446049250313e-16), 1.0e12)
+              EA_ZBAR = min(max(EA_ZBAR, 2.220446049250313e-16), 1.0e12)
+              US_OMEGA = min(max(US_OMEGA, 2.220446049250313e-16), 1.0e12)
+              US_ALPHA = min(max(US_ALPHA, 2.220446049250313e-16), 1.0e12)
+              US_NUC = min(max(US_NUC, 2.220446049250313e-16), 1.0e12)
+              US_NUI = min(max(US_NUI, 2.220446049250313e-16), 1.0e12)
+              US_PI4TARGET = min(max(US_PI4TARGET, 2.220446049250313e-16), 1.0e12)
+              US_ZBAR = min(max(US_ZBAR, 2.220446049250313e-16), 1.0e12)
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3762 =#
+              EA_RRSTAR = 1 / EA_BETA
+              US_RRSTAR = 1 / US_BETA
+              EA_interest_EXOG = EA_BETA ^ -1 * EA_PI4TARGET ^ (1 / 4)
+              US_interest_EXOG = US_BETA ^ -1 * US_PI4TARGET ^ (1 / 4)
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3763 =#
+              NSSS_solver_cache_tmp = []
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3764 =#
+              solution_error = 0.0
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3765 =#
+              iters = 0
+              #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3766 =#
+              EA_RP = 0
+              EA_RERDEP = 1
+              EA_GAMMAIMC = 0
+              EA_GAMMAIMCDAG = 1
+              EA_GAMMAIMI = 0
+              ➕₃₅ = min(max(2.220446049250313e-16, US_GAMMAV1 * US_GAMMAV2), 1.0e12)
+              solution_error += abs(➕₃₅ - US_GAMMAV1 * US_GAMMAV2)
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                      println("Failed for analytical aux variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  # continue
+              end
+              US_TAUWH = US_TAUWHBAR
+              US_TRY = US_TRYBAR
+              US_TR = US_PYBAR * US_TRY * US_YBAR
+              US_TRI = US_TR * US_UPSILONTR
+              US_TRJ = ((US_OMEGA * US_TRI + US_TR) - US_TRI) / US_OMEGA
+              US_TAUC = US_TAUCBAR
+              US_GY = US_GYBAR
+              US_TAUD = US_TAUDBAR
+              US_TAUWF = US_TAUWFBAR
+              US_Z = US_ZBAR
+              solution_error += abs(min(max(2.220446049250313e-16, US_Z), 1.0e12) - US_Z)
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3529 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3529 =#
+                      println("Failed for bounded variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3529 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3529 =#
+                  # continue
+              end
+              ➕₄₁ = min(max(2.220446049250313e-16, 1 - US_ALPHA), 1.0e12)
+              solution_error += abs(➕₄₁ - (1 - US_ALPHA))
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                      println("Failed for analytical aux variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  # continue
+              end
+              US_GAMMAI = 0
+              ➕₅₂ = min(max(2.220446049250313e-16, 1 - US_NUC), 1.0e12)
+              solution_error += abs(➕₅₂ - (1 - US_NUC))
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                      println("Failed for analytical aux variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  # continue
+              end
+              US_GAMMAIMC = 0
+              EA_GY = EA_GYBAR
+              EA_GAMMAIMIDAG = 1
+              EA_TAUK = EA_TAUKBAR
+              EA_GAMMAI = 0
+              EA_GAMMAIDER = 0
+              EA_Z = EA_ZBAR
+              solution_error += abs(min(max(2.220446049250313e-16, EA_Z), 1.0e12) - EA_Z)
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3529 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3529 =#
+                      println("Failed for bounded variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3529 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3529 =#
+                  # continue
+              end
+              ➕₂ = min(max(2.220446049250313e-16, EA_GAMMAV1 * EA_GAMMAV2), 1.0e12)
+              solution_error += abs(➕₂ - EA_GAMMAV1 * EA_GAMMAV2)
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                      println("Failed for analytical aux variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  # continue
+              end
+              EA_TAUN = EA_TAUNBAR
+              EA_TRY = EA_TRYBAR
+              EA_TR = EA_PYBAR * EA_TRY * EA_YBAR
+              EA_TRI = EA_TR * EA_UPSILONTR
+              EA_TRJ = ((EA_OMEGA * EA_TRI + EA_TR) - EA_TRI) / EA_OMEGA
+              ➕₁₉ = min(max(2.220446049250313e-16, 1 - EA_NUC), 1.0e12)
+              solution_error += abs(➕₁₉ - (1 - EA_NUC))
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                      println("Failed for analytical aux variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  # continue
+              end
+              EA_TAUWF = EA_TAUWFBAR
+              EA_TAUC = EA_TAUCBAR
+              EA_TAUWH = EA_TAUWHBAR
+              EA_TAUD = EA_TAUDBAR
+              ➕₁₂ = min(max(2.220446049250313e-16, 1 - EA_OMEGA), 1.0e12)
+              solution_error += abs(➕₁₂ - (1 - EA_OMEGA))
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                      println("Failed for analytical aux variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  # continue
+              end
+              ➕₈ = min(max(2.220446049250313e-16, 1 - EA_ALPHA), 1.0e12)
+              solution_error += abs(➕₈ - (1 - EA_ALPHA))
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                      println("Failed for analytical aux variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  # continue
+              end
+              US_GAMMAIMI = 0
+              ➕₅₅ = min(max(2.220446049250313e-16, 1 - US_NUI), 1.0e12)
+              solution_error += abs(➕₅₅ - (1 - US_NUI))
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                      println("Failed for analytical aux variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  # continue
+              end
+              US_TAUK = US_TAUKBAR
+              ➕₄₅ = min(max(2.220446049250313e-16, 1 - US_OMEGA), 1.0e12)
+              solution_error += abs(➕₄₅ - (1 - US_OMEGA))
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                      println("Failed for analytical aux variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  # continue
+              end
+              US_GAMMAIMIDAG = 1
+              US_GAMMAIMCDAG = 1
+              US_TAUN = US_TAUNBAR
+              US_GAMMAIDER = 0
+              ➕₂₂ = min(max(2.220446049250313e-16, 1 - EA_NUI), 1.0e12)
+              solution_error += abs(➕₂₂ - (1 - EA_NUI))
+              if solution_error > tol.NSSS_acceptance_tol
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  if verbose
+                      #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                      println("Failed for analytical aux variables with error $(solution_error)")
+                  end
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  scale = scale * 0.3 + solved_scale * 0.7
+                  #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3510 =#
+                  # continue
+              end
+              ➕₆₈ = min(1.0e12, max(eps(), US_PI4TARGET))
+              ➕₆₉ = min(1.0e12, max(eps(), EA_PI4TARGET))
+              ➕₇₀ = min(1.0e12, max(eps(), EA_OMEGA))
+              ➕₇₁ = min(1.0e12, max(eps(), EA_ALPHA))
+              ➕₇₂ = min(1.0e12, max(eps(), EA_NUC))
+              ➕₇₃ = min(1.0e12, max(eps(), US_ALPHA))
+              ➕₇₄ = min(1.0e12, max(eps(), EA_NUI))
+              ➕₇₅ = min(1.0e12, max(eps(), US_NUC))
+              ➕₇₆ = min(1.0e12, max(eps(), US_NUI))
+              ➕₇₇ = min(1.0e12, max(eps(), US_OMEGA))
+              params_and_solved_vars = [EA_SIZE, EA_OMEGA, EA_BETA, EA_SIGMA, EA_KAPPA, EA_ZETA, EA_DELTA, EA_ETA, EA_ETAI, EA_ETAJ, EA_XII, EA_XIJ, EA_CHII, EA_CHIJ, EA_ALPHA, EA_THETA, EA_XIH, EA_XIX, EA_CHIH, EA_CHIX, EA_NUC, EA_MUC, EA_NUI, EA_MUI, EA_GAMMAV1, EA_GAMMAV2, EA_GAMMAU2, EA_GAMMAB1, EA_BYTARGET, EA_PHITB, EA_TAUKBAR, EA_UPSILONT, EA_PI4TARGET, EA_PHIRR, EA_PHIRPI, EA_BFYTARGET, EA_PYBAR, EA_YBAR, EA_PIBAR, EA_PSIBAR, EA_QBAR, US_SIZE, US_OMEGA, US_BETA, US_SIGMA, US_KAPPA, US_ZETA, US_DELTA, US_ETA, US_ETAI, US_ETAJ, US_XII, US_XIJ, US_CHII, US_CHIJ, US_ALPHA, US_THETA, US_XIH, US_XIX, US_CHIH, US_CHIX, US_NUC, US_MUC, US_NUI, US_MUI, US_GAMMAV1, US_GAMMAV2, US_GAMMAU2, US_BYTARGET, US_PHITB, US_TAUKBAR, US_UPSILONT, US_PI4TARGET, US_PHIRR, US_PHIRPI, US_PYBAR, US_YBAR, US_PIBAR, US_PSIBAR, US_QBAR, US_RER, EA_RRSTAR, US_RRSTAR, EA_GY, EA_TAUC, EA_TAUD, EA_TAUK, EA_TAUN, EA_TAUWF, EA_TAUWH, EA_TR, EA_TRJ, EA_Z, US_GY, US_TAUC, US_TAUD, US_TAUK, US_TAUN, US_TAUWF, US_TAUWH, US_TR, US_TRJ, US_Z, ➕₂, ➕₈, ➕₁₂, ➕₁₉, ➕₂₂, ➕₃₅, ➕₄₁, ➕₄₅, ➕₅₂, ➕₅₅, ➕₆₈, ➕₆₉, ➕₇₀, ➕₇₁, ➕₇₂, ➕₇₃, ➕₇₄, ➕₇₅, ➕₇₆, ➕₇₇]
+              lbs = [-1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, -1.0e12, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16, 2.220446049250313e-16]
+              ubs = [1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 600.0, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12]
+              inits = [max.(lbs[1:length(closest_solution[1])], min.(ubs[1:length(closest_solution[1])], closest_solution[1])), closest_solution[2]]
+              
+
+
+
+
+            SS_solve_block = 𝓂.ss_solve_blocks_in_place[1];
+
+            parameters_and_solved_vars = params_and_solved_vars
+
+            guess_and_pars_solved_vars = inits
+
+            n_block = 1
+
+              solved_yet = false
+
+              guess = guess_and_pars_solved_vars[1]
+          
+              sol_values = guess
+          
+              closest_parameters_and_solved_vars = sum(abs, guess_and_pars_solved_vars[2]) == Inf ? parameters_and_solved_vars : guess_and_pars_solved_vars[2]
+          
+              # res = ss_solve_blocks(parameters_and_solved_vars, guess)
+          
+              SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars, 0) # TODO: make the block a struct
+              # TODO: do the function creation with Symbolics as this will solve the compilation bottleneck for large functions
+          
+              res = SS_solve_block.ss_problem.func_buffer
+          
+              sol_minimum  = ℒ.norm(res)
+          
+                  rel_sol_minimum = 1.0
+              
+              if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
+                  solved_yet = true
+          
+                  if verbose
+                      println("Block: $n_block, - Solved using previous solution; residual norm: $sol_minimum")
+                  end
+              end
+          
+              total_iters = [0,0]
+          
+              SS_optimizer = levenberg_marquardt
+            #   SS_optimizer = newton
+
+              
+              guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
+
+
+
+
+                xtol = tol.NSSS_xtol
+                ftol = tol.NSSS_ftol
+                rel_xtol = tol.NSSS_rel_xtol
+                separate_starting_value = false
+                solver_params = solver_parameters[1]
+                extended_problem = true
+
+
+    if separate_starting_value isa Float64
+        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(separate_starting_value, length(guess))))
+        sol_values_init[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
+    else
+        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : solver_params.starting_value for g in guess]))
+    end
+
+
+    
+    fnj = extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem;
+    parameters = solver_params
+    upper_bounds = ubs
+    lower_bounds = lbs
+    initial_guess = extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init
+import MacroModelling: transform
+
+
+    xtol = tol.NSSS_xtol
+    ftol = tol.NSSS_ftol
+    rel_xtol = tol.NSSS_rel_xtol
+
+    iterations = 250
+    
+    ϕ̄ = parameters.ϕ̄
+    ϕ̂ = parameters.ϕ̂
+    μ̄¹ = parameters.μ̄¹
+    μ̄² = parameters.μ̄²
+    p̄¹ = parameters.p̄¹
+    p̄² = parameters.p̄²
+    ρ = parameters.ρ
+    ρ¹ = parameters.ρ¹
+    ρ² = parameters.ρ²
+    ρ³ = parameters.ρ³
+    ν = parameters.ν
+    λ¹ = parameters.λ¹
+    λ² = parameters.λ²
+    λ̂¹ = parameters.λ̂¹
+    λ̂² = parameters.λ̂²
+    λ̅¹ = parameters.λ̅¹
+    λ̅² = parameters.λ̅²
+    λ̂̅¹ = parameters.λ̂̅¹
+    λ̂̅² = parameters.λ̂̅²
+    transformation_level = parameters.transformation_level
+    shift = parameters.shift
+    backtracking_order = parameters.backtracking_order
+
+    @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
+    @assert all(lower_bounds .< upper_bounds)
+    @assert backtracking_order ∈ [2,3] "Backtracking order can only be quadratic (2) or cubic (3)."
+
+    max_linesearch_iterations = 600
+
+    # function f̂(x) 
+    #     f(undo_transform(x,transformation_level))  
+    # #     # f(undo_transform(x,transformation_level,shift))  
+    # end
+
+    upper_bounds  = transform(upper_bounds,transformation_level)
+    # upper_bounds  = transform(upper_bounds,transformation_level,shift)
+    lower_bounds  = transform(lower_bounds,transformation_level)
+    # lower_bounds  = transform(lower_bounds,transformation_level,shift)
+
+    current_guess = copy(transform(initial_guess,transformation_level))
+    current_guess_untransformed = copy(transform(initial_guess,transformation_level))
+    # current_guess = copy(transform(initial_guess,transformation_level,shift))
+    previous_guess = similar(current_guess)
+    previous_guess_untransformed = similar(current_guess)
+    guess_update = similar(current_guess)
+    factor = similar(current_guess)
+    # ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
+    ∇ = fnj.jac_buffer
+    ∇̂ = similar(∇)
+
+    if ∇ isa SparseMatrixCSC
+        prob = 𝒮.LinearProblem(∇, guess_update, 𝒮.UMFPACKFactorization())
+    else
+        prob = 𝒮.LinearProblem(∇, guess_update)#, 𝒮.CholeskyFactorization)
+    end
+
+    sol_cache = 𝒮.init(prob)
+    
+    # prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
+
+    largest_step = T(1.0)
+    largest_residual = T(1.0)
+    largest_relative_step = T(1.0)
+
+    μ¹ = μ̄¹
+    μ² = μ̄²
+
+    p¹ = p̄¹
+    p² = p̄²
+
+    grad_iter = 0
+    func_iter = 0
+
+
+    if ∇ isa SparseMatrixCSC
+        prob = 𝒮.LinearProblem(∇, guess_update, 𝒮.UMFPACKFactorization())
+    else
+        prob = 𝒮.LinearProblem(∇, guess_update)#, 𝒮.CholeskyFactorization)
+    end
+
+    sol_cache = 𝒮.init(prob)
+    
+    # prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
+
+    largest_step = T(1.0)
+    largest_residual = T(1.0)
+    largest_relative_step = T(1.0)
+
+    μ¹ = μ̄¹
+    μ² = μ̄²
+
+    p¹ = p̄¹
+    p² = p̄²
+
+    grad_iter = 0
+    func_iter = 0
+
+    for iter in 1:iterations
+        # make the jacobian and f calls nonallocating
+        copy!(current_guess_untransformed, current_guess)
+        
+        if transformation_level > 0
+            factor .= 1
+            for _ in 1:transformation_level
+                factor .*= cosh.(current_guess_untransformed)
+                current_guess_untransformed .= sinh.(current_guess_untransformed)
+            end
+        end
+
+        fnj.jac(∇, current_guess_untransformed, parameters_and_solved_vars, transformation_level)
+        # 𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
+
+        
+
+
+
+    sol_new_tmp, info = SS_optimizer(   extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
+                                        extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
+                                        parameters_and_solved_vars,
+                                        extended_problem ? lbs : lbs[1:length(guess)],
+                                        extended_problem ? ubs : ubs[1:length(guess)],
+                                        solver_params,
+                                        tol = tol   )
+
+
+
+
+              sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+              # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+              guesses[1], 
+              solver_parameters[1],
+                                                  true,
+                                                  false)
+
+
+
+              solution = block_solver(params_and_solved_vars, 1, 𝓂.ss_solve_blocks_in_place[1], inits, lbs, ubs, solver_parameters, fail_fast_solvers_only, cold_start, verbose)
+              
+              iters += (solution[2])[2]
+              solution_error += (solution[2])[1]
+
+
+
+
 
           initial_parameters = if typeof(initial_parameters) == Vector{Float64}
                   initial_parameters
@@ -157,7 +1233,7 @@ solver_parameters  = 𝓂.solver_parameters[2:end]
               #= /home/cdsw/MacroModelling.jl/src/MacroModelling.jl:3717 =#
             #   if abs(solved_scale - scale) < 0.0001
                   #= /home/cdsw/MacroModelling.jl/src/MacroModelling.jl:3719 =#
-                #   break
+                #   # break
             #   end
               #= /home/cdsw/MacroModelling.jl/src/MacroModelling.jl:3732 =#
               current_best = sum(abs2, (NSSS_solver_cache_scale[end])[end] - initial_parameters)
@@ -220,7 +1296,7 @@ solver_parameters  = 𝓂.solver_parameters[2:end]
                   #= /home/cdsw/MacroModelling.jl/src/MacroModelling.jl:3520 =#
                   scale = scale * 0.3 + solved_scale * 0.7
                   #= /home/cdsw/MacroModelling.jl/src/MacroModelling.jl:3520 =#
-                #   continue
+                #   # continue
               end
               R = exp(➕₃)
               beta = Pi / R
@@ -234,7 +1310,7 @@ solver_parameters  = 𝓂.solver_parameters[2:end]
                   #= /home/cdsw/MacroModelling.jl/src/MacroModelling.jl:3528 =#
                   scale = scale * 0.3 + solved_scale * 0.7
                   #= /home/cdsw/MacroModelling.jl/src/MacroModelling.jl:3528 =#
-                #   continue
+                #   # continue
               end
               ➕₁ = min(max(2.220446049250313e-16, (R * beta) ^ (1 / phi_pi)), 1.0e12)
               solution_error += abs(➕₁ - (R * beta) ^ (1 / phi_pi))
@@ -247,7 +1323,7 @@ solver_parameters  = 𝓂.solver_parameters[2:end]
                   #= /home/cdsw/MacroModelling.jl/src/MacroModelling.jl:3509 =#
                   scale = scale * 0.3 + solved_scale * 0.7
                   #= /home/cdsw/MacroModelling.jl/src/MacroModelling.jl:3509 =#
-                #   continue
+                #   # continue
               end
               Pibar = Pi / ➕₁
               A = 1
@@ -326,7 +1402,7 @@ solver_parameters  = 𝓂.solver_parameters[2:end]
                   for p in solver_parameters
                       for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
                           if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
-                              if solved_yet continue end
+                              if solved_yet # continue end
       
                               sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                               # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
@@ -399,7 +1475,7 @@ solver_parameters  = 𝓂.solver_parameters[2:end]
             for p in solver_parameters
                 for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
                     if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
-                        if solved_yet continue end
+                        if solved_yet # continue end
                         sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                             g, 
                                                             p,
@@ -427,7 +1503,7 @@ solver_parameters  = 𝓂.solver_parameters[2:end]
                 #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2926 =#
                 scale = scale * 0.3 + solved_scale * 0.7
                 #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2926 =#
-                # continue
+                # # continue
             end
             sol = solution[1]
             alpha = sol[1]
@@ -456,7 +1532,7 @@ solver_parameters  = 𝓂.solver_parameters[2:end]
                 #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3508 =#
                 scale = scale * 0.3 + solved_scale * 0.7
                 #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3508 =#
-                # continue
+                # # continue
             end
             ➕₄ = min(2 - eps(), max(eps(), 2.0➕₂))
             solution_error += +(abs(➕₄ - 2.0➕₂))
@@ -469,7 +1545,7 @@ solver_parameters  = 𝓂.solver_parameters[2:end]
                 #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3519 =#
                 scale = scale * 0.3 + solved_scale * 0.7
                 #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3519 =#
-                continue
+                # continue
             end
             c_norminvcdf = -1.4142135623731 * erfcinv(➕₄)
             c_normlogpdf = -0.5 * c ^ 2 - 0.918938533204673
