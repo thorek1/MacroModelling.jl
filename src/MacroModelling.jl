@@ -6555,8 +6555,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     else
         parallel = Symbolics.SerialForm()
     end
-
-    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓ˢ, 𝔛ˢ, 
+    
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔙, 
                                             cse = cse, 
                                             skipzeros = skipzeros, 
                                             parallel = parallel,
@@ -6567,7 +6567,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     𝓂.jacobian = buffer, func_exprs
 
 
-    ∇₁_parameters = derivatives[1][2][:,1:length(𝔓ˢ)]
+    ∇₁_parameters = derivatives[1][2][:,1:length(𝔓)]
 
     lennz = nnz(∇₁_parameters)
 
@@ -6586,7 +6586,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         parallel = Symbolics.SerialForm()
     end
 
-    _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝔓ˢ, 𝔛ˢ, 
+    _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝔓, 𝔙, 
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
@@ -6596,7 +6596,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     𝓂.jacobian_parameters =  buffer_parameters, func_∇₁_parameters
  
 
-    ∇₁_SS_and_pars = derivatives[1][2][:,length(𝔓ˢ)+1:end]
+    ∇₁_SS_and_pars = derivatives[1][2][:,length(𝔓)+1:end]
 
     lennz = nnz(∇₁_SS_and_pars)
 
@@ -6615,7 +6615,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         parallel = Symbolics.SerialForm()
     end
 
-    _, func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝔓ˢ, 𝔛ˢ, 
+    _, func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝔓, 𝔙, 
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
@@ -6733,7 +6733,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓ˢ, 𝔛ˢ, 
+            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔙, 
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
@@ -6743,7 +6743,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.hessian = buffer, func_exprs
 
 
-            ∇₂_parameters = derivatives[2][2][:,1:length(𝔓ˢ)]
+            ∇₂_parameters = derivatives[2][2][:,1:length(𝔓)]
 
             lennz = nnz(∇₂_parameters)
 
@@ -6762,7 +6762,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝔓ˢ, 𝔛ˢ, 
+            _, func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝔓, 𝔙, 
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
@@ -6772,7 +6772,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.hessian_parameters =  buffer_parameters, func_∇₂_parameters
         
 
-            ∇₂_SS_and_pars = derivatives[2][2][:,length(𝔓ˢ)+1:end]
+            ∇₂_SS_and_pars = derivatives[2][2][:,length(𝔓)+1:end]
 
             lennz = nnz(∇₂_SS_and_pars)
 
@@ -6791,7 +6791,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝔓ˢ, 𝔛ˢ, 
+            _, func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝔓, 𝔙, 
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
@@ -6803,7 +6803,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     end
 
     if max_perturbation_order == 3
-        derivatives = take_nth_order_derivatives(calc!, 𝔛ᵈ, 𝔓ᵈ, 𝔛ˢ, 𝔓ˢ, nϵ; max_perturbation_order = max_perturbation_order, output_compressed = true)
+        derivatives = take_nth_order_derivatives(calc!, 𝔛ᵈ, 𝔓ᵈ, 𝔛ˢ, 𝔓, nϵ; max_perturbation_order = max_perturbation_order, output_compressed = true)
     # third order
         if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             I,J,V = findnz(derivatives[3][1])
@@ -6828,7 +6828,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓ˢ, 𝔛ˢ, 
+            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔙, 
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
@@ -6838,7 +6838,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.third_order_derivatives = buffer, func_exprs
 
 
-            ∇₃_parameters = derivatives[3][2][:,1:length(𝔓ˢ)]
+            ∇₃_parameters = derivatives[3][2][:,1:length(𝔓)]
 
             lennz = nnz(∇₃_parameters)
 
@@ -6857,7 +6857,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝔓ˢ, 𝔛ˢ, 
+            _, func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝔓, 𝔙, 
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
@@ -6867,7 +6867,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters
         
 
-            ∇₃_SS_and_pars = derivatives[3][2][:,length(𝔓ˢ)+1:end]
+            ∇₃_SS_and_pars = derivatives[3][2][:,length(𝔓)+1:end]
 
             lennz = nnz(∇₃_SS_and_pars)
 
@@ -6886,7 +6886,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 parallel = Symbolics.SerialForm()
             end
 
-            _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝔓ˢ, 𝔛ˢ, 
+            _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝔓, 𝔙, 
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
