@@ -196,6 +196,7 @@ Symbolics.@register_symbolic normcdf(z)
 Symbolics.@register_symbolic pnorm(p)
 Symbolics.@register_symbolic dnorm(p)
 
+end # dispatch_doctor
 
 # ── norminvcdf, norminv & qnorm ──
 # d/dp (norminvcdf(p)) = 1 / normpdf(norminvcdf(p))
@@ -236,7 +237,9 @@ end
 Symbolics.derivative(::typeof(pnorm), args::NTuple{1,Any}, ::Val{1}) = 
     Symbolics.derivative(normcdf, args, Val{1}())
 
+@stable default_mode = "disable" begin
 
+    
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
                 "Model:        ", 𝓂.model_name, 
                 "\nVariables", 
