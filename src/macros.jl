@@ -85,11 +85,11 @@ macro model(𝓂,ex...)
     solved_vars = [] 
     solved_vals = []
     
-    ss_solve_blocks = []
+    # ss_solve_blocks = []
     ss_solve_blocks_in_place = ss_solve_block[]
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
-    SS_calib_func = x->x
+    # SS_calib_func = x->x
     SS_check_func = x->x
     ∂SS_equations_∂parameters = (zeros(0,0), x->x) # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
     ∂SS_equations_∂SS_and_pars = (zeros(0,0), x->x)  # ([], Int[], zeros(1,1))
@@ -862,11 +862,11 @@ macro model(𝓂,ex...)
                         $solved_vars, 
                         $solved_vals, 
 
-                        $ss_solve_blocks,
+                        # $ss_solve_blocks,
                         $ss_solve_blocks_in_place,
                         $NSSS_solver_cache,
                         $SS_solve_func,
-                        $SS_calib_func,
+                        # $SS_calib_func,
                         $SS_check_func,
                         $∂SS_equations_∂parameters,
                         $∂SS_equations_∂SS_and_pars,
@@ -896,14 +896,14 @@ macro model(𝓂,ex...)
                         (zeros(0,0), x->x), # third_order_derivatives_SS_and_pars
                         # (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
-                        ([], Int[], zeros(1,1)), # model_jacobian
-                        # x->x, # model_jacobian_parameters
-                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian_SS_and_pars_vars
-                        # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
-                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_hessian
-                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_hessian_SS_and_pars_vars
-                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives
-                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives_SS_and_pars_vars
+                        # ([], Int[], zeros(1,1)), # model_jacobian
+                        # # x->x, # model_jacobian_parameters
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian_SS_and_pars_vars
+                        # # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_hessian
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_hessian_SS_and_pars_vars
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives_SS_and_pars_vars
 
                         $T,
 

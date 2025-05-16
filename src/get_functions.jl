@@ -3672,15 +3672,9 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
 
     axis1 = vcat([Symbol("Equation" * sub(string(i))) for i in 1:length(vars_in_ss_equations)], [Symbol("CalibrationEquation" * sub(string(i))) for i in 1:length(𝓂.calibration_equations_parameters)])
     
-    nc = length(𝓂.calibration_equations_no_var)
-
-    calib_vals = zeros(nc)
-
-    𝓂.SS_calib_func(calib_vals, 𝓂.parameter_values)
-
     residual = zeros(length(vals))
 
-    𝓂.SS_check_func(residual, 𝓂.parameter_values, vals, calib_vals)
+    𝓂.SS_check_func(residual, 𝓂.parameter_values, vals)
 
     KeyedArray(abs.(residual), Equation = axis1)
 end

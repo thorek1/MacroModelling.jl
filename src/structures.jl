@@ -368,7 +368,7 @@ mutable struct ℳ
     # non_linear_solved_vals
     # solved_sub_vals
     # solved_sub_values
-    ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
+    # ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
     ss_solve_blocks_in_place::Vector{ss_solve_block}
     # Vector{Tuple{
     #     Tuple{
@@ -386,7 +386,7 @@ mutable struct ℳ
     # SS_init_guess::Vector{Real}
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func::Function
-    SS_calib_func::Function
+    # SS_calib_func::Function
     SS_check_func::Function
     ∂SS_equations_∂parameters::Tuple{AbstractMatrix{<: Real}, Function}
     ∂SS_equations_∂SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
@@ -422,14 +422,14 @@ mutable struct ℳ
     third_order_derivatives_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
 
     # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
-    model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
-    # model_jacobian_parameters::Function
-    model_jacobian_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
-    # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
-    model_hessian::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
-    model_hessian_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
-    model_third_order_derivatives::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
-    model_third_order_derivatives_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    # model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
+    # # model_jacobian_parameters::Function
+    # model_jacobian_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    # # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
+    # model_hessian::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    # model_hessian_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    # model_third_order_derivatives::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    # model_third_order_derivatives_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
 
     timings::timings
 
