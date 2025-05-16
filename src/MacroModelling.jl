@@ -4372,7 +4372,7 @@ function solve_steady_state!(𝓂::ℳ;
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
-        
+
         push!(𝓂.ss_solve_blocks_in_place, 
             ss_solve_block(
                 function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer),
@@ -6258,12 +6258,12 @@ function take_nth_order_derivatives(
             # This is the Jacobian of the nzval of the intermediate flat X-Jacobian (sp_flat_curr_X) w.r.t. 𝔓.
             # sp_flat_curr_X.nzval contains expressions for d^n f_i / (dx_v1 ... dx_vn) for all
             # non-zero such values that were propagated from the previous step.
-            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, 𝔙𝔓) # nnz(sp_flat_curr_X) x np
+            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, vcat(𝔓[1:nps], 𝔙[1:nxs])) # nnz(sp_flat_curr_X) x np
             
             # Determine the desired dimensions of spP_order_n
             # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
             P_nrows_n = nϵ * X_ncols_n
-            P_ncols_n = nps +nxs
+            P_ncols_n = nps + nxs
 
             sparse_rows_n_P = Int[] # Row index in the flattened space of spX_order_n (1 to P_nrows_n)
             sparse_cols_n_P = Int[] # Column index for parameters (1 to np)
