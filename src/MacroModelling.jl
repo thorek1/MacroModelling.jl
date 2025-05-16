@@ -239,7 +239,7 @@ Symbolics.derivative(::typeof(pnorm), args::NTuple{1,Any}, ::Val{1}) =
 
 @stable default_mode = "disable" begin
 
-    
+
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
                 "Model:        ", 𝓂.model_name, 
                 "\nVariables", 
@@ -6100,7 +6100,8 @@ function take_nth_order_derivatives(
     𝔙::Symbolics.Arr,
     𝔓::Symbolics.Arr,
     SS_mapping::Dict{T, T},
-    nSS::Int;
+    nps::Int,
+    nxs::Int;
     max_perturbation_order::Int = 1,
     output_compressed::Bool = true # Controls compression for X derivatives (order >= 2)
 )::Vector{Tuple{SparseMatrixCSC{T, Int}, SparseMatrixCSC{T, Int}}} where T <: Symbolics.Num#, Tuple{Symbolics.Arr{Symbolics.Num, 1}, Symbolics.Arr{Symbolics.Num, 1}}}
@@ -6126,13 +6127,13 @@ function take_nth_order_derivatives(
 
     # Compute the derivative of the non-zeros of the 1st X-derivative w.r.t. P
     # This is an intermediate step. The final P matrix will be built from this.
-    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1_sub.nzval, 𝔓[1:end-nSS]) # nnz(spX_order_1) x np
+    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1_sub.nzval, vcat(𝔓[1:nps], 𝔙[1:nxs])) # nnz(spX_order_1) x np
 
     # Determine dimensions for the Order 1 P matrix
     X_nrows_1 = nϵ
     X_ncols_1 = nx
     P_nrows_1 = X_nrows_1 * X_ncols_1
-    P_ncols_1 = np
+    P_ncols_1 = nps + nxs
 
     # Build the Order 1 P matrix (dimensions nϵ*nx x np)
     sparse_rows_1_P = Int[] # Row index in the flattened space of spX_order_1
@@ -6344,12 +6345,12 @@ function take_nth_order_derivatives(
             # This is the Jacobian of the nzval of the intermediate flat X-Jacobian (sp_flat_curr_X) w.r.t. 𝔓.
             # sp_flat_curr_X.nzval contains expressions for d^n f_i / (dx_v1 ... dx_vn) for all
             # non-zero such values that were propagated from the previous step.
-            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, 𝔓[1:end-nSS]) # nnz(sp_flat_curr_X) x np
+            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, 𝔙𝔓) # nnz(sp_flat_curr_X) x np
             
             # Determine the desired dimensions of spP_order_n
             # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
             P_nrows_n = nϵ * X_ncols_n
-            P_ncols_n = np
+            P_ncols_n = nps +nxs
 
             sparse_rows_n_P = Int[] # Row index in the flattened space of spX_order_n (1 to P_nrows_n)
             sparse_cols_n_P = Int[] # Column index for parameters (1 to np)
@@ -6483,7 +6484,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     np = length(parameters_and_SS)
     nv = length(vars_raw)
-    # nc = length(𝓂.calibration_equations_no_var)
+    nc = length(𝓂.calibration_equations_no_var)
+    nps = length(𝓂.parameters)
+    nxs = maximum(dyn_var_idxs) + nc
 
     Symbolics.@variables 𝔓[1:np] 𝔙[1:nv]
 
@@ -6497,16 +6500,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     for (i,v) in enumerate(parameters_and_SS)
         push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
         push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
-        if i > length(𝓂.parameters)
+        if i > nps
             if i > length(pars_ext)
                 push!(SS_mapping, 𝔓[i] => 𝔙[dyn_ss_idx[i-length(pars_ext)]])
             else
-                push!(SS_mapping, 𝔓[i] => 𝔙[maximum(dyn_var_idxs) + i - length(𝓂.parameters)])
+                push!(SS_mapping, 𝔓[i] => 𝔙[nxs + i - nps])
             end
         end
     end
-
-    nSS = length(SS_mapping)
 
     for (i,v) in enumerate(vars_raw)
         push!(parameter_dict, v => :($(Symbol("𝔙_$i"))))
@@ -6541,7 +6542,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
         x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
 
-    derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nSS)
+    derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs)
 
 
     ∇₁_dyn = derivatives[1][1]
@@ -6574,7 +6575,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     𝓂.jacobian = buffer, func_exprs
 
 
-    ∇₁_parameters = derivatives[1][2][:,1:length(𝔓)]
+    ∇₁_parameters = derivatives[1][2][:,1:nps]
 
     lennz = nnz(∇₁_parameters)
 
@@ -6603,7 +6604,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     𝓂.jacobian_parameters =  buffer_parameters, func_∇₁_parameters
  
 
-    ∇₁_SS_and_pars = derivatives[1][2][:,length(𝔓)+1:end]
+    ∇₁_SS_and_pars = derivatives[1][2][:,nps+1:end]
 
     lennz = nnz(∇₁_SS_and_pars)
 
@@ -6718,7 +6719,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         
     if max_perturbation_order >= 2
     # second order
-        derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nSS; max_perturbation_order = 2, output_compressed = false)
+        derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = 2, output_compressed = false)
 
         if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
@@ -6752,7 +6753,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.hessian = buffer, func_exprs
 
 
-            ∇₂_parameters = derivatives[2][2][:,1:length(𝔓)]
+            ∇₂_parameters = derivatives[2][2][:,1:nps]
 
             lennz = nnz(∇₂_parameters)
 
@@ -6781,7 +6782,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.hessian_parameters =  buffer_parameters, func_∇₂_parameters
         
 
-            ∇₂_SS_and_pars = derivatives[2][2][:,length(𝔓)+1:end]
+            ∇₂_SS_and_pars = derivatives[2][2][:,nps+1:end]
 
             lennz = nnz(∇₂_SS_and_pars)
 
@@ -6812,7 +6813,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     end
 
     if max_perturbation_order == 3
-        derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nSS; max_perturbation_order = max_perturbation_order, output_compressed = true)
+        derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = max_perturbation_order, output_compressed = true)
     # third order
         if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             I,J,V = findnz(derivatives[3][1])
@@ -6847,7 +6848,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.third_order_derivatives = buffer, func_exprs
 
 
-            ∇₃_parameters = derivatives[3][2][:,1:length(𝔓)]
+            ∇₃_parameters = derivatives[3][2][:,1:nps]
 
             lennz = nnz(∇₃_parameters)
 
@@ -6876,7 +6877,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             𝓂.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters
         
 
-            ∇₃_SS_and_pars = derivatives[3][2][:,length(𝔓)+1:end]
+            ∇₃_SS_and_pars = derivatives[3][2][:,nps+1:end]
 
             lennz = nnz(∇₃_SS_and_pars)
 
