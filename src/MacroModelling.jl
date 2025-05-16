@@ -6094,8 +6094,8 @@ end
 
 function take_nth_order_derivatives(
     dyn_equations::Vector{T},
-    𝔙::Vector{T},
-    𝔓::Vector{T},
+    𝔙::Symbolics.Arr,
+    𝔓::Symbolics.Arr,
     SS_mapping::Dict{T, T},
     nSS::Int;
     max_perturbation_order::Int = 1,
@@ -6494,8 +6494,12 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     for (i,v) in enumerate(parameters_and_SS)
         push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
         push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
-        if i > length(pars_ext)
-            push!(SS_mapping, 𝔓[i] => 𝔙[dyn_ss_idx[i-length(pars_ext)]])
+        if i > length(𝓂.parameters)
+            if i > length(pars_ext)
+                push!(SS_mapping, 𝔓[i] => 𝔙[dyn_ss_idx[i-length(pars_ext)]])
+            else
+                push!(SS_mapping, 𝔓[i] => 𝔙[maximum(dyn_var_idxs) + i - length(𝓂.parameters)])
+            end
         end
     end
 
@@ -6711,6 +6715,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         
     if max_perturbation_order >= 2
     # second order
+        derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nSS; max_perturbation_order = 2, output_compressed = false)
+
         if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
 
@@ -6803,7 +6809,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     end
 
     if max_perturbation_order == 3
-        derivatives = take_nth_order_derivatives(calc!, 𝔛ᵈ, 𝔓ᵈ, 𝔛ˢ, 𝔓, nϵ; max_perturbation_order = max_perturbation_order, output_compressed = true)
+        derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nSS; max_perturbation_order = max_perturbation_order, output_compressed = true)
     # third order
         if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             I,J,V = findnz(derivatives[3][1])
