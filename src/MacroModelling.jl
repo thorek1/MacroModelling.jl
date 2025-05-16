@@ -2997,8 +2997,6 @@ function write_block_solution!(𝓂,
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
-    # push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
-
     
     push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
             function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer),
@@ -4374,7 +4372,7 @@ function solve_steady_state!(𝓂::ℳ;
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
-        # push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
+        
         push!(𝓂.ss_solve_blocks_in_place, 
             ss_solve_block(
                 function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer),
@@ -6010,91 +6008,6 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
     return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
 end
 
-end # dispatch_doctor
-
-function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int},values::Vector{Symbolics.Num},nrows::Int,ncolumns::Int,::Val{:Symbolics})
-    vals_expr = Symbolics.toexpr.(values)
-
-    @RuntimeGeneratedFunction(
-        :(𝔛 -> sparse(
-                        $rows, 
-                        $columns, 
-                        [$(vals_expr...)], 
-                        $nrows, 
-                        $ncolumns
-                    )
-        )
-    )
-end
-
-function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int},values::Vector{Symbolics.Num},nrows::Int,ncolumns::Int,::Val{:string})
-    vals_expr = Meta.parse(string(values))
-
-    vals_expr.args[1] = :Float64
-
-    @RuntimeGeneratedFunction(
-        :(𝔛 -> sparse(
-                        $rows, 
-                        $columns,
-                        $vals_expr, 
-                        $nrows, 
-                        $ncolumns
-                    )
-        )
-    )
-end
-
-
-function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-    
-    @RuntimeGeneratedFunction(:(𝔛 -> $(Expr(:vect, vals_expr.args[2:end]...))))
-end
-
-function write_derivatives_function(values::Symbolics.Num, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-    
-    @RuntimeGeneratedFunction(:(𝔛 -> $vals_expr.args))
-end
-
-function write_derivatives_function(values::Vector{Symbolics.Num}, position::UnitRange{Int}, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-
-    @RuntimeGeneratedFunction(:(𝔛 -> ($(Expr(:vect, vals_expr.args[2:end]...)), $position)))
-end # needed for JET tests
-
-function write_derivatives_function(values::Vector{Symbolics.Num}, position::Int, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-
-    @RuntimeGeneratedFunction(:(𝔛 -> ($(Expr(:vect, vals_expr.args[2:end]...)), $position)))
-end
-
-function write_derivatives_function(values::Symbolics.Num, position::Int, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-
-    @RuntimeGeneratedFunction(:(𝔛 -> ($vals_expr, $position)))
-end
-
-function write_derivatives_function(values::Symbolics.Num, position::UnitRange{Int}, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-    position  = position[1]
-    @RuntimeGeneratedFunction(:(𝔛 -> ($vals_expr, $position)))
-end # needed for JET tests
-
-function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:Symbolics})
-    vals_expr = Symbolics.toexpr.(values)
-
-    @RuntimeGeneratedFunction(:(𝔛 -> [$(vals_expr...)]))
-end
-
-function write_derivatives_function(values::Symbolics.Num, ::Val{:Symbolics})
-    vals_expr = Symbolics.toexpr.(values)
-
-    @RuntimeGeneratedFunction(:(𝔛 -> $vals_expr))
-end
-
-@stable default_mode = "disable" begin
-
 function take_nth_order_derivatives(
     dyn_equations::Vector{T},
     𝔙::Symbolics.Arr,
@@ -6571,7 +6484,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                             expression_module = @__MODULE__,
                                             expression = Val(false))::Tuple{<:Function, <:Function}
 
-    # func = @RuntimeGeneratedFunction(func_exprs[2])
     𝓂.jacobian = buffer, func_exprs
 
 
