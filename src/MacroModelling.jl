@@ -3001,8 +3001,8 @@ function write_block_solution!(𝓂,
 
     
     push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
-            function_and_jacobian(calc_block!, ϵ, func_exprs::Function, buffer),
-            function_and_jacobian(calc_ext_block!, ϵᵉ, ext_func_exprs::Function, ext_buffer)
+            function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer),
+            function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer)
         )
     )
     
@@ -4377,8 +4377,8 @@ function solve_steady_state!(𝓂::ℳ;
         # push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
         push!(𝓂.ss_solve_blocks_in_place, 
             ss_solve_block(
-                function_and_jacobian(calc_block!, ϵ, func_exprs::Function, buffer),
-                function_and_jacobian(calc_ext_block!, ϵᵉ, ext_func_exprs::Function, ext_buffer)
+                function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer),
+                function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer)
             )
         )
 
