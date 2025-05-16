@@ -6397,7 +6397,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     np = length(parameters_and_SS)
     nv = length(vars_raw)
-    nc = length(𝓂.calibration_equations_no_var)
+    nc = length(𝓂.calibration_equations)
     nps = length(𝓂.parameters)
     nxs = maximum(dyn_var_idxs) + nc
 
