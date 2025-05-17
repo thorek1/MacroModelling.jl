@@ -102,7 +102,8 @@ Next we define the parameter priors using the Turing package. The `@model` macro
 import Zygote
 import DynamicPPL
 import Turing
-import Turing: NUTS, sample, logpdf, AutoZygote
+import Turing: NUTS, sample, logpdf
+import ADTypes: AutoZygote
 
 prior_distributions = [
     Beta(0.356, 0.02, μσ = true),           # alp

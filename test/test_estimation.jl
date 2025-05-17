@@ -1,6 +1,7 @@
 using MacroModelling
 import Turing, Pigeons, Zygote
-import Turing: NUTS, sample, logpdf, AutoZygote
+import Turing: NUTS, sample, logpdf
+import ADTypes: AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
@@ -51,7 +52,7 @@ samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, i
 
 println("Mean variable values (ForwardDiff): $(mean(samps).nt.mean)")
 
-samps = @time sample(FS2000_loglikelihood, NUTS(adtype = Turing.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 

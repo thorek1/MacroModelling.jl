@@ -44,7 +44,7 @@ import Combinatorics: combinations
 import BlockTriangularForm
 import Subscripts: super, sub
 import Krylov
-import Krylov: GmresSolver, DqgmresSolver, BicgstabSolver
+import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
 import DataStructures: CircularBuffer
 # import SpeedMapping: speedmapping
