@@ -3438,9 +3438,9 @@ function write_ss_check_function!(𝓂::ℳ;
 
     np = length(𝓂.parameters)
     nu = length(unknowns)
-    nc = length(𝓂.calibration_equations_no_var)
+    # nc = length(𝓂.calibration_equations_no_var)
 
-    Symbolics.@variables 𝔓[1:np] 𝔘[1:nu] ℭ[1:nc]
+    Symbolics.@variables 𝔓[1:np] 𝔘[1:nu]# ℭ[1:nc]
 
     parameter_dict = Dict{Symbol, Symbol}()
     back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
@@ -3461,8 +3461,8 @@ function write_ss_check_function!(𝓂::ℳ;
     for (i,v) in enumerate(𝓂.calibration_equations_no_var)
         push!(calib_vars, v.args[1])
         push!(calib_expr, v.args[2])
-        push!(parameter_dict, v.args[1] => :($(Symbol("ℭ_$i"))))
-        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("ℭ_$i"))), @__MODULE__) => ℭ[i])
+        # push!(parameter_dict, v.args[1] => :($(Symbol("ℭ_$i"))))
+        # push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("ℭ_$i"))), @__MODULE__) => ℭ[i])
     end
 
     calib_replacements = Dict{Symbol,Any}()
