@@ -6417,7 +6417,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             if i > length(pars_ext)
                 push!(SS_mapping, 𝔓[i] => 𝔙[dyn_ss_idx[i-length(pars_ext)]])
             else
-                push!(SS_mapping, 𝔓[i] => 𝔙[nxs + i - nps])
+                push!(SS_mapping, 𝔓[i] => 𝔙[nxs + i - nps - nc])
             end
         end
     end
