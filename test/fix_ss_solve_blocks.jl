@@ -15,6 +15,12 @@ get_variables(m)
 
 include("models/SW07_nonlinear.jl")
 model = SW07_nonlinear
+
+# params = [0.026024285942547642, 0.18, 1.5, 10.0, 0.95827, 0.22137, 0.97391, 0.70524, 0.11421, 0.83954, 0.9745, 0.69414, 0.93617, 5.5811, 1.4103, 0.68049, 0.80501, 2.2061, 0.56351, 0.24165, 0.49552, 1.3443, 1.931, 0.82512, 0.097844, 0.25114, 0.8731, 0.12575, 0.4419, 0.53817, 0.18003, 64.5595, 0.667]
+params = [0.026536428913821464, 0.18, 1.5, 10.0, 0.95827, 0.22137, 0.97391, 0.70524, 0.11421, 0.83954, 0.9745, 0.69414, 0.93617, 5.5811, 1.4103, 0.68049, 0.80501, 2.2061, 0.56351, 0.24165, 0.49552, 1.3443, 1.931, 0.82512, 0.097844, 0.25114, 0.8731, 0.12575, 0.4419, 0.53817, 0.18003, 64.5595, 0.667]
+
+SS(model, parameters = params, verbose = true, derivatives = false)
+model..ss_problem[1]
 observables = [:k,:c,:y]
 
 
@@ -26,7 +32,15 @@ get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parame
 back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
 
 fin_grad = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3,1),#, max_range = 1e-2),
-x-> begin println(x); get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = false) end, model.parameter_values)
+x-> begin 
+out = get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = false) 
+if !isfinite(out)
+    println(x)
+end
+end, model.parameter_values)
+
+fin_grad = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3,1),#, max_range = 1e-2),
+x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = false), model.parameter_values)
 
 
 params = [0.026024285942547642, 0.18, 1.5, 10.0, 0.95827, 0.22137, 0.97391, 0.70524, 0.11421, 0.83954, 0.9745, 0.69414, 0.93617, 5.5811, 1.4103, 0.68049, 0.80501, 2.2061, 0.56351, 0.24165, 0.49552, 1.3443, 1.931, 0.82512, 0.097844, 0.25114, 0.8731, 0.12575, 0.4419, 0.53817, 0.18003, 64.5595, 0.667]
