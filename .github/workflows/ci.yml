@@ -128,7 +128,7 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}  
       # On the Julia “pre” matrix entries, drop the unsupported test-only package
-      - name: Strip test-only dependency on pre Julia
+      - name: Strip JET references on pre Julia
         if: matrix.version == 'pre'
         run: |
           sed -i -e '/^[[:space:]]*JET[[:space:]]*=/d' \
