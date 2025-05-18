@@ -292,8 +292,8 @@ total_iters   =   total_iters
 n_block   =   n_block
 verbose   =   verbose
 guess =   guesses[1]
-solver_params =   parameters[1]
-extended_problem  =   true
+solver_params =   parameters[4]
+extended_problem  =   false
 separate_starting_value   =   false
 
 
@@ -469,7 +469,12 @@ parameters  =   solver_params
         else
             ℒ.mul!(∇̂, ∇̄', ∇̄)
         end
-
+# 5×5 Matrix{Float64}:
+#   323.367  -66.847    -373.332  -219.421   -66.847
+#   -66.847   29.9399    152.684   123.78     -1.03584
+#  -373.332  152.684     835.387   653.857     0.0
+#  -219.421  123.78      653.857   559.047   -28.9688
+#   -66.847   -1.03584     0.0     -28.9688   30.0046
         fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
 
         μ¹s = μ¹ * sum(abs2, fnj.func_buffer)^p¹
@@ -500,7 +505,7 @@ parameters  =   solver_params
         if !isfinite(sum(guess_update))
             largest_relative_step = 1.0
             largest_residual = 1.0
-            break
+            # break
         end
 
         ℒ.axpy!(-1, guess_update, current_guess)
