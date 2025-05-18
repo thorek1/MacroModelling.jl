@@ -127,6 +127,14 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}  
+      # On the Julia “pre” matrix entries, drop the unsupported test-only package
+      - name: Strip test-only dependency on pre Julia
+        if: matrix.version == 'pre'
+        run: |
+          sed -i -e '/^[[:space:]]*JET[[:space:]]*=/d' \
+                 -e '/^\[targets\]/,$s/,[[:space:]]*"JET"//g' \
+                 -e '/^\[targets\]/,$s/"JET",[[:space:]]*//g' \
+                 Project.toml
       - name: Set Custom Test Environment Variable (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
