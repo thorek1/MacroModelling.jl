@@ -188,8 +188,14 @@ function levenberg_marquardt(
         # P = sum(abs2, f̂(previous_guess))
         P̃ = P
         
-        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
+        copy!(current_guess_untransformed, current_guess)
 
+        for _ in 1:transformation_level
+            current_guess_untransformed .= sinh.(current_guess_untransformed)
+        end
+
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
+      
         P̋ = sum(abs2, fnj.func_buffer)
         # P̋ = sum(abs2, f̂(current_guess))
 
