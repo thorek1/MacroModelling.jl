@@ -344,13 +344,14 @@ function newton(
     # new_guess = copy(transform(initial_guess,transformation_level))
 
     new_guess = copy(initial_guess)
+    guess_update = copy(initial_guess)
 
     fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars)
 
     new_residuals = fnj.func_buffer
     # new_residuals = f(new_guess)
 
-    ∇ = fnj.jac_buffer
+    ∇ = copy(fnj.jac_buffer)
 
     if ∇ isa SparseMatrixCSC
         prob = 𝒮.LinearProblem(∇, new_guess, 𝒮.UMFPACKFactorization())
@@ -378,7 +379,13 @@ function newton(
 
     for iter in 1:iterations
     # while iter < iterations
-        fnj.jac(∇, new_guess, parameters_and_solved_vars)
+        fnj.jac(fnj.jac_buffer, new_guess, parameters_and_solved_vars)
+
+        if ∇ isa SparseMatrixCSC
+            copy!(∇.nzval, fnj.jac_buffer.nzval)
+        else
+            copy!(∇, fnj.jac_buffer)
+        end
         # 𝒟.jacobian!(f, ∇, prep, backend, new_guess)
 
         # old_residuals_norm = ℒ.norm(new_residuals)
@@ -387,7 +394,7 @@ function newton(
 
         fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars)
 
-        new_residuals = fnj.func_buffer
+        copy!(new_residuals, fnj.func_buffer)
         # new_residuals = f(new_guess)
 
         if !all(isfinite,new_residuals) 
@@ -408,18 +415,10 @@ function newton(
             sol_cache.A = ∇
             sol_cache.b = new_residuals
             𝒮.solve!(sol_cache)
-            copy!(new_residuals, sol_cache.u)
-            
-            # ∇̂ = ℒ.lu(∇, check = false)
-            # ∇̂ = ℒ.lu!(∇, check = false)
-        
-            # ℒ.ldiv!(∇̂, new_residuals)
 
-            guess_update = new_residuals
+            guess_update_norm = ℒ.norm(sol_cache.u)
     
-            guess_update_norm = ℒ.norm(guess_update)
-    
-            ℒ.axpy!(-1, guess_update, new_guess)
+            ℒ.axpy!(-1, sol_cache.u, new_guess)
     
             iters[1] += 1
             iters[2] += 1
@@ -443,35 +442,10 @@ function newton(
         #     return undo_transform(new_guess,transformation_level), (iter, zero(T), zero(T), resnorm) # f(undo_transform(new_guess,transformation_level)))
         # end
 
-        ∇̂ = ℒ.lu(∇, check = false)
-        # ∇̂ = ℒ.lu!(∇, check = false)
-        
-        if !ℒ.issuccess(∇̂)
-            # println("GN factorisation failed after $iter iterations; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
-            rel_xtol_reached = 1.0
-            rel_ftol_reached = 1.0
-            new_residuals_norm = 1.0
-            # iters = [iter,iter]
-            break
-        end
-
-        # ∇̂ = try 
-        #     ℒ.factorize(∇)
-        # catch
-        #     # println("GN fact failed after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
-        #     rel_xtol_reached = 1.0
-        #     rel_ftol_reached = 1.0
-        #     new_residuals_norm = 1.0
-        #     break
-        #     # ℒ.svd(fxλp)
-        #     # return undo_transform(new_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(new_guess,transformation_level)))
-        # end
-
-        # rel_ftol_reached = ℒ.norm(∇̂' \ new_residuals) / new_residuals_norm
-
-        ℒ.ldiv!(∇̂, new_residuals)
-
-        guess_update = new_residuals
+        sol_cache.A = ∇
+        sol_cache.b = new_residuals
+        𝒮.solve!(sol_cache)
+        copy!(guess_update, sol_cache.u)
 
         guess_update_norm = ℒ.norm(guess_update)
 
