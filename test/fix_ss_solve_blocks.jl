@@ -2,16 +2,619 @@ using Revise
 # ENV["JULIA_CONDAPKG_BACKEND"] = "MicroMamba"
 using MacroModelling
 using BenchmarkTools
-import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, get_symbols, replace_symbols, match_pattern, take_nth_order_derivatives
-
-
+import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, get_symbols, replace_symbols, match_pattern, take_nth_order_derivatives, Tolerances, block_solver, levenberg_marquardt, solve_ss, transform, choose_matrix_format
+using SparseArrays
+import LinearSolve as 𝒮
 
 import Symbolics
 import MacroTools
 import RuntimeGeneratedFunctions
+import LinearAlgebra as ℒ
+import DataStructures: CircularBuffer
 include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
 𝓂 = m
+
+solver_parameters = 𝓂.solver_parameters
+cold_start = true
+verbose = true
+tol = Tolerances()
+initial_parameters = 𝓂.parameter_values
+
+clear_solution_caches!(𝓂, :first_order)
+
+# (initial_parameters, 𝓂, tol, verbose, cold_start, solver_parameters)->begin
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3868 =#
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3875 =#
+initial_parameters = if typeof(initial_parameters) == Vector{Float64}
+    initial_parameters
+else
+    ℱ.value.(initial_parameters)
+end
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3877 =#
+initial_parameters_tmp = copy(initial_parameters)
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3879 =#
+parameters = copy(initial_parameters)
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3880 =#
+params_flt = copy(initial_parameters)
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3882 =#
+current_best = sum(abs2, (𝓂.NSSS_solver_cache[end])[end] - initial_parameters)
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3883 =#
+closest_solution_init = 𝓂.NSSS_solver_cache[end]
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3885 =#
+for pars = 𝓂.NSSS_solver_cache
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3886 =#
+copy!(initial_parameters_tmp, pars[end])
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3888 =#
+ℒ.axpy!(-1, initial_parameters, initial_parameters_tmp)
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3890 =#
+latest = sum(abs2, initial_parameters_tmp)
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3891 =#
+if latest <= current_best
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3892 =#
+    current_best = latest
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3893 =#
+    closest_solution_init = pars
+end
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3895 =#
+end
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3900 =#
+range_iters = 0
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3901 =#
+solution_error = 1.0
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3902 =#
+solved_scale = 0
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3904 =#
+scale = 1.0
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3906 =#
+NSSS_solver_cache_scale = CircularBuffer{Vector{Vector{Float64}}}(500)
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3907 =#
+push!(NSSS_solver_cache_scale, closest_solution_init)
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3909 =#
+# while range_iters <= if cold_start
+#             1
+#         else
+#             500
+#         end && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3910 =#
+range_iters += 1
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3911 =#
+fail_fast_solvers_only = if range_iters > 1
+        true
+    else
+        false
+    end
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3913 =#
+if abs(solved_scale - scale) < 0.0001
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3915 =#
+    # break
+end
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3928 =#
+current_best = sum(abs2, (NSSS_solver_cache_scale[end])[end] - initial_parameters)
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3929 =#
+closest_solution = NSSS_solver_cache_scale[end]
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3931 =#
+for pars = NSSS_solver_cache_scale
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3932 =#
+    copy!(initial_parameters_tmp, pars[end])
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3934 =#
+    ℒ.axpy!(-1, initial_parameters, initial_parameters_tmp)
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3936 =#
+    latest = sum(abs2, initial_parameters_tmp)
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3938 =#
+    if latest <= current_best
+        #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3939 =#
+        current_best = latest
+        #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3940 =#
+        closest_solution = pars
+    end
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3942 =#
+end
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3946 =#
+if all(isfinite, closest_solution[end]) && initial_parameters != closest_solution_init[end]
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3947 =#
+    parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
+else
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3949 =#
+    parameters = copy(initial_parameters)
+end
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3951 =#
+params_flt = parameters
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3955 =#
+cap_share = parameters[1]
+R_ss = parameters[2]
+I_K_ratio = parameters[3]
+phi_pi = parameters[4]
+Pi_real = parameters[7]
+rhoz = parameters[8]
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3956 =#
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3957 =#
+Pi_ss = R_ss - Pi_real
+rho_z_delta = rhoz
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3958 =#
+NSSS_solver_cache_tmp = []
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3959 =#
+solution_error = 0.0
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3960 =#
+iters = 0
+#= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3961 =#
+➕₃ = min(600, max(-1.0e12, R_ss - 1))
+solution_error += +(abs(➕₃ - (R_ss - 1)))
+if solution_error > tol.NSSS_acceptance_tol
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3716 =#
+    if verbose
+        #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3716 =#
+        println("Failed for analytical variables with error $(solution_error)")
+    end
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3716 =#
+    scale = scale * 0.3 + solved_scale * 0.7
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3716 =#
+    # continue
+end
+R = exp(➕₃)
+Pi = Pi_ss
+beta = Pi / R
+solution_error += abs(min(max(1.1920928955078125e-7, beta), 0.9999998807907104) - beta)
+if solution_error > tol.NSSS_acceptance_tol
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3724 =#
+    if verbose
+        #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3724 =#
+        println("Failed for bounded variables with error $(solution_error)")
+    end
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3724 =#
+    scale = scale * 0.3 + solved_scale * 0.7
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3724 =#
+    # continue
+end
+➕₁ = min(max(2.220446049250313e-16, (R * beta) ^ (1 / phi_pi)), 1.0e12)
+solution_error += abs(➕₁ - (R * beta) ^ (1 / phi_pi))
+if solution_error > tol.NSSS_acceptance_tol
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3705 =#
+    if verbose
+        #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3705 =#
+        println("Failed for analytical aux variables with error $(solution_error)")
+    end
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3705 =#
+    scale = scale * 0.3 + solved_scale * 0.7
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:3705 =#
+    # continue
+end
+Pibar = Pi / ➕₁
+z_delta = 1
+A = 1
+params_and_solved_vars = [cap_share, I_K_ratio, beta]
+lbs = [1.1920928955078125e-7, -1.0e12, -1.0e12, 2.220446049250313e-16, -1.0e12, -1.0e12, -1.0e12, 1.1920928955078125e-7]
+ubs = [0.9999998807907104, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 1.0e12, 0.9999998807907104]
+inits = [max.(lbs[1:length(closest_solution[1])], min.(ubs[1:length(closest_solution[1])], closest_solution[1])), closest_solution[2]]
+
+
+
+parameters_and_solved_vars = params_and_solved_vars
+n_block =   1
+SS_solve_block  =   𝓂.ss_solve_blocks_in_place[1]
+guess_and_pars_solved_vars  =   inits
+lbs =   lbs
+ubs =   ubs
+parameters  =   solver_parameters
+fail_fast_solvers_only  =   fail_fast_solvers_only
+cold_start  =   cold_start
+verbose =   verbose
+
+# function block_solver(parameters_and_solved_vars::Vector{T}, 
+#                         n_block::Int, 
+#                         SS_solve_block::ss_solve_block,
+#                         guess_and_pars_solved_vars::Vector{Vector{T}}, 
+#                         lbs::Vector{T}, 
+#                         ubs::Vector{T},
+#                         parameters::Vector{solver_parameters},
+#                         fail_fast_solvers_only::Bool,
+#                         cold_start::Bool,
+#                         verbose::Bool ;
+#                         tol::Tolerances = Tolerances(),
+#                         # rtol::AbstractFloat = sqrt(eps()),
+#                         # timeout = 120,
+#                         # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
+#                         # verbose::Bool = false
+#                         )::Tuple{Vector{T},Tuple{T, Int}} where T <: AbstractFloat
+
+    # tol = parameters[1].ftol
+    # rtol = parameters[1].rel_xtol
+
+    solved_yet = false
+
+    guess = guess_and_pars_solved_vars[1]
+
+    sol_values = guess
+
+    closest_parameters_and_solved_vars = sum(abs, guess_and_pars_solved_vars[2]) == Inf ? parameters_and_solved_vars : guess_and_pars_solved_vars[2]
+
+    # res = ss_solve_blocks(parameters_and_solved_vars, guess)
+
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars) # TODO: make the block a struct
+    # TODO: do the function creation with Symbolics as this will solve the compilation bottleneck for large functions
+
+    res = SS_solve_block.ss_problem.func_buffer
+
+    sol_minimum  = ℒ.norm(res)
+
+    # if !cold_start
+    #     if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol
+    #         # ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
+
+    #         # ∇̂ = ℒ.lu!(∇, check = false)
+
+    #         SS_solve_block.ss_problem.jac(SS_solve_block.ss_problem.jac_buffer, guess, parameters_and_solved_vars)
+
+    #         ∇ = SS_solve_block.ss_problem.jac_buffer
+
+    #         ∇̂ = ℒ.lu(∇, check = false)
+            
+    #         if ℒ.issuccess(∇̂)
+    #             guess_update = ∇̂ \ res
+
+    #             new_guess = guess - guess_update
+
+    #             rel_sol_minimum = ℒ.norm(guess_update) / max(ℒ.norm(new_guess), sol_minimum)
+    #         else
+    #             rel_sol_minimum = 1.0
+    #         end
+    #     else
+    #         rel_sol_minimum = 0.0
+    #     end
+    # else
+        rel_sol_minimum = 1.0
+    # end
+    
+    if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
+        solved_yet = true
+
+        if verbose
+            println("Block: $n_block, - Solved using previous solution; residual norm: $sol_minimum")
+        end
+    end
+
+    total_iters = [0,0]
+
+    SS_optimizer = levenberg_marquardt
+
+    # if cold_start
+        guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
+
+
+
+SS_optimizer    =   SS_optimizer
+SS_solve_block    =   SS_solve_block
+parameters_and_solved_vars    =   parameters_and_solved_vars
+closest_parameters_and_solved_vars    =   closest_parameters_and_solved_vars
+lbs   =   lbs
+ubs   =   ubs
+tol   =   tol
+total_iters   =   total_iters
+n_block   =   n_block
+verbose   =   verbose
+guess =   guesses[1]
+solver_params =   parameters[1]
+extended_problem  =   true
+separate_starting_value   =   false
+
+
+# function solve_ss(SS_optimizer::Function,
+#                     SS_solve_block::ss_solve_block,
+#                     parameters_and_solved_vars::Vector{T},
+#                     closest_parameters_and_solved_vars::Vector{T},
+#                     lbs::Vector{T},
+#                     ubs::Vector{T},
+#                     tol::Tolerances,
+#                     total_iters::Vector{Int},
+#                     n_block::Int,
+#                     verbose::Bool,
+#                     guess::Vector{T},
+#                     solver_params::solver_parameters,
+#                     extended_problem::Bool,
+#                     separate_starting_value::Union{Bool,T})::Tuple{Vector{T}, Vector{Int}, T, T} where T <: AbstractFloat
+    xtol = tol.NSSS_xtol
+    ftol = tol.NSSS_ftol
+    rel_xtol = tol.NSSS_rel_xtol
+
+    if separate_starting_value isa Float64
+        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], fill(separate_starting_value, length(guess))))
+        sol_values_init[ubs[1:length(guess)] .<= 1] .= .1 # capture cases where part of values is small
+    else
+        sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : solver_params.starting_value for g in guess]))
+    end
+
+
+
+
+
+fnj =   extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem
+initial_guess   =   extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init
+parameters_and_solved_vars  =   parameters_and_solved_vars
+lower_bounds    =   extended_problem ? lbs : lbs[1:length(guess)]
+upper_bounds    =   extended_problem ? ubs : ubs[1:length(guess)]
+parameters  =   solver_params
+
+# function levenberg_marquardt(
+#     fnj::function_and_jacobian,
+#     initial_guess::Array{T,1}, 
+#     parameters_and_solved_vars::Array{T,1},
+#     lower_bounds::Array{T,1}, 
+#     upper_bounds::Array{T,1},
+#     parameters::solver_parameters;
+#     tol::Tolerances = Tolerances()
+#     )::Tuple{Vector{T}, Tuple{Int, Int, T, T}} where {T <: AbstractFloat}
+    # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
+
+    xtol = tol.NSSS_xtol
+    ftol = tol.NSSS_ftol
+    rel_xtol = tol.NSSS_rel_xtol
+
+    iterations = 250
+    
+    ϕ̄ = parameters.ϕ̄
+    ϕ̂ = parameters.ϕ̂
+    μ̄¹ = parameters.μ̄¹
+    μ̄² = parameters.μ̄²
+    p̄¹ = parameters.p̄¹
+    p̄² = parameters.p̄²
+    ρ = parameters.ρ
+    ρ¹ = parameters.ρ¹
+    ρ² = parameters.ρ²
+    ρ³ = parameters.ρ³
+    ν = parameters.ν
+    λ¹ = parameters.λ¹
+    λ² = parameters.λ²
+    λ̂¹ = parameters.λ̂¹
+    λ̂² = parameters.λ̂²
+    λ̅¹ = parameters.λ̅¹
+    λ̅² = parameters.λ̅²
+    λ̂̅¹ = parameters.λ̂̅¹
+    λ̂̅² = parameters.λ̂̅²
+    transformation_level = parameters.transformation_level
+    shift = parameters.shift
+    backtracking_order = parameters.backtracking_order
+
+    @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
+    @assert all(lower_bounds .< upper_bounds)
+    @assert backtracking_order ∈ [2,3] "Backtracking order can only be quadratic (2) or cubic (3)."
+
+    max_linesearch_iterations = 600
+
+    # function f̂(x) 
+    #     f(undo_transform(x,transformation_level))  
+    # #     # f(undo_transform(x,transformation_level,shift))  
+    # end
+
+    upper_bounds  = transform(upper_bounds,transformation_level)
+    # upper_bounds  = transform(upper_bounds,transformation_level,shift)
+    lower_bounds  = transform(lower_bounds,transformation_level)
+    # lower_bounds  = transform(lower_bounds,transformation_level,shift)
+
+    current_guess = copy(transform(initial_guess,transformation_level))
+    current_guess_untransformed = copy(transform(initial_guess,transformation_level))
+    # current_guess = copy(transform(initial_guess,transformation_level,shift))
+    previous_guess = similar(current_guess)
+    previous_guess_untransformed = similar(current_guess)
+    guess_update = similar(current_guess)
+    factor = similar(current_guess)
+    # ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
+    ∇ = fnj.jac_buffer
+    # ∇̂ = similar(fnj.jac_buffer)
+    ∇̄ = similar(fnj.jac_buffer)
+
+    ∇̂ = choose_matrix_format(∇' * ∇, multithreaded = false)
+    
+    if ∇̂ isa SparseMatrixCSC
+        prob = 𝒮.LinearProblem(∇̂, guess_update, 𝒮.UMFPACKFactorization())
+    else
+        prob = 𝒮.LinearProblem(∇̂, guess_update)#, 𝒮.CholeskyFactorization)
+    end
+
+    sol_cache = 𝒮.init(prob)
+    
+    # prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
+
+    largest_step = (1.0)
+    largest_residual = (1.0)
+    largest_relative_step = (1.0)
+
+    μ¹ = μ̄¹
+    μ² = μ̄²
+
+    p¹ = p̄¹
+    p² = p̄²
+
+    grad_iter = 0
+    func_iter = 0
+
+    # for iter in 1:iterations
+        # make the jacobian and f calls nonallocating
+        copy!(current_guess_untransformed, current_guess)
+        
+        if transformation_level > 0
+            factor .= 1
+            for _ in 1:transformation_level
+                factor .*= cosh.(current_guess_untransformed)
+                current_guess_untransformed .= sinh.(current_guess_untransformed)
+            end
+        end
+
+        fnj.jac(∇, current_guess_untransformed, parameters_and_solved_vars)
+        # 𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
+
+        if transformation_level > 0
+            if ∇ isa SparseMatrixCSC
+                # ∇̄ = ∇ .* factor'
+                copy!(∇̄.nzval, ∇.nzval)
+                @inbounds for j in 1:size(∇, 2)
+                    col_start = ∇̄.colptr[j]
+                    col_end = ∇̄.colptr[j+1] - 1
+                    for k in col_start:col_end
+                        ∇̄.nzval[k] *= factor[j]
+                    end
+                end
+            else
+                # ℒ.mul!(∇̄, ∇, factor')
+                @. ∇̄ = ∇ * factor'
+                # ∇ .*= factor'
+            end
+        end
+
+        grad_iter += 1
+
+        previous_guess .= current_guess
+
+        # ∇̂ .= ∇' * ∇
+        if ∇̄ isa SparseMatrixCSC && ∇̂ isa SparseMatrixCSC
+            ∇̂ = ∇̄' * ∇̄
+        else
+            ℒ.mul!(∇̂, ∇̄', ∇̄)
+        end
+
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
+
+        μ¹s = μ¹ * sum(abs2, fnj.func_buffer)^p¹
+        # μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
+        func_iter += 1
+
+        for i in 1:size(∇̂,1)
+            ∇̂[i,i] += μ¹s
+            ∇̂[i,i] += μ² * ∇̂[i,i]^p²
+        end
+        # ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
+
+        if !all(isfinite, ∇̂)
+            largest_relative_step = 1.0
+            largest_residual = 1.0
+            # break
+        end
+
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
+
+        ℒ.mul!(guess_update, ∇̄', fnj.func_buffer)
+
+        sol_cache.A = ∇̂
+        sol_cache.b = guess_update
+        𝒮.solve!(sol_cache)
+        copy!(guess_update, sol_cache.u)
+
+        if !isfinite(sum(guess_update))
+            largest_relative_step = 1.0
+            largest_residual = 1.0
+            break
+        end
+
+        ℒ.axpy!(-1, guess_update, current_guess)
+        # current_guess .-= ∇̄ \ ∇' * f̂(current_guess)
+
+        minmax!(current_guess, lower_bounds, upper_bounds)
+
+        copy!(previous_guess_untransformed, previous_guess)
+
+        for _ in 1:transformation_level
+            previous_guess_untransformed .= sinh.(previous_guess_untransformed)
+        end
+        
+        fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
+
+        P = sum(abs2, fnj.func_buffer)
+        # P = sum(abs2, f̂(previous_guess))
+        P̃ = P
+        
+        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
+
+        P̋ = sum(abs2, fnj.func_buffer)
+        # P̋ = sum(abs2, f̂(current_guess))
+
+        func_iter += 3
+
+        α = 1.0
+        ᾱ = 1.0
+
+        ν̂ = ν
+
+        guess_update .= current_guess - previous_guess
+
+        fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
+
+        g = fnj.func_buffer' * ∇̄ * guess_update
+        # g = f̂(previous_guess)' * ∇ * guess_update
+        U = sum(abs2,guess_update)
+        func_iter += 1
+
+
+
+
+    sol_new_tmp, info = SS_optimizer(   extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
+                                        extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
+                                        parameters_and_solved_vars,
+                                        extended_problem ? lbs : lbs[1:length(guess)],
+                                        extended_problem ? ubs : ubs[1:length(guess)],
+                                        solver_params,
+                                        tol = tol   )
+
+
+
+
+
+        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                            guesses[1], 
+                                                            parameters[1],
+                                                            true,
+                                                            false)
+
+                                                            
+        for g in guesses
+            for p in parameters
+                for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
+                    if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
+                        if solved_yet continue end
+
+                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                        # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                            g, 
+                                                            p,
+                                                            ext,
+                                                            false)
+                        if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
+                            println(i)
+                            solved_yet = true
+                        end
+                        i+=1
+                    end
+                end
+            end
+        end
+
+
+solution = block_solver(params_and_solved_vars, 1, 𝓂.ss_solve_blocks_in_place[1], inits, lbs, ubs, solver_parameters, fail_fast_solvers_only, cold_start, verbose)
+iters += (solution[2])[2]
+solution_error += (solution[2])[1]
+if solution_error > tol.NSSS_acceptance_tol
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2986 =#
+    if verbose
+        #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2986 =#
+        println("Failed after solving block with error $(solution_error)")
+    end
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2986 =#
+    scale = scale * 0.3 + solved_scale * 0.7
+    #= /Users/thorekockerols/GitHub/MacroModelling.jl/src/MacroModelling.jl:2986 =#
+    # continue
+end
+sol = solution[1]
+alpha = sol[1]
+c = sol[2]
+delta = sol[3]
+k = sol[4]
+y = sol[5]
+
+
+
+
+
+
+
 SS(𝓂)
+
 
 
 𝓂 = Caldara_et_al_2012
