@@ -5,12 +5,45 @@ using BenchmarkTools
 import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, get_symbols, replace_symbols, match_pattern, take_nth_order_derivatives, Tolerances, block_solver, levenberg_marquardt, solve_ss, transform, choose_matrix_format
 using SparseArrays
 import LinearSolve as 𝒮
+using Random, Zygote, FiniteDifferences
+
+include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+get_solution(m)
+model = m
+observables = [:k,:c]
+get_variables(m)
+
+include("models/SW07_nonlinear.jl")
+model = SW07_nonlinear
+observables = [:k,:c,:y]
+
+
+Random.seed!(1)
+simulated_data = simulate(model)
+
+get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values, verbose = true)
+
+back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
+
+fin_grad = FiniteDifferences.grad(FiniteDifferences.forward_fdm(3,1, max_range = 1e-2),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = false), model.parameter_values)
+back_grad[1] ≈ fin_grad[1]
+
+𝓂 = SW07_nonlinear
 
 import Symbolics
 import MacroTools
+using SparseArrays
 import RuntimeGeneratedFunctions
 import LinearAlgebra as ℒ
 import DataStructures: CircularBuffer
+
+RuntimeGeneratedFunctions.init(@__MODULE__)
+cse = true
+skipzeros = true
+density_threshold::Float64 = .1
+min_length::Int = 10000
+
+
 include("../test/models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
 𝓂 = m
 
@@ -620,9 +653,24 @@ y = sol[5]
 
 SS(𝓂)
 
+SSS(𝓂)
+SSS(𝓂, algorithm = :pruned_third_order)
+get_solution(𝓂)
+get_std(𝓂)
+get_std(𝓂, algorithm = :pruned_second_order)
+get_std(𝓂, algorithm = :pruned_third_order)
 
+𝓂.third_order_derivatives[1]
 
+SS_and_pars = 𝓂.solution.non_stochastic_steady_state
+
+𝓂.jacobian[2](𝓂.jacobian[1],𝓂.parameter_values,SS_and_pars)
+𝓂.jacobian[1][157]
 𝓂 = Caldara_et_al_2012
+density_threshold::Float64 = .1 
+min_length::Int = 1000
+import NaNMath
+(/)((*)((*)(-1, (NaNMath.pow)((/)((getindex)(𝓂.parameter_values, 4), (getindex)(SS_and_pars, 10)), (+)(-1, (getindex)(SS_and_pars, 4)))), (getindex)(SS_and_pars, 4)), (getindex)(SS_and_pars, 10))
 
 
 future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
@@ -698,7 +746,9 @@ parameters_and_SS = vcat(pars_ext, dyn_ss_list[indexin(sort(stst),stst)])
 
 np = length(parameters_and_SS)
 nv = length(vars_raw)
-# nc = length(𝓂.calibration_equations_no_var)
+nc = length(𝓂.calibration_equations)
+nps = length(𝓂.parameters)
+nxs = maximum(dyn_var_idxs) + nc
 
 Symbolics.@variables 𝔓[1:np] 𝔙[1:nv]
 
@@ -712,12 +762,14 @@ SS_mapping = Dict{Symbolics.Num, Symbolics.Num}()
 for (i,v) in enumerate(parameters_and_SS)
     push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
     push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
-    if i > length(pars_ext)
-        push!(SS_mapping, 𝔓[i] => 𝔙[dyn_ss_idx[i-length(pars_ext)]])
+    if i > nps
+        if i > length(pars_ext)
+            push!(SS_mapping, 𝔓[i] => 𝔙[dyn_ss_idx[i-length(pars_ext)]])
+        else
+            push!(SS_mapping, 𝔓[i] => 𝔙[nxs + i - nps])
+        end
     end
 end
-
-nSS = length(SS_mapping)
 
 for (i,v) in enumerate(vars_raw)
     push!(parameter_dict, v => :($(Symbol("𝔙_$i"))))
@@ -730,7 +782,7 @@ for (i,v) in enumerate(vars_raw)
 end
 
 
-for (i,v) in enumerate(𝓂.calibration_equations_no_var)
+for v in 𝓂.calibration_equations_no_var
     push!(calib_vars, v.args[1])
     push!(calib_expr, v.args[2])
 end
@@ -752,9 +804,112 @@ dyn_equations = 𝓂.dyn_equations |>
     x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
     x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
 
-results = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nSS)
+# StatsFuns
+function norminvcdf(p::T)::T where T
+    -erfcinv(2*p) * 1.4142135623730951
+end
+norminv(p) = norminvcdf(p)
+qnorm(p)= norminvcdf(p)
+
+function normlogpdf(z::T)::T where T
+    -(abs2(z) + 1.8378770664093453) / 2
+end
+function normpdf(z::T)::T where T
+    exp(-abs2(z)/2) * 0.3989422804014327
+end
+
+function normcdf(z::T)::T where T
+    erfc(-z * 0.7071067811865475) / 2
+end
+pnorm(p) = normcdf(p)
+dnorm(p) = normpdf(p)
+
+Symbolics.@register_symbolic norminvcdf(p)
+Symbolics.@register_symbolic norminv(p)
+Symbolics.@register_symbolic qnorm(p)
+Symbolics.@register_symbolic normlogpdf(z)
+Symbolics.@register_symbolic normpdf(z)
+Symbolics.@register_symbolic normcdf(z)
+Symbolics.@register_symbolic pnorm(p)
+Symbolics.@register_symbolic dnorm(p)
 
 
+
+dyn_equations = 𝓂.dyn_equations |> 
+    x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+    x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+    x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+    x -> Symbolics.substitute.(x, Ref(back_to_array_dict)) #|>
+    # x -> Symbolics.substitute.(x, Ref(SS_mapping))
+# SS_mapping
+# results = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nSS)
+
+
+    # Compute the 1st order derivative with respect to X (Jacobian)
+    spX_order_1 = Symbolics.sparsejacobian(dyn_equations, 𝔙) # nϵ x nx
+
+
+    spX_order_1_sub = copy(spX_order_1)
+
+    # spX_order_1_sub.nzval .= Symbolics.fast_substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝔛𝔛) .=> 𝔙))
+    spX_order_1_sub.nzval .= Symbolics.substitute(spX_order_1_sub.nzval, SS_mapping)
+
+    ∇₁_dyn = spX_order_1_sub
+
+    lennz = nnz(∇₁_dyn)
+
+    # if (lennz / length(∇₁_dyn) > density_threshold) || (length(∇₁_dyn) < min_length)
+    #     derivatives_mat = convert(Matrix, ∇₁_dyn)
+    #     buffer = zeros(Float64, size(∇₁_dyn))
+    # else
+        derivatives_mat = ∇₁_dyn
+        buffer = similar(∇₁_dyn, Float64)
+        buffer.nzval .= 0
+    # end
+    
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+    
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔙, 
+                                            cse = cse, 
+                                            skipzeros = skipzeros, 
+                                            parallel = parallel,
+                                            expression_module = @__MODULE__,
+                                            expression = Val(false))::Tuple{<:Function, <:Function};
+
+    # 𝓂.jacobian = buffer, func_exprs
+𝓂.jacobian[2]
+
+    ∇₁_parameters = derivatives[1][2][:,1:nps]
+
+    lennz = nnz(∇₁_parameters)
+
+    if (lennz / length(∇₁_parameters) > density_threshold) || (length(∇₁_parameters) < min_length)
+        ∇₁_parameters_mat = convert(Matrix, ∇₁_parameters)
+        buffer_parameters = zeros(Float64, size(∇₁_parameters))
+    else
+        ∇₁_parameters_mat = ∇₁_parameters
+        buffer_parameters = similar(∇₁_parameters, Float64)
+        buffer_parameters.nzval .= 0
+    end
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝔓, 𝔙, 
+                                                        cse = cse, 
+                                                        skipzeros = skipzeros, 
+                                                        parallel = parallel,
+                                                        expression_module = @__MODULE__,
+                                                        expression = Val(false))::Tuple{<:Function, <:Function}
+
+                                            
 spX_order_1 = Symbolics.sparsejacobian(dyn_equations_sub, 𝔙) # nϵ x nx
 
 spX_order_1[:,18:21]
@@ -1241,11 +1396,7 @@ include("../models/Aguiar_Gopinath_2007.jl")
 SS(Aguiar_Gopinath_2007)
 
 
-RuntimeGeneratedFunctions.init(@__MODULE__)
-cse = true
-skipzeros = true
-density_threshold::Float64 = .1
-min_length::Int = 10000
+
 
 
 
