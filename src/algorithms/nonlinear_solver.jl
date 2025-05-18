@@ -140,11 +140,13 @@ function levenberg_marquardt(
 
         fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
 
-        μ¹s = μ¹ * sum(abs2, fnj.func_buffer)^p¹
+        copy!(factor, fnj.func_buffer)
+
+        μ¹s = μ¹ * sum(abs2, factor)^p¹
         # μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
         func_iter += 1
 
-        for i in 1:size(∇̂,1)
+        @inbounds for i in 1:size(∇̂,1)
             ∇̂[i,i] += μ¹s
             ∇̂[i,i] += μ² * ∇̂[i,i]^p²
         end
@@ -156,9 +158,9 @@ function levenberg_marquardt(
             break
         end
 
-        fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
+        # fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
 
-        ℒ.mul!(guess_update, ∇̄', fnj.func_buffer)
+        ℒ.mul!(guess_update, ∇̄', factor)
 
         sol_cache.A = ∇̂
         sol_cache.b = guess_update
@@ -182,9 +184,9 @@ function levenberg_marquardt(
             previous_guess_untransformed .= sinh.(previous_guess_untransformed)
         end
         
-        fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
+        # fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
 
-        P = sum(abs2, fnj.func_buffer)
+        P = sum(abs2, factor)
         # P = sum(abs2, f̂(previous_guess))
         P̃ = P
         
@@ -208,9 +210,9 @@ function levenberg_marquardt(
 
         guess_update .= current_guess - previous_guess
 
-        fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
+        # fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
 
-        g = fnj.func_buffer' * ∇̄ * guess_update
+        g = factor' * ∇̄ * guess_update
         # g = f̂(previous_guess)' * ∇ * guess_update
         U = sum(abs2,guess_update)
         func_iter += 1
