@@ -844,7 +844,7 @@ function fill_kron_adjoint_∂B!(∂X::AbstractSparseMatrix{R}, ∂B::Vector{S},
     
     n1 = length(∂B)
     n2 = size(A,1)
-    println("hello")
+    # println("hello")
     # Precompute constants
     const_n1n2 = n1 * n2
     
