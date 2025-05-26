@@ -145,11 +145,12 @@ function levenberg_marquardt(
         μ¹s = μ¹ * sum(abs2, factor)^p¹
         # μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
         func_iter += 1
-
-        @inbounds for i in 1:size(∇̂,1)
-            ∇̂[i,i] += μ¹s
-            ∇̂[i,i] += μ² * ∇̂[i,i]^p²
-        end
+        
+        update_∇̂!(∇̂, μ¹s, μ², p²)
+        # @inbounds for i in 1:size(∇̂,1) # fix allocs here
+        #     ∇̂[i,i] += μ¹s
+        #     ∇̂[i,i] += μ² * ∇̂[i,i]^p²
+        # end
         # ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
         if !all(isfinite, ∇̂)
@@ -208,21 +209,30 @@ function levenberg_marquardt(
 
         ν̂ = ν
 
-        guess_update .= current_guess - previous_guess
+        # guess_update .= current_guess - previous_guess
+        guess_update .= current_guess
+        guess_update .-= previous_guess
 
         # fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
 
-        g = factor' * ∇̄ * guess_update
+        # g = factor' * ∇̄ * guess_update
+        g = ℒ.dot(factor, ∇̄, guess_update)
         # g = f̂(previous_guess)' * ∇ * guess_update
         U = sum(abs2,guess_update)
         func_iter += 1
 
         if P̋ > ρ * P 
             linesearch_iterations = 0
-            while P̋ > (1 + ν̂ - ρ¹ * α^2) * P̃ + ρ² * α^2 * g - ρ³ * α^2 * U && linesearch_iterations < max_linesearch_iterations
+
+            cond = condition_P̋(P̋, ν̂, ρ¹, α, P̃, ρ², g, ρ³, U)
+
+            while cond && linesearch_iterations < max_linesearch_iterations # fix allocs here
                 if backtracking_order == 2
                     # Quadratic backtracking line search
-                    α̂ = -g * α^2 / (2 * (P̋ - P̃ - g * α))
+
+                    α̂ = update_α̂(g, α, P̋, P̃)
+                    # α̂ = -g * α^2 / (2 * (P̋ - P̃ - g * α)) # fix allocs here
+
                 elseif backtracking_order == 3
                     # Cubic backtracking line search
                     a = (ᾱ^2 * (P̋ - P̃ - g * α) - α^2 * (P - P̃ - g * ᾱ)) / (ᾱ^2 * α^2 * (α - ᾱ))
@@ -240,8 +250,9 @@ function levenberg_marquardt(
                     ᾱ = α
                 end
 
-                α̂ = min(α̂, ϕ̄ * α)
-                α = max(α̂, ϕ̂ * α)
+                α̂, α = minmax_α(α̂, ϕ̄, α, ϕ̂)
+                # α̂ = min(α̂, ϕ̄ * α)
+                # α = max(α̂, ϕ̂ * α)
                 
                 copy!(current_guess, previous_guess)
                 ℒ.axpy!(α, guess_update, current_guess)
@@ -312,6 +323,33 @@ function levenberg_marquardt(
 
     return best_guess, (grad_iter, func_iter, largest_relative_step, largest_residual)#, f(best_guess))
 end
+
+
+function update_∇̂!(∇̂::AbstractMatrix{T}, μ¹s::T, μ²::T, p²::T) where T <: Real
+    @inbounds for i in 1:size(∇̂,1)
+        ∇̂[i,i] += μ¹s
+        ∇̂[i,i] += μ² * ∇̂[i,i]^p²
+    end
+
+    return nothing
+end
+
+
+function minmax_α(α̂::T, ϕ̄::T, α::T, ϕ̂::T)::Tuple{T,T} where T <: Real
+    α̂ = min(α̂, ϕ̄ * α)
+    α = max(α̂, ϕ̂ * α)
+    return α̂, α
+end
+
+function condition_P̋(P̋::T, ν̂::T, ρ¹::T, α::T, P̃::T, ρ²::T, g::T, ρ³::T, U::T)::Bool where T <: Real
+    cond  = (1 + ν̂ - ρ¹ * α^2) * P̃ + ρ² * α^2 * g - ρ³ * α^2 * U
+    return P̋ > cond
+end
+
+function update_α̂(g::T, α::T, P̋::T, P̃::T)::T where T <: Real
+    return -g * α^2 / (2 * (P̋ - P̃ - g * α))
+end
+
 
 
 function newton(
