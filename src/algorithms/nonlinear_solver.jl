@@ -144,7 +144,7 @@ function levenberg_marquardt(
 
         copy!(factor, fnj.func_buffer)
 
-        μ¹s = μ¹ * sum(abs2, factor)^p¹
+        μ¹s = μ¹ * ℒ.dot(factor, factor)^p¹
         # μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
         func_iter += 1
         
@@ -189,7 +189,7 @@ function levenberg_marquardt(
         
         # fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
 
-        P = sum(abs2, factor)
+        P = ℒ.dot(factor, factor)
         # P = sum(abs2, f̂(previous_guess))
         P̃ = P
         
@@ -201,7 +201,7 @@ function levenberg_marquardt(
 
         fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
       
-        P̋ = sum(abs2, fnj.func_buffer)
+        P̋ = ℒ.dot(fnj.func_buffer, fnj.func_buffer)
         # P̋ = sum(abs2, f̂(current_guess))
 
         func_iter += 3
@@ -271,7 +271,7 @@ function levenberg_marquardt(
 
                 fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
 
-                P̋ = sum(abs2, fnj.func_buffer)
+                P̋ = ℒ.dot(fnj.func_buffer, fnj.func_buffer)
                 # P̋ = sum(abs2, f̂(current_guess))
                 func_iter += 1
 
