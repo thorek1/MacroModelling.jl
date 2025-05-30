@@ -155,7 +155,9 @@ function levenberg_marquardt(
         # end
         # ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
-        if !all(isfinite, ∇̂)
+        finn = has_nonfinite(∇̂)
+
+        if finn
             largest_relative_step = 1.0
             largest_residual = 1.0
             break
@@ -329,9 +331,11 @@ function levenberg_marquardt(
         end
     end
     
-    best_guess = undo_transform(current_guess, transformation_level)
+    for _ in 1:transformation_level
+        best_current_guess .= sinh.(current_guess)
+    end
 
-    return best_guess, (grad_iter, func_iter, largest_relative_step, largest_residual)#, f(best_guess))
+    return best_current_guess, (grad_iter, func_iter, largest_relative_step, largest_residual)#, f(best_guess))
 end
 
 
@@ -362,6 +366,14 @@ function update_α̂(g::T, α::T, P̋::T, P̃::T)::T where T <: Real
     return -g * α^2 / (2 * (P̋ - P̃ - g * α))
 end
 
+function has_nonfinite(A::AbstractArray)
+    @inbounds for x in A
+        if !isfinite(x)
+            return true
+        end
+    end
+    return false
+end
 
 
 function newton(
@@ -449,7 +461,9 @@ function newton(
         copy!(new_residuals, fnj.func_buffer)
         # new_residuals = f(new_guess)
 
-        if !all(isfinite,new_residuals) 
+        finn = has_nonfinite(new_residuals)
+
+        if finn
             # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
@@ -503,7 +517,9 @@ function newton(
 
         ℒ.axpy!(-1, guess_update, new_guess)
 
-        if !all(isfinite,new_guess) 
+        finn = has_nonfinite(new_guess)
+
+        if finn
             # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
