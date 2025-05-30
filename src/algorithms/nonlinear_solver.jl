@@ -276,6 +276,8 @@ function levenberg_marquardt(
                 ν̂ *= α
 
                 linesearch_iterations += 1
+                
+                cond = condition_P̋(P̋, ν̂, ρ¹, α, P̃, ρ², g, ρ³, U)
             end
 
             μ¹ *= λ̅¹
@@ -326,11 +328,13 @@ end
 
 
 function update_∇̂!(∇̂::AbstractMatrix{T}, μ¹s::T, μ²::T, p²::T) where T <: Real
-    @inbounds for i in 1:size(∇̂,1)
-        ∇̂[i,i] += μ¹s
-        ∇̂[i,i] += μ² * ∇̂[i,i]^p²
+    n = size(∇̂, 1)                # hoist size lookup
+    @inbounds for i in 1:n
+        x = ∇̂[i,i]                # read once
+        x += μ¹s
+        x += μ² * (x^p²)          # scalar pow, no array allocation
+        ∇̂[i,i] = x               # write back
     end
-
     return nothing
 end
 
