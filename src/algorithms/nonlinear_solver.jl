@@ -64,6 +64,8 @@ function levenberg_marquardt(
     previous_guess_untransformed = similar(current_guess)
     guess_update = similar(current_guess)
     factor = similar(current_guess)
+    best_previous_guess = similar(current_guess)
+    best_current_guess = similar(current_guess)
     # ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
     ∇ = fnj.jac_buffer
     # ∇̂ = similar(fnj.jac_buffer)
@@ -276,7 +278,7 @@ function levenberg_marquardt(
                 ν̂ *= α
 
                 linesearch_iterations += 1
-                
+
                 cond = condition_P̋(P̋, ν̂, ρ¹, α, P̃, ρ², g, ρ³, U)
             end
 
@@ -293,9 +295,15 @@ function levenberg_marquardt(
             p² = min(p² / λ̂², p̄²)
         end
 
-        best_previous_guess = undo_transform(previous_guess, transformation_level)
-        best_current_guess = undo_transform(current_guess, transformation_level)
+        for _ in 1:transformation_level
+            best_previous_guess .= sinh.(previous_guess)
+            best_current_guess .= sinh.(current_guess)
+        end
 
+        # best_previous_guess = undo_transform(previous_guess, transformation_level)
+        # best_current_guess = undo_transform(current_guess, transformation_level)
+
+        @. factor = best_previous_guess - best_current_guess
         largest_step = ℒ.norm(best_previous_guess - best_current_guess) # maximum(abs, previous_guess - current_guess)
         largest_relative_step = largest_step / max(ℒ.norm(best_previous_guess), ℒ.norm(best_current_guess)) # maximum(abs, (previous_guess - current_guess) ./ previous_guess)
         
