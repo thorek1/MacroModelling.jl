@@ -231,6 +231,8 @@ mutable struct function_and_jacobian
     # func_aux_buffer::Vector{<:Real}
     jac::Function
     jac_buffer::AbstractMatrix{<:Real}
+    chol_buffer::𝒮.LinearCache
+    lu_buffer::𝒮.LinearCache
 end
 
 struct ss_solve_block

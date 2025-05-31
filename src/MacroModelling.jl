@@ -2871,6 +2871,18 @@ function write_block_solution!(𝓂,
         buffer.nzval .= 0
     end
 
+    chol_buff = buffer * buffer'
+
+    chol_buff += ℒ.I
+
+    prob = 𝒮.LinearProblem(chol_buff, ϵ, 𝒮.CholeskyFactorization())
+
+    chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+
+    prob = 𝒮.LinearProblem(buffer, ϵ)
+
+    lu_buffer = 𝒮.init(prob)
+
     if lennz > 1500
         parallel = Symbolics.ShardedForm(1500,4)
     else
@@ -2880,6 +2892,7 @@ function write_block_solution!(𝓂,
     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔊, 𝔓,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
+                                                # nanmath = false,
                                                 parallel = parallel,
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
@@ -2922,6 +2935,18 @@ function write_block_solution!(𝓂,
         ext_buffer.nzval .= 0
     end
 
+    ext_chol_buff = ext_buffer * ext_buffer'
+
+    ext_chol_buff += ℒ.I
+
+    prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ, 𝒮.CholeskyFactorization())
+
+    ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+
+    prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ)
+
+    ext_lu_buffer = 𝒮.init(prob)
+
     if lennz > 1500
         parallel = Symbolics.ShardedForm(1500,4)
     else
@@ -2931,6 +2956,7 @@ function write_block_solution!(𝓂,
     _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝔊, 𝔓,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
+                                                # nanmath = false,
                                                 parallel = parallel,
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
@@ -2999,8 +3025,8 @@ function write_block_solution!(𝓂,
 
     
     push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
-            function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer),
-            function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer)
+            function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer, chol_buffer, lu_buffer),
+            function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
         )
     )
     
@@ -3492,7 +3518,8 @@ function write_ss_check_function!(𝓂::ℳ;
 
     _, func_exprs = Symbolics.build_function(ss_equations_sub, 𝔓, 𝔘,
                                                 cse = cse, 
-                                                skipzeros = skipzeros, 
+                                                skipzeros = skipzeros,
+                                                # nanmath = false, 
                                                 parallel = parallel,
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
@@ -3544,7 +3571,8 @@ function write_ss_check_function!(𝓂::ℳ;
     
     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔘, 
                                                 cse = cse, 
-                                                skipzeros = skipzeros, 
+                                                skipzeros = skipzeros,
+                                                # nanmath = false, 
                                                 parallel = parallel,
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
@@ -3575,6 +3603,7 @@ function write_ss_check_function!(𝓂::ℳ;
     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔘, 
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
+                                                # nanmath = false,
                                                 parallel = parallel,
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
@@ -4251,6 +4280,18 @@ function solve_steady_state!(𝓂::ℳ;
             buffer.nzval .= 0
         end
     
+        chol_buff = buffer * buffer'
+
+        chol_buff += ℒ.I
+
+        prob = 𝒮.LinearProblem(chol_buff, ϵ, 𝒮.CholeskyFactorization())
+
+        chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+
+        prob = 𝒮.LinearProblem(buffer, ϵ)
+
+        lu_buffer = 𝒮.init(prob)
+
         if lennz > 1500
             parallel = Symbolics.ShardedForm(1500,4)
         else
@@ -4260,6 +4301,7 @@ function solve_steady_state!(𝓂::ℳ;
         _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔊, 𝔓,
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
+                                                    # nanmath = false,
                                                     parallel = parallel,
                                                     expression_module = @__MODULE__,
                                                     expression = Val(false))::Tuple{<:Function, <:Function}
@@ -4302,6 +4344,18 @@ function solve_steady_state!(𝓂::ℳ;
             ext_buffer.nzval .= 0
         end
     
+        ext_chol_buff = ext_buffer * ext_buffer'
+
+        ext_chol_buff += ℒ.I
+
+        prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ, 𝒮.CholeskyFactorization())
+
+        ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+
+        prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ)
+
+        ext_lu_buffer = 𝒮.init(prob)
+
         if lennz > 1500
             parallel = Symbolics.ShardedForm(1500,4)
         else
@@ -4311,6 +4365,7 @@ function solve_steady_state!(𝓂::ℳ;
         _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝔊, 𝔓,
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
+                                                    # nanmath = false,
                                                     parallel = parallel,
                                                     expression_module = @__MODULE__,
                                                     expression = Val(false))::Tuple{<:Function, <:Function}
@@ -4375,8 +4430,8 @@ function solve_steady_state!(𝓂::ℳ;
 
         push!(𝓂.ss_solve_blocks_in_place, 
             ss_solve_block(
-                function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer),
-                function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer)
+                function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer, chol_buffer, lu_buffer),
+                function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
             )
         )
 
@@ -6481,6 +6536,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                             cse = cse, 
                                             skipzeros = skipzeros, 
                                             parallel = parallel,
+                                            # nanmath = false,
                                             expression_module = @__MODULE__,
                                             expression = Val(false))::Tuple{<:Function, <:Function}
 
@@ -6510,6 +6566,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
+                                                        # nanmath = false,
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
@@ -6539,6 +6596,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
+                                                        # nanmath = false,
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
@@ -6659,6 +6717,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
+                                                        # nanmath = false,
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
@@ -6688,6 +6747,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
+                                                                # nanmath = false,
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
@@ -6717,6 +6777,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
+                                                                # nanmath = false,
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
@@ -6754,6 +6815,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         cse = cse, 
                                                         skipzeros = skipzeros, 
                                                         parallel = parallel,
+                                                        # nanmath = false,
                                                         expression_module = @__MODULE__,
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
@@ -6783,6 +6845,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
                                                                 parallel = parallel,
+                                                                # nanmath = false,
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
@@ -6811,6 +6874,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝔓, 𝔙, 
                                                                 cse = cse, 
                                                                 skipzeros = skipzeros, 
+                                                                # nanmath = false,
                                                                 parallel = parallel,
                                                                 expression_module = @__MODULE__,
                                                                 expression = Val(false))::Tuple{<:Function, <:Function}
