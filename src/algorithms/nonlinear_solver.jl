@@ -75,11 +75,14 @@ function levenberg_marquardt(
     
     if ∇̂ isa SparseMatrixCSC
         prob = 𝒮.LinearProblem(∇̂, guess_update, 𝒮.UMFPACKFactorization())
+        sol_cache = 𝒮.init(prob, 𝒮.UMFPACKFactorization())
     else
-        prob = 𝒮.LinearProblem(∇̂, guess_update)#, 𝒮.CholeskyFactorization)
+        # X = ℒ.Symmetric(∇̂, :U)
+        # prob = 𝒮.LinearProblem(X, guess_update, 𝒮.CholeskyFactorization)
+        prob = 𝒮.LinearProblem(∇̂, guess_update, 𝒮.CholeskyFactorization())
+        sol_cache = 𝒮.init(prob, 𝒮.CholeskyFactorization())
     end
 
-    sol_cache = 𝒮.init(prob)
     
     # prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
 
@@ -167,6 +170,8 @@ function levenberg_marquardt(
 
         ℒ.mul!(guess_update, ∇̄', factor)
 
+        # X = ℒ.Symmetric(∇̂, :U)
+        # sol_cache.A = X
         sol_cache.A = ∇̂
         sol_cache.b = guess_update
         𝒮.solve!(sol_cache)
