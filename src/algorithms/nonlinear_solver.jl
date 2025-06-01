@@ -61,24 +61,17 @@ function levenberg_marquardt(
         current_guess .= asinh.(current_guess)
     end
 
-    current_guess_untransformed = copy(current_guess)
-    # upper_bounds  = transform(upper_bounds,transformation_level)
-    # upper_bounds  = transform(upper_bounds,transformation_level,shift)
-    # lower_bounds  = transform(lower_bounds,transformation_level)
-    # lower_bounds  = transform(lower_bounds,transformation_level,shift)
+    sol_cache = fnj.chol_buffer
 
-    # current_guess = copy(transform(initial_guess,transformation_level))
-    # current_guess_untransformed = copy(transform(initial_guess,transformation_level))
-    # current_guess = copy(transform(initial_guess,transformation_level,shift))
+    current_guess_untransformed = copy(current_guess)
     previous_guess = similar(current_guess)
     previous_guess_untransformed = similar(current_guess)
     guess_update = similar(current_guess)
     factor = similar(current_guess)
     best_previous_guess = similar(current_guess)
     best_current_guess = similar(current_guess)
-    # ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
     ∇ = fnj.jac_buffer
-    ∇̂ = similar(fnj.jac_buffer)
+    ∇̂ = sol_cache.A
     ∇̄ = similar(fnj.jac_buffer)
 
     # ∇̂ = choose_matrix_format(∇' * ∇, multithreaded = false)
@@ -92,7 +85,6 @@ function levenberg_marquardt(
         # prob = 𝒮.LinearProblem(∇̂, guess_update, 𝒮.CholeskyFactorization())
         # sol_cache = 𝒮.init(prob, 𝒮.CholeskyFactorization())
     # end
-    sol_cache = fnj.chol_buffer
     
     # prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
 
