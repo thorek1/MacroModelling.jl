@@ -2865,10 +2865,12 @@ function write_block_solution!(𝓂,
     if (lennz / length(∂block_∂parameters_and_solved_vars) > density_threshold) || (length(∂block_∂parameters_and_solved_vars) < min_length)
         derivatives_mat = convert(Matrix, ∂block_∂parameters_and_solved_vars)
         buffer = zeros(Float64, size(∂block_∂parameters_and_solved_vars))
+        lu_alg = 𝒮.LUFactorization()
     else
         derivatives_mat = ∂block_∂parameters_and_solved_vars
         buffer = similar(∂block_∂parameters_and_solved_vars, Float64)
-        buffer.nzval .= 0
+        buffer.nzval .= 1
+        lu_alg = 𝒮.UMFPACKFactorization()
     end
 
     chol_buff = buffer * buffer'
@@ -2879,9 +2881,9 @@ function write_block_solution!(𝓂,
 
     chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
 
-    prob = 𝒮.LinearProblem(buffer, ϵ)
+    prob = 𝒮.LinearProblem(buffer, ϵ, lu_alg)
 
-    lu_buffer = 𝒮.init(prob)
+    lu_buffer = 𝒮.init(prob, lu_alg)
 
     if lennz > 1500
         parallel = Symbolics.ShardedForm(1500,4)
@@ -2929,10 +2931,12 @@ function write_block_solution!(𝓂,
     if (lennz / length(∂ext_block_∂parameters_and_solved_vars) > density_threshold) || (length(∂ext_block_∂parameters_and_solved_vars) < min_length)
         derivatives_mat_ext = convert(Matrix, ∂ext_block_∂parameters_and_solved_vars)
         ext_buffer = zeros(Float64, size(∂ext_block_∂parameters_and_solved_vars))
+        lu_alg = 𝒮.LUFactorization()
     else
         derivatives_mat_ext = ∂ext_block_∂parameters_and_solved_vars
         ext_buffer = similar(∂ext_block_∂parameters_and_solved_vars, Float64)
-        ext_buffer.nzval .= 0
+        ext_buffer.nzval .= 1
+        lu_alg = 𝒮.UMFPACKFactorization()
     end
 
     ext_chol_buff = ext_buffer * ext_buffer'
@@ -2943,9 +2947,9 @@ function write_block_solution!(𝓂,
 
     ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
 
-    prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ)
+    prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ, lu_alg)
 
-    ext_lu_buffer = 𝒮.init(prob)
+    ext_lu_buffer = 𝒮.init(prob, lu_alg)
 
     if lennz > 1500
         parallel = Symbolics.ShardedForm(1500,4)
@@ -4274,10 +4278,12 @@ function solve_steady_state!(𝓂::ℳ;
         if (lennz / length(∂block_∂parameters_and_solved_vars) > density_threshold) || (length(∂block_∂parameters_and_solved_vars) < min_length)
             derivatives_mat = convert(Matrix, ∂block_∂parameters_and_solved_vars)
             buffer = zeros(Float64, size(∂block_∂parameters_and_solved_vars))
+            lu_alg = 𝒮.LUFactorization()
         else
             derivatives_mat = ∂block_∂parameters_and_solved_vars
             buffer = similar(∂block_∂parameters_and_solved_vars, Float64)
-            buffer.nzval .= 0
+            buffer.nzval .= 1
+            lu_alg = 𝒮.UMFPACKFactorization()
         end
     
         chol_buff = buffer * buffer'
@@ -4288,9 +4294,9 @@ function solve_steady_state!(𝓂::ℳ;
 
         chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
 
-        prob = 𝒮.LinearProblem(buffer, ϵ)
+        prob = 𝒮.LinearProblem(buffer, ϵ, lu_alg)
 
-        lu_buffer = 𝒮.init(prob)
+        lu_buffer = 𝒮.init(prob, lu_alg)
 
         if lennz > 1500
             parallel = Symbolics.ShardedForm(1500,4)
@@ -4338,10 +4344,12 @@ function solve_steady_state!(𝓂::ℳ;
         if (lennz / length(∂ext_block_∂parameters_and_solved_vars) > density_threshold) || (length(∂ext_block_∂parameters_and_solved_vars) < min_length)
             derivatives_mat_ext = convert(Matrix, ∂ext_block_∂parameters_and_solved_vars)
             ext_buffer = zeros(Float64, size(∂ext_block_∂parameters_and_solved_vars))
+            lu_alg = 𝒮.LUFactorization()
         else
             derivatives_mat_ext = ∂ext_block_∂parameters_and_solved_vars
             ext_buffer = similar(∂ext_block_∂parameters_and_solved_vars, Float64)
-            ext_buffer.nzval .= 0
+            ext_buffer.nzval .= 1
+            lu_alg = 𝒮.UMFPACKFactorization()
         end
     
         ext_chol_buff = ext_buffer * ext_buffer'
@@ -4352,9 +4360,9 @@ function solve_steady_state!(𝓂::ℳ;
 
         ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
 
-        prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ)
+        prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ, lu_alg)
 
-        ext_lu_buffer = 𝒮.init(prob)
+        ext_lu_buffer = 𝒮.init(prob, lu_alg)
 
         if lennz > 1500
             parallel = Symbolics.ShardedForm(1500,4)
@@ -4694,8 +4702,12 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
     for p in 𝓂.solver_parameters
         total_time = 0.0
         
-        for _ in 1:10
+        for _ in 1:100
             start_time = time()
+
+            while length(𝓂.NSSS_solver_cache) > 1
+                pop!(𝓂.NSSS_solver_cache)
+            end
 
             SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [p])
 
@@ -4806,9 +4818,9 @@ function solve_ss(SS_optimizer::Function,
     max_resid = maximum(abs, SS_solve_block.ss_problem.func_buffer)
 
     if sol_minimum < ftol && verbose
-        println("Block: $n_block - Solved $(extended_problem_str) using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
+            println("Block: $n_block - Solved $(extended_problem_str) using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
     end
-
+    
     return sol_values, total_iters, rel_sol_minimum, sol_minimum
 end
 

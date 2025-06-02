@@ -405,69 +405,36 @@ function newton(
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
     @assert all(lower_bounds .< upper_bounds)
 
-    # function f̂(x) 
-    #     f(undo_transform(x,transformation_level))  
-    # end
-
-    # upper_bounds  = transform(upper_bounds,transformation_level)
-    # lower_bounds  = transform(lower_bounds,transformation_level)
-
-    # new_guess = copy(transform(initial_guess,transformation_level))
-
-    new_guess = copy(initial_guess)
-    guess_update = copy(initial_guess)
+    new_guess = initial_guess # fnj.lu_buffer.b
+    guess_update = fnj.lu_buffer.b
 
     fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars)
 
     new_residuals = fnj.func_buffer
     # new_residuals = f(new_guess)
 
-    ∇ = copy(fnj.jac_buffer)
-
-    # if ∇ isa SparseMatrixCSC
-    #     prob = 𝒮.LinearProblem(∇, new_guess, 𝒮.UMFPACKFactorization())
-    # else
-        # prob = 𝒮.LinearProblem(∇, new_guess)#, 𝒮.CholeskyFactorization)
-    # end
-
-    # sol_cache = 𝒮.init(prob)
+    ∇ = fnj.jac_buffer
 
     sol_cache = fnj.lu_buffer
-    # ∇ = Array{T,2}(undef, length(new_guess), length(new_guess))
-
-    # prep = 𝒟.prepare_jacobian(f, backend, new_guess)
-
-    # largest_step = zero(T) + 1
-    # largest_residual = zero(T) + 1
 
     rel_xtol_reached = 1.0
     rel_ftol_reached = 1.0
     new_residuals_norm = 1.0
     guess_update_norm = 1.0
-    # init_residuals_norm = ℒ.norm(new_residuals)
+    
     iters = [0,0]
-    # resnorm = 1.0
-    # relresnorm = 1.0
-
+    
     for iter in 1:iterations
-    # while iter < iterations
-        fnj.jac(fnj.jac_buffer, new_guess, parameters_and_solved_vars)
-
+    
         if ∇ isa SparseMatrixCSC
-            copy!(∇.nzval, fnj.jac_buffer.nzval)
+            ∇.nzval .= 1
         else
-            copy!(∇, fnj.jac_buffer)
+            ∇ .= 0
         end
-        # 𝒟.jacobian!(f, ∇, prep, backend, new_guess)
 
-        # old_residuals_norm = ℒ.norm(new_residuals)
+        fnj.jac(∇, new_guess, parameters_and_solved_vars)
 
-        # old_residuals = copy(new_residuals)
-
-        fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars)
-
-        copy!(new_residuals, fnj.func_buffer)
-        # new_residuals = f(new_guess)
+        fnj.func(new_residuals, new_guess, parameters_and_solved_vars)
 
         finn = has_nonfinite(new_residuals)
 
@@ -485,14 +452,27 @@ function newton(
             old_residuals_norm = new_residuals_norm
 
             new_residuals_norm = ℒ.norm(new_residuals)
-        
-            sol_cache.A = ∇
-            sol_cache.b = new_residuals
-            𝒮.solve!(sol_cache)
+            
+            if ∇ isa SparseMatrixCSC
+                sol_cache.A = ∇
+                sol_cache.b = new_residuals
+                𝒮.solve!(sol_cache)
+                guess_update .= sol_cache.u
+                new_residuals .= guess_update
+            else
+                fact∇ = ℒ.lu!(∇, check = false)
+                if !ℒ.issuccess(fact∇)
+                    fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+                end
+                ℒ.ldiv!(fact∇, new_residuals)
+            end
 
-            guess_update_norm = ℒ.norm(sol_cache.u)
+            guess_update_norm = ℒ.norm(new_residuals)
+            ℒ.axpy!(-1, new_residuals, new_guess)
+
+            # guess_update_norm = ℒ.norm(sol_cache.u)
     
-            ℒ.axpy!(-1, sol_cache.u, new_guess)
+            # ℒ.axpy!(-1, sol_cache.u, new_guess)
     
             iters[1] += 1
             iters[2] += 1
@@ -516,14 +496,31 @@ function newton(
         #     return undo_transform(new_guess,transformation_level), (iter, zero(T), zero(T), resnorm) # f(undo_transform(new_guess,transformation_level)))
         # end
 
-        sol_cache.A = ∇
-        sol_cache.b = new_residuals
-        𝒮.solve!(sol_cache)
-        copy!(guess_update, sol_cache.u)
+        # sol_cache.A = ∇
+        # sol_cache.b = new_residuals
+        # 𝒮.solve!(sol_cache)
+        # copy!(guess_update, sol_cache.u)
 
-        guess_update_norm = ℒ.norm(guess_update)
+        if ∇ isa SparseMatrixCSC
+            sol_cache.A = ∇
+            sol_cache.b = new_residuals
+            𝒮.solve!(sol_cache)
+            guess_update .= sol_cache.u
+            new_residuals .= guess_update
+        else
+            fact∇ = ℒ.lu!(∇, check = false)
+            if !ℒ.issuccess(fact∇)
+                fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+            end
+            ℒ.ldiv!(fact∇, new_residuals)
+        end
 
-        ℒ.axpy!(-1, guess_update, new_guess)
+        guess_update_norm = ℒ.norm(new_residuals)
+        ℒ.axpy!(-1, new_residuals, new_guess)
+
+        # guess_update_norm = ℒ.norm(guess_update)
+
+        # ℒ.axpy!(-1, guess_update, new_guess)
 
         finn = has_nonfinite(new_guess)
 
