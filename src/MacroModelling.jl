@@ -4691,6 +4691,8 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
 
     solved = false
 
+    solved_NSSS = 𝓂.NSSS_solver_cache[end]
+
     for p in 𝓂.solver_parameters
         total_time = 0.0
         
@@ -4720,6 +4722,12 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
 
         solved = true
     end
+
+    while length(𝓂.NSSS_solver_cache) > 1
+        pop!(𝓂.NSSS_solver_cache)
+    end
+
+    push!(𝓂.NSSS_solver_cache, solved_NSSS)
 
     if solved
         pushfirst!(𝓂.solver_parameters, best_param)
