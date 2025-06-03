@@ -62,20 +62,20 @@ sample_nuts = mean(samps).nt.mean
 # generate a Pigeons log potential
 FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000))
 
-init_params = FS2000.parameter_values
+# init_params = FS2000.parameter_values
 
-const FS2000_LP = typeof(FS2000_lp)
+# const FS2000_LP = typeof(FS2000_lp)
 
-function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
-    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-    # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
+# function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
+#     result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+#     # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
     
-    result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
+#     result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
 
-    return result
-end
+#     return result
+# end
 
-pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
+# pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
 
 pt = @time Pigeons.pigeons(target = FS2000_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
