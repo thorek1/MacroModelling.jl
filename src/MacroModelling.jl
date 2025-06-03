@@ -4929,8 +4929,12 @@ function block_solver(parameters_and_solved_vars::Vector{T},
             end
         end
     else !cold_start
-        for p in (fail_fast_solvers_only ? [parameters[end]] : unique(parameters)) #[1:3] # take unique because some parameters might appear more than once
-            for s in (fail_fast_solvers_only ? [false] : Any[false,p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]) #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+
+        pars = (fail_fast_solvers_only ? [parameters[end]] : unique(parameters))
+        
+        for p in pars #[1:3] # take unique because some parameters might appear more than once
+            start_vals = (fail_fast_solvers_only ? [false] : Any[false,p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897])
+            for s in start_vals #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                 # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
                 for algo in [newton, levenberg_marquardt]
                     if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol
