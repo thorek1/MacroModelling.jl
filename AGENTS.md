@@ -1,1 +1,3 @@
+- dont use the test suite to test changes. just pick a few models from the test_models.jl and run those commands
+- for benchmarks have a look at the benchmarks.jl script in the benchmark folder
 - use: 'curl -fsSL https://install.julialang.org -o juliaup.sh\nsh juliaup.sh --yes --default-channel release\nexport PATH="$HOME/.juliaup/bin:$PATH"' to install julia
