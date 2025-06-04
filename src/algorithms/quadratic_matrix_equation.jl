@@ -8,15 +8,16 @@
 
 @stable default_mode = "disable" begin
 
-function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
-                                        B::AbstractMatrix{R}, 
-                                        C::AbstractMatrix{R}, 
-                                        T::timings; 
+function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
+                                        B::AbstractMatrix{R},
+                                        C::AbstractMatrix{R},
+                                        T::timings;
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
-                                        verbose::Bool = false) where R <: Real
+                                        verbose::Bool = false,
+                                        𝒬ℂ::qme_caches = QME_caches()) where R <: Real
 
     if length(initial_guess) > 0
         X = initial_guess
@@ -38,13 +39,23 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         end
     end
 
-    sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
-                                                        Val(quadratic_matrix_equation_algorithm), 
-                                                        T; 
+    if quadratic_matrix_equation_algorithm == :doubling
+        sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C,
+                                                        Val(:doubling),
+                                                        T;
+                                                        initial_guess = initial_guess,
+                                                        tol = tol,
+                                                        verbose = verbose,
+                                                        𝒬ℂ = 𝒬ℂ)
+    else
+        sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C,
+                                                        Val(quadratic_matrix_equation_algorithm),
+                                                        T;
                                                         initial_guess = initial_guess,
                                                         tol = tol,
                                                         # timer = timer,
                                                         verbose = verbose)
+    end
 
     if verbose println("Quadratic matrix equation solver: $quadratic_matrix_equation_algorithm - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
 
@@ -60,13 +71,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
             if verbose println("Quadratic matrix equation solver: schur - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
         else quadratic_matrix_equation_algorithm ≠ :doubling
-            sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
-                                                                Val(:doubling), 
-                                                                T; 
+            sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C,
+                                                                Val(:doubling),
+                                                                T;
                                                                 initial_guess = initial_guess,
                                                                 tol = tol,
                                                                 # timer = timer,
-                                                                verbose = verbose)
+                                                                verbose = verbose,
+                                                                𝒬ℂ = 𝒬ℂ)
 
             if verbose println("Quadratic matrix equation solver: doubling - converged: $(reached_tol < acceptance_tol) in $iterations iterations to tolerance: $reached_tol") end
         end
@@ -206,16 +218,17 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 end
 
 
-function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
-                                        B::AbstractMatrix{R}, 
-                                        C::AbstractMatrix{R}, 
-                                        ::Val{:doubling}, 
-                                        T::timings; 
+function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
+                                        B::AbstractMatrix{R},
+                                        C::AbstractMatrix{R},
+                                        ::Val{:doubling},
+                                        T::timings;
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
-                                        max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
+                                        max_iter::Int = 100,
+                                        𝒬ℂ::qme_caches = QME_caches())::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
     # https://arxiv.org/abs/2212.09491
@@ -282,19 +295,22 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # end # timeit_debug
         # @timeit_debug timer "Invert EI" begin
 
-        fEI = ℒ.lu!(temp1, check = false)
-
-        if !ℒ.issuccess(fEI)
-            return A, iter, 1.0
+        alg = issparse(temp1) ? 𝒮.UMFPACKFactorization() : 𝒮.LUFactorization()
+        if !(typeof(𝒬ℂ.EI_cache.alg) === typeof(alg))
+            prob = 𝒮.LinearProblem(copy(temp1), E, alg)
+            𝒬ℂ.EI_cache = 𝒮.init(prob, alg)
+        else
+            𝒬ℂ.EI_cache.A = temp1
+            𝒬ℂ.EI_cache.b = E
+            𝒬ℂ.EI_cache.isfresh = true
         end
-
+        𝒮.solve!(𝒬ℂ.EI_cache)
+        copy!(temp3, 𝒬ℂ.EI_cache.u)
+        ℒ.mul!(E_new, E, temp3)
         # end # timeit_debug
         # @timeit_debug timer "Compute E" begin
 
-        # Compute E = E * EI * E
-        ℒ.ldiv!(temp3, fEI, E)
-        ℒ.mul!(E_new, E, temp3)
-        # E_new = E / fEI * E
+        # E_new = E / EI * E
 
         # end # timeit_debug
         # @timeit_debug timer "Compute FI" begin
@@ -309,26 +325,28 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # end # timeit_debug
         # @timeit_debug timer "Invert FI" begin
 
-        fFI = ℒ.lu!(temp2, check = false)
-        
-        if !ℒ.issuccess(fFI)
-            return A, iter, 1.0
+        fFI_cache_alg = issparse(temp2) ? 𝒮.UMFPACKFactorization() : 𝒮.LUFactorization()
+        if !(typeof(𝒬ℂ.FI_cache.alg) === typeof(fFI_cache_alg))
+            prob = 𝒮.LinearProblem(copy(temp2), F, fFI_cache_alg)
+            𝒬ℂ.FI_cache = 𝒮.init(prob, fFI_cache_alg)
+        else
+            𝒬ℂ.FI_cache.A = temp2
+            𝒬ℂ.FI_cache.b = F
+            𝒬ℂ.FI_cache.isfresh = true
         end
-
-        # end # timeit_debug
-        # @timeit_debug timer "Compute F" begin
-        
-        # Compute F = F * FI * F
-        ℒ.ldiv!(temp3, fFI, F)
+        𝒮.solve!(𝒬ℂ.FI_cache)
+        copy!(temp3, 𝒬ℂ.FI_cache.u)
         ℒ.mul!(F_new, F, temp3)
-        # F_new = F / fFI * F
+        # F_new = F / FI * F
 
         # end # timeit_debug
         # @timeit_debug timer "Compute X_new" begin
     
         # Compute X_new = X + F * FI * X * E
         ℒ.mul!(temp3, X, E)
-        ℒ.ldiv!(fFI, temp3)
+        𝒬ℂ.FI_cache.b = temp3
+        𝒮.solve!(𝒬ℂ.FI_cache)
+        copy!(temp3, 𝒬ℂ.FI_cache.u)
         ℒ.mul!(X_new, F, temp3)
         # X_new = F / fFI * X * E
         if i > 5 || guess_provided 
@@ -343,7 +361,9 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
         # Compute Y_new = Y + E * EI * Y * F
         ℒ.mul!(X, Y, F) # use X as temporary storage
-        ℒ.ldiv!(fEI, X)
+        𝒬ℂ.EI_cache.b = X
+        𝒮.solve!(𝒬ℂ.EI_cache)
+        copy!(X, 𝒬ℂ.EI_cache.u)
         ℒ.mul!(Y_new, E, X)
         # Y_new = E / fEI * Y * F
         if i > 5 || guess_provided 
