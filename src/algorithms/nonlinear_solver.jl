@@ -72,7 +72,7 @@ function levenberg_marquardt(
     best_current_guess = similar(current_guess)
     ∇ = fnj.jac_buffer
     ∇̂ = sol_cache.A
-    ∇̄ = similar(fnj.jac_buffer)
+    # ∇̄ = similar(fnj.jac_buffer)
 
     # ∇̂ = choose_matrix_format(∇' * ∇, multithreaded = false)
     
@@ -117,21 +117,22 @@ function levenberg_marquardt(
         # 𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
 
         if transformation_level > 0
-            if ∇ isa SparseMatrixCSC
-                # ∇̄ = ∇ .* factor'
-                copy!(∇̄.nzval, ∇.nzval)
-                @inbounds for j in 1:size(∇, 2)
-                    col_start = ∇̄.colptr[j]
-                    col_end = ∇̄.colptr[j+1] - 1
-                    for k in col_start:col_end
-                        ∇̄.nzval[k] *= factor[j]
-                    end
-                end
-            else
-                # ℒ.mul!(∇̄, ∇, factor')
-                @. ∇̄ = ∇ * factor'
-                # ∇ .*= factor'
-            end
+            scale_columns!(∇, factor)
+            # if ∇ isa SparseMatrixCSC
+            #     # ∇̄ = ∇ .* factor'
+            #     copy!(∇̄.nzval, ∇.nzval)
+            #     @inbounds for j in 1:size(∇, 2)
+            #         col_start = ∇̄.colptr[j]
+            #         col_end = ∇̄.colptr[j+1] - 1
+            #         for k in col_start:col_end
+            #             ∇̄.nzval[k] *= factor[j]
+            #         end
+            #     end
+            # else
+            #     # ℒ.mul!(∇̄, ∇, factor')
+            #     @. ∇̄ = ∇ * factor'
+            #     # ∇ .*= factor'
+            # end
         end
 
         grad_iter += 1
@@ -139,10 +140,10 @@ function levenberg_marquardt(
         previous_guess .= current_guess
 
         # ∇̂ .= ∇' * ∇
-        if ∇̄ isa SparseMatrixCSC && ∇̂ isa SparseMatrixCSC
-            ∇̂ = ∇̄' * ∇̄
+        if ∇̂ isa SparseMatrixCSC
+            ∇̂ = ∇' * ∇
         else
-            ℒ.mul!(∇̂, ∇̄', ∇̄)
+            ℒ.mul!(∇̂, ∇', ∇)
         end
 
         fnj.func(fnj.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
@@ -170,7 +171,7 @@ function levenberg_marquardt(
 
         # fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
 
-        ℒ.mul!(guess_update, ∇̄', factor)
+        ℒ.mul!(guess_update, ∇', factor)
 
         # X = ℒ.Symmetric(∇̂, :U)
         # sol_cache.A = X
@@ -227,7 +228,7 @@ function levenberg_marquardt(
         # fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
 
         # g = factor' * ∇̄ * guess_update
-        g = ℒ.dot(factor, ∇̄, guess_update)
+        g = ℒ.dot(factor, ∇, guess_update)
         # g = f̂(previous_guess)' * ∇ * guess_update
         U = sum(abs2,guess_update)
         func_iter += 1
@@ -345,6 +346,26 @@ function levenberg_marquardt(
     return best_current_guess, (grad_iter, func_iter, largest_relative_step, largest_residual)#, f(best_guess))
 end
 
+function scale_columns!(A::AbstractMatrix{T}, v::AbstractVector{T}) where T
+    @inbounds for j in 1:size(A, 2)
+        for i in 1:size(A, 1)
+            A[i, j] *= v[j]
+        end
+    end
+    return A
+end
+
+function scale_columns!(A::SparseMatrixCSC{T}, v::AbstractVector{T}) where T
+    @inbounds for j in 1:size(A, 2)
+        scale = v[j]
+        col_start = A.colptr[j]
+        col_end = A.colptr[j+1] - 1
+        for k in col_start:col_end
+            A.nzval[k] *= scale
+        end
+    end
+    return A
+end
 
 function update_∇̂!(∇̂::AbstractMatrix{T}, μ¹s::T, μ²::T, p²::T) where T <: Real
     n = size(∇̂, 1)                # hoist size lookup
@@ -403,7 +424,7 @@ function newton(
     transformation_level = 0 # parameters.transformation_level
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
-    @assert all(lower_bounds .< upper_bounds)
+    # @assert all(lower_bounds .< upper_bounds)
 
     new_guess = initial_guess # fnj.lu_buffer.b
     guess_update = fnj.lu_buffer.b
