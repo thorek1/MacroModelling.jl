@@ -692,6 +692,7 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     𝓂.solution.perturbation.qme_solution = zeros(0,0)
     𝓂.solution.perturbation.second_order_solution = spzeros(0,0)
     𝓂.solution.perturbation.third_order_solution = spzeros(0,0)
+    𝓂.caches.qme_caches = QME_caches()
 
     return nothing
 end
@@ -5042,10 +5043,11 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate first order solution" begin
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                        T = 𝓂.timings, 
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                        T = 𝓂.timings,
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        𝒬ℂ = 𝓂.caches.qme_caches)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -5369,10 +5371,11 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                        T = 𝓂.timings, 
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                        T = 𝓂.timings,
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        𝒬ℂ = 𝓂.caches.qme_caches)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -5754,10 +5757,11 @@ function solve!(𝓂::ℳ;
 
             # @timeit_debug timer "Calculate first order solution" begin
 
-            S₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                                T = 𝓂.timings, 
+            S₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                                T = 𝓂.timings,
                                                                 opts = opts,
-                                                                initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                                initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                                𝒬ℂ = 𝓂.caches.qme_caches)
     
             if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -5776,10 +5780,11 @@ function solve!(𝓂::ℳ;
 
                 ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
-                Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; 
-                                                                    T = 𝓂.timings, 
-                                                                    opts = opts,
-                                                                    initial_guess = 𝓂.solution.perturbation.qme_solution)
+               Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁;
+                                                                   T = 𝓂.timings,
+                                                                   opts = opts,
+                                                                    initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                                    𝒬ℂ = 𝓂.caches.qme_caches)
 
                 if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -8358,11 +8363,12 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) # , timer = timer)# |> Matrix
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                        T = TT, 
-                                                        # timer = timer, 
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                        opts = opts)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                        T = TT,
+                                                        # timer = timer,
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        opts = opts,
+                                                        𝒬ℂ = 𝓂.caches.qme_caches)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
