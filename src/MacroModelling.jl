@@ -2842,6 +2842,7 @@ function write_block_solution!(𝓂,
     _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
+                                                # nanmath = false,
                                                 parallel = parallel,
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
@@ -2909,6 +2910,7 @@ function write_block_solution!(𝓂,
     _, calc_ext_block! = Symbolics.build_function(replaced_solved_vals_ext, 𝔊, 𝔓,
                                                 cse = cse, 
                                                 skipzeros = skipzeros, 
+                                                # nanmath = false,
                                                 parallel = parallel,
                                                 expression_module = @__MODULE__,
                                                 expression = Val(false))::Tuple{<:Function, <:Function}
@@ -3560,7 +3562,7 @@ function write_ss_check_function!(𝓂::ℳ;
     else
         derivatives_mat = ∂SS_equations_∂parameters
         buffer = similar(∂SS_equations_∂parameters, Float64)
-        buffer.nzval .= 0
+        buffer.nzval .= 1
     end
 
     if lennz > 1500
@@ -3591,7 +3593,7 @@ function write_ss_check_function!(𝓂::ℳ;
     else
         derivatives_mat = ∂SS_equations_∂SS_and_pars
         buffer = similar(∂SS_equations_∂SS_and_pars, Float64)
-        buffer.nzval .= 0
+        buffer.nzval .= 1
     end
 
     if lennz > 1500
@@ -4251,6 +4253,7 @@ function solve_steady_state!(𝓂::ℳ;
         _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓,
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
+                                                    # nanmath = false,
                                                     parallel = parallel,
                                                     expression_module = @__MODULE__,
                                                     expression = Val(false))::Tuple{<:Function, <:Function}
@@ -4318,6 +4321,7 @@ function solve_steady_state!(𝓂::ℳ;
         _, calc_ext_block! = Symbolics.build_function(replaced_solved_vals_ext, 𝔊, 𝔓,
                                                     cse = cse, 
                                                     skipzeros = skipzeros, 
+                                                    # nanmath = false,
                                                     parallel = parallel,
                                                     expression_module = @__MODULE__,
                                                     expression = Val(false))::Tuple{<:Function, <:Function}
@@ -6569,7 +6573,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     else
         ∇₁_parameters_mat = ∇₁_parameters
         buffer_parameters = similar(∇₁_parameters, Float64)
-        buffer_parameters.nzval .= 0
+        buffer_parameters.nzval .= 1
     end
 
     if lennz > 1500
@@ -6599,7 +6603,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     else
         ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
         buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
-        buffer_SS_and_pars.nzval .= 0
+        buffer_SS_and_pars.nzval .= 1
     end
 
     if lennz > 1500
@@ -6667,6 +6671,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 cse = cse, 
     #                                                 skipzeros = skipzeros, 
     #                                                 parallel = parallel,
+    #                                                 # nanmath = false,
     #                                                 expression_module = @__MODULE__,
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
@@ -6697,6 +6702,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #                                                 cse = cse, 
     #                                                 skipzeros = skipzeros, 
     #                                                 parallel = parallel,
+    #                                                 # nanmath = false,
     #                                                 expression_module = @__MODULE__,
     #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
 
@@ -6720,7 +6726,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 derivatives_mat = ∇₂_dyn
                 buffer = similar(∇₂_dyn, Float64)
-                buffer.nzval .= 0
+                buffer.nzval .= 1
             end
 
             if lennz > 1500
@@ -6750,7 +6756,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 ∇₂_parameters_mat = ∇₂_parameters
                 buffer_parameters = similar(∇₂_parameters, Float64)
-                buffer_parameters.nzval .= 0
+                buffer_parameters.nzval .= 1
             end
 
             if lennz > 1500
@@ -6780,7 +6786,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 ∇₂_SS_and_pars_mat = ∇₂_SS_and_pars
                 buffer_SS_and_pars = similar(∇₂_SS_and_pars, Float64)
-                buffer_SS_and_pars.nzval .= 0
+                buffer_SS_and_pars.nzval .= 1
             end
 
             if lennz > 1500
@@ -6818,7 +6824,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 derivatives_mat = ∇₃_dyn
                 buffer = similar(∇₃_dyn, Float64)
-                buffer.nzval .= 0
+                buffer.nzval .= 1
             end
 
             if lennz > 1500
@@ -6848,7 +6854,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 ∇₃_parameters_mat = ∇₃_parameters
                 buffer_parameters = similar(∇₃_parameters, Float64)
-                buffer_parameters.nzval .= 0
+                buffer_parameters.nzval .= 1
             end
 
             if lennz > 1500
@@ -6878,7 +6884,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
             else
                 ∇₃_SS_and_pars_mat = ∇₃_SS_and_pars
                 buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
-                buffer_SS_and_pars.nzval .= 0
+                buffer_SS_and_pars.nzval .= 1
             end
 
             if lennz > 1500
