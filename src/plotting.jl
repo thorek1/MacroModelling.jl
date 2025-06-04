@@ -53,6 +53,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
 - $PLOT_ATTRIBUTES®
+- `line_labels` [Optional, `Vector{String}`]: legend labels for the shocks.
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -498,6 +499,7 @@ function plot_irf(𝓂::ℳ;
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
                     ignore_obc::Bool = false,
                     plot_attributes::Dict = Dict(),
+                    line_labels::Union{Nothing,Vector{String}} = nothing,
                     verbose::Bool = false,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = :schur,
@@ -551,6 +553,20 @@ function plot_irf(𝓂::ℳ;
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
 
         obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
+    end
+
+    if line_labels === nothing
+        if shocks == :simulate
+            line_labels = ["simulate all"]
+        elseif shocks == :none
+            line_labels = ["none"]
+        elseif shocks isa Union{Symbol_input,String_input}
+            line_labels = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx])
+        else
+            line_labels = ["shock" * string(i) for i in 1:length(shock_idx)]
+        end
+    else
+        @assert length(line_labels) == length(shock_idx) "line_labels must match number of shocks"
     end
 
     if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
@@ -786,7 +802,7 @@ function plot_irf(𝓂::ℳ;
                                 StatsPlots.plot(Y[i,:,shock] .+ SS,
                                                 title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
                                                 ylabel = "Level",
-                                                label = "")
+                                                label = line_labels[shock])
 
                                 if can_dual_axis
                                     StatsPlots.plot!(StatsPlots.twinx(), 
@@ -1852,6 +1868,242 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     return return_plots
+
+end
+
+"""
+    plot_irf!(p, args...; kwargs...)
+
+Add the IRFs produced by [`plot_irf`](@ref) to the existing plot or vector of
+plots `p` using `StatsPlots.plot!`.
+
+Calling `plot_irf!(args...; kwargs...)` without providing `p` attempts to add
+the lines to the current plot.  Additional pages are appended if required and
+legend labels are taken from the shock names.  Subplots are matched by title when
+merging so the order of variables does not matter. Titles from both plots are
+collected, combined into a sorted list and used to align the panels.
+"""
+function _merge_plots_by_title(dest::StatsPlots.Plot, src::StatsPlots.Plot)
+    dest_titles = [string(dest[i][:title]) for i in 1:length(dest)]
+    src_titles = [string(src[i][:title]) for i in 1:length(src)]
+    all_titles = sort(unique(vcat(dest_titles, src_titles)))
+
+    merged = StatsPlots.plot()
+    for t in all_titles
+        di = findfirst(==(t), dest_titles)
+        si = findfirst(==(t), src_titles)
+
+        if di !== nothing
+            StatsPlots.plot!(merged, dest[di])
+        end
+        if si !== nothing
+            if di !== nothing
+                StatsPlots.plot!(merged[end], src[si])
+            else
+                StatsPlots.plot!(merged, src[si])
+            end
+        end
+    end
+    return merged
+end
+
+function plot_irf!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwargs...)
+    q = plot_irf(args...; kwargs..., show_plots = false, save_plots = false)
+    if isa(p, AbstractVector)
+        for i in 1:length(q)
+            if i <= length(p)
+                p[i] = _merge_plots_by_title(p[i], q[i])
+            else
+                push!(p, q[i])
+            end
+        end
+    else
+        p = _merge_plots_by_title(p, q[1])
+    end
+    return p
+end
+function plot_irf!(args...; kwargs...)
+    p = try
+        StatsPlots.current()
+    catch
+        nothing
+    end
+    if p === nothing
+        return plot_irf(args...; kwargs...)
+    else
+        return plot_irf!(p, args...; kwargs...)
+    end
+end
+
+"""
+    plot_model_estimates!(p, args...; kwargs...)
+
+Add the plots produced by [`plot_model_estimates`](@ref) to `p`.
+
+If called without an existing plot, the results are added to the current plot if
+one exists.
+"""
+function plot_model_estimates!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwargs...)
+    q = plot_model_estimates(args...; kwargs..., show_plots = false, save_plots = false)
+    if isa(p, AbstractVector)
+        @assert length(p) == length(q) "Number of plots must match."
+        for (pi, qi) in zip(p, q)
+            StatsPlots.plot!(pi, qi)
+        end
+    else
+        StatsPlots.plot!(p, q[1])
+    end
+    return p
+end
+
+function plot_model_estimates!(args...; kwargs...)
+    p = try
+        StatsPlots.current()
+    catch
+        nothing
+    end
+    if p === nothing
+        return plot_model_estimates(args...; kwargs...)
+    else
+        return plot_model_estimates!(p, args...; kwargs...)
+    end
+end
+
+"""
+    plot_conditional_variance_decomposition!(p, args...; kwargs...)
+
+Add the variance decomposition produced by
+[`plot_conditional_variance_decomposition`](@ref) to `p`.
+
+When called without providing a plot `p`, the decomposition is added to the
+current plot if available.
+"""
+function plot_conditional_variance_decomposition!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwargs...)
+    q = plot_conditional_variance_decomposition(args...; kwargs..., show_plots = false, save_plots = false)
+    if isa(p, AbstractVector)
+        @assert length(p) == length(q) "Number of plots must match."
+        for (pi, qi) in zip(p, q)
+            StatsPlots.plot!(pi, qi)
+        end
+    else
+        StatsPlots.plot!(p, q[1])
+    end
+    return p
+end
+
+function plot_conditional_variance_decomposition!(args...; kwargs...)
+    p = try
+        StatsPlots.current()
+    catch
+        nothing
+    end
+    if p === nothing
+        return plot_conditional_variance_decomposition(args...; kwargs...)
+    else
+        return plot_conditional_variance_decomposition!(p, args...; kwargs...)
+    end
+end
+
+"""
+    plot_solution!(p, args...; kwargs...)
+
+Add the solution plots produced by [`plot_solution`](@ref) to `p`.
+If `p` is omitted, the lines are added to the current plot if one exists.
+"""
+function plot_solution!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwargs...)
+    q = plot_solution(args...; kwargs..., show_plots = false, save_plots = false)
+    if isa(p, AbstractVector)
+        @assert length(p) == length(q) "Number of plots must match."
+        for (pi, qi) in zip(p, q)
+            StatsPlots.plot!(pi, qi)
+        end
+    else
+        StatsPlots.plot!(p, q[1])
+    end
+    return p
+end
+
+function plot_solution!(args...; kwargs...)
+    p = try
+        StatsPlots.current()
+    catch
+        nothing
+    end
+    if p === nothing
+        return plot_solution(args...; kwargs...)
+    else
+        return plot_solution!(p, args...; kwargs...)
+    end
+end
+
+"""
+    plot_conditional_forecast!(p, args...; kwargs...)
+
+Add the conditional forecast produced by [`plot_conditional_forecast`](@ref) to
+`p`.  When called without an existing plot, the forecast is added to the current
+plot if one is available.
+"""
+function plot_conditional_forecast!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwargs...)
+    q = plot_conditional_forecast(args...; kwargs..., show_plots = false, save_plots = false)
+    if isa(p, AbstractVector)
+        @assert length(p) == length(q) "Number of plots must match."
+        for (pi, qi) in zip(p, q)
+            StatsPlots.plot!(pi, qi)
+        end
+    else
+        StatsPlots.plot!(p, q[1])
+    end
+    return p
+end
+
+function plot_conditional_forecast!(args...; kwargs...)
+    p = try
+        StatsPlots.current()
+    catch
+        nothing
+    end
+    if p === nothing
+        return plot_conditional_forecast(args...; kwargs...)
+    else
+        return plot_conditional_forecast!(p, args...; kwargs...)
+    end
+end
+
+"""
+See [`plot_model_estimates!`](@ref)
+"""
+plot_shock_decomposition!(args...; kwargs...) =
+    plot_model_estimates!(args...; kwargs..., shock_decomposition = true)
+
+"""
+See [`plot_irf!`](@ref)
+"""
+plot_simulations!(args...; kwargs...) =
+    plot_irf!(args...; merge(kwargs, (; shocks = get(kwargs, :shocks, :simulate),
+                                         periods = get(kwargs, :periods, 100)))...)
+
+"""
+See [`plot_irf!`](@ref)
+"""
+plot_simulation!(args...; kwargs...) = plot_simulations!(args...; kwargs...)
+
+"""
+See [`plot_irf!`](@ref)
+"""
+plot_girf!(args...; kwargs...) =
+    plot_irf!(args...; kwargs..., generalised_irf = true)
+
+"""
+See [`plot_conditional_variance_decomposition!`](@ref)
+"""
+plot_fevd!(args...; kwargs...) =
+    plot_conditional_variance_decomposition!(args...; kwargs...)
+
+"""
+See [`plot_conditional_variance_decomposition!`](@ref)
+"""
+plot_forecast_error_variance_decomposition!(args...; kwargs...) =
+    plot_conditional_variance_decomposition!(args...; kwargs...)
 
 end
 
