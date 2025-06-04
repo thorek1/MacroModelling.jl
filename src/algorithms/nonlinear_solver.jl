@@ -448,7 +448,7 @@ function newton(
     for iter in 1:iterations
     
         if ∇ isa SparseMatrixCSC
-            ∇.nzval .= 1
+            ∇.nzval .= 0
         else
             ∇ .= 0
         end
