@@ -1,0 +1,1 @@
+- use: 'curl -fsSL https://install.julialang.org -o juliaup.sh\nsh juliaup.sh --yes --default-channel release\nexport PATH="$HOME/.juliaup/bin:$PATH"' to install julia
