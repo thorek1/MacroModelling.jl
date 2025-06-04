@@ -19,7 +19,7 @@ end
 
 function QME_caches(;T::Type = Float64)
     A = Matrix{T}(I, 1, 1)
-    b = zeros(T, 1)
+    b = zeros(T, 1, 1)
     alg = 𝒮.LUFactorization()
     prob = 𝒮.LinearProblem(A, b, alg)
     EI = 𝒮.init(prob, alg)

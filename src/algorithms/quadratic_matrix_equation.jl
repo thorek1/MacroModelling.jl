@@ -296,12 +296,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # @timeit_debug timer "Invert EI" begin
 
         alg = issparse(temp1) ? 𝒮.UMFPACKFactorization() : 𝒮.LUFactorization()
-        if !(typeof(𝒬ℂ.EI_cache.alg) === typeof(alg))
-            prob = 𝒮.LinearProblem(copy(temp1), E, alg)
+        if !(typeof(𝒬ℂ.EI_cache.alg) === typeof(alg)) ||
+            size(𝒬ℂ.EI_cache.A) != size(temp1) ||
+            size(𝒬ℂ.EI_cache.b) != size(E)
+            prob = 𝒮.LinearProblem(copy(temp1), copy(E), alg)
             𝒬ℂ.EI_cache = 𝒮.init(prob, alg)
         else
-            𝒬ℂ.EI_cache.A = temp1
-            𝒬ℂ.EI_cache.b = E
+            𝒬ℂ.EI_cache.A .= temp1
+            𝒬ℂ.EI_cache.b .= E
             𝒬ℂ.EI_cache.isfresh = true
         end
         𝒮.solve!(𝒬ℂ.EI_cache)
@@ -326,12 +328,14 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         # @timeit_debug timer "Invert FI" begin
 
         fFI_cache_alg = issparse(temp2) ? 𝒮.UMFPACKFactorization() : 𝒮.LUFactorization()
-        if !(typeof(𝒬ℂ.FI_cache.alg) === typeof(fFI_cache_alg))
-            prob = 𝒮.LinearProblem(copy(temp2), F, fFI_cache_alg)
+        if !(typeof(𝒬ℂ.FI_cache.alg) === typeof(fFI_cache_alg)) ||
+            size(𝒬ℂ.FI_cache.A) != size(temp2) ||
+            size(𝒬ℂ.FI_cache.b) != size(F)
+            prob = 𝒮.LinearProblem(copy(temp2), copy(F), fFI_cache_alg)
             𝒬ℂ.FI_cache = 𝒮.init(prob, fFI_cache_alg)
         else
-            𝒬ℂ.FI_cache.A = temp2
-            𝒬ℂ.FI_cache.b = F
+            𝒬ℂ.FI_cache.A .= temp2
+            𝒬ℂ.FI_cache.b .= F
             𝒬ℂ.FI_cache.isfresh = true
         end
         𝒮.solve!(𝒬ℂ.FI_cache)
