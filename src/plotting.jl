@@ -2110,9 +2110,9 @@ plot_shock_decomposition!(args...; kwargs...) =
 """
 See [`plot_irf!`](@ref)
 """
-plot_simulations!(args...; kwargs...) =
-    plot_irf!(args...; merge(kwargs, (; shocks = get(kwargs, :shocks, :simulate),
-                                         periods = get(kwargs, :periods, 100)))...)
+plot_simulations!(args...; kwargs...) = plot_irf!(args...;
+    merge(kwargs, (; shocks = get(kwargs, :shocks, :simulate),
+                       periods = get(kwargs, :periods, 100))))
 
 """
 See [`plot_irf!`](@ref)
