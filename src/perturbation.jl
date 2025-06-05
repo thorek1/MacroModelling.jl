@@ -1,14 +1,14 @@
 @stable default_mode = "disable" begin
 
-function _solve_first_order_blocks(Ap, A0, Am, Q, P, R, T, initial_guess, opts)
-    n_blocks = length(R) - 1
+function _solve_first_order_blocks(Ap, A0, Am, 𝒬, 𝒫, ℛ, T, initial_guess, opts)
+    n_blocks = length(ℛ) - 1
 
-    Ap_perm = @views Ap[Q, P]
-    A0_perm = @views A0[Q, P]
-    Am_perm = @views Am[Q, P]
+    Ap_perm = @views Ap[𝒬, 𝒫]
+    A0_perm = @views A0[𝒬, 𝒫]
+    Am_perm = @views Am[𝒬, 𝒫]
 
     ig_perm = if length(initial_guess) > 0
-        @views initial_guess[Q, P]
+        @views initial_guess[𝒬, 𝒫]
     else
         zeros(eltype(Ap), 0, 0)
     end
@@ -16,7 +16,7 @@ function _solve_first_order_blocks(Ap, A0, Am, Q, P, R, T, initial_guess, opts)
     sol = zeros(eltype(Ap), size(Ap))
 
     for i in 1:n_blocks
-        rng = R[i]:(R[i+1]-1)
+        rng = ℛ[i]:(ℛ[i+1]-1)
         Apb = @views Ap_perm[rng, rng]
         A0b = @views A0_perm[rng, rng]
         Amb = @views Am_perm[rng, rng]
@@ -27,13 +27,13 @@ function _solve_first_order_blocks(Ap, A0, Am, Q, P, R, T, initial_guess, opts)
         end
 
         if size(Apb,1) == 1 && abs(Apb[1]) < opts.tol.qme_tol
-            sol[Q[rng], P[rng]] .= -Amb[1] / A0b[1]
+            sol[𝒬[rng], 𝒫[rng]] .= -Amb[1] / A0b[1]
         elseif size(Apb,1) == 1
             a = Apb[1]; b = A0b[1]; c = Amb[1]
             disc = b^2 - 4a*c
             root1 = (-b + sqrt(disc)) / (2a)
             root2 = (-b - sqrt(disc)) / (2a)
-            sol[Q[rng], P[rng]] .= abs(root1) < 1 ? root1 : root2
+            sol[𝒬[rng], 𝒫[rng]] .= abs(root1) < 1 ? root1 : root2
         else
             Xblock, solved = solve_quadratic_matrix_equation(Apb, A0b, Amb, T,
                                                             initial_guess = igb,
@@ -44,7 +44,7 @@ function _solve_first_order_blocks(Ap, A0, Am, Q, P, R, T, initial_guess, opts)
             if !solved
                 return sol, false
             end
-            sol[Q[rng], P[rng]] .= Xblock
+            sol[𝒬[rng], 𝒫[rng]] .= Xblock
         end
     end
 
@@ -96,9 +96,9 @@ function calculate_first_order_solution(∇₁::Matrix{R};
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    Q, P, R = decomposition
+    𝒬, 𝒫, ℛ = decomposition
 
-    sol, solved = _solve_first_order_blocks(Ã₊, Ã₀, Ã₋, Q, P, R, T, initial_guess, opts)
+    sol, solved = _solve_first_order_blocks(Ã₊, Ã₀, Ã₋, 𝒬, 𝒫, ℛ, T, initial_guess, opts)
 
     if !solved
         if opts.verbose println("Quadratic matrix equation solution failed.") end
@@ -213,9 +213,9 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    Q, P, R = decomposition
+    𝒬, 𝒫, ℛ = decomposition
 
-    sol, solved = _solve_first_order_blocks(Ã₊, Ã₀, Ã₋, Q, P, R, T, initial_guess, opts)
+    sol, solved = _solve_first_order_blocks(Ã₊, Ã₀, Ã₋, 𝒬, 𝒫, ℛ, T, initial_guess, opts)
 
     if !solved
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent()
@@ -405,7 +405,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
 
     Jm = @view(ℒ.diagm(ones(S,T.nVars))[T.past_not_future_and_mixed_idx,:])
     
-    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(S,T.nVars))[T.future_not_past_and_mixed_idx,:]
+    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]∇₊ = ∇₁
     ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
     ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
 
