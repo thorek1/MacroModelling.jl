@@ -1895,7 +1895,7 @@ legend labels are derived from the `line_label` keyword.  Subplots are matched b
 merging so the order of variables does not matter. Titles from both plots are
 collected, combined into a sorted list and used to align the panels.
 """
-function _merge_plots_by_title(dest::StatsPlots.Plot, src::StatsPlots.Plot)
+function _merge_plots_by_title(dest::StatsPlots.Plots.Plot, src::StatsPlots.Plots.Plot)
     dest_titles = [string(dest[i][:title]) for i in 1:length(dest)]
     src_titles = [string(src[i][:title]) for i in 1:length(src)]
     all_titles = sort(unique(vcat(dest_titles, src_titles)))
@@ -1919,7 +1919,7 @@ function _merge_plots_by_title(dest::StatsPlots.Plot, src::StatsPlots.Plot)
     return merged
 end
 
-function plot_irf!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwargs...)
+function plot_irf!(p::Union{StatsPlots.Plots.Plot,AbstractVector}, args...; kwargs...)
     q = plot_irf(args...; kwargs..., show_plots = false, save_plots = false)
     if isa(p, AbstractVector)
         for i in 1:length(q)
@@ -1959,7 +1959,7 @@ Add the plots produced by [`plot_model_estimates`](@ref) to `p`.
 If called without an existing plot, the results are added to the current plot if
 one exists.
 """
-function plot_model_estimates!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwargs...)
+function plot_model_estimates!(p::Union{StatsPlots.Plots.Plot,AbstractVector}, args...; kwargs...)
     q = plot_model_estimates(args...; kwargs..., show_plots = false, save_plots = false)
     if isa(p, AbstractVector)
         @assert length(p) == length(q) "Number of plots must match."
@@ -1998,7 +1998,7 @@ Add the variance decomposition produced by
 When called without providing a plot `p`, the decomposition is added to the
 current plot if available.
 """
-function plot_conditional_variance_decomposition!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwargs...)
+function plot_conditional_variance_decomposition!(p::Union{StatsPlots.Plots.Plot,AbstractVector}, args...; kwargs...)
     q = plot_conditional_variance_decomposition(args...; kwargs..., show_plots = false, save_plots = false)
     if isa(p, AbstractVector)
         @assert length(p) == length(q) "Number of plots must match."
@@ -2034,7 +2034,7 @@ end
 Add the solution plots produced by [`plot_solution`](@ref) to `p`.
 If `p` is omitted, the lines are added to the current plot if one exists.
 """
-function plot_solution!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwargs...)
+function plot_solution!(p::Union{StatsPlots.Plots.Plot,AbstractVector}, args...; kwargs...)
     q = plot_solution(args...; kwargs..., show_plots = false, save_plots = false)
     if isa(p, AbstractVector)
         @assert length(p) == length(q) "Number of plots must match."
@@ -2071,7 +2071,7 @@ Add the conditional forecast produced by [`plot_conditional_forecast`](@ref) to
 `p`.  When called without an existing plot, the forecast is added to the current
 plot if one is available.
 """
-function plot_conditional_forecast!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwargs...)
+function plot_conditional_forecast!(p::Union{StatsPlots.Plots.Plot,AbstractVector}, args...; kwargs...)
     q = plot_conditional_forecast(args...; kwargs..., show_plots = false, save_plots = false)
     if isa(p, AbstractVector)
         @assert length(p) == length(q) "Number of plots must match."
