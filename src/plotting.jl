@@ -18,6 +18,10 @@ Renaming and reexport of Plot.jl function `plotlyjs()` to define PlotlyJS.jl as 
 """
 plotlyjs_backend = StatsPlots.plotlyjs
 
+const _LAST_PLOTS = Ref{Any}(nothing)
+
+_store_last_plots!(p) = (_LAST_PLOTS[] = p)
+
 
 
 """
@@ -53,7 +57,8 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
 - $PLOT_ATTRIBUTES®
-- `line_labels` [Optional, `Vector{String}`]: legend labels for the shocks.
+- `line_label` [Optional, `String`]: legend label for the lines produced by a
+    single call. When omitted, no legend entry is added.
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -407,6 +412,7 @@ function plot_model_estimates(𝓂::ℳ,
         end
     end
 
+    _store_last_plots!(return_plots)
     return return_plots
 end
 
@@ -499,7 +505,7 @@ function plot_irf(𝓂::ℳ;
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
                     ignore_obc::Bool = false,
                     plot_attributes::Dict = Dict(),
-                    line_labels::Union{Nothing,Vector{String}} = nothing,
+                    line_label::Union{Nothing,String} = nothing,
                     verbose::Bool = false,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = :schur,
@@ -555,18 +561,16 @@ function plot_irf(𝓂::ℳ;
         obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
     end
 
-    if line_labels === nothing
-        if shocks == :simulate
-            line_labels = ["simulate all"]
+    if line_label === nothing
+        if (shocks isa Union{Symbol_input,String_input}) && (length(shock_idx) == 1)
+            line_label = replace_indices_in_symbol(𝓂.timings.exo[shock_idx])
+        elseif shocks == :simulate
+            line_label = "simulate all"
         elseif shocks == :none
-            line_labels = ["none"]
-        elseif shocks isa Union{Symbol_input,String_input}
-            line_labels = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx])
+            line_label = "none"
         else
-            line_labels = ["shock" * string(i) for i in 1:length(shock_idx)]
+            line_label = ""
         end
-    else
-        @assert length(line_labels) == length(shock_idx) "line_labels must match number of shocks"
     end
 
     if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
@@ -786,6 +790,7 @@ function plot_irf(𝓂::ℳ;
         pp = []
         pane = 1
         plot_count = 1
+        label_done = false
         for i in 1:length(var_idx)
             if all(isapprox.(Y[i,:,shock], 0, atol = eps(Float32)))
                 n_subplots -= 1
@@ -798,11 +803,12 @@ function plot_irf(𝓂::ℳ;
             can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
 
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
+                label_here = (!label_done && line_label != "") ? line_label : ""
                 push!(pp,begin
                                 StatsPlots.plot(Y[i,:,shock] .+ SS,
                                                 title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
                                                 ylabel = "Level",
-                                                label = line_labels[shock])
+                                                label = label_here)
 
                                 if can_dual_axis
                                     StatsPlots.plot!(StatsPlots.twinx(), 
@@ -850,6 +856,7 @@ function plot_irf(𝓂::ℳ;
                     pane += 1
 
                     pp = []
+                    label_done = false
                 end
             end
         end
@@ -880,8 +887,10 @@ function plot_irf(𝓂::ℳ;
             if save_plots
                 StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
             end
+            label_done = false
         end
     end
+    _store_last_plots!(return_plots)
 
     return return_plots
 end
@@ -1123,6 +1132,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             StatsPlots.savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
+    _store_last_plots!(return_plots)
 
     return return_plots
 end
@@ -1494,6 +1504,7 @@ function plot_solution(𝓂::ℳ,
         end
     end
 
+    _store_last_plots!(return_plots)
     return return_plots
 end
 
@@ -1866,6 +1877,7 @@ function plot_conditional_forecast(𝓂::ℳ,
             StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
+    _store_last_plots!(return_plots)
 
     return return_plots
 
@@ -1878,8 +1890,8 @@ Add the IRFs produced by [`plot_irf`](@ref) to the existing plot or vector of
 plots `p` using `StatsPlots.plot!`.
 
 Calling `plot_irf!(args...; kwargs...)` without providing `p` attempts to add
-the lines to the current plot.  Additional pages are appended if required and
-legend labels are taken from the shock names.  Subplots are matched by title when
+the lines to the previous plot.  Additional pages are appended if required and
+legend labels are derived from the `line_label` keyword.  Subplots are matched by title when
 merging so the order of variables does not matter. Titles from both plots are
 collected, combined into a sorted list and used to align the panels.
 """
@@ -1920,13 +1932,17 @@ function plot_irf!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwargs...)
     else
         p = _merge_plots_by_title(p, q[1])
     end
+    _store_last_plots!(p)
     return p
 end
 function plot_irf!(args...; kwargs...)
-    p = try
-        StatsPlots.current()
-    catch
-        nothing
+    p = _LAST_PLOTS[]
+    if p === nothing
+        p = try
+            StatsPlots.current()
+        catch
+            nothing
+        end
     end
     if p === nothing
         return plot_irf(args...; kwargs...)
@@ -1953,14 +1969,18 @@ function plot_model_estimates!(p::Union{StatsPlots.Plot,AbstractVector}, args...
     else
         StatsPlots.plot!(p, q[1])
     end
+    _store_last_plots!(p)
     return p
 end
 
 function plot_model_estimates!(args...; kwargs...)
-    p = try
-        StatsPlots.current()
-    catch
-        nothing
+    p = _LAST_PLOTS[]
+    if p === nothing
+        p = try
+            StatsPlots.current()
+        catch
+            nothing
+        end
     end
     if p === nothing
         return plot_model_estimates(args...; kwargs...)
@@ -1988,14 +2008,18 @@ function plot_conditional_variance_decomposition!(p::Union{StatsPlots.Plot,Abstr
     else
         StatsPlots.plot!(p, q[1])
     end
+    _store_last_plots!(p)
     return p
 end
 
 function plot_conditional_variance_decomposition!(args...; kwargs...)
-    p = try
-        StatsPlots.current()
-    catch
-        nothing
+    p = _LAST_PLOTS[]
+    if p === nothing
+        p = try
+            StatsPlots.current()
+        catch
+            nothing
+        end
     end
     if p === nothing
         return plot_conditional_variance_decomposition(args...; kwargs...)
@@ -2020,14 +2044,18 @@ function plot_solution!(p::Union{StatsPlots.Plot,AbstractVector}, args...; kwarg
     else
         StatsPlots.plot!(p, q[1])
     end
+    _store_last_plots!(p)
     return p
 end
 
 function plot_solution!(args...; kwargs...)
-    p = try
-        StatsPlots.current()
-    catch
-        nothing
+    p = _LAST_PLOTS[]
+    if p === nothing
+        p = try
+            StatsPlots.current()
+        catch
+            nothing
+        end
     end
     if p === nothing
         return plot_solution(args...; kwargs...)
@@ -2053,14 +2081,18 @@ function plot_conditional_forecast!(p::Union{StatsPlots.Plot,AbstractVector}, ar
     else
         StatsPlots.plot!(p, q[1])
     end
+    _store_last_plots!(p)
     return p
 end
 
 function plot_conditional_forecast!(args...; kwargs...)
-    p = try
-        StatsPlots.current()
-    catch
-        nothing
+    p = _LAST_PLOTS[]
+    if p === nothing
+        p = try
+            StatsPlots.current()
+        catch
+            nothing
+        end
     end
     if p === nothing
         return plot_conditional_forecast(args...; kwargs...)
