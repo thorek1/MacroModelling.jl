@@ -19,8 +19,15 @@ Renaming and reexport of Plot.jl function `plotlyjs()` to define PlotlyJS.jl as 
 plotlyjs_backend = StatsPlots.plotlyjs
 
 struct _IRFMemory
-    args::Tuple
-    kwargs::Dict{Symbol,Any}
+    var_idx::Vector{Int}
+    shock_idx
+    shocks_to_plot::Vector
+    exo_names::Vector
+    Y
+    reference_steady_state::Vector{Float64}
+    var_names::Vector
+    model_name::String
+    line_label::String
 end
 
 const _IRF_HISTORY = Vector{_IRFMemory}()
@@ -42,6 +49,120 @@ _merge_plot_vectors_by_title(dest::Vector, src::Vector) = begin
         end
     end
     result
+end
+
+function _plots_from_irf_data(memory::_IRFMemory;
+                              show_plots::Bool = true,
+                              save_plots::Bool = false,
+                              save_plots_format::Symbol = :pdf,
+                              save_plots_path::String = ".",
+                              plots_per_page::Int = 9,
+                              plot_attributes::Dict = Dict())
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+    attributes = merge(attrbts, plot_attributes)
+    attributes_redux = copy(attributes)
+    delete!(attributes_redux, :framestyle)
+
+    var_idx = memory.var_idx
+    shock_idx = memory.shock_idx
+    Y = memory.Y
+    reference_steady_state = memory.reference_steady_state
+    exo = memory.exo_names
+    var_names = memory.var_names
+    model_name = memory.model_name
+    line_label = memory.line_label
+
+    return_plots = []
+
+    for shock in 1:length(shock_idx)
+        n_subplots = length(var_idx)
+        pp = []
+        pane = 1
+        plot_count = 1
+        label_done = false
+        for i in 1:length(var_idx)
+            if all(isapprox.(Y[i,:,shock], 0, atol = eps(Float32)))
+                n_subplots -= 1
+            end
+        end
+
+        for i in 1:length(var_idx)
+            SS = reference_steady_state[var_idx[i]]
+            can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
+
+            if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
+                label_here = (!label_done && line_label != "") ? line_label : ""
+                push!(pp,begin
+                                StatsPlots.plot(Y[i,:,shock] .+ SS,
+                                                title = replace_indices_in_symbol(var_names[var_idx[i]]),
+                                                ylabel = "Level",
+                                                label = label_here)
+
+                                if can_dual_axis
+                                    StatsPlots.plot!(StatsPlots.twinx(),
+                                                        100*((Y[i,:,shock] .+ SS) ./ SS .- 1),
+                                                        ylabel = LaTeXStrings.L"% \Delta",
+                                                        label = "")
+                                end
+
+                                StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS],
+                                                    color = :black,
+                                                    label = "")
+
+                end)
+
+                if !(plot_count % plots_per_page == 0)
+                    plot_count += 1
+                else
+                    plot_count = 1
+
+                    shock_string = ": " * replace_indices_in_symbol(exo[shock_idx[shock]])
+                    shock_name = replace_indices_in_symbol(exo[shock_idx[shock]])
+
+                    p = StatsPlots.plot(pp..., plot_title = "Model: "*model_name*"        " * shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
+
+                    push!(return_plots,p)
+
+                    if show_plots
+                        display(p)
+                    end
+
+                    if save_plots
+                        StatsPlots.savefig(p, save_plots_path * "/irf__" * model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                    end
+
+                    pane += 1
+
+                    pp = []
+                    label_done = false
+                end
+            end
+        end
+
+        if length(pp) > 0
+            shock_string = ": " * replace_indices_in_symbol(exo[shock_idx[shock]])
+            shock_name = replace_indices_in_symbol(exo[shock_idx[shock]])
+
+            p = StatsPlots.plot(pp..., plot_title = "Model: "*model_name*"        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
+
+            push!(return_plots,p)
+
+            if show_plots
+                display(p)
+            end
+
+            if save_plots
+                StatsPlots.savefig(p, save_plots_path * "/irf__" * model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+            end
+            label_done = false
+        end
+    end
+    return return_plots
 end
 
 
@@ -803,6 +924,18 @@ function plot_irf(𝓂::ℳ;
     if !(shocks isa Union{Symbol_input,String_input})
         shock_dir = ""
     end
+
+    mem = _IRFMemory(var_idx,
+                     shock_idx,
+                     shock_idx isa Int ? [𝓂.timings.exo[shock_idx]] : 𝓂.timings.exo[shock_idx],
+                     𝓂.timings.exo,
+                     Y,
+                     reference_steady_state,
+                     𝓂.timings.var,
+                     𝓂.model_name,
+                     line_label)
+
+    push!(_IRF_HISTORY, mem)
 
     return_plots = []
 
@@ -1931,8 +2064,11 @@ function _merge_plots_by_title(dest::StatsPlots.Plots.Plot, src::StatsPlots.Plot
 end
 
 function plot_irf!(args...; kwargs...)
-    push!(_IRF_HISTORY, _IRFMemory(args, Dict{Symbol,Any}(kwargs)))
-    plots_list = [plot_irf(m.args...; m.kwargs..., show_plots = false, save_plots = false) for m in _IRF_HISTORY]
+    plot_irf(args...; kwargs..., show_plots = false, save_plots = false)
+    plots_list = [_plots_from_irf_data(m; show_plots = false, save_plots = false,
+                                       plots_per_page = get(kwargs, :plots_per_page, 9),
+                                       plot_attributes = get(kwargs, :plot_attributes, Dict()))
+                      for m in _IRF_HISTORY]
     combined = reduce(_merge_plot_vectors_by_title, plots_list)
     if get(kwargs, :show_plots, true)
         for p in combined
