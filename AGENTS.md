@@ -1,0 +1,6 @@
+- if you need to run julia use: 'curl -fsSL https://install.julialang.org -o juliaup.sh\nsh juliaup.sh --yes --default-channel release\nexport PATH="$HOME/.juliaup/bin:$PATH"' to install it
+- dont use the test suite to test changes. just pick a few models from the test_models.jl and run those commands
+- write bespoke functions to test the new imlpemented functionality. you can look in the test folder for examples.
+- use the package "BenchmarkTools" to run benchmarks
+- if asked to benchmark different implementation have a look at the benchmarks.jl script in the benchmark folder
+- for benchmarks have a look at the benchmarks.jl script in the benchmark folder
