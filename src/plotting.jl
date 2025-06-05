@@ -18,9 +18,31 @@ Renaming and reexport of Plot.jl function `plotlyjs()` to define PlotlyJS.jl as 
 """
 plotlyjs_backend = StatsPlots.plotlyjs
 
-const _LAST_PLOTS = Ref{Any}(nothing)
+struct _IRFMemory
+    args::Tuple
+    kwargs::Dict{Symbol,Any}
+end
 
-_store_last_plots!(p) = (_LAST_PLOTS[] = p)
+const _IRF_HISTORY = Vector{_IRFMemory}()
+
+struct _SolutionMemory
+    args::Tuple
+    kwargs::Dict{Symbol,Any}
+end
+
+const _SOLUTION_HISTORY = Vector{_SolutionMemory}()
+
+_merge_plot_vectors_by_title(dest::Vector, src::Vector) = begin
+    result = copy(dest)
+    for i in 1:length(src)
+        if i <= length(result)
+            result[i] = _merge_plots_by_title(result[i], src[i])
+        else
+            push!(result, src[i])
+        end
+    end
+    result
+end
 
 
 
@@ -412,7 +434,6 @@ function plot_model_estimates(𝓂::ℳ,
         end
     end
 
-    _store_last_plots!(return_plots)
     return return_plots
 end
 
@@ -890,8 +911,6 @@ function plot_irf(𝓂::ℳ;
             label_done = false
         end
     end
-    _store_last_plots!(return_plots)
-
     return return_plots
 end
 
@@ -1132,8 +1151,6 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             StatsPlots.savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
-    _store_last_plots!(return_plots)
-
     return return_plots
 end
 
@@ -1504,7 +1521,6 @@ function plot_solution(𝓂::ℳ,
         end
     end
 
-    _store_last_plots!(return_plots)
     return return_plots
 end
 
@@ -1877,23 +1893,18 @@ function plot_conditional_forecast(𝓂::ℳ,
             StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
-    _store_last_plots!(return_plots)
-
     return return_plots
 
 end
 
 """
-    plot_irf!(p, args...; kwargs...)
+    plot_irf!(args...; kwargs...)
 
-Add the IRFs produced by [`plot_irf`](@ref) to the existing plot or vector of
-plots `p` using `StatsPlots.plot!`.
-
-Calling `plot_irf!(args...; kwargs...)` without providing `p` attempts to add
-the lines to the previous plot.  Additional pages are appended if required and
-legend labels are derived from the `line_label` keyword.  Subplots are matched by title when
-merging so the order of variables does not matter. Titles from both plots are
-collected, combined into a sorted list and used to align the panels.
+Overlay the IRFs produced by successive calls. Each invocation stores the
+supplied arguments and reproduces all previous IRF plots from scratch,
+combining them with the new results. The combined plots are returned and, if
+`show_plots = true`, displayed. Saving is controlled by the usual keyword
+arguments.
 """
 function _merge_plots_by_title(dest::StatsPlots.Plots.Plot, src::StatsPlots.Plots.Plot)
     dest_titles = [string(dest[i][:title]) for i in 1:length(dest)]
@@ -1919,187 +1930,77 @@ function _merge_plots_by_title(dest::StatsPlots.Plots.Plot, src::StatsPlots.Plot
     return merged
 end
 
-function plot_irf!(p::Union{StatsPlots.Plots.Plot,AbstractVector}, args...; kwargs...)
-    q = plot_irf(args...; kwargs..., show_plots = false, save_plots = false)
-    if isa(p, AbstractVector)
-        for i in 1:length(q)
-            if i <= length(p)
-                p[i] = _merge_plots_by_title(p[i], q[i])
-            else
-                push!(p, q[i])
-            end
-        end
-    else
-        p = _merge_plots_by_title(p, q[1])
-    end
-    _store_last_plots!(p)
-    return p
-end
 function plot_irf!(args...; kwargs...)
-    p = _LAST_PLOTS[]
-    if p === nothing
-        p = try
-            StatsPlots.current()
-        catch
-            nothing
+    push!(_IRF_HISTORY, _IRFMemory(args, Dict{Symbol,Any}(kwargs)))
+    plots_list = [plot_irf(m.args...; m.kwargs..., show_plots = false, save_plots = false) for m in _IRF_HISTORY]
+    combined = reduce(_merge_plot_vectors_by_title, plots_list)
+    if get(kwargs, :show_plots, true)
+        for p in combined
+            display(p)
         end
     end
-    if p === nothing
-        return plot_irf(args...; kwargs...)
-    else
-        return plot_irf!(p, args...; kwargs...)
+    if get(kwargs, :save_plots, false)
+        fmt = get(kwargs, :save_plots_format, :pdf)
+        path = get(kwargs, :save_plots_path, ".")
+        for (i,p) in enumerate(combined)
+            StatsPlots.savefig(p, joinpath(path, "irf__" * string(i) * "." * string(fmt)))
+        end
     end
+    return combined
 end
 
 """
-    plot_model_estimates!(p, args...; kwargs...)
+    plot_model_estimates!(args...; kwargs...)
 
-Add the plots produced by [`plot_model_estimates`](@ref) to `p`.
-
-If called without an existing plot, the results are added to the current plot if
-one exists.
+Convenience wrapper calling [`plot_model_estimates`](@ref). The bang-version no
+longer attempts to modify the previously displayed plot.
 """
-function plot_model_estimates!(p::Union{StatsPlots.Plots.Plot,AbstractVector}, args...; kwargs...)
-    q = plot_model_estimates(args...; kwargs..., show_plots = false, save_plots = false)
-    if isa(p, AbstractVector)
-        @assert length(p) == length(q) "Number of plots must match."
-        for (pi, qi) in zip(p, q)
-            StatsPlots.plot!(pi, qi)
-        end
-    else
-        StatsPlots.plot!(p, q[1])
-    end
-    _store_last_plots!(p)
-    return p
-end
-
-function plot_model_estimates!(args...; kwargs...)
-    p = _LAST_PLOTS[]
-    if p === nothing
-        p = try
-            StatsPlots.current()
-        catch
-            nothing
-        end
-    end
-    if p === nothing
-        return plot_model_estimates(args...; kwargs...)
-    else
-        return plot_model_estimates!(p, args...; kwargs...)
-    end
-end
+plot_model_estimates!(args...; kwargs...) =
+    plot_model_estimates(args...; kwargs...)
 
 """
-    plot_conditional_variance_decomposition!(p, args...; kwargs...)
+    plot_conditional_variance_decomposition!(args...; kwargs...)
 
-Add the variance decomposition produced by
-[`plot_conditional_variance_decomposition`](@ref) to `p`.
-
-When called without providing a plot `p`, the decomposition is added to the
-current plot if available.
+Wrapper around [`plot_conditional_variance_decomposition`](@ref). The bang
+version simply delegates to the non-bang function.
 """
-function plot_conditional_variance_decomposition!(p::Union{StatsPlots.Plots.Plot,AbstractVector}, args...; kwargs...)
-    q = plot_conditional_variance_decomposition(args...; kwargs..., show_plots = false, save_plots = false)
-    if isa(p, AbstractVector)
-        @assert length(p) == length(q) "Number of plots must match."
-        for (pi, qi) in zip(p, q)
-            StatsPlots.plot!(pi, qi)
-        end
-    else
-        StatsPlots.plot!(p, q[1])
-    end
-    _store_last_plots!(p)
-    return p
-end
-
-function plot_conditional_variance_decomposition!(args...; kwargs...)
-    p = _LAST_PLOTS[]
-    if p === nothing
-        p = try
-            StatsPlots.current()
-        catch
-            nothing
-        end
-    end
-    if p === nothing
-        return plot_conditional_variance_decomposition(args...; kwargs...)
-    else
-        return plot_conditional_variance_decomposition!(p, args...; kwargs...)
-    end
-end
+plot_conditional_variance_decomposition!(args...; kwargs...) =
+    plot_conditional_variance_decomposition(args...; kwargs...)
 
 """
-    plot_solution!(p, args...; kwargs...)
+    plot_solution!(args...; kwargs...)
 
-Add the solution plots produced by [`plot_solution`](@ref) to `p`.
-If `p` is omitted, the lines are added to the current plot if one exists.
+Recreate the solution plot by combining data from all previous calls.  The
+stored arguments are reapplied and the resulting plots merged so each variable
+panel contains a line for every invocation.
 """
-function plot_solution!(p::Union{StatsPlots.Plots.Plot,AbstractVector}, args...; kwargs...)
-    q = plot_solution(args...; kwargs..., show_plots = false, save_plots = false)
-    if isa(p, AbstractVector)
-        @assert length(p) == length(q) "Number of plots must match."
-        for (pi, qi) in zip(p, q)
-            StatsPlots.plot!(pi, qi)
-        end
-    else
-        StatsPlots.plot!(p, q[1])
-    end
-    _store_last_plots!(p)
-    return p
-end
-
 function plot_solution!(args...; kwargs...)
-    p = _LAST_PLOTS[]
-    if p === nothing
-        p = try
-            StatsPlots.current()
-        catch
-            nothing
+    push!(_SOLUTION_HISTORY, _SolutionMemory(args, Dict{Symbol,Any}(kwargs)))
+    plots_list = [plot_solution(m.args...; m.kwargs..., show_plots = false, save_plots = false) for m in _SOLUTION_HISTORY]
+    combined = reduce(_merge_plot_vectors_by_title, plots_list)
+    if get(kwargs, :show_plots, true)
+        for p in combined
+            display(p)
         end
     end
-    if p === nothing
-        return plot_solution(args...; kwargs...)
-    else
-        return plot_solution!(p, args...; kwargs...)
+    if get(kwargs, :save_plots, false)
+        fmt = get(kwargs, :save_plots_format, :pdf)
+        path = get(kwargs, :save_plots_path, ".")
+        for (i,p) in enumerate(combined)
+            StatsPlots.savefig(p, joinpath(path, "solution__" * string(i) * "." * string(fmt)))
+        end
     end
+    return combined
 end
 
 """
-    plot_conditional_forecast!(p, args...; kwargs...)
+    plot_conditional_forecast!(args...; kwargs...)
 
-Add the conditional forecast produced by [`plot_conditional_forecast`](@ref) to
-`p`.  When called without an existing plot, the forecast is added to the current
-plot if one is available.
+Convenience wrapper for [`plot_conditional_forecast`](@ref). This function no
+longer modifies any existing plots.
 """
-function plot_conditional_forecast!(p::Union{StatsPlots.Plots.Plot,AbstractVector}, args...; kwargs...)
-    q = plot_conditional_forecast(args...; kwargs..., show_plots = false, save_plots = false)
-    if isa(p, AbstractVector)
-        @assert length(p) == length(q) "Number of plots must match."
-        for (pi, qi) in zip(p, q)
-            StatsPlots.plot!(pi, qi)
-        end
-    else
-        StatsPlots.plot!(p, q[1])
-    end
-    _store_last_plots!(p)
-    return p
-end
-
-function plot_conditional_forecast!(args...; kwargs...)
-    p = _LAST_PLOTS[]
-    if p === nothing
-        p = try
-            StatsPlots.current()
-        catch
-            nothing
-        end
-    end
-    if p === nothing
-        return plot_conditional_forecast(args...; kwargs...)
-    else
-        return plot_conditional_forecast!(p, args...; kwargs...)
-    end
-end
+plot_conditional_forecast!(args...; kwargs...) =
+    plot_conditional_forecast(args...; kwargs...)
 
 """
 See [`plot_model_estimates!`](@ref)
