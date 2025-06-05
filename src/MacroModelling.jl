@@ -2172,12 +2172,13 @@ function convert_to_ss_equation(eq::Expr)::Expr
 end
 
 
-function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
-    @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
+function replace_indices_inside_for_loop(exxpr, index_variable, indices, concatenate, operator)
+    @assert operator ∈ [:+, :*] "Only :+ and :* allowed as operators in for loops."
     calls = []
     indices = indices.args[1] == :(:) ? eval(indices) : [indices.args...]
+    index_syms = Symbol[i for i in indices if i isa Symbol]
     for idx in indices
-        push!(calls, postwalk(x -> begin
+        replaced = postwalk(x -> begin
             x isa Expr ?
                 x.head == :ref ?
                     @capture(x, name_{index_}[time_]) ?
@@ -2205,16 +2206,42 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                     x :
                 x :
             @capture(x, name_) ?
-                name == index_variable && idx isa Int ?
-                    :($idx) :
+                name == index_variable ?
+                    idx isa Int ?
+                        :($idx) :
+                        QuoteNode(idx) :
                 x isa Symbol ?
                     occursin("{" * string(index_variable) * "}", string(x)) ?
-                Symbol(replace(string(x),  "{" * string(index_variable) * "}" => "{" * string(idx) * "}")) :
+                        Symbol(replace(string(x), "{" * string(index_variable) * "}" => "{" * string(idx) * "}")) :
+                        x in index_syms ? QuoteNode(x) :
+                        x :
                     x :
-                x :
-            x
-        end,
-        exxpr))
+                x
+        end, exxpr)
+
+        skip = false
+        if replaced isa Expr && replaced.head == :if
+            cond = replaced.args[1]
+            try
+                val = eval(cond)
+                if val
+                    replaced = replaced.args[2]
+                elseif length(replaced.args) >= 3
+                    replaced = replaced.args[3]
+                else
+                    skip = true
+                end
+            catch
+            end
+        elseif replaced isa Expr && replaced.head == :call && replaced.args[1] == :ifelse
+            cond = replaced.args[2]
+            try
+                val = eval(cond)
+                replaced = val ? replaced.args[3] : replaced.args[4]
+            catch
+            end
+        end
+        skip || push!(calls, replaced)
     end
     
     if concatenate

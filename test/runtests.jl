@@ -20,6 +20,24 @@ println("Threads used: ", Threads.nthreads())
 
 include("functionality_tests.jl")
 
+@testset "for loop ifelse" begin
+    include("models/for_ifelse.jl")
+    @test length(IfElseLoop.dyn_equations) == 2
+    @test IfElseLoop.var == [:x◖H◗, :x◖F◗]
+end
+
+@testset "for loop if" begin
+    include("models/for_if_statement.jl")
+    @test length(IfStatementLoop.dyn_equations) == 2
+    @test IfStatementLoop.var == [:x◖H◗, :x◖F◗]
+end
+
+@testset "for loop if no else" begin
+    include("models/for_if_no_else.jl")
+    @test length(IfNoElseLoop.dyn_equations) == 1
+    @test IfNoElseLoop.var == [:x◖H◗]
+end
+
 # @testset verbose = true "Code formatting (JuliaFormatter.jl)" begin
 #     @test format(MacroModelling; verbose=true, overwrite=true)
 # end
