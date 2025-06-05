@@ -217,6 +217,7 @@ mutable struct perturbation
     third_order::third_order_perturbation_solution
     pruned_third_order::third_order_perturbation_solution
     qme_solution::Matrix{Float64}
+    first_order_block_decomposition::Tuple{Vector{Int},Vector{Int},Vector{Int}}
     second_order_solution::AbstractMatrix{Float64}
     third_order_solution::AbstractMatrix{Float64}
     auxilliary_indices::auxilliary_indices

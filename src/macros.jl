@@ -949,6 +949,7 @@ macro model(𝓂,ex...)
                                             third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             zeros(0,0),                                 # 1st order sol
+                                            (Int[], Int[], Int[]),
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 2nd order sol
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 3rd order sol
                                             auxilliary_indices(Int[],Int[],Int[],Int[],Int[]),

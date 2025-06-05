@@ -43,13 +43,19 @@ function run_benchmarks!(𝓂::ℳ, SUITE::BenchmarkGroup)
     
     SUITE[𝓂.model_name]["qme"] = BenchmarkGroup()
     
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings,
+                                                         opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur),
+                                                         decomposition = 𝓂.solution.perturbation.first_order_block_decomposition)
     
     clear_solution_caches!(𝓂, :first_order)
     
-    SUITE[𝓂.model_name]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($𝓂, :first_order)
-    
-    SUITE[𝓂.model_name]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings,
+                                                                                          opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur),
+                                                                                          decomposition = $𝓂.solution.perturbation.first_order_block_decomposition) setup = clear_solution_caches!($𝓂, :first_order)
+
+    SUITE[𝓂.model_name]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings,
+                                                                                           opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling),
+                                                                                           decomposition = $𝓂.solution.perturbation.first_order_block_decomposition) setup = clear_solution_caches!($𝓂, :first_order)
     
     
     A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]

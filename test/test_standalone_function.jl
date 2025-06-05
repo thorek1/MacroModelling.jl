@@ -72,7 +72,7 @@ get_irf(RBC_CME, algorithm = :pruned_second_order)
 
 T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :z_delta], [:A, :Pi, :c, :k, :z_delta], [:A], [:k, :z_delta], [:A], [:delta_eps, :eps_z], [:A, :Pi, :R, :c, :k, :y, :z_delta], Symbol[], Symbol[], 2, 1, 3, 3, 5, 7, 2, [3, 6], [1, 2, 4, 5, 7], [1, 2, 4], [2, 3], [1, 5, 7], [1], [1], [5, 7], [5, 6, 1, 7, 3, 2, 4], [3, 4, 5, 1, 2])
 
-first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁; T = T)# |> Matrix{Float32}
+first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁; T = T, decomposition = (Int[], Int[], Int[]))
 
 second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, 
                                                                 RBC_CME.solution.perturbation.second_order_auxilliary_matrices,

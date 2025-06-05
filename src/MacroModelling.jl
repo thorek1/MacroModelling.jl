@@ -5042,10 +5042,11 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate first order solution" begin
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                        T = 𝓂.timings, 
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                        T = 𝓂.timings,
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        decomposition = 𝓂.solution.perturbation.first_order_block_decomposition)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -5369,10 +5370,11 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                        T = 𝓂.timings, 
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                        T = 𝓂.timings,
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        decomposition = 𝓂.solution.perturbation.first_order_block_decomposition)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -5754,11 +5756,11 @@ function solve!(𝓂::ℳ;
 
             # @timeit_debug timer "Calculate first order solution" begin
 
-            S₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                                T = 𝓂.timings, 
+            S₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                                T = 𝓂.timings,
                                                                 opts = opts,
-                                                                initial_guess = 𝓂.solution.perturbation.qme_solution)
-    
+                                                                initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                                decomposition = 𝓂.solution.perturbation.first_order_block_decomposition)
             if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
             # end # timeit_debug
@@ -5776,11 +5778,12 @@ function solve!(𝓂::ℳ;
 
                 ∇̂₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
             
-                Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; 
-                                                                    T = 𝓂.timings, 
+                Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁;
+                                                                    T = 𝓂.timings,
                                                                     opts = opts,
-                                                                    initial_guess = 𝓂.solution.perturbation.qme_solution)
-
+                                                                    initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                                    decomposition = 𝓂.solution.perturbation.first_order_block_decomposition)
+                
                 if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
@@ -6621,6 +6624,23 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                                         expression = Val(false))::Tuple{<:Function, <:Function}
 
     𝓂.jacobian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars
+
+    # precompute block decomposition for first order solution
+    rows, cols, _ = findnz(∇₁_dyn)
+    pattern_full = sparse(rows, cols, ones(Int, length(rows)), size(∇₁_dyn,1), size(∇₁_dyn,2))
+
+    T = 𝓂.timings
+    dynIndex = T.nPresent_only+1:T.nVars
+    comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
+    sort!(comb)
+    f_in = indexin(T.future_not_past_and_mixed_idx, comb)
+    Ir = ℒ.I(length(comb))
+
+    Aplus_pattern = pattern_full[dynIndex,1:T.nFuture_not_past_and_mixed] * Ir[f_in,:]
+    A0_pattern = pattern_full[dynIndex,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)][:,comb]
+    block_pattern = (Aplus_pattern .+ A0_pattern) .> 0
+    Q, P, R, _, _ = BlockTriangularForm.order(block_pattern)
+    𝓂.solution.perturbation.first_order_block_decomposition = (Vector{Int}(Q), Vector{Int}(P), Vector{Int}(R))
 
 
 
@@ -8358,11 +8378,12 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) # , timer = timer)# |> Matrix
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                        T = TT, 
-                                                        # timer = timer, 
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                        opts = opts)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                        T = TT,
+                                                        # timer = timer,
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        opts = opts,
+                                                        decomposition = 𝓂.solution.perturbation.first_order_block_decomposition)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 

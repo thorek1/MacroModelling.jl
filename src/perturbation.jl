@@ -1,9 +1,62 @@
 @stable default_mode = "disable" begin
 
-function calculate_first_order_solution(∇₁::Matrix{R}; 
-                                        T::timings, 
+function _solve_first_order_blocks(Ap, A0, Am, Q, P, R, T, initial_guess, opts)
+    n_blocks = length(R) - 1
+
+    Ap_perm = @views Ap[Q, P]
+    A0_perm = @views A0[Q, P]
+    Am_perm = @views Am[Q, P]
+
+    ig_perm = if length(initial_guess) > 0
+        @views initial_guess[Q, P]
+    else
+        zeros(eltype(Ap), 0, 0)
+    end
+
+    sol = zeros(eltype(Ap), size(Ap))
+
+    for i in 1:n_blocks
+        rng = R[i]:(R[i+1]-1)
+        Apb = @views Ap_perm[rng, rng]
+        A0b = @views A0_perm[rng, rng]
+        Amb = @views Am_perm[rng, rng]
+        igb = if length(ig_perm) > 0
+            @views ig_perm[rng, rng]
+        else
+            zeros(eltype(Ap), 0, 0)
+        end
+
+        if size(Apb,1) == 1 && abs(Apb[1]) < opts.tol.qme_tol
+            sol[Q[rng], P[rng]] .= -Amb[1] / A0b[1]
+        elseif size(Apb,1) == 1
+            a = Apb[1]; b = A0b[1]; c = Amb[1]
+            disc = b^2 - 4a*c
+            root1 = (-b + sqrt(disc)) / (2a)
+            root2 = (-b - sqrt(disc)) / (2a)
+            sol[Q[rng], P[rng]] .= abs(root1) < 1 ? root1 : root2
+        else
+            Xblock, solved = solve_quadratic_matrix_equation(Apb, A0b, Amb, T,
+                                                            initial_guess = igb,
+                                                            quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                                            tol = opts.tol.qme_tol,
+                                                            acceptance_tol = opts.tol.qme_acceptance_tol,
+                                                            verbose = opts.verbose)
+            if !solved
+                return sol, false
+            end
+            sol[Q[rng], P[rng]] .= Xblock
+        end
+    end
+
+    return sol, true
+end
+
+
+function calculate_first_order_solution(∇₁::Matrix{R};
+                                        T::timings,
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        decomposition::Tuple{Vector{Int},Vector{Int},Vector{Int}})::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
@@ -43,12 +96,9 @@ function calculate_first_order_solution(∇₁::Matrix{R};
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, T, 
-                                                    initial_guess = initial_guess,
-                                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                                    tol = opts.tol.qme_tol,
-                                                    acceptance_tol = opts.tol.qme_acceptance_tol,
-                                                    verbose = opts.verbose)
+    Q, P, R = decomposition
+
+    sol, solved = _solve_first_order_blocks(Ã₊, Ã₀, Ã₋, Q, P, R, T, initial_guess, opts)
 
     if !solved
         if opts.verbose println("Quadratic matrix equation solution failed.") end
@@ -117,11 +167,12 @@ end
 
 end # dispatch_doctor 
 
-function rrule(::typeof(calculate_first_order_solution), 
+function rrule(::typeof(calculate_first_order_solution),
                 ∇₁::Matrix{R};
-                T::timings, 
+                T::timings,
                 opts::CalculationOptions = merge_calculation_options(),
-                initial_guess::AbstractMatrix{R} = zeros(0,0)) where R <: AbstractFloat
+                initial_guess::AbstractMatrix{R} = zeros(0,0),
+                decomposition::Tuple{Vector{Int},Vector{Int},Vector{Int}}) where R <: AbstractFloat
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -162,12 +213,9 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, T, 
-                                                    initial_guess = initial_guess,
-                                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                                    tol = opts.tol.qme_tol,
-                                                    acceptance_tol = opts.tol.qme_acceptance_tol,
-                                                    verbose = opts.verbose)
+    Q, P, R = decomposition
+
+    sol, solved = _solve_first_order_blocks(Ã₊, Ã₀, Ã₋, Q, P, R, T, initial_guess, opts)
 
     if !solved
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent()
@@ -276,10 +324,11 @@ end
 
 @stable default_mode = "disable" begin
 
-function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
-                                        T::timings, 
+function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
+                                        T::timings,
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
+                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                        decomposition::Tuple{Vector{Int},Vector{Int},Vector{Int}})::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
 
     expand = [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:], ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
@@ -287,7 +336,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
     B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; T = T, opts = opts, initial_guess = initial_guess)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; T = T, opts = opts, initial_guess = initial_guess, decomposition = decomposition)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -363,7 +412,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
     B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
 
     return hcat(x, B), qme_sol, solved
-end 
+end
 
 
 
