@@ -4,3 +4,5 @@
 - use the package "BenchmarkTools" to run benchmarks
 - if asked to benchmark different implementation have a look at the benchmarks.jl script in the benchmark folder
 - for benchmarks have a look at the benchmarks.jl script in the benchmark folder
+- use micormamba to install R packages
+- when implementing new functionality for the MacroModelling.jl package try to test it by writing a bespoke script for that functionality only
