@@ -70,7 +70,7 @@ mode_estimateNM = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood,
 
 mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
                                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                                adtype = ADTypes.AutoZygote(),
+                                                adtype = ADTypes.AutoMooncake(),
                                                 iterations = 100,
                                                 # show_trace = true,
                                                 initial_params = mode_estimateNM.values)
@@ -81,7 +81,7 @@ println("Mode variable values (L-BFGS): $init_params")
 
 n_samples = 100
 
-samps = sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = init_params)
+samps = sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = ADTypes.AutoMooncake()), n_samples, progress = true, initial_params = init_params)
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 

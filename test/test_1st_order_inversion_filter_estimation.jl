@@ -43,7 +43,7 @@ end
 
 n_samples = 1000
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion), NUTS(adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion), NUTS(adtype = ADTypes.AutoMooncake()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
@@ -51,7 +51,7 @@ sample_nuts = mean(samps).nt.mean
 
 modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS2000, :inversion), 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                                        adtype = ADTypes.AutoZygote(), 
+              adtype = ADTypes.AutoMooncake(),
                                         initial_params = FS2000.parameter_values)
 
 println("Mode variable values: $(modeFS2000i.values); Mode loglikelihood: $(modeFS2000i.lp)")

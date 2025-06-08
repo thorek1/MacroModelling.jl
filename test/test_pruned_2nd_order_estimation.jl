@@ -47,7 +47,7 @@ Random.seed!(30)
 
 n_samples = 500
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order), NUTS(adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order), NUTS(adtype = ADTypes.AutoMooncake()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 

@@ -2083,7 +2083,7 @@ backend = AutoMooncake(; config=nothing)
 @benchmark jacobian!(model_dynamics, jac, prep, backend, vcat(stst,stst,stst,zeros(𝓂.timings.nExo)), Constant(vcat(𝓂.parameter_values, calib_pars, stst)))
 
 
-backend = AutoZygote()
+backend = AutoMooncake()
 
 @time prep = prepare_jacobian(model_dynamics, backend, vcat(stst,stst,stst,zeros(𝓂.timings.nExo)), Constant(vcat(𝓂.parameter_values, calib_pars, stst))); # 3.3s
 @time jacobian!(model_dynamics, jac, prep, backend, vcat(stst,stst,stst,zeros(𝓂.timings.nExo)), Constant(vcat(𝓂.parameter_values, calib_pars, stst))) # 1.3s
