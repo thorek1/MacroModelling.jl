@@ -6,3 +6,4 @@
 - try first to install R packages with micromamba and then using install.packages()
 - when implementing new functionality for the MacroModelling.jl package try to test it by writing a bespoke script for that functionality only, and avoid precomiling the whole MacroModelling package
 - run julia with -t auto
+- use this to install micromamba: "curl -Ls https://micro.mamba.pm/install.sh | MAMBA_NO_BANNER=1 MAMBA_NO_PROMPT=1 bash -s -- -b -u -p ~/micromamba"
