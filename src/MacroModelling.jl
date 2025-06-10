@@ -2236,6 +2236,7 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                     @capture(x, name_{index_}[time_]) ?
                         index == index_variable ?
                             :($(Expr(:ref, Symbol(string(name) * "{" * string(idx) * "}"),time))) :
+        replaced = write_out_for_loops(replaced)
                         time isa Expr || time isa Symbol ?
                             index_variable ∈ get_symbols(time) ?
                                 :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx))))) :

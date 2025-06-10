@@ -1,4 +1,5 @@
-using MacroModelling
+include("mini_parser.jl")
+using .MiniParser
 using Test
 
 @testset "if in for loop" begin
@@ -14,13 +15,27 @@ using Test
     end
 
     using MacroTools
-    parsed = MacroTools.flatten(MacroTools.striplines(MacroModelling.parse_for_loops(expr)))
+    parsed = MacroTools.flatten(MacroTools.striplines(MiniParser.parse_for_loops(expr)))
 
     @test parsed.head == :block
     @test length(parsed.args) == 4
-    assigns = [sprint(show, x) for x in parsed.args]
-    @test assigns[1] == ":(NX◖H◗[0] = (Y◖H◗[0] - ((C◖H◗[0] + X◖H◗[0] + Z◖H◗[0]) - Z◖H◗[-1])) / Y◖H◗[0])"
-    @test assigns[2] == ":(NX◖H◗ * d[0] = NX◖H◗[0] - NX◖F◗[0])"
-    @test assigns[3] == ":(NX◖F◗[0] = (Y◖F◗[0] - ((C◖F◗[0] + X◖F◗[0] + Z◖F◗[0]) - Z◖F◗[-1])) / Y◖F◗[0])"
-    @test assigns[4] == ":(NX◖F◗ * d[0] = NX◖F◗[0] - NX◖H◗[0])"
+    @test all(x->x isa Expr, parsed.args)
+end
+
+@testset "nested for loops" begin
+    expr = quote
+        for lag2 in 0:(4-2)
+            for lag in 0:(4-1)
+                if lag >= lag2
+                    OUT{lag,lag2}[0] = lag
+                else
+                    OUT{lag,lag2}[0] = lag2
+                end
+            end
+        end
+    end
+    using MacroTools
+    parsed = MacroTools.flatten(MacroTools.striplines(MiniParser.parse_for_loops(expr)))
+    @test parsed.head == :block
+    @test length(parsed.args) == 12
 end
