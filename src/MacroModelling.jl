@@ -2174,15 +2174,22 @@ end
 function _condition_value(cond)
     if cond isa Bool
         return cond
-    elseif cond isa Expr && cond.head == :call && cond.args[1] in [:(==), :(=)]
+    elseif cond isa Expr && cond.head == :call 
         a, b = cond.args[2], cond.args[3]
-        if (a isa Symbol || a isa Number) && (b isa Symbol || b isa Number)
-            return a == b
-        end
-    elseif cond isa Expr && cond.head == :call && cond.args[1] == :!=
-        a, b = cond.args[2], cond.args[3]
-        if (a isa Symbol || a isa Number) && (b isa Symbol || b isa Number)
-            return a != b
+        if (a isa Symbol && b isa Symbol) || (a isa Number && b isa Number)
+            if cond.args[1] == :(==)
+                return a == b
+            elseif cond.args[1] == :(!=)
+                return a != b
+            elseif cond.args[1] == :(<)
+                return a < b
+            elseif cond.args[1] == :(<=)
+                return a <= b
+            elseif cond.args[1] == :(>)
+                return a > b
+            elseif cond.args[1] == :(>=)
+                return a >= b
+            end
         end
     end
     return nothing
