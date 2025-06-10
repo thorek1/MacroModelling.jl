@@ -2171,13 +2171,59 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
+function _condition_value(cond)
+    if cond isa Bool
+        return cond
+    elseif cond isa Expr && cond.head == :call && cond.args[1] in [:(==), :(=)]
+        a, b = cond.args[2], cond.args[3]
+        if (a isa Symbol || a isa Number) && (b isa Symbol || b isa Number)
+            return a == b
+        end
+    elseif cond isa Expr && cond.head == :call && cond.args[1] == :!=
+        a, b = cond.args[2], cond.args[3]
+        if (a isa Symbol || a isa Number) && (b isa Symbol || b isa Number)
+            return a != b
+        end
+    end
+    return nothing
+end
+
+function resolve_if_expr(expr::Expr)
+    if expr.head == :if
+        val = _condition_value(expr.args[1])
+        if val === nothing
+            then_part = resolve_if_expr(expr.args[2])
+            else_part = length(expr.args) == 3 ? resolve_if_expr(expr.args[3]) : Expr(:block)
+            return length(expr.args) == 3 ? Expr(:if, expr.args[1], then_part, else_part) : Expr(:if, expr.args[1], then_part)
+        elseif val
+            return resolve_if_expr(expr.args[2])
+        else
+            return length(expr.args) == 3 ? resolve_if_expr(expr.args[3]) : Expr(:block)
+        end
+    elseif expr.head == :block
+        parts = Any[]
+        for a in expr.args
+            b = a isa Expr ? resolve_if_expr(a) : a
+            if b isa Expr && b.head == :block
+                append!(parts, b.args)
+            elseif b isa Expr && b.head == :block && isempty(b.args)
+                nothing
+            else
+                push!(parts, b)
+            end
+        end
+        return Expr(:block, parts...)
+    else
+        return expr
+    end
+end
 
 function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
     @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
     calls = []
     indices = indices.args[1] == :(:) ? eval(indices) : [indices.args...]
     for idx in indices
-        push!(calls, postwalk(x -> begin
+        replaced = postwalk(x -> begin
             x isa Expr ?
                 x.head == :ref ?
                     @capture(x, name_{index_}[time_]) ?
@@ -2205,7 +2251,7 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                     x :
                 x :
             @capture(x, name_) ?
-                name == index_variable && idx isa Int ?
+                name == index_variable ?
                     :($idx) :
                 x isa Symbol ?
                     occursin("{" * string(index_variable) * "}", string(x)) ?
@@ -2214,7 +2260,9 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                 x :
             x
         end,
-        exxpr))
+        exxpr)
+        replaced = resolve_if_expr(replaced)
+        push!(calls, replaced)
     end
     
     if concatenate
@@ -2340,7 +2388,7 @@ function parse_for_loops(equations_block)::Expr
     eqs = Expr[]
     for arg in equations_block.args
         if isa(arg,Expr)
-            parsed_eqs = write_out_for_loops(arg)
+            parsed_eqs = resolve_if_expr(write_out_for_loops(arg))
             # println(parsed_eqs)
             if parsed_eqs isa Expr
                 push!(eqs,unblock(replace_indices(parsed_eqs)))
@@ -2348,20 +2396,20 @@ function parse_for_loops(equations_block)::Expr
                 for B in parsed_eqs
                     if B isa Array
                         for b in B
-                            push!(eqs,unblock(replace_indices(b)))
+                            push!(eqs,unblock(replace_indices(resolve_if_expr(b))))
                         end
                     elseif B isa Expr
                         if B.head == :block
                             for b in B.args
                                 if b isa Expr
-                                    push!(eqs,replace_indices(b))
+                                    push!(eqs,replace_indices(resolve_if_expr(b)))
                                 end
                             end
                         else
-                            push!(eqs,unblock(replace_indices(B)))
+                            push!(eqs,unblock(replace_indices(resolve_if_expr(B))))
                         end
                     else
-                        push!(eqs,unblock(replace_indices(B)))
+                        push!(eqs,unblock(replace_indices(resolve_if_expr(B))))
                     end
                 end
             end
