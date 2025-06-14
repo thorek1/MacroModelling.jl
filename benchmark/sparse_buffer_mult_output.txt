@@ -1,0 +1,37 @@
+
+---- nnz = 1000 ----
+non zeros in A: 999  B: 999  pattern: 983
+buffer basic
+  52.428 μs (3 allocations: 7.88 KiB)
+buffer threaded
+  19.601 μs (44 allocations: 42.80 KiB)
+buffer simd
+  52.234 μs (3 allocations: 7.88 KiB)
+buffer omt
+  21.612 μs (64 allocations: 43.69 KiB)
+buffer simd threaded
+  20.130 μs (44 allocations: 42.73 KiB)
+buffer simd omt
+  21.000 μs (64 allocations: 43.69 KiB)
+buffer threaded five args
+  18.944 μs (44 allocations: 42.80 KiB)
+no buffer
+  14.522 μs (11 allocations: 42.05 KiB)
+
+---- nnz = 2418 ----
+non zeros in A: 2414  B: 2414  pattern: 5860
+buffer basic
+  65.425 μs (3 allocations: 7.88 KiB)
+buffer threaded
+  23.428 μs (44 allocations: 42.80 KiB)
+buffer simd
+  64.872 μs (3 allocations: 7.88 KiB)
+buffer omt
+  25.715 μs (64 allocations: 43.69 KiB)
+buffer simd threaded
+  22.563 μs (44 allocations: 42.73 KiB)
+buffer simd omt
+  25.541 μs (64 allocations: 43.69 KiB)
+buffer threaded five args
+  22.690 μs (44 allocations: 42.80 KiB)
+no buffer
