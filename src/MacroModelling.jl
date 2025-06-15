@@ -2219,9 +2219,54 @@ function resolve_if_expr(ex::Expr)
             elseif val === false && length(node.args) == 3
                 return resolve_if_expr(unblock(else_blk))
             elseif val === false && length(node.args) == 2
-                return Expr()
+                return nothing
             elseif val === false && node.head === :elseif
                 return resolve_if_expr(unblock(else_blk))
+            end
+        end
+        return node
+    end
+end
+
+# function remove_nothing(ex::Expr)
+#     postwalk(ex) do node
+#         # Only consider call-nodes with exactly two arguments
+#         if node isa Expr && node.head === :call && length(node.args) == 3
+#             fn, lhs, rhs = node.args
+#             lhs2 = unblock(lhs)
+#             rhs2 = unblock(rhs)
+
+#             if rhs2 === :(nothing)
+#                 # strip the call and recurse to clean deeper
+#                 return remove_nothing(lhs2)
+#             elseif lhs2 === :(nothing)
+#                 return remove_nothing(rhs2)
+#             # else
+#             #     return remove_nothing(node.args)
+#             end
+#         end
+#         return node
+#     end
+# end
+
+function remove_nothing(ex::Expr)
+    postwalk(ex) do node
+        # Only consider call-expressions
+        if node isa Expr && node.head === :call && any(node.args .=== nothing)
+            fn = node.args[1]
+            # Unblock and collect all the operands
+            # raw_args = map(arg -> unblock(arg), node.args[2:end])
+            # Drop any nothing
+            kept = filter(arg -> unblock(arg) !== nothing, node.args[2:end])
+            if isempty(kept)
+                return nothing
+            elseif length(kept) == 1
+                return kept[1]
+            else
+            # elseif length(kept) < length(raw_args)
+                return Expr(:call, fn, kept...)
+            # else
+            #     return node
             end
         end
         return node

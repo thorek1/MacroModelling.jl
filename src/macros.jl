@@ -116,7 +116,9 @@ macro model(𝓂,ex...)
     model_ex = parse_for_loops(ex[end])
     
     model_ex = resolve_if_expr(model_ex)
-    println(model_ex)
+
+    model_ex = remove_nothing(model_ex)
+
     model_ex = parse_occasionally_binding_constraints(model_ex, max_obc_horizon = max_obc_horizon)
     
     # obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
