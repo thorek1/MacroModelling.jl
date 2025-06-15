@@ -48,7 +48,7 @@ import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
 import DataStructures: CircularBuffer
-import MacroTools: unblock, postwalk, @capture, flatten
+import MacroTools: unblock, postwalk, prewalk, @capture, flatten
 
 # import SpeedMapping: speedmapping
 import Suppressor: @suppress
@@ -2171,57 +2171,60 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
-function _condition_value(cond)
+function evaluate_conditions(cond)
     if cond isa Bool
         return cond
     elseif cond isa Expr && cond.head == :call 
         a, b = cond.args[2], cond.args[3]
-        if (a isa Symbol && b isa Symbol) || (a isa Number && b isa Number)
-            if cond.args[1] == :(==)
-                return a == b
-            elseif cond.args[1] == :(!=)
-                return a != b
-            elseif cond.args[1] == :(<)
-                return a < b
-            elseif cond.args[1] == :(<=)
-                return a <= b
-            elseif cond.args[1] == :(>)
-                return a > b
-            elseif cond.args[1] == :(>=)
-                return a >= b
-            end
+
+        if typeof(a) ∉ [Symbol, Number]
+            a = eval(a)
         end
+
+        if typeof(b) ∉ [Symbol, Number]
+            b = eval(b)
+        end
+        
+        if cond.args[1] == :(==)
+            return a == b
+        elseif cond.args[1] == :(!=)
+            return a != b
+        elseif cond.args[1] == :(<)
+            return a < b
+        elseif cond.args[1] == :(<=)
+            return a <= b
+        elseif cond.args[1] == :(>)
+            return a > b
+        elseif cond.args[1] == :(>=)
+            return a >= b
+        end
+        # end
     end
     return nothing
 end
 
-function resolve_if_expr(expr::Expr)
-    if expr.head == :if
-        val = _condition_value(expr.args[1])
-        if val === nothing
-            then_part = resolve_if_expr(expr.args[2])
-            else_part = length(expr.args) == 3 ? resolve_if_expr(expr.args[3]) : Expr(:block)
-            return length(expr.args) == 3 ? Expr(:if, expr.args[1], then_part, else_part) : Expr(:if, expr.args[1], then_part)
-        elseif val
-            return resolve_if_expr(expr.args[2])
-        else
-            return length(expr.args) == 3 ? resolve_if_expr(expr.args[3]) : Expr(:block)
-        end
-    elseif expr.head == :block
-        parts = Any[]
-        for a in expr.args
-            b = a isa Expr ? resolve_if_expr(a) : a
-            if b isa Expr && b.head == :block
-                append!(parts, b.args)
-            elseif b isa Expr && b.head == :block && isempty(b.args)
-                nothing
-            else
-                push!(parts, b)
+function resolve_if_expr(ex::Expr)
+    prewalk(ex) do node
+        if node isa Expr && (node.head === :if || node.head === :elseif)
+            cond = node.args[1]
+            then_blk = node.args[2]
+            if length(node.args) == 3
+                else_blk = node.args[3]
+            end
+            val = evaluate_conditions(unblock(cond))
+
+            if val === true
+                # recurse into the selected branch
+                return resolve_if_expr(unblock(then_blk))
+            elseif val === false && length(node.args) == 3
+                return resolve_if_expr(unblock(else_blk))
+            elseif val === false && length(node.args) == 2
+                return Expr()
+            elseif val === false && node.head === :elseif
+                return resolve_if_expr(unblock(else_blk))
             end
         end
-        return Expr(:block, parts...)
-    else
-        return expr
+        return node
     end
 end
 
@@ -2230,13 +2233,12 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
     calls = []
     indices = indices.args[1] == :(:) ? eval(indices) : [indices.args...]
     for idx in indices
-        replaced = postwalk(x -> begin
+        push!(calls, postwalk(x -> begin
             x isa Expr ?
                 x.head == :ref ?
                     @capture(x, name_{index_}[time_]) ?
                         index == index_variable ?
                             :($(Expr(:ref, Symbol(string(name) * "{" * string(idx) * "}"),time))) :
-        replaced = write_out_for_loops(replaced)
                         time isa Expr || time isa Symbol ?
                             index_variable ∈ get_symbols(time) ?
                                 :($(Expr(:ref, Expr(:curly,name,index), Meta.parse(replace(string(time), string(index_variable) => idx))))) :
@@ -2259,7 +2261,7 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                     x :
                 x :
             @capture(x, name_) ?
-                name == index_variable ?
+                name == index_variable && idx isa Int ?
                     :($idx) :
                 x isa Symbol ?
                     occursin("{" * string(index_variable) * "}", string(x)) ?
@@ -2268,9 +2270,7 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                 x :
             x
         end,
-        exxpr)
-        replaced = resolve_if_expr(replaced)
-        push!(calls, replaced)
+        exxpr))
     end
     
     if concatenate
@@ -2396,7 +2396,7 @@ function parse_for_loops(equations_block)::Expr
     eqs = Expr[]
     for arg in equations_block.args
         if isa(arg,Expr)
-            parsed_eqs = resolve_if_expr(write_out_for_loops(arg))
+            parsed_eqs = write_out_for_loops(arg)
             # println(parsed_eqs)
             if parsed_eqs isa Expr
                 push!(eqs,unblock(replace_indices(parsed_eqs)))
@@ -2404,20 +2404,20 @@ function parse_for_loops(equations_block)::Expr
                 for B in parsed_eqs
                     if B isa Array
                         for b in B
-                            push!(eqs,unblock(replace_indices(resolve_if_expr(b))))
+                            push!(eqs,unblock(replace_indices(b)))
                         end
                     elseif B isa Expr
                         if B.head == :block
                             for b in B.args
                                 if b isa Expr
-                                    push!(eqs,replace_indices(resolve_if_expr(b)))
+                                    push!(eqs,replace_indices(b))
                                 end
                             end
                         else
-                            push!(eqs,unblock(replace_indices(resolve_if_expr(B))))
+                            push!(eqs,unblock(replace_indices(B)))
                         end
                     else
-                        push!(eqs,unblock(replace_indices(resolve_if_expr(B))))
+                        push!(eqs,unblock(replace_indices(B)))
                     end
                 end
             end

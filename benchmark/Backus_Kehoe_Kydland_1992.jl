@@ -19,9 +19,11 @@
     for lag2 in 0:(4-2)
         for lag in 0:(4-1)  
             if lag >= lag2
-                beta{co}^lag * LGM[lag]*phi{co}
-            else
-                beta{co}^lag * LGM[lag]*phi{co}
+                beta{co}^(lag) * LGM[lag]*phi{co}
+            # elseif lag > 5
+                # beta{co}^lag * LGM[lag]*phi{co}
+            # else
+            #     beta{co}^(lag+2) * LGM[lag]*phi{co}
             end
         end
     end +
@@ -37,7 +39,7 @@
         # else
         #     NX{H}{F}[0] = log(NX{H}[0] - NX{F}[0]) 
         # end
-        co == H ? NX{F}{H}[0] = log(NX{F}[0] - NX{H}[0]) : NX{H}{F}[0] = log(NX{H}[0] - NX{F}[0]) 
+        # co == H ? NX{F}{H}[0] = log(NX{F}[0] - NX{H}[0]) : NX{H}{F}[0] = log(NX{H}[0] - NX{F}[0]) 
     end
 
     (LAMBDA{H}[0]-1) = rho{H}{H}*(LAMBDA{H}[-1]-1) + rho{H}{F}*(LAMBDA{F}[-1]-1) + Z_E{H} * E{H}[x]
