@@ -2300,6 +2300,13 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                         #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
                         x :
                     x :
+                x.head == :if ?
+                    length(x.args) > 2 ?
+                        Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
+                                    replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock,
+                                    replace_indices_inside_for_loop(x.args[3],index_variable,:([$idx]),false,:+) |> unblock) :
+                    Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
+                                replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock) :
                 @capture(x, name_{index_}) ?
                     index == index_variable ?
                         :($(Symbol(string(name) * "{" * string(idx) * "}"))) :
@@ -2363,12 +2370,12 @@ function write_out_for_loops(arg::Expr)::Expr
                                 x :
                             x.args[2].head ∉ [:(=), :block] ?
                                 x.args[1].head == :block ?
-                                        # begin println("here3"); 
-                                        replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                        Symbol(x.args[1].args[2].args[1]), 
-                                                        (x.args[1].args[2].args[2]),
-                                                        true,
-                                                        x.args[1].args[1].args[2].value) : # end : # for loop part of equation
+                                    # begin println("here3"); 
+                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[2].args[1]), 
+                                                    (x.args[1].args[2].args[2]),
+                                                    true,
+                                                    x.args[1].args[1].args[2].value) : # end : # for loop part of equation
                                 # begin println("here4"); println(x)
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[1]), 
@@ -2385,15 +2392,21 @@ function write_out_for_loops(arg::Expr)::Expr
                                                 # end 
                                                 # : # for loop part of equation
                             # begin println(x); 
-                                # begin println("here6"); 
+                            # begin println("here6"); println(x)
+                            x.args[1].head == :if ?
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                Symbol(x.args[1].args[1]), 
-                                                (x.args[1].args[2]),
-                                                false,
-                                                :+) : # end :
-                                                # println(out); 
-                                                # return out end 
-                                                # :
+                                                    Symbol(x.args[1].args[1]), 
+                                                    (x.args[1].args[2]),
+                                                    true,
+                                                    :+) : 
+                            replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                            Symbol(x.args[1].args[1]), 
+                                            (x.args[1].args[2]),
+                                            false,
+                                            :+) : # end :
+                                            # println(out); 
+                                            # return out end 
+                                            # :
                         x :
                     x
                 end,
