@@ -2257,7 +2257,7 @@ function remove_nothing(ex::Expr)
             # Unblock and collect all the operands
             # raw_args = map(arg -> unblock(arg), node.args[2:end])
             # Drop any nothing
-            kept = filter(arg -> unblock(arg) !== nothing, node.args[2:end])
+            kept = filter(arg -> !(unblock(arg) === nothing), node.args[2:end])
             if isempty(kept)
                 return nothing
             elseif length(kept) == 1
