@@ -2353,7 +2353,16 @@ function replace_indices(exxpr::Expr)::Union{Expr,Symbol}
     end, exxpr)
 end
 
-
+function contains_equation(expr)
+    found = false
+    postwalk(expr) do x
+        if x isa Expr && x.head == :(=)
+            found = true
+        end
+        return x
+    end
+    return found
+end
 
 function write_out_for_loops(arg::Expr)::Expr
     postwalk(x -> begin
@@ -2376,6 +2385,20 @@ function write_out_for_loops(arg::Expr)::Expr
                                                     (x.args[1].args[2].args[2]),
                                                     true,
                                                     x.args[1].args[1].args[2].value) : # end : # for loop part of equation
+                                x.args[2].head == :if ?
+                                    contains_equation(x.args[2]) ?
+                                        # begin println("here5"); println(x)
+                                        replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                            Symbol(x.args[1].args[1]), 
+                                                            (x.args[1].args[2]),
+                                                            false,
+                                                            :+) : # end : # for loop part of equation
+                                    # begin println("here6"); println(x)
+                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                        Symbol(x.args[1].args[1]), 
+                                                        (x.args[1].args[2]),
+                                                        true,
+                                                        :+) : # end : # for loop part of equation
                                 # begin println("here4"); println(x)
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[1]), 
@@ -2392,13 +2415,7 @@ function write_out_for_loops(arg::Expr)::Expr
                                                 # end 
                                                 # : # for loop part of equation
                             # begin println(x); 
-                            # begin println("here6"); println(x)
-                            x.args[1].head == :if ?
-                                replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                    Symbol(x.args[1].args[1]), 
-                                                    (x.args[1].args[2]),
-                                                    true,
-                                                    :+) : 
+                            # begin println("here7"); println(x)
                             replace_indices_inside_for_loop(unblock(x.args[2]), 
                                             Symbol(x.args[1].args[1]), 
                                             (x.args[1].args[2]),
