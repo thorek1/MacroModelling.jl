@@ -442,6 +442,19 @@ if test_set == "basic"
     GC.gc()
     # test_higher_order = false
 
+    @testset verbose = true "for and if loops" begin
+        include("models/Backus_Kehoe_Kydland_1992_for_if_test.jl")
+        include("models/Backus_Kehoe_Kydland_1992.jl")
+
+        std1 = get_std(Backus_Kehoe_Kydland_1992)
+        std2 = get_std(Backus_Kehoe_Kydland_1992_test)
+
+        common_keys1 = intersect(std1.keys[1], std2.keys[1])
+        common_keys2 = intersect(std1.keys[2], std2.keys[2])
+
+        @test isapprox(std2(common_keys1, common_keys2), std1(common_keys1, common_keys2), rtol = 1e-10)
+    end
+
     @testset verbose = true "Standalone functions" begin
         include("test_standalone_function.jl")
     end
