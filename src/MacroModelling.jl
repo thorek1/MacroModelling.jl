@@ -2249,6 +2249,8 @@ end
 #     end
 # end
 
+end # dispatch_doctor
+
 function remove_nothing(ex::Expr)
     postwalk(ex) do node
         # Only consider call-expressions
@@ -2259,7 +2261,7 @@ function remove_nothing(ex::Expr)
             # Drop any nothing
             kept = filter(arg -> !(unblock(arg) === nothing), node.args[2:end])
             if isempty(kept)
-                return :(nothing)
+                return nothing
             elseif length(kept) == 1
                 return kept[1]
             else
@@ -2273,6 +2275,8 @@ function remove_nothing(ex::Expr)
     end
 end
 
+@stable default_mode = "disable" begin
+    
 function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
     @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
     calls = []
