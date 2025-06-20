@@ -2171,6 +2171,8 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
+end # dispatch_doctor
+
 function evaluate_conditions(cond)
     if cond isa Bool
         return cond
@@ -2248,8 +2250,6 @@ end
 #         return node
 #     end
 # end
-
-end # dispatch_doctor
 
 function contains_equation(expr)
     found = false
