@@ -2251,6 +2251,17 @@ end
 
 end # dispatch_doctor
 
+function contains_equation(expr)
+    found = false
+    postwalk(expr) do x
+        if x isa Expr && x.head == :(=)
+            found = true
+        end
+        return x
+    end
+    return found
+end
+
 function remove_nothing(ex::Expr)
     postwalk(ex) do node
         # Only consider call-expressions
@@ -2355,17 +2366,6 @@ function replace_indices(exxpr::Expr)::Union{Expr,Symbol}
             x :
         x
     end, exxpr)
-end
-
-function contains_equation(expr)
-    found = false
-    postwalk(expr) do x
-        if x isa Expr && x.head == :(=)
-            found = true
-        end
-        return x
-    end
-    return found
 end
 
 function write_out_for_loops(arg::Expr)::Expr
