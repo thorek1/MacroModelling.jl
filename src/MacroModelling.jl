@@ -2259,7 +2259,7 @@ function remove_nothing(ex::Expr)
             # Drop any nothing
             kept = filter(arg -> !(unblock(arg) === nothing), node.args[2:end])
             if isempty(kept)
-                return nothing
+                return :(nothing)
             elseif length(kept) == 1
                 return kept[1]
             else
