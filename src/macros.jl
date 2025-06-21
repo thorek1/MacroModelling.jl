@@ -114,8 +114,12 @@ macro model(𝓂,ex...)
     dyn_eq_aux_ind = Int[]
 
     model_ex = parse_for_loops(ex[end])
+    
+    model_ex = resolve_if_expr(model_ex::Expr)::Expr
 
-    model_ex = parse_occasionally_binding_constraints(model_ex, max_obc_horizon = max_obc_horizon)
+    model_ex = remove_nothing(model_ex::Expr)::Expr
+
+    model_ex = parse_occasionally_binding_constraints(model_ex::Expr, max_obc_horizon = max_obc_horizon)::Expr
     
     # obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
 

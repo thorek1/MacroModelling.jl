@@ -48,7 +48,7 @@ import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
 import DataStructures: CircularBuffer
-import MacroTools: unblock, postwalk, @capture, flatten
+import MacroTools: unblock, postwalk, prewalk, @capture, flatten
 
 # import SpeedMapping: speedmapping
 import Suppressor: @suppress
@@ -2171,7 +2171,123 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
+end # dispatch_doctor
 
+function evaluate_conditions(cond)
+    if cond isa Bool
+        return cond
+    elseif cond isa Expr && cond.head == :call 
+        a, b = cond.args[2], cond.args[3]
+
+        if typeof(a) ∉ [Symbol, Number]
+            a = eval(a)
+        end
+
+        if typeof(b) ∉ [Symbol, Number]
+            b = eval(b)
+        end
+        
+        if cond.args[1] == :(==)
+            return a == b
+        elseif cond.args[1] == :(!=)
+            return a != b
+        elseif cond.args[1] == :(<)
+            return a < b
+        elseif cond.args[1] == :(<=)
+            return a <= b
+        elseif cond.args[1] == :(>)
+            return a > b
+        elseif cond.args[1] == :(>=)
+            return a >= b
+        end
+        # end
+    end
+    return nothing
+end
+
+function resolve_if_expr(ex::Expr)
+    prewalk(ex) do node
+        if node isa Expr && (node.head === :if || node.head === :elseif)
+            cond = node.args[1]
+            then_blk = node.args[2]
+            if length(node.args) == 3
+                else_blk = node.args[3]
+            end
+            val = evaluate_conditions(unblock(cond))
+
+            if val === true
+                # recurse into the selected branch
+                return resolve_if_expr(unblock(then_blk))
+            elseif val === false && length(node.args) == 3
+                return resolve_if_expr(unblock(else_blk))
+            elseif val === false && length(node.args) == 2
+                return nothing
+            elseif val === false && node.head === :elseif
+                return resolve_if_expr(unblock(else_blk))
+            end
+        end
+        return node
+    end
+end
+
+# function remove_nothing(ex::Expr)
+#     postwalk(ex) do node
+#         # Only consider call-nodes with exactly two arguments
+#         if node isa Expr && node.head === :call && length(node.args) == 3
+#             fn, lhs, rhs = node.args
+#             lhs2 = unblock(lhs)
+#             rhs2 = unblock(rhs)
+
+#             if rhs2 === :(nothing)
+#                 # strip the call and recurse to clean deeper
+#                 return remove_nothing(lhs2)
+#             elseif lhs2 === :(nothing)
+#                 return remove_nothing(rhs2)
+#             # else
+#             #     return remove_nothing(node.args)
+#             end
+#         end
+#         return node
+#     end
+# end
+
+function contains_equation(expr)
+    found = false
+    postwalk(expr) do x
+        if x isa Expr && x.head == :(=)
+            found = true
+        end
+        return x
+    end
+    return found
+end
+
+function remove_nothing(ex::Expr)
+    postwalk(ex) do node
+        # Only consider call-expressions
+        if node isa Expr && node.head === :call && any(node.args .=== nothing)
+            fn = node.args[1]
+            # Unblock and collect all the operands
+            # raw_args = map(arg -> unblock(arg), node.args[2:end])
+            # Drop any nothing
+            kept = filter(arg -> !(unblock(arg) === nothing), node.args[2:end])
+            if isempty(kept)
+                return nothing
+            elseif length(kept) == 1
+                return kept[1]
+            else
+            # elseif length(kept) < length(raw_args)
+                return Expr(:call, fn, kept...)
+            # else
+            #     return node
+            end
+        end
+        return node
+    end
+end
+
+@stable default_mode = "disable" begin
+    
 function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
     @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
     calls = []
@@ -2199,6 +2315,13 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                         #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
                         x :
                     x :
+                x.head == :if ?
+                    length(x.args) > 2 ?
+                        Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
+                                    replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock,
+                                    replace_indices_inside_for_loop(x.args[3],index_variable,:([$idx]),false,:+) |> unblock) :
+                    Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
+                                replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock) :
                 @capture(x, name_{index_}) ?
                     index == index_variable ?
                         :($(Symbol(string(name) * "{" * string(idx) * "}"))) :
@@ -2245,8 +2368,6 @@ function replace_indices(exxpr::Expr)::Union{Expr,Symbol}
     end, exxpr)
 end
 
-
-
 function write_out_for_loops(arg::Expr)::Expr
     postwalk(x -> begin
                     x = flatten(unblock(x))
@@ -2262,12 +2383,26 @@ function write_out_for_loops(arg::Expr)::Expr
                                 x :
                             x.args[2].head ∉ [:(=), :block] ?
                                 x.args[1].head == :block ?
-                                        # begin println("here3"); 
+                                    # begin println("here3"); 
+                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[2].args[1]), 
+                                                    (x.args[1].args[2].args[2]),
+                                                    true,
+                                                    x.args[1].args[1].args[2].value) : # end : # for loop part of equation
+                                x.args[2].head == :if ?
+                                    contains_equation(x.args[2]) ?
+                                        # begin println("here5"); println(x)
                                         replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                        Symbol(x.args[1].args[2].args[1]), 
-                                                        (x.args[1].args[2].args[2]),
+                                                            Symbol(x.args[1].args[1]), 
+                                                            (x.args[1].args[2]),
+                                                            false,
+                                                            :+) : # end : # for loop part of equation
+                                    # begin println("here6"); println(x)
+                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                        Symbol(x.args[1].args[1]), 
+                                                        (x.args[1].args[2]),
                                                         true,
-                                                        x.args[1].args[1].args[2].value) : # end : # for loop part of equation
+                                                        :+) : # end : # for loop part of equation
                                 # begin println("here4"); println(x)
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[1]), 
@@ -2284,15 +2419,15 @@ function write_out_for_loops(arg::Expr)::Expr
                                                 # end 
                                                 # : # for loop part of equation
                             # begin println(x); 
-                                # begin println("here6"); 
-                                replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                Symbol(x.args[1].args[1]), 
-                                                (x.args[1].args[2]),
-                                                false,
-                                                :+) : # end :
-                                                # println(out); 
-                                                # return out end 
-                                                # :
+                            # begin println("here7"); println(x)
+                            replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                            Symbol(x.args[1].args[1]), 
+                                            (x.args[1].args[2]),
+                                            false,
+                                            :+) : # end :
+                                            # println(out); 
+                                            # return out end 
+                                            # :
                         x :
                     x
                 end,
