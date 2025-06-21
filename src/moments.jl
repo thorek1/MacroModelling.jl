@@ -11,10 +11,11 @@ function calculate_covariance(parameters::Vector{R},
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                            T = 𝓂.timings, 
-                                                            initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                            opts = opts)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                            T = 𝓂.timings,
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                            opts = opts,
+                                                            decomposition = 𝓂.solution.perturbation.first_order_block_decomposition)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -56,10 +57,11 @@ function calculate_mean(parameters::Vector{T},
     else
         ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
         
-        𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                            T = 𝓂.timings, 
-                                                            initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                            opts = opts)
+        𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                            T = 𝓂.timings,
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                            opts = opts,
+                                                            decomposition = 𝓂.solution.perturbation.first_order_block_decomposition)
         
         if !solved 
             mean_of_variables = SS_and_pars[1:𝓂.timings.nVars]
