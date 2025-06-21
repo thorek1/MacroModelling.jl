@@ -11,6 +11,21 @@ mutable struct sylvester_caches{G <: AbstractFloat}
     krylov_caches::krylov_caches{G}
 end
 
+mutable struct qme_caches
+    EI_cache::𝒮.LinearCache
+    FI_cache::𝒮.LinearCache
+end
+
+function QME_caches(;T::Type = Float64)
+    A = Matrix{T}(I, 1, 1)
+    b = zeros(T, 1)
+    alg = 𝒮.LUFactorization()
+    prob = 𝒮.LinearProblem(A, b, alg)
+    EI = 𝒮.init(prob, alg)
+    FI = 𝒮.init(prob, alg)
+    return qme_caches(EI, FI)
+end
+
 mutable struct higher_order_caches{F <: Real, G <: AbstractFloat}
     tmpkron0::SparseMatrixCSC{F, Int}
     tmpkron1::SparseMatrixCSC{F, Int}
@@ -31,6 +46,7 @@ end
 mutable struct caches#{F <: Real, G <: AbstractFloat}
     second_order_caches::higher_order_caches#{F, G}
     third_order_caches::higher_order_caches#{F, G}
+    qme_caches::qme_caches
 end
 
 
@@ -66,7 +82,8 @@ end
 
 function Caches(;T::Type = Float64, S::Type = Float64)
     caches( Higher_order_caches(T = T, S = S),
-            Higher_order_caches(T = T, S = S))
+            Higher_order_caches(T = T, S = S),
+            QME_caches(T = S))
 end
 
 

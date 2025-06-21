@@ -1025,10 +1025,11 @@ function get_irf(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)# |> Matrix
 								
-    sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                            T = 𝓂.timings, 
+    sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                            T = 𝓂.timings,
                                                             opts = opts,
-                                                            initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                            𝒬ℂ = 𝓂.caches.qme_caches)
     
     if solved 
         𝓂.solution.perturbation.qme_solution = qme_sol
@@ -1987,9 +1988,10 @@ function get_solution(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, 
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings,
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        𝒬ℂ = 𝓂.caches.qme_caches)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -2172,10 +2174,11 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                        T = 𝓂.timings, 
+    𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                        T = 𝓂.timings,
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        𝒬ℂ = 𝓂.caches.qme_caches)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -2331,10 +2334,11 @@ function get_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                            T = 𝓂.timings, 
-            opts = opts, 
-                                                            initial_guess = 𝓂.solution.perturbation.qme_solution)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                            T = 𝓂.timings,
+            opts = opts,
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                            𝒬ℂ = 𝓂.caches.qme_caches)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
