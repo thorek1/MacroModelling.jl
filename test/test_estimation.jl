@@ -1,7 +1,7 @@
 using MacroModelling
 import Turing, Pigeons, Zygote
 import Turing: NUTS, sample, logpdf
-import ADTypes: AutoZygote
+import ADTypes
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
@@ -52,7 +52,8 @@ samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, i
 
 println("Mean variable values (ForwardDiff): $(mean(samps).nt.mean)")
 
-samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood, NUTS(adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
@@ -62,27 +63,20 @@ sample_nuts = mean(samps).nt.mean
 # generate a Pigeons log potential
 FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000))
 
-# find a feasible starting point
-pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
+init_params = FS2000.parameter_values
 
-replica = pt.replicas[end]
-XMAX = deepcopy(replica.state)
-LPmax = FS2000_lp(XMAX)
+const FS2000_LP = typeof(FS2000_lp)
 
-i = 0
+function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
+    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
+    # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
+    
+    result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
 
-while !isfinite(LPmax) && i < 1000
-    Pigeons.sample_iid!(FS2000_lp, replica, pt.shared)
-    new_LP = FS2000_lp(replica.state)
-    if new_LP > LPmax
-        LPmax = new_LP
-        XMAX  = deepcopy(replica.state)
-    end
-    i += 1
+    return result
 end
 
-# define a specific initialization for this model
-Pigeons.initialization(::Pigeons.TuringLogPotential{typeof(FS2000_loglikelihood_function)}, ::AbstractRNG, ::Int64) = deepcopy(XMAX)
+pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
 
 pt = @time Pigeons.pigeons(target = FS2000_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
@@ -101,7 +95,8 @@ modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
                                         # Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                                         # Optim.NelderMead(), 
-                                        adtype = AutoZygote(), 
+                                        adtype = ADTypes.
+(), 
                                         # maxiters = 100,
                                         # lb = [0,0,-10,-10,0,0,0,0,0], 
                                         # ub = [1,1,10,10,1,1,1,100,100], 

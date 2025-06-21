@@ -157,7 +157,7 @@ function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMat
                                     # timer::TimerOutput = TimerOutput(),
                                     tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
     𝐂 = try 
-        MatrixEquations.lyapd(A, C)
+        MatrixEquations.lyapd(A, C)::Matrix{T}
     catch
         return C, 0, 1.0
     end

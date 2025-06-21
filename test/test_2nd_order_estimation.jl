@@ -1,5 +1,6 @@
 using MacroModelling
 import Turing
+import ADTypes
 import Pigeons
 import Zygote
 import Turing: NUTS, sample, logpdf
@@ -47,7 +48,8 @@ Random.seed!(30)
 
 n_samples = 500
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order), NUTS(adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
@@ -56,7 +58,7 @@ sample_nuts = mean(samps).nt.mean
 # generate a Pigeons log potential
 FS2000_2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order))
 
-init_params = FS2000.parameter_values
+init_params = sample_nuts
 
 LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :second_order), (all_params = init_params,))
 
@@ -67,7 +69,7 @@ if isfinite(LLH)
         result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
         # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
         
-        result = DynamicPPL.initialize_parameters!!(result, init_params, DynamicPPL.SampleFromPrior(), target.model)
+        result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
 
         return result
     end

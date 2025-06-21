@@ -5,7 +5,7 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 # import StatsFuns: normcdf
 import ThreadedSparseArrays
 using PrecompileTools
-import SpecialFunctions: erfcinv, erfc
+import SpecialFunctions: erfcinv, erfc # can't use constants because of SymPy (e.g. sqrt2)
 import SpecialFunctions
 import SymPyPythonCall as SPyPyC
 import PythonCall
@@ -34,8 +34,9 @@ import Polyester
 import NLopt
 import Optim, LineSearches
 # import Zygote
-import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
+import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse, nonzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
+import LinearSolve as 𝒮
 # import LinearAlgebra: mul!
 # import Octavian: matmul!
 # import TriangularSolve as TS
@@ -47,6 +48,8 @@ import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
 import DataStructures: CircularBuffer
+import MacroTools: unblock, postwalk, prewalk, @capture, flatten
+
 # import SpeedMapping: speedmapping
 import Suppressor: @suppress
 import REPL
@@ -165,39 +168,76 @@ export irf, girf
 @stable default_mode = "disable" begin
 
 # StatsFuns
-function norminvcdf(p::T)::T where T  
-    -erfcinv(2*p) * 1.4142135623730951 
+function norminvcdf(p::T)::T where T
+    -erfcinv(2*p) * 1.4142135623730951
+end
+norminv(p) = norminvcdf(p)
+qnorm(p)= norminvcdf(p)
+
+function normlogpdf(z::T)::T where T
+    -(abs2(z) + 1.8378770664093453) / 2
+end
+function normpdf(z::T)::T where T
+    exp(-abs2(z)/2) * 0.3989422804014327
 end
 
-function norminv(p::T)::T where T <: Number  
-    norminvcdf(p) 
+function normcdf(z::T)::T where T
+    erfc(-z * 0.7071067811865475) / 2
+end
+pnorm(p) = normcdf(p)
+dnorm(p) = normpdf(p)
+
+Symbolics.@register_symbolic norminvcdf(p)
+Symbolics.@register_symbolic norminv(p)
+Symbolics.@register_symbolic qnorm(p)
+Symbolics.@register_symbolic normlogpdf(z)
+Symbolics.@register_symbolic normpdf(z)
+Symbolics.@register_symbolic normcdf(z)
+Symbolics.@register_symbolic pnorm(p)
+Symbolics.@register_symbolic dnorm(p)
+
+end # dispatch_doctor
+
+# ── norminvcdf, norminv & qnorm ──
+# d/dp (norminvcdf(p)) = 1 / normpdf(norminvcdf(p))
+function Symbolics.derivative(::typeof(norminvcdf), args::NTuple{1,Any}, ::Val{1})
+    p = args[1]
+    1 / normpdf(norminvcdf(p))
+end
+# norminv and qnorm are aliases of norminvcdf, so they share the same rule:
+Symbolics.derivative(::typeof(norminv), args::NTuple{1,Any}, ::Val{1}) = 
+    Symbolics.derivative(norminvcdf, args, Val{1}())
+Symbolics.derivative(::typeof(qnorm),  args::NTuple{1,Any}, ::Val{1}) =
+    Symbolics.derivative(norminvcdf, args, Val{1}())
+
+# ── normlogpdf ──
+# d/dz (normlogpdf(z)) = −z
+function Symbolics.derivative(::typeof(normlogpdf), args::NTuple{1,Any}, ::Val{1})
+    z = args[1]
+    -z
 end
 
-function qnorm(p::T)::T where T <: Number  
-    norminvcdf(p) 
+# ── normpdf & dnorm ──
+# normpdf(z) = (1/√(2π)) e^(−z²/2) ⇒ derivative = −z * normpdf(z)
+function Symbolics.derivative(::typeof(normpdf), args::NTuple{1,Any}, ::Val{1})
+    z = args[1]
+    -z * normpdf(z)
 end
+# alias:
+Symbolics.derivative(::typeof(dnorm), args::NTuple{1,Any}, ::Val{1}) = 
+    Symbolics.derivative(normpdf, args, Val{1}())
 
-function normlogpdf(z::T)::T where T  
-    -(abs2(z) + 1.8378770664093453)/2 
+# ── normcdf & pnorm ──
+# d/dz (normcdf(z)) = normpdf(z)
+function Symbolics.derivative(::typeof(normcdf), args::NTuple{1,Any}, ::Val{1})
+    z = args[1]
+    normpdf(z)
 end
+# alias:
+Symbolics.derivative(::typeof(pnorm), args::NTuple{1,Any}, ::Val{1}) = 
+    Symbolics.derivative(normcdf, args, Val{1}())
 
-function normpdf(z::T)::T where T  
-    exp(-abs2(z)/2) * 0.3989422804014327 
-end
-
-function normcdf(z::T)::T where T  
-    erfc(-z * 0.7071067811865475)/2 
-end
-
-function pnorm(p::T)::T where T <: Number  
-    normcdf(p) 
-end
-
-function dnorm(p::T)::T where T <: Number  
-    normpdf(p) 
-end
-
-
+@stable default_mode = "disable" begin
 
 
 Base.show(io::IO, 𝓂::ℳ) = println(io, 
@@ -804,7 +844,7 @@ function fill_kron_adjoint_∂B!(∂X::AbstractSparseMatrix{R}, ∂B::Vector{S},
     
     n1 = length(∂B)
     n2 = size(A,1)
-    println("hello")
+    # println("hello")
     # Precompute constants
     const_n1n2 = n1 * n2
     
@@ -2131,7 +2171,123 @@ function convert_to_ss_equation(eq::Expr)::Expr
     eq)
 end
 
+end # dispatch_doctor
 
+function evaluate_conditions(cond)
+    if cond isa Bool
+        return cond
+    elseif cond isa Expr && cond.head == :call 
+        a, b = cond.args[2], cond.args[3]
+
+        if typeof(a) ∉ [Symbol, Number]
+            a = eval(a)
+        end
+
+        if typeof(b) ∉ [Symbol, Number]
+            b = eval(b)
+        end
+        
+        if cond.args[1] == :(==)
+            return a == b
+        elseif cond.args[1] == :(!=)
+            return a != b
+        elseif cond.args[1] == :(<)
+            return a < b
+        elseif cond.args[1] == :(<=)
+            return a <= b
+        elseif cond.args[1] == :(>)
+            return a > b
+        elseif cond.args[1] == :(>=)
+            return a >= b
+        end
+        # end
+    end
+    return nothing
+end
+
+function resolve_if_expr(ex::Expr)
+    prewalk(ex) do node
+        if node isa Expr && (node.head === :if || node.head === :elseif)
+            cond = node.args[1]
+            then_blk = node.args[2]
+            if length(node.args) == 3
+                else_blk = node.args[3]
+            end
+            val = evaluate_conditions(unblock(cond))
+
+            if val === true
+                # recurse into the selected branch
+                return resolve_if_expr(unblock(then_blk))
+            elseif val === false && length(node.args) == 3
+                return resolve_if_expr(unblock(else_blk))
+            elseif val === false && length(node.args) == 2
+                return nothing
+            elseif val === false && node.head === :elseif
+                return resolve_if_expr(unblock(else_blk))
+            end
+        end
+        return node
+    end
+end
+
+# function remove_nothing(ex::Expr)
+#     postwalk(ex) do node
+#         # Only consider call-nodes with exactly two arguments
+#         if node isa Expr && node.head === :call && length(node.args) == 3
+#             fn, lhs, rhs = node.args
+#             lhs2 = unblock(lhs)
+#             rhs2 = unblock(rhs)
+
+#             if rhs2 === :(nothing)
+#                 # strip the call and recurse to clean deeper
+#                 return remove_nothing(lhs2)
+#             elseif lhs2 === :(nothing)
+#                 return remove_nothing(rhs2)
+#             # else
+#             #     return remove_nothing(node.args)
+#             end
+#         end
+#         return node
+#     end
+# end
+
+function contains_equation(expr)
+    found = false
+    postwalk(expr) do x
+        if x isa Expr && x.head == :(=)
+            found = true
+        end
+        return x
+    end
+    return found
+end
+
+function remove_nothing(ex::Expr)
+    postwalk(ex) do node
+        # Only consider call-expressions
+        if node isa Expr && node.head === :call && any(node.args .=== nothing)
+            fn = node.args[1]
+            # Unblock and collect all the operands
+            # raw_args = map(arg -> unblock(arg), node.args[2:end])
+            # Drop any nothing
+            kept = filter(arg -> !(unblock(arg) === nothing), node.args[2:end])
+            if isempty(kept)
+                return nothing
+            elseif length(kept) == 1
+                return kept[1]
+            else
+            # elseif length(kept) < length(raw_args)
+                return Expr(:call, fn, kept...)
+            # else
+            #     return node
+            end
+        end
+        return node
+    end
+end
+
+@stable default_mode = "disable" begin
+    
 function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenate, operator)
     @assert operator ∈ [:+,:*] "Only :+ and :* allowed as operators in for loops."
     calls = []
@@ -2159,6 +2315,13 @@ function replace_indices_inside_for_loop(exxpr,index_variable,indices,concatenat
                         #     Expr(:ref, Symbol(replace(string(name), "{" * string(index_variable) * "}" => "◖" * string(idx) * "◗")), time) :
                         x :
                     x :
+                x.head == :if ?
+                    length(x.args) > 2 ?
+                        Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
+                                    replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock,
+                                    replace_indices_inside_for_loop(x.args[3],index_variable,:([$idx]),false,:+) |> unblock) :
+                    Expr(:if,   postwalk(x -> x == index_variable ? idx : x, x.args[1]),
+                                replace_indices_inside_for_loop(x.args[2],index_variable,:([$idx]),false,:+) |> unblock) :
                 @capture(x, name_{index_}) ?
                     index == index_variable ?
                         :($(Symbol(string(name) * "{" * string(idx) * "}"))) :
@@ -2205,8 +2368,6 @@ function replace_indices(exxpr::Expr)::Union{Expr,Symbol}
     end, exxpr)
 end
 
-
-
 function write_out_for_loops(arg::Expr)::Expr
     postwalk(x -> begin
                     x = flatten(unblock(x))
@@ -2222,12 +2383,26 @@ function write_out_for_loops(arg::Expr)::Expr
                                 x :
                             x.args[2].head ∉ [:(=), :block] ?
                                 x.args[1].head == :block ?
-                                        # begin println("here3"); 
+                                    # begin println("here3"); 
+                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                    Symbol(x.args[1].args[2].args[1]), 
+                                                    (x.args[1].args[2].args[2]),
+                                                    true,
+                                                    x.args[1].args[1].args[2].value) : # end : # for loop part of equation
+                                x.args[2].head == :if ?
+                                    contains_equation(x.args[2]) ?
+                                        # begin println("here5"); println(x)
                                         replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                        Symbol(x.args[1].args[2].args[1]), 
-                                                        (x.args[1].args[2].args[2]),
+                                                            Symbol(x.args[1].args[1]), 
+                                                            (x.args[1].args[2]),
+                                                            false,
+                                                            :+) : # end : # for loop part of equation
+                                    # begin println("here6"); println(x)
+                                    replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                                        Symbol(x.args[1].args[1]), 
+                                                        (x.args[1].args[2]),
                                                         true,
-                                                        x.args[1].args[1].args[2].value) : # end : # for loop part of equation
+                                                        :+) : # end : # for loop part of equation
                                 # begin println("here4"); println(x)
                                 replace_indices_inside_for_loop(unblock(x.args[2]), 
                                                     Symbol(x.args[1].args[1]), 
@@ -2244,15 +2419,15 @@ function write_out_for_loops(arg::Expr)::Expr
                                                 # end 
                                                 # : # for loop part of equation
                             # begin println(x); 
-                                # begin println("here6"); 
-                                replace_indices_inside_for_loop(unblock(x.args[2]), 
-                                                Symbol(x.args[1].args[1]), 
-                                                (x.args[1].args[2]),
-                                                false,
-                                                :+) : # end :
-                                                # println(out); 
-                                                # return out end 
-                                                # :
+                            # begin println("here7"); println(x)
+                            replace_indices_inside_for_loop(unblock(x.args[2]), 
+                                            Symbol(x.args[1].args[1]), 
+                                            (x.args[1].args[2]),
+                                            false,
+                                            :+) : # end :
+                                            # println(out); 
+                                            # return out end 
+                                            # :
                         x :
                     x
                 end,
@@ -2610,13 +2785,25 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
 
 end
 
-function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+function write_block_solution!(𝓂, 
+                                SS_solve_func, 
+                                vars_to_solve, 
+                                eqs_to_solve, 
+                                relevant_pars_across,
+                                NSSS_solver_cache_init_tmp, 
+                                eq_idx_in_block_to_solve, 
+                                atoms_in_equations_list;
+                                cse = true,
+                                skipzeros = true, 
+                                density_threshold::Float64 = .1,
+                                min_length::Int = 10000)
+
     # ➕_vars = Symbol[]
     unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
 
     vars_to_exclude = [vcat(Symbol.(vars_to_solve), 𝓂.➕_vars),Symbol[]]
 
-    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
+    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
 
 
     push!(𝓂.solved_vars, Symbol.(vars_to_solve))
@@ -2643,29 +2830,32 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
 
     push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
 
-    calib_pars = Expr[]
+    # guess = Expr[]
+    # untransformed_guess = Expr[]
+    result = Expr[]
+    # calib_pars = Expr[]
+
     calib_pars_input = Symbol[]
+
     relevant_pars = union(intersect(reduce(union, vcat(𝓂.par_list_aux_SS, 𝓂.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.➕_vars))
     
     union!(relevant_pars_across, relevant_pars)
 
-    iii = 1
-    for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters)
-        if :($parss) ∈ relevant_pars
-            push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
-            push!(calib_pars_input, :($parss))
-            iii += 1
-        end
-    end
-
-    guess = Expr[]
-    result = Expr[]
-
     sorted_vars = sort(Symbol.(vars_to_solve))
 
     for (i, parss) in enumerate(sorted_vars) 
-        push!(guess,:($parss = guess[$i]))
+        # push!(guess,:($parss = guess[$i]))
+        # push!(untransformed_guess,:($parss = undo_transform(guess[$i],transformation_level)))
         push!(result,:($parss = sol[$i]))
+    end
+
+    iii = 1
+    for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters)
+        if :($parss) ∈ relevant_pars
+            # push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
+            push!(calib_pars_input, :($parss))
+            iii += 1
+        end
     end
 
     # separate out auxilliary variables (nonnegativity)
@@ -2674,7 +2864,8 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
     # nnaux_error = []
     # push!(nnaux_error, :(aux_error = 0))
     solved_vals = Expr[]
-    partially_solved_block = Expr[]
+    # solved_vals_in_place = Expr[]
+    # partially_solved_block = Expr[]
 
     other_vrs_eliminated_by_sympy = Set{Symbol}()
 
@@ -2689,10 +2880,12 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
     end
 
 
-
+    
     for (i,val) in enumerate(rewritten_eqs)
         push!(solved_vals, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+        # push!(solved_vals_in_place, :(ℰ[$i] = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
     end
+
 
     # if length(nnaux) > 1
     #     all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
@@ -2713,7 +2906,7 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
     #     nnaux_linear = nnaux_linear[QQ]
     # end
 
-    other_vars = Expr[]
+    # other_vars = Expr[]
     other_vars_input = Symbol[]
     other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
                                         sort(𝓂.solved_vars[end]) ),
@@ -2721,23 +2914,191 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
                                 # union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
 
     for var in other_vrs
-        push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
+        # push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
         push!(other_vars_input,:($(var)))
         iii += 1
     end
 
-    # solved_vals[end] = Expr(:call, :+, solved_vals[end], ss_and_aux_equations_error_dep...)
+    parameters_and_solved_vars = vcat(calib_pars_input, other_vrs)
 
-    funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
-            $(guess...) 
-            $(calib_pars...) # add those variables which were previously solved and are used in the equations
-            $(other_vars...) # take only those that appear in equations - DONE
+    ng = length(sorted_vars)
+    np = length(parameters_and_solved_vars)
+    nd = length(ss_and_aux_equations_dep)
+    nx = iii - 1
 
-            $(ss_and_aux_equations_dep...)
-            # return [$(solved_vals...),$(nnaux_linear...)]
-            return [$(solved_vals...)]
-        end)
+    Symbolics.@variables 𝔊[1:ng] 𝔓[1:np]
 
+
+    parameter_dict = Dict{Symbol, Symbol}()
+    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+    aux_vars = Symbol[]
+    aux_expr = []
+
+
+    for (i,v) in enumerate(sorted_vars)
+        push!(parameter_dict, v => :($(Symbol("𝔊_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔊_$i"))), @__MODULE__) => 𝔊[i])
+    end
+
+    for (i,v) in enumerate(parameters_and_solved_vars)
+        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+    end
+
+    for (i,v) in enumerate(ss_and_aux_equations_dep)
+        push!(aux_vars, v.args[1])
+        push!(aux_expr, v.args[2])
+    end
+    
+    aux_replacements = Dict{Symbol,Any}()
+    for (i,x) in enumerate(aux_vars)
+        replacement = Dict(x => aux_expr[i])
+        for ii in i+1:length(aux_vars)
+            aux_expr[ii] = replace_symbols(aux_expr[ii], replacement)
+        end
+        push!(aux_replacements, x => aux_expr[i])
+    end
+    # aux_replacements = Dict{Symbol,Any}(aux_vars .=> aux_expr)
+
+    replaced_solved_vals = solved_vals |> 
+        x -> replace_symbols.(x, Ref(aux_replacements)) |> 
+        x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+
+    lennz = length(replaced_solved_vals)
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓,
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                # nanmath = false,
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    # 𝐷 = zeros(Symbolics.Num, nd)
+
+    # ϵᵃ = zeros(nd)
+
+    # calc_block_aux!(𝐷, 𝔊, 𝔓)
+
+    ϵˢ = zeros(Symbolics.Num, ng)
+
+    ϵ = zeros(ng)
+
+    # calc_block!(ϵˢ, 𝔊, 𝔓, 𝐷)
+
+    ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals, 𝔊) # nϵ x nx
+
+    lennz = nnz(∂block_∂parameters_and_solved_vars)
+
+    if (lennz / length(∂block_∂parameters_and_solved_vars) > density_threshold) || (length(∂block_∂parameters_and_solved_vars) < min_length)
+        derivatives_mat = convert(Matrix, ∂block_∂parameters_and_solved_vars)
+        buffer = zeros(Float64, size(∂block_∂parameters_and_solved_vars))
+    else
+        derivatives_mat = ∂block_∂parameters_and_solved_vars
+        buffer = similar(∂block_∂parameters_and_solved_vars, Float64)
+        buffer.nzval .= 1
+    end
+
+    chol_buff = buffer * buffer'
+
+    chol_buff += ℒ.I
+
+    prob = 𝒮.LinearProblem(chol_buff, ϵ, 𝒮.CholeskyFactorization())
+
+    chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+
+    prob = 𝒮.LinearProblem(buffer, ϵ, 𝒮.LUFactorization())
+
+    lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+    
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔊, 𝔓,
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                # nanmath = false,
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+
+    Symbolics.@variables 𝔊[1:ng+nx]
+
+    ext_diff = Symbolics.Num[]
+    for i in 1:nx
+        push!(ext_diff, 𝔓[i] - 𝔊[ng + i])
+    end
+    replaced_solved_vals_ext = vcat(replaced_solved_vals, ext_diff)
+
+    _, calc_ext_block! = Symbolics.build_function(replaced_solved_vals_ext, 𝔊, 𝔓,
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                # nanmath = false,
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    ϵᵉ = zeros(ng + nx)
+    
+    # ϵˢᵉ = zeros(Symbolics.Num, ng + nx)
+
+    # calc_block_aux!(𝐷, 𝔊, 𝔓)
+
+    # Evaluate the function symbolically
+    # calc_ext_block!(ϵˢᵉ, 𝔊, 𝔓, 𝐷)
+
+    ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals_ext, 𝔊) # nϵ x nx
+
+    lennz = nnz(∂ext_block_∂parameters_and_solved_vars)
+
+    if (lennz / length(∂ext_block_∂parameters_and_solved_vars) > density_threshold) || (length(∂ext_block_∂parameters_and_solved_vars) < min_length)
+        derivatives_mat_ext = convert(Matrix, ∂ext_block_∂parameters_and_solved_vars)
+        ext_buffer = zeros(Float64, size(∂ext_block_∂parameters_and_solved_vars))
+    else
+        derivatives_mat_ext = ∂ext_block_∂parameters_and_solved_vars
+        ext_buffer = similar(∂ext_block_∂parameters_and_solved_vars, Float64)
+        ext_buffer.nzval .= 1
+    end
+
+    ext_chol_buff = ext_buffer * ext_buffer'
+
+    ext_chol_buff += ℒ.I
+
+    prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ, 𝒮.CholeskyFactorization())
+
+    ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+
+    prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ, 𝒮.LUFactorization())
+
+    ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+    
+    _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝔊, 𝔓,
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                # nanmath = false,
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    
     push!(NSSS_solver_cache_init_tmp, [haskey(𝓂.guess, v) ? 𝓂.guess[v] : Inf for v in sorted_vars])
     push!(NSSS_solver_cache_init_tmp, [Inf])
 
@@ -2764,13 +3125,15 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
     push!(SS_solve_func,:(lbs = [$(lbs...)]))
     push!(SS_solve_func,:(ubs = [$(ubs...)]))
             
-    n_block = length(𝓂.ss_solve_blocks) + 1   
+    # n_block = length(𝓂.ss_solve_blocks) + 1 
+    n_block = length(𝓂.ss_solve_blocks_in_place) + 1   
         
     push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
 
     push!(SS_solve_func,:(solution = block_solver(params_and_solved_vars,
                                                             $(n_block), 
-                                                            𝓂.ss_solve_blocks[$(n_block)], 
+                                                            𝓂.ss_solve_blocks_in_place[$(n_block)], 
+                                                            # 𝓂.ss_solve_blocks[$(n_block)], 
                                                             # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
                                                             # f, 
                                                             inits,
@@ -2797,8 +3160,13 @@ function write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve,
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
     push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
-    push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
-
+    
+    push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
+            function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer, chol_buffer, lu_buffer),
+            function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
+        )
+    )
+    
     return nothing
 end
 
@@ -2840,7 +3208,7 @@ end
 
 
 
-function make_equation_rebust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}, 
+function make_equation_robust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}, 
                                                 vars_to_exclude::Vector{Vector{Symbol}}, 
                                                 bounds::Dict{Symbol,Tuple{Float64,Float64}}, 
                                                 ➕_vars::Vector{Symbol}, 
@@ -3210,32 +3578,174 @@ end
 
 
 
+function replace_symbols(exprs::T, remap::Dict{Symbol,S}) where {T,S}
+    postwalk(node ->
+          if node isa Symbol && haskey(remap, node)
+              remap[node]
+          else
+              node
+          end, 
+          exprs)
+end
 
-function write_ss_check_function!(𝓂::ℳ)
-    # vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_equations)),union(𝓂.parameters_in_equations))))
-
+function write_ss_check_function!(𝓂::ℳ;
+                                    cse = true,
+                                    skipzeros = true, 
+                                    density_threshold::Float64 = .1,
+                                    min_length::Int = 10000)
     unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
-    pars = Expr[]
-    for (i, p) in enumerate(𝓂.parameters)
-        push!(pars, :($p = parameters[$i]))
+
+
+    np = length(𝓂.parameters)
+    nu = length(unknowns)
+    # nc = length(𝓂.calibration_equations_no_var)
+
+    Symbolics.@variables 𝔓[1:np] 𝔘[1:nu]# ℭ[1:nc]
+
+    parameter_dict = Dict{Symbol, Symbol}()
+    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+    calib_vars = Symbol[]
+    calib_expr = []
+
+
+    for (i,v) in enumerate(𝓂.parameters)
+        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
     end
 
-    unknwns = Expr[]
-    for (i, u) in enumerate(unknowns)
-        push!(unknwns, :($u = unknowns[$i]))
+    for (i,v) in enumerate(unknowns)
+        push!(parameter_dict, v => :($(Symbol("𝔘_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔘_$i"))), @__MODULE__) => 𝔘[i])
     end
 
-    solve_exp = :(function solve_SS(parameters::Vector{Real}, unknowns::Vector{Real})
-        $(pars...)
-        $(𝓂.calibration_equations_no_var...)
-        $(unknwns...)
-        return [$(ss_equations...)]
-    end)
+    for (i,v) in enumerate(𝓂.calibration_equations_no_var)
+        push!(calib_vars, v.args[1])
+        push!(calib_expr, v.args[2])
+        # push!(parameter_dict, v.args[1] => :($(Symbol("ℭ_$i"))))
+        # push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("ℭ_$i"))), @__MODULE__) => ℭ[i])
+    end
 
-    𝓂.SS_check_func = @RuntimeGeneratedFunction(solve_exp)
+    calib_replacements = Dict{Symbol,Any}()
+    for (i,x) in enumerate(calib_vars)
+        replacement = Dict(x => calib_expr[i])
+        for ii in i+1:length(calib_vars)
+            calib_expr[ii] = replace_symbols(calib_expr[ii], replacement)
+        end
+        push!(calib_replacements, x => calib_expr[i])
+    end
+
+
+    ss_equations_sub = ss_equations |> 
+        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+        x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+
+
+    lennz = length(ss_equations_sub)
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, func_exprs = Symbolics.build_function(ss_equations_sub, 𝔓, 𝔘,
+                                                cse = cse, 
+                                                skipzeros = skipzeros,
+                                                # nanmath = false, 
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+
+    𝓂.SS_check_func = func_exprs
+
+
+    # SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+
+    # eqs = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
+
+    # nx = length(𝓂.parameter_values)
+
+    # np = length(SS_and_pars)
+
+    nϵˢ = length(ss_equations)
+
+    # nc = length(𝓂.calibration_equations_no_var)
+
+    # Symbolics.@variables 𝔛¹[1:nx] 𝔓¹[1:np]
+
+    # ϵˢ = zeros(Symbolics.Num, nϵˢ)
+
+    # calib_vals = zeros(Symbolics.Num, nc)
+
+    # 𝓂.SS_calib_func(calib_vals, 𝔓)
+
+    # 𝓂.SS_check_func(ϵˢ, 𝔓, 𝔘, calib_vals)
+
+    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ss_equations_sub, 𝔓) # nϵ x nx
+
+    lennz = nnz(∂SS_equations_∂parameters)
+
+    if (lennz / length(∂SS_equations_∂parameters) > density_threshold) || (length(∂SS_equations_∂parameters) < min_length)
+        derivatives_mat = convert(Matrix, ∂SS_equations_∂parameters)
+        buffer = zeros(Float64, size(∂SS_equations_∂parameters))
+    else
+        derivatives_mat = ∂SS_equations_∂parameters
+        buffer = similar(∂SS_equations_∂parameters, Float64)
+        buffer.nzval .= 0
+    end
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+    
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔘, 
+                                                cse = cse, 
+                                                skipzeros = skipzeros,
+                                                # nanmath = false, 
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    𝓂.∂SS_equations_∂parameters = buffer, func_exprs
+
+
+
+    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ss_equations_sub, 𝔘) # nϵ x nx
+
+    lennz = nnz(∂SS_equations_∂SS_and_pars)
+
+    if (lennz / length(∂SS_equations_∂SS_and_pars) > density_threshold) || (length(∂SS_equations_∂SS_and_pars) < min_length)
+        derivatives_mat = convert(Matrix, ∂SS_equations_∂SS_and_pars)
+        buffer = zeros(Float64, size(∂SS_equations_∂SS_and_pars))
+    else
+        derivatives_mat = ∂SS_equations_∂SS_and_pars
+        buffer = similar(∂SS_equations_∂SS_and_pars, Float64)
+        buffer.nzval .= 0
+    end
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔘, 
+                                                cse = cse, 
+                                                skipzeros = skipzeros, 
+                                                # nanmath = false,
+                                                parallel = parallel,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+    𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs
 
     return nothing
 end
@@ -3364,7 +3874,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 else
                     vars_to_exclude = [vcat(Symbol.(var_to_solve_for), 𝓂.➕_vars), Symbol[]]
                     
-                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_rebust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
+                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
     
                     if length(vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)) > 0
                         push!(SS_solve_func,vcat(ss_and_aux_equations, ss_and_aux_equations_dep)...)
@@ -3566,7 +4076,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                         range_iters += 1
                         fail_fast_solvers_only = range_iters > 1 ? true : false
 
-                        if abs(solved_scale - scale) < 1e-4
+                        if abs(solved_scale - scale) < 1e-2
                             # println(NSSS_solver_cache_scale[end])
                             break 
                         end
@@ -3655,7 +4165,14 @@ end
 
 
 
-function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
+function solve_steady_state!(𝓂::ℳ;
+                            cse = true,
+                            skipzeros = true,
+                            density_threshold::Float64 = .1,
+                            min_length::Int = 1000,
+                            verbose::Bool = false)
+    write_ss_check_function!(𝓂)
+
     unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(𝓂.ss_aux_equations) + length(𝓂.calibration_equations) "Unable to solve steady state. More unknowns than equations."
@@ -3721,7 +4238,7 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         # println(syms_in_eqs)
         push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
 
-        calib_pars = []
+        # calib_pars = []
         calib_pars_input = []
         relevant_pars = reduce(union,vcat(𝓂.par_list_aux_SS,𝓂.par_calib_list)[eqs[:,eqs[2,:] .== n][1,:]])
         relevant_pars_across = union(relevant_pars_across,relevant_pars)
@@ -3730,30 +4247,32 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         for parss in union(𝓂.parameters,𝓂.parameters_as_function_of_parameters)
             # valss   = 𝓂.parameter_values[i]
             if :($parss) ∈ relevant_pars
-                push!(calib_pars,:($parss = parameters_and_solved_vars[$iii]))
+                # push!(calib_pars,:($parss = parameters_and_solved_vars[$iii]))
                 push!(calib_pars_input,:($parss))
                 iii += 1
             end
         end
 
 
-        guess = []
-        result = []
+        # guess = Expr[]
+        # untransformed_guess = Expr[]
+        result = Expr[]
         sorted_vars = sort(𝓂.solved_vars[end])
         # sorted_vars = sort(setdiff(𝓂.solved_vars[end],𝓂.➕_vars))
         for (i, parss) in enumerate(sorted_vars) 
-            push!(guess,:($parss = guess[$i]))
-            # push!(guess,:($parss = undo_transformer(guess[$i])))
+            # push!(guess,:($parss = guess[$i]))
+            # push!(untransformed_guess,:($parss = undo_transform(guess[$i],transformation_level)))
             push!(result,:($parss = sol[$i]))
         end
 
         
         # separate out auxilliary variables (nonnegativity)
         nnaux = []
-        nnaux_linear = []
-        nnaux_error = []
-        push!(nnaux_error, :(aux_error = 0))
+        # nnaux_linear = []
+        # nnaux_error = []
+        # push!(nnaux_error, :(aux_error = 0))
         solved_vals = Expr[]
+        # solved_vals_in_place = Expr[]
         
         eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
@@ -3763,15 +4282,19 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         for (i,val) in enumerate(𝓂.solved_vals[end])
             if typeof(val) ∈ [Symbol,Float64,Int]
                 push!(solved_vals,val)
+                # push!(solved_vals_in_place, :(ℰ[$i] = $val))
             else
                 if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
                     val = vcat(𝓂.ss_aux_equations,𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
                     push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
                     push!(other_vrs_eliminated_by_sympy, val.args[2])
-                    push!(nnaux_linear,:($val))
-                    push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
+                    # push!(nnaux_linear,:($val))
+                    push!(solved_vals,:($val))
+                    # push!(solved_vals_in_place,:(ℰ[$i] = $val))
+                    # push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
                 else
                     push!(solved_vals,postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
+                    # push!(solved_vals_in_place, :(ℰ[$i] = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
                 end
             end
         end
@@ -3795,11 +4318,11 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
             QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
 
             nnaux = nnaux[QQ]
-            nnaux_linear = nnaux_linear[QQ]
+            # nnaux_linear = nnaux_linear[QQ]
         end
 
 
-        other_vars = []
+        # other_vars = []
         other_vars_input = []
         # other_vars_inverse = []
         other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
@@ -3808,25 +4331,185 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
 
         for var in other_vrs
             # var_idx = findfirst(x -> x == var, union(𝓂.var,𝓂.calibration_equations_parameters))
-            push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
+            # push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
             push!(other_vars_input,:($(var)))
             iii += 1
             # push!(other_vars_inverse,:(𝓂.SS_init_guess[$var_idx] = $(var)))
         end
 
-        funcs = :(function block(parameters_and_solved_vars::Vector, guess::Vector)
-                # if guess isa Tuple guess = guess[1] end
-                # guess = undo_transformer(guess,lbs,ubs, option = transformer_option) 
-                # println(guess)
-                $(guess...) 
-                $(calib_pars...) # add those variables which were previously solved and are used in the equations
-                $(other_vars...) # take only those that appear in equations - DONE
+        parameters_and_solved_vars = vcat(calib_pars_input, other_vrs)
 
-                # $(aug_lag...)
-                # $(nnaux...)
-                # $(nnaux_linear...)
-                return [$(solved_vals...),$(nnaux_linear...)]
-            end)
+        ng = length(sorted_vars)
+        np = length(parameters_and_solved_vars)
+        nd = 0
+        nx = iii - 1
+    
+
+        Symbolics.@variables 𝔊[1:ng] 𝔓[1:np]
+
+
+        parameter_dict = Dict{Symbol, Symbol}()
+        back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+        # aux_vars = Symbol[]
+        # aux_expr = []
+    
+    
+        for (i,v) in enumerate(sorted_vars)
+            push!(parameter_dict, v => :($(Symbol("𝔊_$i"))))
+            push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔊_$i"))), @__MODULE__) => 𝔊[i])
+        end
+    
+        for (i,v) in enumerate(parameters_and_solved_vars)
+            push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+            push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+        end
+    
+        # for (i,v) in enumerate(ss_and_aux_equations_dep)
+        #     push!(aux_vars, v.args[1])
+        #     push!(aux_expr, v.args[2])
+        # end
+    
+        # aux_replacements = Dict(aux_vars .=> aux_expr)
+    
+        replaced_solved_vals = solved_vals |> 
+            # x -> replace_symbols.(x, Ref(aux_replacements)) |> 
+            x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+            x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+            x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+    
+        lennz = length(replaced_solved_vals)
+    
+        if lennz > 1500
+            parallel = Symbolics.ShardedForm(1500,4)
+        else
+            parallel = Symbolics.SerialForm()
+        end
+    
+        _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓,
+                                                    cse = cse, 
+                                                    skipzeros = skipzeros, 
+                                                    # nanmath = false,
+                                                    parallel = parallel,
+                                                    expression_module = @__MODULE__,
+                                                    expression = Val(false))::Tuple{<:Function, <:Function}
+    
+        # 𝐷 = zeros(Symbolics.Num, nd)
+    
+        # ϵᵃ = zeros(nd)
+    
+        # calc_block_aux!(𝐷, 𝔊, 𝔓)
+    
+        ϵˢ = zeros(Symbolics.Num, ng)
+    
+        ϵ = zeros(ng)
+    
+        # calc_block!(ϵˢ, 𝔊, 𝔓, 𝐷)
+    
+        ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals, 𝔊) # nϵ x nx
+    
+        lennz = nnz(∂block_∂parameters_and_solved_vars)
+    
+        if (lennz / length(∂block_∂parameters_and_solved_vars) > density_threshold) || (length(∂block_∂parameters_and_solved_vars) < min_length)
+            derivatives_mat = convert(Matrix, ∂block_∂parameters_and_solved_vars)
+            buffer = zeros(Float64, size(∂block_∂parameters_and_solved_vars))
+        else
+            derivatives_mat = ∂block_∂parameters_and_solved_vars
+            buffer = similar(∂block_∂parameters_and_solved_vars, Float64)
+            buffer.nzval .= 1
+        end
+    
+        chol_buff = buffer * buffer'
+
+        chol_buff += ℒ.I
+
+        prob = 𝒮.LinearProblem(chol_buff, ϵ, 𝒮.CholeskyFactorization())
+
+        chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+
+        prob = 𝒮.LinearProblem(buffer, ϵ, 𝒮.LUFactorization())
+
+        lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+
+        if lennz > 1500
+            parallel = Symbolics.ShardedForm(1500,4)
+        else
+            parallel = Symbolics.SerialForm()
+        end
+        
+        _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔊, 𝔓,
+                                                    cse = cse, 
+                                                    skipzeros = skipzeros, 
+                                                    # nanmath = false,
+                                                    parallel = parallel,
+                                                    expression_module = @__MODULE__,
+                                                    expression = Val(false))::Tuple{<:Function, <:Function}
+    
+    
+        Symbolics.@variables 𝔊[1:ng+nx]
+    
+        ext_diff = Symbolics.Num[]
+        for i in 1:nx
+            push!(ext_diff, 𝔓[i] - 𝔊[ng + i])
+        end
+        replaced_solved_vals_ext = vcat(replaced_solved_vals, ext_diff)
+    
+        _, calc_ext_block! = Symbolics.build_function(replaced_solved_vals_ext, 𝔊, 𝔓,
+                                                    cse = cse, 
+                                                    skipzeros = skipzeros, 
+                                                    # nanmath = false,
+                                                    parallel = parallel,
+                                                    expression_module = @__MODULE__,
+                                                    expression = Val(false))::Tuple{<:Function, <:Function}
+    
+        ϵᵉ = zeros(ng + nx)
+        
+        # ϵˢᵉ = zeros(Symbolics.Num, ng + nx)
+    
+        # calc_block_aux!(𝐷, 𝔊, 𝔓)
+    
+        # Evaluate the function symbolically
+        # calc_ext_block!(ϵˢᵉ, 𝔊, 𝔓, 𝐷)
+    
+        ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals_ext, 𝔊) # nϵ x nx
+    
+        lennz = nnz(∂ext_block_∂parameters_and_solved_vars)
+    
+        if (lennz / length(∂ext_block_∂parameters_and_solved_vars) > density_threshold) || (length(∂ext_block_∂parameters_and_solved_vars) < min_length)
+            derivatives_mat_ext = convert(Matrix, ∂ext_block_∂parameters_and_solved_vars)
+            ext_buffer = zeros(Float64, size(∂ext_block_∂parameters_and_solved_vars))
+        else
+            derivatives_mat_ext = ∂ext_block_∂parameters_and_solved_vars
+            ext_buffer = similar(∂ext_block_∂parameters_and_solved_vars, Float64)
+            ext_buffer.nzval .= 1
+        end
+    
+        ext_chol_buff = ext_buffer * ext_buffer'
+
+        ext_chol_buff += ℒ.I
+
+        prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ, 𝒮.CholeskyFactorization())
+
+        ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+
+        prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ, 𝒮.LUFactorization())
+
+        ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+
+        if lennz > 1500
+            parallel = Symbolics.ShardedForm(1500,4)
+        else
+            parallel = Symbolics.SerialForm()
+        end
+        
+        _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝔊, 𝔓,
+                                                    cse = cse, 
+                                                    skipzeros = skipzeros, 
+                                                    # nanmath = false,
+                                                    parallel = parallel,
+                                                    expression_module = @__MODULE__,
+                                                    expression = Val(false))::Tuple{<:Function, <:Function}
+    
+
 
         push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(sorted_vars)))
         push!(NSSS_solver_cache_init_tmp,[Inf])
@@ -3856,7 +4539,8 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
 
         push!(SS_solve_func,:(solution = block_solver(length(params_and_solved_vars) == 0 ? [0.0] : params_and_solved_vars,
                                                                 $(n_block), 
-                                                                𝓂.ss_solve_blocks[$(n_block)], 
+                                                                𝓂.ss_solve_blocks_in_place[$(n_block)], 
+                                                                # 𝓂.ss_solve_blocks[$(n_block)], 
                                                                 # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
                                                                 # f, 
                                                                 inits,
@@ -3882,8 +4566,14 @@ function solve_steady_state!(𝓂::ℳ; verbose::Bool = false)
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
         push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
 
-        push!(𝓂.ss_solve_blocks,@RuntimeGeneratedFunction(funcs))
-        
+
+        push!(𝓂.ss_solve_blocks_in_place, 
+            ss_solve_block(
+                function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer, chol_buffer, lu_buffer),
+                function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
+            )
+        )
+
         n_block += 1
         
         n -= 1
@@ -4081,11 +4771,16 @@ end
 function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, 𝓂::ℳ; tol::Tolerances = Tolerances())::Float64
     log_lik = 0.0
     log_lik -= -sum(pars[1:19])                                 # logpdf of a gamma dist with mean and variance 1
-    log_lik -= -log(5 * sqrt(2 * π)) - (pars[20]^2 / (2 * 5^2)) # logpdf of a normal dist with mean = 0 and variance = 5^2
+    σ = 5
+    log_lik -= -log(σ * sqrt(2 * π)) - (pars[20]^2 / (2 * σ^2)) # logpdf of a normal dist with mean = 0 and variance = 5^2
 
     pars[1:2] = sort(pars[1:2], rev = true)
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
+
+    while length(𝓂.NSSS_solver_cache) > 1
+        pop!(𝓂.NSSS_solver_cache)
+    end
 
     runtime = @elapsed outmodel = try 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs]) catch end
 
@@ -4111,7 +4806,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int 
     sol = Optim.optimize(x -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂, tol = tol), 
                             lbs, ubs, pars, 
                             Optim.SAMIN(verbosity = verbosity, nt = 5, ns = 5), 
-                            Optim.Options(time_limit = maxtime, iterations = maxiter))
+                            Optim.Options(time_limit = maxtime, iterations = maxiter))::Optim.MultivariateOptimizationResults
 
     pars = Optim.minimizer(sol)
 
@@ -4135,11 +4830,17 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
 
     solved = false
 
+    solved_NSSS = 𝓂.NSSS_solver_cache[end]
+
     for p in 𝓂.solver_parameters
         total_time = 0.0
         
-        for _ in 1:10
+        for _ in 1:100
             start_time = time()
+
+            while length(𝓂.NSSS_solver_cache) > 1
+                pop!(𝓂.NSSS_solver_cache)
+            end
 
             SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [p])
 
@@ -4161,6 +4862,12 @@ function select_fastest_SS_solver_parameters!(𝓂::ℳ; tol::Tolerances = Toler
         solved = true
     end
 
+    while length(𝓂.NSSS_solver_cache) > 1
+        pop!(𝓂.NSSS_solver_cache)
+    end
+
+    push!(𝓂.NSSS_solver_cache, solved_NSSS)
+
     if solved
         pushfirst!(𝓂.solver_parameters, best_param)
     end
@@ -4168,7 +4875,8 @@ end
 
 
 function solve_ss(SS_optimizer::Function,
-                    ss_solve_blocks::Function,
+                    # ss_solve_blocks::Function,
+                    SS_solve_block::ss_solve_block,
                     parameters_and_solved_vars::Vector{T},
                     closest_parameters_and_solved_vars::Vector{T},
                     lbs::Vector{T},
@@ -4192,22 +4900,24 @@ function solve_ss(SS_optimizer::Function,
         sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : solver_params.starting_value for g in guess]))
     end
 
-    if extended_problem
-        function ext_function_to_optimize(guesses)
-            gss = guesses[1:length(guess)]
+    sol_new_tmp, info = SS_optimizer(   extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
+    # if extended_problem
+    #     function ext_function_to_optimize(guesses)
+    #         gss = guesses[1:length(guess)]
     
-            parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
+    #         parameters_and_solved_vars_guess = guesses[length(guess)+1:end]
     
-            res = ss_solve_blocks(parameters_and_solved_vars, gss)
+    #         res = ss_solve_blocks(parameters_and_solved_vars, gss)
     
-            return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
-        end
-    else
-        function function_to_optimize(guesses) ss_solve_blocks(parameters_and_solved_vars, guesses) end
-    end
+    #         return vcat(res, parameters_and_solved_vars .- parameters_and_solved_vars_guess)
+    #     end
+    # else
+    #     function function_to_optimize(guesses) ss_solve_blocks(parameters_and_solved_vars, guesses) end
+    # end
 
-    sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
+    # sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
                                         extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
+                                        parameters_and_solved_vars,
                                         extended_problem ? lbs : lbs[1:length(guess)],
                                         extended_problem ? ubs : ubs[1:length(guess)],
                                         solver_params,
@@ -4240,19 +4950,24 @@ function solve_ss(SS_optimizer::Function,
         any_guess_str = ""
     end
 
-    max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
+    # max_resid = maximum(abs,ss_solve_blocks(parameters_and_solved_vars, sol_values))
+
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, sol_values, parameters_and_solved_vars)
+    
+    max_resid = maximum(abs, SS_solve_block.ss_problem.func_buffer)
 
     if sol_minimum < ftol && verbose
-        println("Block: $n_block - Solved $(extended_problem_str)using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
+            println("Block: $n_block - Solved $(extended_problem_str) using ",string(SS_optimizer),", $(any_guess_str)$(starting_value_str); maximum residual = $max_resid")
     end
-
+    
     return sol_values, total_iters, rel_sol_minimum, sol_minimum
 end
 
 
 function block_solver(parameters_and_solved_vars::Vector{T}, 
                         n_block::Int, 
-                        ss_solve_blocks::Function, 
+                        # ss_solve_blocks::Function, 
+                        SS_solve_block::ss_solve_block,
                         # SS_optimizer, 
                         # f::OptimizationFunction, 
                         guess_and_pars_solved_vars::Vector{Vector{T}}, 
@@ -4280,15 +4995,26 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
     closest_parameters_and_solved_vars = sum(abs, guess_and_pars_solved_vars[2]) == Inf ? parameters_and_solved_vars : guess_and_pars_solved_vars[2]
 
-    res = ss_solve_blocks(parameters_and_solved_vars, guess)
+    # res = ss_solve_blocks(parameters_and_solved_vars, guess)
+
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars) # TODO: make the block a struct
+    # TODO: do the function creation with Symbolics as this will solve the compilation bottleneck for large functions
+
+    res = SS_solve_block.ss_problem.func_buffer
 
     sol_minimum  = ℒ.norm(res)
 
     if !cold_start
         if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol
-            ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
+            # ∇ = 𝒟.jacobian(x->(ss_solve_blocks(parameters_and_solved_vars, x)), backend, guess)
 
-            ∇̂ = ℒ.lu!(∇, check = false)
+            # ∇̂ = ℒ.lu!(∇, check = false)
+
+            SS_solve_block.ss_problem.jac(SS_solve_block.ss_problem.jac_buffer, guess, parameters_and_solved_vars)
+
+            ∇ = SS_solve_block.ss_problem.jac_buffer
+
+            ∇̂ = ℒ.lu(∇, check = false)
             
             if ℒ.issuccess(∇̂)
                 guess_update = ∇̂ \ res
@@ -4326,11 +5052,14 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                 for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
                     if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
                         if solved_yet continue end
-                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+
+                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                        # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                             g, 
                                                             p,
                                                             ext,
                                                             false)
+                                                            
                         if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
                             solved_yet = true
                         end
@@ -4339,14 +5068,19 @@ function block_solver(parameters_and_solved_vars::Vector{T},
             end
         end
     else !cold_start
-        for p in (fail_fast_solvers_only ? [parameters[end]] : unique(parameters)) #[1:3] # take unique because some parameters might appear more than once
-            for s in (fail_fast_solvers_only ? [false] : Any[false,p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897]) #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
+
+        pars = (fail_fast_solvers_only ? [parameters[end]] : unique(parameters))
+        
+        for p in pars #[1:3] # take unique because some parameters might appear more than once
+            start_vals = (fail_fast_solvers_only ? [false] : Any[false,p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897])
+            for s in start_vals #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                 # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
                 for algo in [newton, levenberg_marquardt]
                     if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol
                         if solved_yet continue end
                         # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
-                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
+                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
+                        # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(algo, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, 
                                                                             total_iters, 
                                                                             n_block, 
                                                                             false, # verbose
@@ -5478,99 +6212,360 @@ function create_third_order_auxilliary_matrices(T::timings, ∇₃_col_indices::
             end
         end
     end
-            
+    
     𝐒𝐏 = sparse(collect(nonnull_columns), collect(nonnull_columns), 1, n̄, n̄)
 
-    return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐈₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
+    return third_order_auxilliary_matrices(𝐂₃, 𝐔₃, 𝐈₃, 𝐂∇₃, 𝐔∇₃, 𝐏, 𝐏₁ₗ, 𝐏₁ᵣ, 𝐏₁ₗ̂, 𝐏₂ₗ̂, 𝐏₁ₗ̄, 𝐏₂ₗ̄, 𝐏₁ᵣ̃, 𝐏₂ᵣ̃, 𝐒𝐏)
 end
 
-end # dispatch_doctor
+function take_nth_order_derivatives(
+    dyn_equations::Vector{T},
+    𝔙::Symbolics.Arr,
+    𝔓::Symbolics.Arr,
+    SS_mapping::Dict{T, T},
+    nps::Int,
+    nxs::Int;
+    max_perturbation_order::Int = 1,
+    output_compressed::Bool = true # Controls compression for X derivatives (order >= 2)
+)::Vector{Tuple{SparseMatrixCSC{T, Int}, SparseMatrixCSC{T, Int}}} where T <: Symbolics.Num#, Tuple{Symbolics.Arr{Symbolics.Num, 1}, Symbolics.Arr{Symbolics.Num, 1}}}
+    nx = length(𝔙)
+    np = length(𝔓)
+    nϵ = length(dyn_equations)
 
-function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int},values::Vector{Symbolics.Num},nrows::Int,ncolumns::Int,::Val{:Symbolics})
-    vals_expr = Symbolics.toexpr.(values)
+    if max_perturbation_order < 1
+        throw(ArgumentError("max_perturbation_order must be at least 1"))
+    end
 
-    @RuntimeGeneratedFunction(
-        :(𝔛 -> sparse(
-                        $rows, 
-                        $columns, 
-                        [$(vals_expr...)], 
-                        $nrows, 
-                        $ncolumns
-                    )
-        )
-    )
+    results = [] # To store pairs of sparse matrices (X_matrix, P_matrix) for each order
+
+    # --- Order 1 ---
+    # Compute the 1st order derivative with respect to X (Jacobian)
+    spX_order_1 = Symbolics.sparsejacobian(dyn_equations, 𝔙) # nϵ x nx
+
+
+    spX_order_1_sub = copy(spX_order_1)
+
+    # spX_order_1_sub.nzval .= Symbolics.fast_substitute(spX_order_1_sub.nzval, Dict(Symbolics.scalarize(𝔛𝔛) .=> 𝔙))
+    spX_order_1_sub.nzval .= Symbolics.substitute(spX_order_1_sub.nzval, SS_mapping)
+
+    # Compute the derivative of the non-zeros of the 1st X-derivative w.r.t. P
+    # This is an intermediate step. The final P matrix will be built from this.
+    spP_of_flatX_nzval_order_1 = Symbolics.sparsejacobian(spX_order_1_sub.nzval, vcat(𝔓[1:nps], 𝔙[1:nxs])) # nnz(spX_order_1) x np
+
+    # Determine dimensions for the Order 1 P matrix
+    X_nrows_1 = nϵ
+    X_ncols_1 = nx
+    P_nrows_1 = X_nrows_1 * X_ncols_1
+    P_ncols_1 = nps + nxs
+
+    # Build the Order 1 P matrix (dimensions nϵ*nx x np)
+    sparse_rows_1_P = Int[] # Row index in the flattened space of spX_order_1
+    sparse_cols_1_P = Int[] # Column index for parameters (1 to np)
+    sparse_vals_1_P = Symbolics.Num[]
+
+    # Map linear index in spX_order_1.nzval to its (row, col) in spX_order_1
+    nz_lin_to_rc_1 = Dict{Int, Tuple{Int, Int}}()
+    k_lin = 1
+    for j = 1:size(spX_order_1, 2) # col
+        for ptr = spX_order_1.colptr[j]:(spX_order_1.colptr[j+1]-1)
+                r = spX_order_1.rowval[ptr] # row
+                nz_lin_to_rc_1[k_lin] = (r, j)
+                k_lin += 1
+        end
+    end
+
+
+    # Iterate through the non-zero entries of spP_of_flatX_nzval_order_1
+    k_temp_P = 1 # linear index counter for nzval
+    for p_col = 1:size(spP_of_flatX_nzval_order_1, 2) # Parameter index
+        for i_ptr_temp_P = spP_of_flatX_nzval_order_1.colptr[p_col]:(spP_of_flatX_nzval_order_1.colptr[p_col+1]-1)
+            temp_row = spP_of_flatX_nzval_order_1.rowval[i_ptr_temp_P] # Row index in spP_of_flatX_nzval (corresponds to temp_row-th nzval of spX_order_1)
+            p_val = spP_of_flatX_nzval_order_1.nzval[i_ptr_temp_P] # Derivative value w.r.t. parameter
+
+            # Get the (row, col) in spX_order_1 corresponding to this derivative
+            r_X1, c_X1 = nz_lin_to_rc_1[temp_row]
+
+            # Calculate the row index in spP_order_1 (flattened index of spX_order_1)
+            # P_row_idx = (r_X1 - 1) * X_ncols_1 + c_X1
+            P_row_idx = (c_X1 - 1) * X_nrows_1 + r_X1
+            P_col_idx = p_col # Parameter column index
+
+            push!(sparse_rows_1_P, P_row_idx)
+            push!(sparse_cols_1_P, P_col_idx)
+            push!(sparse_vals_1_P, p_val)
+
+            k_temp_P += 1
+        end
+    end
+
+    spP_order_1 = sparse!(sparse_rows_1_P, sparse_cols_1_P, sparse_vals_1_P, P_nrows_1, P_ncols_1)
+
+
+    # Store the pair for order 1
+    push!(results, (spX_order_1_sub, spP_order_1))
+
+    if max_perturbation_order > 1
+        # --- Prepare for higher orders (Order 2 to max_perturbation_order) ---
+        # Initialize map for Order 1: linear index in spX_order_1.nzval -> (row, (v1,))
+        # This map is needed to trace indices for Order 2
+        # We already built nz_lin_to_rc_1 above, reuse it and wrap the variable index in a Tuple
+        nz_to_indices_prev = Dict{Int, Tuple{Int, Tuple{Int}}}()
+        k_lin = 1
+        for j = 1:size(spX_order_1, 2)
+            for ptr = spX_order_1.colptr[j]:(spX_order_1.colptr[j+1]-1)
+                r = spX_order_1.rowval[ptr]
+                nz_to_indices_prev[k_lin] = (r, (j,)) # Store (equation row, (v1,))
+                k_lin += 1
+            end
+        end
+
+        nzvals_prev = spX_order_1.nzval # nzvals from Order 1 X-matrix
+
+        # --- Iterate for orders n = 2, 3, ..., max_perturbation_order ---
+        for n = 2:max_perturbation_order
+
+            # Compute the Jacobian of the previous level's nzval w.r.t. 𝔛
+            # This gives a flat matrix where rows correspond to non-zeros from order n-1 X-matrix
+            # and columns correspond to the n-th variable we differentiate by (x_vn).
+            sp_flat_curr_X_rn = Symbolics.sparsejacobian(nzvals_prev, 𝔙) # nnz(spX_order_(n-1)) x nx
+
+            sp_flat_curr_X = copy(sp_flat_curr_X_rn)
+
+            sp_flat_curr_X.nzval .= Symbolics.substitute(sp_flat_curr_X.nzval, SS_mapping)
+
+            # Build the nz_to_indices map for the *current* level (order n)
+            # Map: linear index in sp_flat_curr_X.nzval -> (original_row_f, (v_1, ..., v_n))
+            nz_to_indices_curr = Dict{Int, Tuple{Int, Tuple{Vararg{Int}}}}()
+            k_lin_curr = 1 # linear index counter for nzval of sp_flat_curr_X
+            # Iterate through the non-zeros of the current flat Jacobian
+            for col_curr = 1:size(sp_flat_curr_X, 2) # Column index in sp_flat_curr_X (corresponds to v_n)
+                for ptr_curr = sp_flat_curr_X.colptr[col_curr]:(sp_flat_curr_X.colptr[col_curr+1]-1)
+                    row_curr = sp_flat_curr_X.rowval[ptr_curr] # Row index in sp_flat_curr_X (corresponds to the row_curr-th nzval of previous level)
+
+                    # Get previous indices info from the map of order n-1
+                    prev_info = nz_to_indices_prev[row_curr]
+                    orig_row_f = prev_info[1] # Original equation row
+                    vars_prev = prev_info[2] # Tuple of variables from previous order (v_1, ..., v_{n-1})
+
+                    # Append the current variable index (v_n)
+                    vars_curr = (vars_prev..., col_curr) # Full tuple (v_1, ..., v_n)
+
+                    # Store info for the current level's non-zero
+                    nz_to_indices_curr[k_lin_curr] = (orig_row_f, vars_curr)
+                    k_lin_curr += 1
+                end
+            end
+
+            # --- Construct the X-derivative sparse matrix for order n (compressed or uncompressed) ---
+            local spX_order_n # Declare variable to hold the resulting X matrix
+            local X_ncols_n # Number of columns in the resulting spX_order_n matrix
+
+            if output_compressed
+                # COMPRESSED output: nϵ x binomial(nx + n - 1, n)
+                sparse_rows_n = Int[]
+                sparse_cols_n = Int[] # This will store the compressed column index
+                sparse_vals_n = Symbolics.Num[]
+
+                # Calculate the total number of compressed columns for order n
+                X_ncols_n = Int(binomial(nx + n - 1, n))
+
+                # Iterate through the non-zero entries of the current flat Jacobian (sp_flat_curr_X)
+                k_flat_curr = 1 # linear index counter for nzval of sp_flat_curr_X
+                for col_flat_curr = 1:size(sp_flat_curr_X, 2) # This corresponds to the n-th variable (v_n)
+                    for i_ptr_flat_curr = sp_flat_curr_X.colptr[col_flat_curr]:(sp_flat_curr_X.colptr[col_flat_curr+1]-1)
+                        # row_flat_curr = sp_flat_curr_X.rowval[i_ptr_flat_curr] # Row index in sp_flat_curr_X
+                        val = sp_flat_curr_X.nzval[i_ptr_flat_curr] # The derivative value
+
+                        # Get the full info for this non-zero from the map
+                        # The linear index in sp_flat_curr_X.nzval is k_flat_curr
+                        orig_row_f, var_indices_full = nz_to_indices_curr[k_flat_curr] # (v_1, ..., v_n)
+
+                        # Check the compression rule: v_n <= v_{n-1} <= ... <= v_1
+                        is_compressed = true
+                        for k_rule = 1:(n-1)
+                            # Check v_{n-k_rule+1} <= v_{n-k_rule}
+                            if var_indices_full[n-k_rule+1] > var_indices_full[n-k_rule]
+                                is_compressed = false
+                                break
+                            end
+                        end
+
+                        if is_compressed
+                            # Calculate the compressed column index c_n for the tuple (v_1, ..., v_n)
+                            # using the derived formula: c_n = sum_{k=1}^{n-1} binomial(v_k + n - k - 1, n - k + 1) + v_n
+                            compressed_col_idx = 0
+                            for k_formula = 1:(n-1)
+                                term = binomial(var_indices_full[k_formula] + n - k_formula - 1, n - k_formula + 1)
+                                compressed_col_idx += term
+                            end
+                            # Add the last term: v_n (var_indices_full[n])
+                            compressed_col_idx += var_indices_full[n]
+
+                            push!(sparse_rows_n, orig_row_f)
+                            push!(sparse_cols_n, compressed_col_idx)
+                            push!(sparse_vals_n, val)
+                        end
+
+                        k_flat_curr += 1 # Increment linear index counter for sp_flat_curr_X.nzval
+                    end
+                end
+                # Construct the compressed sparse matrix for order n
+                spX_order_n = sparse!(sparse_rows_n, sparse_cols_n, sparse_vals_n, X_nrows_1, X_ncols_n)
+
+            else # output_compressed == false
+                # UNCOMPRESSED output: nϵ x nx^n
+                sparse_rows_n_uncomp = Int[]
+                sparse_cols_n_uncomp = Int[] # Uncompressed column index (1 to nx^n)
+                sparse_vals_n_uncomp = Symbolics.Num[]
+
+                # Total number of uncompressed columns
+                X_ncols_n = Int(BigInt(nx)^n) # Use BigInt for the power calculation, cast to Int
+
+                # Iterate through the non-zero entries of the current flat Jacobian (sp_flat_curr_X)
+                k_flat_curr = 1 # linear index counter for nzval of sp_flat_curr_X
+                for col_flat_curr = 1:size(sp_flat_curr_X, 2) # This corresponds to the n-th variable (v_n)
+                    for i_ptr_flat_curr = sp_flat_curr_X.colptr[col_flat_curr]:(sp_flat_curr_X.colptr[col_flat_curr+1]-1)
+                        # row_flat_curr = sp_flat_curr_X.rowval[i_ptr_flat_curr] # Row index in sp_flat_curr_X
+                        val = sp_flat_curr_X.nzval[i_ptr_flat_curr] # The derivative value
+
+                        # Get the full info for this non-zero from the map
+                        # The linear index in sp_flat_curr_X.nzval is k_flat_curr
+                        orig_row_f, var_indices_full = nz_to_indices_curr[k_flat_curr] # (v_1, ..., v_n)
+
+                        # Calculate the UNCOMPRESSED column index for the tuple (v_1, ..., v_n)
+                        # This maps the tuple (v1, ..., vn) to a unique index from 1 to nx^n
+                        # Formula: 1 + (v1-1)*nx^(n-1) + (v2-1)*nx^(n-2) + ... + (vn-1)*nx^0
+                        uncompressed_col_idx = 1 # 1-based
+                        power_of_nx = BigInt(nx)^(n-1) # Start with nx^(n-1) for v1 term
+                        for i = 1:n
+                            uncompressed_col_col_idx_term = (var_indices_full[i] - 1) * power_of_nx
+                            # Check for overflow before adding
+                            # if (uncompressed_col_idx > 0 && uncompressed_col_col_idx_term > 0 && uncompressed_col_idx + uncompressed_col_col_idx_term <= uncompressed_col_idx) ||
+                            #    (uncompressed_col_idx < 0 && uncompressed_col_col_idx_term < 0 && uncompressed_col_idx + uncompressed_col_col_idx_term >= uncompressed_col_idx)
+                            #    error("Integer overflow calculating uncompressed column index")
+                            # end
+                            uncompressed_col_idx += uncompressed_col_col_idx_term
+
+                            if i < n # Avoid nx^-1
+                                power_of_nx = div(power_of_nx, nx) # Integer division
+                            end
+                        end
+
+                        push!(sparse_rows_n_uncomp, orig_row_f)
+                        push!(sparse_cols_n_uncomp, Int(uncompressed_col_idx)) # Cast to Int
+                        push!(sparse_vals_n_uncomp, val)
+
+                        k_flat_curr += 1 # Increment linear index counter for sp_flat_curr_X.nzval
+                    end
+                end
+                # Construct the uncompressed sparse matrix for order n
+                spX_order_n = sparse!(sparse_rows_n_uncomp, sparse_cols_n_uncomp, sparse_vals_n_uncomp, X_nrows_1, X_ncols_n)
+
+            end # End of if output_compressed / else
+
+
+            # --- Compute the P-derivative sparse matrix for order n ---
+            # This is the Jacobian of the nzval of the intermediate flat X-Jacobian (sp_flat_curr_X) w.r.t. 𝔓.
+            # sp_flat_curr_X.nzval contains expressions for d^n f_i / (dx_v1 ... dx_vn) for all
+            # non-zero such values that were propagated from the previous step.
+            spP_of_flatX_nzval_curr = Symbolics.sparsejacobian(sp_flat_curr_X.nzval, vcat(𝔓[1:nps], 𝔙[1:nxs])) # nnz(sp_flat_curr_X) x np
+            
+            # Determine the desired dimensions of spP_order_n
+            # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
+            P_nrows_n = nϵ * X_ncols_n
+            P_ncols_n = nps + nxs
+
+            sparse_rows_n_P = Int[] # Row index in the flattened space of spX_order_n (1 to P_nrows_n)
+            sparse_cols_n_P = Int[] # Column index for parameters (1 to np)
+            sparse_vals_n_P = Symbolics.Num[]
+
+            # Iterate through the non-zero entries of spP_of_flatX_nzval_curr
+            # Its rows correspond to the non-zeros in sp_flat_curr_X
+            k_temp_P = 1 # linear index counter for nzval of spP_of_flatX_nzval_curr
+            for p_col = 1:size(spP_of_flatX_nzval_curr, 2) # Column index in spP_of_flatX_nzval_curr (corresponds to parameter index)
+                for i_ptr_temp_P = spP_of_flatX_nzval_curr.colptr[p_col]:(spP_of_flatX_nzval_curr.colptr[p_col+1]-1)
+                    temp_row = spP_of_flatX_nzval_curr.rowval[i_ptr_temp_P] # Row index in spP_of_flatX_nzval_curr (corresponds to the temp_row-th nzval of sp_flat_curr_X)
+                    p_val = spP_of_flatX_nzval_curr.nzval[i_ptr_temp_P] # The derivative w.r.t. parameter value
+
+                    # Get the full info for the X-derivative term that this P-derivative is from
+                    # temp_row is the linear index in sp_flat_curr_X.nzval
+                    # This corresponds to the derivative d^n f_orig_row_f / (dx_v1 ... dx_vn)
+                    orig_row_f, var_indices_full = nz_to_indices_curr[temp_row] # (v_1, ..., v_n)
+
+                    # We need to find the column index (X_col_idx) this term corresponds to
+                    # in the final spX_order_n matrix (which might be compressed or uncompressed)
+                    local X_col_idx # Column index in the final spX_order_n matrix (1 to X_ncols_n)
+
+                    if output_compressed
+                        # Calculate the compressed column index
+                        compressed_col_idx = 0
+                        for k_formula = 1:(n-1)
+                            term = binomial(var_indices_full[k_formula] + n - k_formula - 1, n - k_formula + 1)
+                            compressed_col_idx += term
+                        end
+                        compressed_col_idx += var_indices_full[n]
+                        X_col_idx = compressed_col_idx # The column in spX_order_n is the compressed one
+
+                    else # output_compressed == false
+                        # Calculate the uncompressed column index
+                        uncompressed_col_idx = 1
+                        power_of_nx = BigInt(nx)^(n-1)
+                        for i = 1:n
+                            uncompressed_col_idx += (var_indices_full[i] - 1) * power_of_nx
+                            if i < n
+                                power_of_nx = div(power_of_nx, nx)
+                            end
+                        end
+                        X_col_idx = Int(uncompressed_col_idx) # The column in spX_order_n is the uncompressed one
+                    end
+
+                    # Calculate the row index in spP_order_n
+                    # This maps the (orig_row_f, X_col_idx) pair in spX_order_n's grid to a linear index
+                    # Formula: (row_in_X - 1) * num_cols_in_X + col_in_X
+                    # P_row_idx = (orig_row_f - 1) * X_ncols_n + X_col_idx
+                    P_row_idx = (X_col_idx - 1) * nϵ + orig_row_f
+
+                    # The column index in spP_order_n is the parameter index
+                    P_col_idx = p_col
+
+                    push!(sparse_rows_n_P, P_row_idx)
+                    push!(sparse_cols_n_P, P_col_idx)
+                    push!(sparse_vals_n_P, p_val)
+
+                    k_temp_P += 1 # Increment linear index counter for spP_of_flatX_nzval_curr.nzval
+                end
+            end
+
+            # Construct the P-derivative sparse matrix for order n
+            # Dimensions are (rows of spX_order_n * cols of spX_order_n) x np
+            spP_order_n = sparse!(sparse_rows_n_P, sparse_cols_n_P, sparse_vals_n_P, P_nrows_n, P_ncols_n)
+
+            # Store the pair (X-matrix, P-matrix) for order n
+            push!(results, (spX_order_n, spP_order_n))
+
+
+            # Prepare for the next iteration (order n+1)
+            # The nzvals for the next X-Jacobian step are the nzvals of the current flat X-Jacobian
+            nzvals_prev = sp_flat_curr_X_rn.nzval
+            # The map for the next step should provide info for order n derivatives
+            nz_to_indices_prev = nz_to_indices_curr
+
+        end # End of loop for orders n = 2 to max_perturbation_order
+    end
+
+    return results #, (𝔛, 𝔓) # Return results as a tuple of (X_matrix, P_matrix) pairs
 end
 
-function write_sparse_derivatives_function(rows::Vector{Int},columns::Vector{Int},values::Vector{Symbolics.Num},nrows::Int,ncolumns::Int,::Val{:string})
-    vals_expr = Meta.parse(string(values))
-
-    vals_expr.args[1] = :Float64
-
-    @RuntimeGeneratedFunction(
-        :(𝔛 -> sparse(
-                        $rows, 
-                        $columns,
-                        $vals_expr, 
-                        $nrows, 
-                        $ncolumns
-                    )
-        )
-    )
-end
-
-
-function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-    
-    @RuntimeGeneratedFunction(:(𝔛 -> $(Expr(:vect, vals_expr.args[2:end]...))))
-end
-
-function write_derivatives_function(values::Symbolics.Num, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-    
-    @RuntimeGeneratedFunction(:(𝔛 -> $vals_expr.args))
-end
-
-function write_derivatives_function(values::Vector{Symbolics.Num}, position::UnitRange{Int}, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-
-    @RuntimeGeneratedFunction(:(𝔛 -> ($(Expr(:vect, vals_expr.args[2:end]...)), $position)))
-end # needed for JET tests
-
-function write_derivatives_function(values::Vector{Symbolics.Num}, position::Int, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-
-    @RuntimeGeneratedFunction(:(𝔛 -> ($(Expr(:vect, vals_expr.args[2:end]...)), $position)))
-end
-
-function write_derivatives_function(values::Symbolics.Num, position::Int, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-
-    @RuntimeGeneratedFunction(:(𝔛 -> ($vals_expr, $position)))
-end
-
-function write_derivatives_function(values::Symbolics.Num, position::UnitRange{Int}, ::Val{:string})
-    vals_expr = Meta.parse(string(values))
-    position  = position[1]
-    @RuntimeGeneratedFunction(:(𝔛 -> ($vals_expr, $position)))
-end # needed for JET tests
-
-function write_derivatives_function(values::Vector{Symbolics.Num}, ::Val{:Symbolics})
-    vals_expr = Symbolics.toexpr.(values)
-
-    @RuntimeGeneratedFunction(:(𝔛 -> [$(vals_expr...)]))
-end
-
-function write_derivatives_function(values::Symbolics.Num, ::Val{:Symbolics})
-    vals_expr = Symbolics.toexpr.(values)
-
-    @RuntimeGeneratedFunction(:(𝔛 -> $vals_expr))
-end
-
-@stable default_mode = "disable" begin
 
 # TODO: check why this takes so much longer than previous implementation
-function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_exprs_per_func::Int = 1)
+function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; 
+                                    density_threshold::Float64 = .1, 
+                                    min_length::Int = 1000,
+                                    # parallel = Symbolics.SerialForm(),
+                                    # parallel = Symbolics.ShardedForm(1500,4),
+                                    cse = true,
+                                    skipzeros = true)
+
     future_varss  = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₁₎$")))
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
     past_varss    = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₋₁₎$")))
@@ -5582,522 +6577,472 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; max_ex
     sort!(past_varss    ,by = x->replace(string(x),r"₍₋₁₎$"=>""))
     sort!(shock_varss   ,by = x->replace(string(x),r"₍ₓ₎$"=>""))
     sort!(ss_varss      ,by = x->replace(string(x),r"₍ₛₛ₎$"=>""))
-    
+
     dyn_future_list = collect(reduce(union, 𝓂.dyn_future_list))
     dyn_present_list = collect(reduce(union, 𝓂.dyn_present_list))
     dyn_past_list = collect(reduce(union, 𝓂.dyn_past_list))
     dyn_exo_list = collect(reduce(union,𝓂.dyn_exo_list))
-    # dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
-    
+    dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+
     future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_future_list))
     present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_present_list))
     past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")),string.(dyn_past_list))
     exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")),string.(dyn_exo_list))
-    # stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")),string.(dyn_ss_list))
-    
-    vars_raw = [dyn_future_list[indexin(sort(future),future)]...,
-                dyn_present_list[indexin(sort(present),present)]...,
-                dyn_past_list[indexin(sort(past),past)]...,
-                dyn_exo_list[indexin(sort(exo),exo)]...]
+    stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")),string.(dyn_ss_list))
 
-    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x) erfc(x) erfcinv(x)
+    vars_raw = vcat(dyn_future_list[indexin(sort(future),future)],
+                    dyn_present_list[indexin(sort(present),present)],
+                    dyn_past_list[indexin(sort(past),past)],
+                    dyn_exo_list[indexin(sort(exo),exo)])
 
-    # overwrite SymPyCall names
-    input_args = vcat(future_varss,
-                        present_varss,
-                        past_varss,
-                        ss_varss,
-                        𝓂.parameters,
-                        𝓂.calibration_equations_parameters,
-                        shock_varss)
+    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
+    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
+    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
+    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
 
-    eval(:(Symbolics.@variables $(input_args...)))
+    dyn_var_idxs = vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)
 
-    Symbolics.@variables 𝔛[1:length(input_args)]
+    pars_ext = vcat(𝓂.parameters, 𝓂.calibration_equations_parameters)
+    parameters_and_SS = vcat(pars_ext, dyn_ss_list[indexin(sort(stst),stst)])
 
-    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-    
-    calib_eq_no_vars = reduce(union, get_symbols.(𝓂.calibration_equations_no_var), init = []) |> collect
-    
-    eval(:(Symbolics.@variables $((vcat(SS_and_pars_names_lead_lag, calib_eq_no_vars))...)))
+    np = length(parameters_and_SS)
+    nv = length(vars_raw)
+    nc = length(𝓂.calibration_equations)
+    nps = length(𝓂.parameters)
+    nxs = maximum(dyn_var_idxs) + nc
 
-    vars = eval(:(Symbolics.@variables $(vars_raw...)))
+    Symbolics.@variables 𝔓[1:np] 𝔙[1:nv]
 
-    eqs = Symbolics.parse_expr_to_symbolic.(𝓂.dyn_equations,(@__MODULE__,))
+    parameter_dict = Dict{Symbol, Symbol}()
+    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+    calib_vars = Symbol[]
+    calib_expr = []
+    SS_mapping = Dict{Symbolics.Num, Symbolics.Num}()
 
-    final_indices = vcat(𝓂.parameters, SS_and_pars_names_lead_lag)
 
-    input_X = Pair{Symbolics.Num, Symbolics.Num}[]
-    input_X_no_time = Pair{Symbolics.Num, Symbolics.Num}[]
-    
-    for (v,input) in enumerate(input_args)
-        push!(input_X, eval(input) => eval(𝔛[v]))
-    
-        if input ∈ shock_varss
-            push!(input_X_no_time, eval(𝔛[v]) => 0)
+    for (i,v) in enumerate(parameters_and_SS)
+        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+        if i > nps
+            if i > length(pars_ext)
+                push!(SS_mapping, 𝔓[i] => 𝔙[dyn_ss_idx[i-length(pars_ext)]])
+            else
+                push!(SS_mapping, 𝔓[i] => 𝔙[nxs + i - nps - nc])
+            end
+        end
+    end
+
+    for (i,v) in enumerate(vars_raw)
+        push!(parameter_dict, v => :($(Symbol("𝔙_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔙_$i"))), @__MODULE__) => 𝔙[i])
+        if i <= length(dyn_var_idxs)
+            push!(SS_mapping, 𝔙[i] => 𝔙[dyn_var_idxs[i]])
         else
-            input_no_time = Symbol(replace(string(input), r"₍₁₎$"=>"", r"₍₀₎$"=>"" , r"₍₋₁₎$"=>"", r"₍ₛₛ₎$"=>"", r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-
-            vv = indexin([input_no_time], final_indices)
-            
-            if vv[1] isa Int
-                push!(input_X_no_time, eval(𝔛[v]) => eval(𝔛[vv[1]]))
-            end
+            push!(SS_mapping, 𝔙[i] => 0)
         end
     end
 
-    vars_X = map(x -> Symbolics.substitute(x, input_X), vars)
 
-    calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
-
-    eqs_sub = Symbolics.Num[]
-    for subst in eqs
-        for _ in calib_eqs
-            for calib_eq in calib_eqs
-                subst = Symbolics.substitute(subst, calib_eq)
-            end
-        end
-        # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
-        subst = Symbolics.substitute(subst, input_X)
-        push!(eqs_sub, subst)
-    end
-    
-    if max_perturbation_order >= 2 
-        nk = length(vars_raw)
-        second_order_idxs = [nk * (i-1) + k for i in 1:nk for k in 1:i]
-        if max_perturbation_order == 3
-            third_order_idxs = [nk^2 * (i-1) + nk * (k-1) + l for i in 1:nk for k in 1:i for l in 1:k]
-        end
+    for v in 𝓂.calibration_equations_no_var
+        push!(calib_vars, v.args[1])
+        push!(calib_expr, v.args[2])
     end
 
-    first_order = Symbolics.Num[]
-    second_order = Symbolics.Num[]
-    third_order = Symbolics.Num[]
-    row1 = Int[]
-    row2 = Int[]
-    row3 = Int[]
-    column1 = Int[]
-    column2 = Int[]
-    column3 = Int[]
 
-    # Polyester.@batch for rc1 in 0:length(vars_X) * length(eqs_sub) - 1
-    # for rc1 in 0:length(vars_X) * length(eqs_sub) - 1
-    for (c1, var1) in enumerate(vars_X)
-        for (r, eq) in enumerate(eqs_sub)
-        # r, c1 = divrem(rc1, length(vars_X)) .+ 1
-        # var1 = vars_X[c1]
-        # eq = eqs_sub[r]
-            if Symbol(var1) ∈ Symbol.(Symbolics.get_variables(eq))
-                deriv_first = Symbolics.derivative(eq, var1)
-                
-                push!(first_order, deriv_first)
-                push!(row1, r)
-                # push!(row1, r...)
-                push!(column1, c1)
-                if max_perturbation_order >= 2 
-                    for (c2, var2) in enumerate(vars_X)
-                        if (((c1 - 1) * length(vars) + c2) ∈ second_order_idxs) && (Symbol(var2) ∈ Symbol.(Symbolics.get_variables(deriv_first)))
-                            deriv_second = Symbolics.derivative(deriv_first, var2)
-                            
-                            push!(second_order, deriv_second)
-                            push!(row2, r)
-                            push!(column2, Int.(indexin([(c1 - 1) * length(vars) + c2], second_order_idxs))...)
-                            if max_perturbation_order == 3
-                                for (c3, var3) in enumerate(vars_X)
-                                    if (((c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3) ∈ third_order_idxs) && (Symbol(var3) ∈ Symbol.(Symbolics.get_variables(deriv_second)))
-                                        deriv_third = Symbolics.derivative(deriv_second,var3)
-
-                                        push!(third_order, deriv_third)
-                                        push!(row3, r)
-                                        push!(column3, Int.(indexin([(c1 - 1) * length(vars)^2 + (c2 - 1) * length(vars) + c3], third_order_idxs))...)
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
+    calib_replacements = Dict{Symbol,Any}()
+    for (i,x) in enumerate(calib_vars)
+        replacement = Dict(x => calib_expr[i])
+        for ii in i+1:length(calib_vars)
+            calib_expr[ii] = replace_symbols(calib_expr[ii], replacement)
         end
+        push!(calib_replacements, x => calib_expr[i])
+    end
+
+
+    dyn_equations = 𝓂.dyn_equations |> 
+        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+        x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+
+    derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs)
+
+
+    ∇₁_dyn = derivatives[1][1]
+
+    lennz = nnz(∇₁_dyn)
+
+    if (lennz / length(∇₁_dyn) > density_threshold) || (length(∇₁_dyn) < min_length)
+        derivatives_mat = convert(Matrix, ∇₁_dyn)
+        buffer = zeros(Float64, size(∇₁_dyn))
+    else
+        derivatives_mat = ∇₁_dyn
+        buffer = similar(∇₁_dyn, Float64)
+        buffer.nzval .= 0
     end
     
-    if max_perturbation_order >= 1
-        if 𝓂.model_jacobian[2] == Int[]
-            write_auxilliary_indices!(𝓂)
-
-            write_derivatives_of_ss_equations!(𝓂::ℳ, max_exprs_per_func = max_exprs_per_func)
-
-            # derivative of jacobian wrt SS_and_pars and parameters
-            eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), first_order)
-
-            ∂jacobian_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(final_indices))]), simplify = false) # |> findnz
-
-            idx_conversion = (row1 + length(eqs) * (column1 .- 1))
-
-            cols, rows, vals = findnz(∂jacobian_∂SS_and_pars) #transposed
-
-            converted_cols = idx_conversion[cols]
-
-            perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
-
-            min_n_funcs = length(vals) ÷ max_exprs_per_func + 1
-
-            funcs = Function[]
-
-            lk = ReentrantLock()
-
-            if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
-            else
-                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
-                for i in 1:min(min_n_funcs, length(vals))
-                    indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
-
-                    indices = length(indices) == 1 ? indices[1] : indices
-
-                    func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
-
-                    # begin
-                    #     lock(lk)
-                    #     try
-                            push!(funcs, func)
-                    #     finally
-                    #         unlock(lk)
-                    #     end
-                    # end
-                end
-            end
-
-            𝓂.model_jacobian_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * length(vars)))
-
-            # first order
-            min_n_funcs = length(first_order) ÷ max_exprs_per_func + 1
-
-            funcs = Function[]
-
-            lk = ReentrantLock()
-
-            if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(first_order, 1:length(first_order), Val(:string)))
-            else
-                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(first_order))
-                for i in 1:min(min_n_funcs, length(first_order))
-                    indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(first_order) : i * max_exprs_per_func)
-
-                    indices = length(indices) == 1 ? indices[1] : indices
-
-                    func = write_derivatives_function(first_order[indices], indices, Val(:string))
-
-                    # begin
-                    #     lock(lk)
-                    #     try
-                            push!(funcs, func)
-                    #     finally
-                    #         unlock(lk)
-                    #     end
-                    # end
-                end
-            end
-
-            𝓂.model_jacobian = (funcs, row1 .+ (column1 .- 1) .* length(eqs_sub),  zeros(length(eqs_sub), length(vars)))
-        end
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
     end
+    
+    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔙, 
+                                            cse = cse, 
+                                            skipzeros = skipzeros, 
+                                            parallel = parallel,
+                                            # nanmath = false,
+                                            expression_module = @__MODULE__,
+                                            expression = Val(false))::Tuple{<:Function, <:Function}
+
+    𝓂.jacobian = buffer, func_exprs
+
+
+    ∇₁_parameters = derivatives[1][2][:,1:nps]
+
+    lennz = nnz(∇₁_parameters)
+
+    if (lennz / length(∇₁_parameters) > density_threshold) || (length(∇₁_parameters) < min_length)
+        ∇₁_parameters_mat = convert(Matrix, ∇₁_parameters)
+        buffer_parameters = zeros(Float64, size(∇₁_parameters))
+    else
+        ∇₁_parameters_mat = ∇₁_parameters
+        buffer_parameters = similar(∇₁_parameters, Float64)
+        buffer_parameters.nzval .= 0
+    end
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, func_∇₁_parameters = Symbolics.build_function(∇₁_parameters_mat, 𝔓, 𝔙, 
+                                                        cse = cse, 
+                                                        skipzeros = skipzeros, 
+                                                        parallel = parallel,
+                                                        # nanmath = false,
+                                                        expression_module = @__MODULE__,
+                                                        expression = Val(false))::Tuple{<:Function, <:Function}
+
+    𝓂.jacobian_parameters =  buffer_parameters, func_∇₁_parameters
+ 
+
+    ∇₁_SS_and_pars = derivatives[1][2][:,nps+1:end]
+
+    lennz = nnz(∇₁_SS_and_pars)
+
+    if (lennz / length(∇₁_SS_and_pars) > density_threshold) || (length(∇₁_SS_and_pars) < min_length)
+        ∇₁_SS_and_pars_mat = convert(Matrix, ∇₁_SS_and_pars)
+        buffer_SS_and_pars = zeros(Float64, size(∇₁_SS_and_pars))
+    else
+        ∇₁_SS_and_pars_mat = ∇₁_SS_and_pars
+        buffer_SS_and_pars = similar(∇₁_SS_and_pars, Float64)
+        buffer_SS_and_pars.nzval .= 0
+    end
+
+    if lennz > 1500
+        parallel = Symbolics.ShardedForm(1500,4)
+    else
+        parallel = Symbolics.SerialForm()
+    end
+
+    _, func_∇₁_SS_and_pars = Symbolics.build_function(∇₁_SS_and_pars_mat, 𝔓, 𝔙, 
+                                                        cse = cse, 
+                                                        skipzeros = skipzeros, 
+                                                        parallel = parallel,
+                                                        # nanmath = false,
+                                                        expression_module = @__MODULE__,
+                                                        expression = Val(false))::Tuple{<:Function, <:Function}
+
+    𝓂.jacobian_SS_and_pars = buffer_SS_and_pars, func_∇₁_SS_and_pars
+
+
+
+
+    # if max_perturbation_order >= 1
+    #     SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+
+    #     eqs = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
+
+    #     nx = length(𝓂.parameter_values)
+
+    #     np = length(SS_and_pars)
+
+    #     nϵˢ = length(eqs)
+
+    #     nc = length(𝓂.calibration_equations_no_var)
+
+    #     Symbolics.@variables 𝔛¹[1:nx] 𝔓¹[1:np]
+
+    #     ϵˢ = zeros(Symbolics.Num, nϵˢ)
+    
+    #     calib_vals = zeros(Symbolics.Num, nc)
+
+    #     𝓂.SS_calib_func(calib_vals, 𝔛¹)
+    
+    #     𝓂.SS_check_func(ϵˢ, 𝔛¹, 𝔓¹, calib_vals)
+    # println(ϵˢ)
+    #     ∂SS_equations_∂parameters = Symbolics.sparsejacobian(ϵˢ, 𝔛¹) # nϵ x nx
+    
+    #     lennz = nnz(∂SS_equations_∂parameters)
+
+    #     if (lennz / length(∂SS_equations_∂parameters) > density_threshold) || (length(∂SS_equations_∂parameters) < min_length)
+    #         derivatives_mat = convert(Matrix, ∂SS_equations_∂parameters)
+    #         buffer = zeros(Float64, size(∂SS_equations_∂parameters))
+    #     else
+    #         derivatives_mat = ∂SS_equations_∂parameters
+    #         buffer = similar(∂SS_equations_∂parameters, Float64)
+    #         buffer.nzval .= 0
+    #     end
+
+    #     if lennz > 1500
+    #         parallel = Symbolics.ShardedForm(1500,4)
+    #     else
+    #         parallel = Symbolics.SerialForm()
+    #     end
+        
+    #     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, 
+    #                                                 cse = cse, 
+    #                                                 skipzeros = skipzeros, 
+    #                                                 parallel = parallel,
+    #                                                 # nanmath = false,
+    #                                                 expression_module = @__MODULE__,
+    #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
+
+    #     𝓂.∂SS_equations_∂parameters = buffer, func_exprs
+
+
+
+    #     ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(ϵˢ, 𝔓¹) # nϵ x nx
+    
+    #     lennz = nnz(∂SS_equations_∂SS_and_pars)
+
+    #     if (lennz / length(∂SS_equations_∂SS_and_pars) > density_threshold) || (length(∂SS_equations_∂SS_and_pars) < min_length)
+    #         derivatives_mat = convert(Matrix, ∂SS_equations_∂SS_and_pars)
+    #         buffer = zeros(Float64, size(∂SS_equations_∂SS_and_pars))
+    #     else
+    #         derivatives_mat = ∂SS_equations_∂SS_and_pars
+    #         buffer = similar(∂SS_equations_∂SS_and_pars, Float64)
+    #         buffer.nzval .= 0
+    #     end
+
+    #     if lennz > 1500
+    #         parallel = Symbolics.ShardedForm(1500,4)
+    #     else
+    #         parallel = Symbolics.SerialForm()
+    #     end
+
+    #     _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔛¹, 𝔓¹, 
+    #                                                 cse = cse, 
+    #                                                 skipzeros = skipzeros, 
+    #                                                 parallel = parallel,
+    #                                                 # nanmath = false,
+    #                                                 expression_module = @__MODULE__,
+    #                                                 expression = Val(false))::Tuple{<:Function, <:Function}
+
+    #     𝓂.∂SS_equations_∂SS_and_pars = buffer, func_exprs
+    # end
         
     if max_perturbation_order >= 2
     # second order
+        derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = 2, output_compressed = false)
+
         if 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             𝓂.solution.perturbation.second_order_auxilliary_matrices = create_second_order_auxilliary_matrices(𝓂.timings)
 
-            perm_vals = sortperm(column2) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
+            ∇₂_dyn = derivatives[2][1]
 
-            min_n_funcs = length(second_order) ÷ max_exprs_per_func + 1
+            lennz = nnz(∇₂_dyn)
 
-            funcs = Function[]
-        
-            lk = ReentrantLock()
-
-            if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(second_order[perm_vals], 1:length(second_order), Val(:string)))
+            if (lennz / length(∇₂_dyn) > density_threshold) || (length(∇₂_dyn) < min_length)
+                derivatives_mat = convert(Matrix, ∇₂_dyn)
+                buffer = zeros(Float64, size(∇₂_dyn))
             else
-                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(second_order))
-                for i in 1:min(min_n_funcs, length(second_order))
-                    indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(second_order) : i * max_exprs_per_func)
-            
-                    indices = length(indices) == 1 ? indices[1] : indices
-
-                    func = write_derivatives_function(second_order[perm_vals][indices], indices, Val(:string))
-
-                    # begin
-                    #     lock(lk)
-                    #     try
-                            push!(funcs, func)
-                    #     finally
-                    #         unlock(lk)
-                    #     end
-                    # end
-                end
+                derivatives_mat = ∇₂_dyn
+                buffer = similar(∇₂_dyn, Float64)
+                buffer.nzval .= 0
             end
 
-            𝓂.model_hessian = (funcs, sparse(row2, column2, zero(column2), length(eqs_sub), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
-        end
-
-        # derivative of hessian wrt SS_and_pars and parameters
-        eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), second_order)
-
-        ∂hessian_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(final_indices))]), simplify = false) # |> findnz
-
-        idx_conversion = (row2 + length(eqs) * (column2 .- 1))
-
-        cols, rows, vals = findnz(∂hessian_∂SS_and_pars) #transposed
-
-        converted_cols = idx_conversion[cols]
-
-        perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
-
-        min_n_funcs = length(vals) ÷ max_exprs_per_func + 1
-
-        funcs = Function[]
-
-        lk = ReentrantLock()
-
-        if min_n_funcs == 1
-            push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
-        else
-            # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
-            for i in 1:min(min_n_funcs, length(vals))
-                indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
-
-                indices = length(indices) == 1 ? indices[1] : indices
-
-                func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
-
-                # begin
-                #     lock(lk)
-                #     try
-                        push!(funcs, func)
-                #     finally
-                #         unlock(lk)
-                #     end
-                # end
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
             end
+
+            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔙, 
+                                                        cse = cse, 
+                                                        skipzeros = skipzeros, 
+                                                        parallel = parallel,
+                                                        # nanmath = false,
+                                                        expression_module = @__MODULE__,
+                                                        expression = Val(false))::Tuple{<:Function, <:Function}
+
+            𝓂.hessian = buffer, func_exprs
+
+
+            ∇₂_parameters = derivatives[2][2][:,1:nps]
+
+            lennz = nnz(∇₂_parameters)
+
+            if (lennz / length(∇₂_parameters) > density_threshold) || (length(∇₂_parameters) < min_length)
+                ∇₂_parameters_mat = convert(Matrix, ∇₂_parameters)
+                buffer_parameters = zeros(Float64, size(∇₂_parameters))
+            else
+                ∇₂_parameters_mat = ∇₂_parameters
+                buffer_parameters = similar(∇₂_parameters, Float64)
+                buffer_parameters.nzval .= 0
+            end
+
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
+            end
+
+            _, func_∇₂_parameters = Symbolics.build_function(∇₂_parameters_mat, 𝔓, 𝔙, 
+                                                                cse = cse, 
+                                                                skipzeros = skipzeros, 
+                                                                parallel = parallel,
+                                                                # nanmath = false,
+                                                                expression_module = @__MODULE__,
+                                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+            𝓂.hessian_parameters =  buffer_parameters, func_∇₂_parameters
+        
+
+            ∇₂_SS_and_pars = derivatives[2][2][:,nps+1:end]
+
+            lennz = nnz(∇₂_SS_and_pars)
+
+            if (lennz / length(∇₂_SS_and_pars) > density_threshold) || (length(∇₂_SS_and_pars) < min_length)
+                ∇₂_SS_and_pars_mat = convert(Matrix, ∇₂_SS_and_pars)
+                buffer_SS_and_pars = zeros(Float64, size(∇₂_SS_and_pars))
+            else
+                ∇₂_SS_and_pars_mat = ∇₂_SS_and_pars
+                buffer_SS_and_pars = similar(∇₂_SS_and_pars, Float64)
+                buffer_SS_and_pars.nzval .= 0
+            end
+
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
+            end
+
+            _, func_∇₂_SS_and_pars = Symbolics.build_function(∇₂_SS_and_pars_mat, 𝔓, 𝔙, 
+                                                                cse = cse, 
+                                                                skipzeros = skipzeros, 
+                                                                parallel = parallel,
+                                                                # nanmath = false,
+                                                                expression_module = @__MODULE__,
+                                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+            𝓂.hessian_SS_and_pars = buffer_SS_and_pars, func_∇₂_SS_and_pars
         end
-
-        𝓂.model_hessian_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)))
-
     end
 
     if max_perturbation_order == 3
+        derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = max_perturbation_order, output_compressed = true)
     # third order
         if 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-            𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(column3))
+            I,J,V = findnz(derivatives[3][1])
+            𝓂.solution.perturbation.third_order_auxilliary_matrices = create_third_order_auxilliary_matrices(𝓂.timings, unique(J))
         
-            perm_vals = sortperm(column3) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
+            ∇₃_dyn = derivatives[3][1]
 
-            min_n_funcs = length(third_order) ÷ max_exprs_per_func + 1
+            lennz = nnz(∇₃_dyn)
 
-            funcs = Function[]
-        
-            lk = ReentrantLock()
-            
-            if min_n_funcs == 1
-                push!(funcs, write_derivatives_function(third_order[perm_vals], 1:length(third_order), Val(:string)))
+            if (lennz / length(∇₃_dyn) > density_threshold) || (length(∇₃_dyn) < min_length)
+                derivatives_mat = convert(Matrix, ∇₃_dyn)
+                buffer = zeros(Float64, size(∇₃_dyn))
             else
-                # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(third_order))
-                for i in 1:min(min_n_funcs, length(third_order))
-                    indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(third_order) : i * max_exprs_per_func)
-            
-                    if length(indices) == 1
-                        indices = indices[1]
-                    end
-
-                    func = write_derivatives_function(third_order[perm_vals][indices], indices, Val(:string))
-
-                    # begin
-                    #     lock(lk)
-                    #     try
-                            push!(funcs, func)
-                    #     finally
-                    #         unlock(lk)
-                    #     end
-                    # end
-                end
+                derivatives_mat = ∇₃_dyn
+                buffer = similar(∇₃_dyn, Float64)
+                buffer.nzval .= 0
             end
 
-            𝓂.model_third_order_derivatives = (funcs, sparse(row3, column3, zero(column3), length(eqs_sub), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)))
-        end
-
-        # derivative of third order wrt SS_and_pars and parameters
-        eqs_static = map(x -> Symbolics.substitute(x, input_X_no_time), third_order)
-
-        ∂third_order_∂SS_and_pars = Symbolics.sparsejacobian(eqs_static, eval.(𝔛[1:(length(final_indices))]), simplify = false) # |> findnz
-
-        idx_conversion = (row3 + length(eqs) * (column3 .- 1))
-
-        cols, rows, vals = findnz(∂third_order_∂SS_and_pars) #transposed
-
-        converted_cols = idx_conversion[cols]
-
-        perm_vals = sortperm(converted_cols) # sparse reorders the rows and cols and sorts by column. need to do that also for the values
-
-        min_n_funcs = length(vals) ÷ max_exprs_per_func + 1
-
-        funcs = Function[]
-
-        lk = ReentrantLock()
-
-        if min_n_funcs == 1
-            push!(funcs, write_derivatives_function(vals[perm_vals], 1:length(vals), Val(:string)))
-        else
-            # Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(vals))
-            for i in 1:min(min_n_funcs, length(vals))
-                indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(vals) : i * max_exprs_per_func)
-
-                indices = length(indices) == 1 ? indices[1] : indices
-
-                func = write_derivatives_function(vals[perm_vals][indices], indices, Val(:string))
-
-                # begin
-                #     lock(lk)
-                #     try
-                        push!(funcs, func)
-                #     finally
-                #         unlock(lk)
-                #     end
-                # end
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
             end
-        end
 
-        𝓂.model_third_order_derivatives_SS_and_pars_vars = (funcs, sparse(rows, converted_cols, zero(cols), length(final_indices), length(eqs) * size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)))
+            _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔓, 𝔙, 
+                                                        cse = cse, 
+                                                        skipzeros = skipzeros, 
+                                                        parallel = parallel,
+                                                        # nanmath = false,
+                                                        expression_module = @__MODULE__,
+                                                        expression = Val(false))::Tuple{<:Function, <:Function}
+
+            𝓂.third_order_derivatives = buffer, func_exprs
+
+
+            ∇₃_parameters = derivatives[3][2][:,1:nps]
+
+            lennz = nnz(∇₃_parameters)
+
+            if (lennz / length(∇₃_parameters) > density_threshold) || (length(∇₃_parameters) < min_length)
+                ∇₃_parameters_mat = convert(Matrix, ∇₃_parameters)
+                buffer_parameters = zeros(Float64, size(∇₃_parameters))
+            else
+                ∇₃_parameters_mat = ∇₃_parameters
+                buffer_parameters = similar(∇₃_parameters, Float64)
+                buffer_parameters.nzval .= 0
+            end
+
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
+            end
+
+            _, func_∇₃_parameters = Symbolics.build_function(∇₃_parameters_mat, 𝔓, 𝔙, 
+                                                                cse = cse, 
+                                                                skipzeros = skipzeros, 
+                                                                parallel = parallel,
+                                                                # nanmath = false,
+                                                                expression_module = @__MODULE__,
+                                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+            𝓂.third_order_derivatives_parameters =  buffer_parameters, func_∇₃_parameters
+        
+
+            ∇₃_SS_and_pars = derivatives[3][2][:,nps+1:end]
+
+            lennz = nnz(∇₃_SS_and_pars)
+
+            if (lennz / length(∇₃_SS_and_pars) > density_threshold) || (length(∇₃_SS_and_pars) < min_length)
+                ∇₃_SS_and_pars_mat = convert(Matrix, ∇₃_SS_and_pars)
+                buffer_SS_and_pars = zeros(Float64, size(∇₃_SS_and_pars))
+            else
+                ∇₃_SS_and_pars_mat = ∇₃_SS_and_pars
+                buffer_SS_and_pars = similar(∇₃_SS_and_pars, Float64)
+                buffer_SS_and_pars.nzval .= 0
+            end
+
+            if lennz > 1500
+                parallel = Symbolics.ShardedForm(1500,4)
+            else
+                parallel = Symbolics.SerialForm()
+            end
+
+            _, func_∇₃_SS_and_pars = Symbolics.build_function(∇₃_SS_and_pars_mat, 𝔓, 𝔙, 
+                                                                cse = cse, 
+                                                                skipzeros = skipzeros, 
+                                                                # nanmath = false,
+                                                                parallel = parallel,
+                                                                expression_module = @__MODULE__,
+                                                                expression = Val(false))::Tuple{<:Function, <:Function}
+
+            𝓂.third_order_derivatives_SS_and_pars = buffer_SS_and_pars, func_∇₃_SS_and_pars
+        end
     end
 
     return nothing
 end
 
-
-function write_derivatives_of_ss_equations!(𝓂::ℳ; max_exprs_per_func::Int = 1)
-    # derivative of SS equations wrt parameters and SS_and_pars
-    # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
-    SS_and_pars = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-
-    ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
-
-    Symbolics.@syms norminvcdf(x) norminv(x) qnorm(x) normlogpdf(x) normpdf(x) normcdf(x) pnorm(x) dnorm(x) erfc(x) erfcinv(x)
-
-    # overwrite SymPyCall names
-    other_pars = setdiff(union(𝓂.parameters_in_equations, 𝓂.parameters_as_function_of_parameters), 𝓂.parameters)
-
-    if length(other_pars) > 0
-        eval(:(Symbolics.@variables $(other_pars...)))
-    end
-
-    vars = eval(:(Symbolics.@variables $(SS_and_pars...)))
-
-    pars = eval(:(Symbolics.@variables $(𝓂.parameters...)))
-
-    input_args = vcat(𝓂.parameters, SS_and_pars)
-    
-    Symbolics.@variables 𝔛[1:length(input_args)]
-
-    input_X_no_time = Pair{Symbolics.Num, Symbolics.Num}[]
-
-    for (v,input) in enumerate(input_args)
-        push!(input_X_no_time, eval(input) => eval(𝔛[v]))
-    end
-
-    ss_eqs = Symbolics.parse_expr_to_symbolic.(ss_equations,(@__MODULE__,))
-
-    calib_eqs = Dict([(eval(calib_eq.args[1]) => eval(calib_eq.args[2])) for calib_eq in reverse(𝓂.calibration_equations_no_var)])
-
-    eqs = Symbolics.Num[]
-    for subst in ss_eqs
-        for _ in calib_eqs # to completely substitute all calibration equations
-            for calib_eq in calib_eqs
-                subst = Symbolics.substitute(subst, calib_eq)
-            end
-        end
-        # subst = Symbolics.fixpoint_sub(subst, calib_eqs)
-        subst = Symbolics.substitute(subst, input_X_no_time)
-        push!(eqs, subst)
-    end
-    
-    ∂SS_equations_∂parameters = Symbolics.sparsejacobian(eqs, eval.(𝔛[1:length(pars)])) |> findnz
-
-    min_n_funcs = length(∂SS_equations_∂parameters[3]) ÷ max_exprs_per_func + 1
-
-    funcs = Function[]
-
-    lk = ReentrantLock()
-
-    if min_n_funcs == 1
-        push!(funcs, write_derivatives_function(∂SS_equations_∂parameters[3], 1:length(∂SS_equations_∂parameters[3]), Val(:string)))
-    else
-        Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂parameters[3]))
-        # for i in 1:min(min_n_funcs, length(∂SS_equations_∂parameters[3]))
-            indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂parameters[3]) : i * max_exprs_per_func)
-
-            indices = length(indices) == 1 ? indices[1] : indices
-
-            func = write_derivatives_function(∂SS_equations_∂parameters[3][indices], indices, Val(:string))
-
-            begin
-                lock(lk)
-                try
-                    push!(funcs, func)
-                finally
-                    unlock(lk)
-                end
-            end
-        end
-    end
-
-    𝓂.∂SS_equations_∂parameters = (funcs, sparse(∂SS_equations_∂parameters[1], ∂SS_equations_∂parameters[2], zeros(Float64,length(∂SS_equations_∂parameters[3])), length(eqs), length(pars)))
-
-    # 𝓂.∂SS_equations_∂parameters = write_sparse_derivatives_function(∂SS_equations_∂parameters[1], 
-    #                                                                     ∂SS_equations_∂parameters[2], 
-    #                                                                     ∂SS_equations_∂parameters[3],
-    #                                                                     length(eqs), 
-    #                                                                     length(pars),
-    #                                                                     Val(:string));
-
-    ∂SS_equations_∂SS_and_pars = Symbolics.sparsejacobian(eqs, eval.(𝔛[length(pars)+1:end])) |> findnz
-
-    min_n_funcs = length(∂SS_equations_∂SS_and_pars[3]) ÷ max_exprs_per_func + 1
-
-    funcs = Function[]
-
-    lk = ReentrantLock()
-
-    if min_n_funcs == 1
-        push!(funcs, write_derivatives_function(∂SS_equations_∂SS_and_pars[3], 1:length(∂SS_equations_∂SS_and_pars[3]), Val(:string)))
-    else
-        Polyester.@batch minbatch = 20 for i in 1:min(min_n_funcs, length(∂SS_equations_∂SS_and_pars[3]))
-        # for i in 1:min(min_n_funcs, length(∂SS_equations_∂SS_and_pars[3]))
-            indices = ((i - 1) * max_exprs_per_func + 1):(i == min_n_funcs ? length(∂SS_equations_∂SS_and_pars[3]) : i * max_exprs_per_func)
-
-            indices = length(indices) == 1 ? indices[1] : indices
-
-            func = write_derivatives_function(∂SS_equations_∂SS_and_pars[3][indices], indices, Val(:string))
-
-            begin
-                lock(lk)
-                try
-                    push!(funcs, func)
-                finally
-                    unlock(lk)
-                end
-            end
-        end
-    end
-
-    𝓂.∂SS_equations_∂SS_and_pars = (funcs, ∂SS_equations_∂SS_and_pars[1] .+ (∂SS_equations_∂SS_and_pars[2] .- 1) .* length(eqs), zeros(length(eqs), length(vars)))
-
-    # 𝓂.∂SS_equations_∂SS_and_pars = write_sparse_derivatives_function(∂SS_equations_∂SS_and_pars[1], 
-    #                                                                     ∂SS_equations_∂SS_and_pars[2], 
-    #                                                                     ∂SS_equations_∂SS_and_pars[3],
-    #                                                                     length(eqs), 
-    #                                                                     length(vars),
-    #                                                                     Val(:string));
-    return nothing
-end
 
 function write_auxilliary_indices!(𝓂::ℳ)
     # write indices in auxiliary objects
@@ -6440,60 +7385,20 @@ function calculate_jacobian(parameters::Vector{M},
                             SS_and_pars::Vector{N},
                             𝓂::ℳ)::Matrix{M} where {M,N}
                             # timer::TimerOutput = TimerOutput())::Matrix{M} where {M,N}
-    # @timeit_debug timer "Calculate jacobian" begin
-    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-    
-    par = vcat(parameters,calibrated_parameters)
-    
-    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
-
-    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-
-    X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-    
-    # vals = M[]
-
-    # for f in 𝓂.model_jacobian[1]
-    #     push!(vals, f(X)...)
-    # end
-
-    vals = zeros(M, length(𝓂.model_jacobian[1]))
-    
-    # lk = ReentrantLock()
-
-    # @timeit_debug timer "Loop" begin
-
-    Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian[1]
-    # for f in 𝓂.model_jacobian[1]
-    # for f in 𝓂.model_jacobian[1]
-        # val, idx = f(X)#::Tuple{<: Real, Int}
-        out = f(X)#::Tuple{Vector{<: Real}, UnitRange{Int64}}
-        
-        # begin
-        #     lock(lk)
-        #     try
-                @inbounds vals[out[2]] = out[1]
-                # @inbounds vals[idx] = val
-        #     finally
-        #         unlock(lk)
-        #     end
-        # end
+    if eltype(𝓂.jacobian[1]) != M
+        if 𝓂.jacobian[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.jacobian[1],M)
+            jac_buffer.nzval .= 0
+        else
+            jac_buffer = zeros(M, size(𝓂.jacobian[1]))
+        end
+    else
+        jac_buffer = 𝓂.jacobian[1]
     end
-
-    if eltype(𝓂.model_jacobian[3]) ≠ M
-        Accessors.@reset 𝓂.model_jacobian[3] = convert(Matrix{M}, 𝓂.model_jacobian[3])
-    end
-
-    𝓂.model_jacobian[3][𝓂.model_jacobian[2]] .= vals
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    return 𝓂.model_jacobian[3]
+    
+    𝓂.jacobian[2](jac_buffer, parameters, SS_and_pars)
+    
+    return jac_buffer
 end
 
 end # dispatch_doctor
@@ -6507,52 +7412,19 @@ function rrule(::typeof(calculate_jacobian),
 
     jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
 
-    # end # timeit_debug
-
     function calculate_jacobian_pullback(∂∇₁)
         # @timeit_debug timer "Calculate jacobian - reverse" begin
-        X = [parameters; SS_and_pars]
 
-        # vals = Float64[]
+        𝓂.jacobian_parameters[2](𝓂.jacobian_parameters[1], parameters, SS_and_pars)
+        𝓂.jacobian_SS_and_pars[2](𝓂.jacobian_SS_and_pars[1], parameters, SS_and_pars)
 
-        # for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
-        #     push!(vals, f(X)...)
-        # end
-
-        vals = zeros(Float64, length(𝓂.model_jacobian_SS_and_pars_vars[1]))
-
-        # lk = ReentrantLock()
-
-        # @timeit_debug timer "Loop" begin
-
-        Polyester.@batch minbatch = 200 for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
-        # for f in 𝓂.model_jacobian_SS_and_pars_vars[1]
-            out = f(X)
-
-            # begin
-            #     lock(lk)
-            #     try
-                    @inbounds vals[out[2]] = out[1]
-            #     finally
-            #         unlock(lk)
-            #     end
-            # end
-        end
-    
-        Accessors.@reset 𝓂.model_jacobian_SS_and_pars_vars[2].nzval = vals
-        
-        analytical_jacobian_SS_and_pars_vars = 𝓂.model_jacobian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-
-        cols_unique = unique(findnz(analytical_jacobian_SS_and_pars_vars)[2])
-
-        v∂∇₁ = ∂∇₁[cols_unique]
-
-        ∂parameters_and_SS_and_pars = analytical_jacobian_SS_and_pars_vars[:,cols_unique] * v∂∇₁
+        ∂parameters = 𝓂.jacobian_parameters[1]' * vec(∂∇₁)
+        ∂SS_and_pars = 𝓂.jacobian_SS_and_pars[1]' * vec(∂∇₁)
 
         # end # timeit_debug
         # end # timeit_debug
 
-        return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
     end
 
     return jacobian, calculate_jacobian_pullback
@@ -6561,76 +7433,20 @@ end
 @stable default_mode = "disable" begin
 
 function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
-    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-    
-    par = vcat(parameters,calibrated_parameters)
-
-    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
-
-    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-
-    # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-        
-    # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> (𝓂.model_function(x, par, SS)), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^2))#, SS_and_pars
-    # return 𝓂.model_hessian([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
-
-    # second_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) for f in 𝓂.model_hessian]
-    
-    # vals = [i[1] for i in second_out]
-    # rows = [i[2] for i in second_out]
-    # cols = [i[3] for i in second_out]
-
-    X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-    
-    # vals = M[]
-
-    # for f in 𝓂.model_hessian[1]
-    #     push!(vals, f(X)...)
-    # end
-
-    vals = zeros(M, length(𝓂.model_hessian[1]))
-
-    # lk = ReentrantLock()
-
-    Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian[1]
-    # for f in 𝓂.model_hessian[1]
-        out = f(X)
-        
-        # begin
-        #     lock(lk)
-        #     try
-                @inbounds vals[out[2]] = out[1]
-        #     finally
-        #         unlock(lk)
-        #     end
-        # end
+    if eltype(𝓂.hessian[1]) != M
+        if 𝓂.hessian[1] isa SparseMatrixCSC
+            hes_buffer = similar(𝓂.hessian[1],M)
+            hes_buffer.nzval .= 0
+        else
+            hes_buffer = zeros(M, size(𝓂.hessian[1]))
+        end
+    else
+        hes_buffer = 𝓂.hessian[1]
     end
 
-    Accessors.@reset 𝓂.model_hessian[2].nzval = vals
+    𝓂.hessian[2](hes_buffer, parameters, SS_and_pars)
     
-    return 𝓂.model_hessian[2] * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
-
-    # vals = M[]
-    # rows = Int[]
-    # cols = Int[]
-
-    # for f in 𝓂.model_hessian
-    #     output = f(input)
-
-    #     push!(vals, output[1]...)
-    #     push!(rows, output[2]...)
-    #     push!(cols, output[3]...)
-    # end
-
-    # vals = convert(Vector{M}, vals)
-
-    # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-    # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^2)
-    # sparse!(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂,1)) * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+    return hes_buffer
 end
 
 end # dispatch_doctor
@@ -6638,31 +7454,19 @@ end # dispatch_doctor
 function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
     hessian = calculate_hessian(parameters, SS_and_pars, 𝓂)
 
-    function calculate_hessian_pullback(∂∇₁)
-        ∂∇₁ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂'
+    function calculate_hessian_pullback(∂∇₂)
+        # @timeit_debug timer "Calculate hessian - reverse" begin
 
-        X = [parameters; SS_and_pars]
+        𝓂.hessian_parameters[2](𝓂.hessian_parameters[1], parameters, SS_and_pars)
+        𝓂.hessian_SS_and_pars[2](𝓂.hessian_SS_and_pars[1], parameters, SS_and_pars)
 
-        vals = zeros(Float64, length(𝓂.model_hessian_SS_and_pars_vars[1]))
+        ∂parameters = 𝓂.hessian_parameters[1]' * vec(∂∇₂)
+        ∂SS_and_pars = 𝓂.hessian_SS_and_pars[1]' * vec(∂∇₂)
 
-        Polyester.@batch minbatch = 200 for f in 𝓂.model_hessian_SS_and_pars_vars[1]
-        # for f in 𝓂.model_hessian_SS_and_pars_vars[1]
-            out = f(X)
-            
-            @inbounds vals[out[2]] = out[1]
-        end
-    
-        Accessors.@reset 𝓂.model_hessian_SS_and_pars_vars[2].nzval = vals
-        
-        analytical_hessian_SS_and_pars_vars = 𝓂.model_hessian_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
+        # end # timeit_debug
+        # end # timeit_debug
 
-        cols_unique = unique(findnz(analytical_hessian_SS_and_pars_vars)[2])
-
-        v∂∇₁ = ∂∇₁[cols_unique]
-
-        ∂parameters_and_SS_and_pars = analytical_hessian_SS_and_pars_vars[:,cols_unique] * v∂∇₁
-
-        return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
     end
 
     return hessian, calculate_hessian_pullback
@@ -6672,87 +7476,21 @@ end
 
 function calculate_third_order_derivatives(parameters::Vector{M}, 
                                             SS_and_pars::Vector{N}, 
-                                            𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N} #; 
-    # timer::TimerOutput = TimerOutput()) where {M,N}
-    # @timeit_debug timer "3rd order derivatives" begin
-    SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
-    calibrated_parameters = SS_and_pars[(end - length(𝓂.calibration_equations)+1):end]
-    
-    par = vcat(parameters,calibrated_parameters)
-
-    dyn_var_future_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_future_idx
-    dyn_var_present_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_present_idx
-    dyn_var_past_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.solution.perturbation.auxilliary_indices.dyn_ss_idx
-
-    shocks_ss = 𝓂.solution.perturbation.auxilliary_indices.shocks_ss
-
-    # return sparse(reshape(𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝒜.jacobian(𝒷(), x -> 𝓂.model_function(x, par, SS), x), x), [SS_future; SS_present; SS_past; shocks_ss] ), 𝓂.timings.nVars, nk^3))#, SS_and_pars
-    # return 𝓂.model_third_order_derivatives([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss; par; SS[dyn_ss_idx]]) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
-    
-    
-    # third_out =  [f([SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; shocks_ss], par, SS[dyn_ss_idx]) for f in 𝓂.model_third_order_derivatives]
-    
-    # vals = [i[1] for i in third_out]
-    # rows = [i[2] for i in third_out]
-    # cols = [i[3] for i in third_out]
-
-    # vals = convert(Vector{M}, vals)
-    
-    X = [SS[[dyn_var_future_idx; dyn_var_present_idx; dyn_var_past_idx]]; SS[dyn_ss_idx]; par; shocks_ss]
-    
-    # vals = M[]
-
-    # for f in 𝓂.model_third_order_derivatives[1]
-    #     push!(vals, f(X)...)
-    # end
-    
-    vals = zeros(M, length(𝓂.model_third_order_derivatives[1]))
-
-    # lk = ReentrantLock()
-
-    # @timeit_debug timer "Loop" begin
-
-    Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives[1]
-    # for f in 𝓂.model_third_order_derivatives[1]
-        out = f(X)
-        
-        # begin
-        #     lock(lk)
-        #     try
-                @inbounds vals[out[2]] = out[1]
-        #     finally
-        #         unlock(lk)
-        #     end
-        # end
+                                            𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
+    if eltype(𝓂.third_order_derivatives[1]) != M
+        if 𝓂.third_order_derivatives[1] isa SparseMatrixCSC
+            third_buffer = similar(𝓂.third_order_derivatives[1],M)
+            third_buffer.nzval .= 0
+        else
+            third_buffer = zeros(M, size(𝓂.third_order_derivatives[1]))
+        end
+    else
+        third_buffer = 𝓂.third_order_derivatives[1]
     end
 
-    # end # timeit_debug
-
-    # @timeit_debug timer "Allocation" begin
-
-    Accessors.@reset 𝓂.model_third_order_derivatives[2].nzval = vals
+    𝓂.third_order_derivatives[2](third_buffer, parameters, SS_and_pars)
     
-    # end # timeit_debug
-    # end # timeit_debug
-
-    return 𝓂.model_third_order_derivatives[2]# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
-
-    # vals = M[]
-    # rows = Int[]
-    # cols = Int[]
-
-    # for f in 𝓂.model_third_order_derivatives
-    #     output = f(input)
-
-    #     push!(vals, output[1]...)
-    #     push!(rows, output[2]...)
-    #     push!(cols, output[3]...)
-    # end
-
-    # # # nk = 𝓂.timings.nPast_not_future_and_mixed + 𝓂.timings.nVars + 𝓂.timings.nFuture_not_past_and_mixed + length(𝓂.exo)
-    # # # sparse(rows, cols, vals, length(𝓂.dyn_equations), nk^3)
-    # sparse(rows, cols, vals, length(𝓂.dyn_equations), size(𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃,1)) * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    return third_buffer
 end
 
 end # dispatch_doctor
@@ -6763,41 +7501,18 @@ function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_p
     third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)
     # end # timeit_debug
 
-    function calculate_third_order_derivatives_pullback(∂∇₁)
+    function calculate_third_order_derivatives_pullback(∂∇₃)
         # @timeit_debug timer "3rd order derivatives - pullback" begin
-        X = [parameters; SS_and_pars]
+        𝓂.third_order_derivatives_parameters[2](𝓂.third_order_derivatives_parameters[1], parameters, SS_and_pars)
+        𝓂.third_order_derivatives_SS_and_pars[2](𝓂.third_order_derivatives_SS_and_pars[1], parameters, SS_and_pars)
 
-        vals = zeros(Float64, length(𝓂.model_third_order_derivatives_SS_and_pars_vars[1]))
-        
-        # @timeit_debug timer "Loop" begin
-    
-        Polyester.@batch minbatch = 200 for f in 𝓂.model_third_order_derivatives_SS_and_pars_vars[1]
-        # for f in 𝓂.model_third_order_derivatives_SS_and_pars_vars[1]
-            out = f(X)
-            
-            @inbounds vals[out[2]] = out[1]
-        end
-    
-        # end # timeit_debug
-        # @timeit_debug timer "Allocation" begin
-
-        Accessors.@reset 𝓂.model_third_order_derivatives_SS_and_pars_vars[2].nzval = vals
-        
-        # end # timeit_debug
-        # @timeit_debug timer "Post process" begin
-
-        analytical_third_order_derivatives_SS_and_pars_vars = 𝓂.model_third_order_derivatives_SS_and_pars_vars[2] |> ThreadedSparseArrays.ThreadedSparseMatrixCSC
-
-        cols_unique = unique(findnz(analytical_third_order_derivatives_SS_and_pars_vars)[2])
-
-        v∂∇₁ = ∂∇₁[cols_unique]
-
-        ∂parameters_and_SS_and_pars = analytical_third_order_derivatives_SS_and_pars_vars[:,cols_unique] * v∂∇₁
+        ∂parameters = 𝓂.third_order_derivatives_parameters[1]' * vec(∂∇₃)
+        ∂SS_and_pars = 𝓂.third_order_derivatives_SS_and_pars[1]' * vec(∂∇₃)
 
         # end # timeit_debug
         # end # timeit_debug
 
-        return NoTangent(), ∂parameters_and_SS_and_pars[1:length(parameters)], ∂parameters_and_SS_and_pars[length(parameters)+1:end], NoTangent()
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
     end
 
     return third_order_derivatives, calculate_third_order_derivatives_pullback
@@ -7490,87 +8205,47 @@ function rrule(::typeof(get_NSSS_and_parameters),
     SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
         
     SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
-    
+
+    SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+
     # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
     unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-    # ∂SS_equations_∂parameters = try 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-    # catch
-    #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    # end
 
-    X = [parameter_values; SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]]
-    
-    # vals = Float64[]
+    ∂ = parameter_values
+    C = SS_and_pars[indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag)] # [dyn_ss_idx])
 
-    # for f in 𝓂.∂SS_equations_∂parameters[1]
-    #     push!(vals, f(X)...)
-    # end
-    
-    vals = zeros(Float64, length(𝓂.∂SS_equations_∂parameters[1]))
-
-    # lk = ReentrantLock()
-
-    # @timeit_debug timer "Loop - parameter derivatives" begin
-
-    Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
-    # for f in 𝓂.∂SS_equations_∂parameters[1]
-        out = f(X)
-        
-        # begin
-        #     lock(lk)
-        #     try
-                @inbounds vals[out[2]] = out[1]
-        #     finally
-        #         unlock(lk)
-        #     end
-        # end
+    if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
+        if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
+            jac_buffer.nzval .= 0
+        else
+            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
+        end
+    else
+        jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
     end
 
-    Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
+    𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
+
+    ∂SS_equations_∂parameters = jac_buffer
+
     
-    ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
-
-    # end # timeit_debug
-
-    # vals = Float64[]
-
-    # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-    #     push!(vals, f(X)...)
-    # end
-
-    vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
-
-    # lk = ReentrantLock()
-
-    # @timeit_debug timer "Loop - NSSS derivatives" begin
-
-    Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-    # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-        out = f(X)
-        
-        # begin
-        #     lock(lk)
-        #     try
-                @inbounds vals[out[2]] = out[1]
-        #     finally
-        #         unlock(lk)
-        #     end
-        # end
+    if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(SS_and_pars)
+        if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
+            jac_buffer.nzval .= 0
+        else
+            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
+        end
+    else
+        jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
     end
 
-    𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0
-    𝓂.∂SS_equations_∂SS_and_pars[3][𝓂.∂SS_equations_∂SS_and_pars[2]] .+= vals
+    𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
 
-    ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
+    ∂SS_equations_∂SS_and_pars = jac_buffer
 
-    # end # timeit_debug
-
-    # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-    # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-    
-    # @timeit_debug timer "Implicit diff - mat inv" begin
-
-    ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
+    ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
 
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
         return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
@@ -7620,76 +8295,47 @@ function get_NSSS_and_parameters(𝓂::ℳ,
             
         SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
         
+        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+
         # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
         unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-        # ∂SS_equations_∂parameters = try 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-        # catch
-        #     return (SS_and_pars, (10, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-        # end
-
-        X = [parameter_values; SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]]
         
-        # vals = Float64[]
 
-        # for f in 𝓂.∂SS_equations_∂parameters[1]
-        #     push!(vals, f(X)...)
-        # end
-        
-        vals = zeros(Float64, length(𝓂.∂SS_equations_∂parameters[1]))
+        ∂ = parameter_values
+        C = SS_and_pars[indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag)] # [dyn_ss_idx])
 
-        # lk = ReentrantLock()
-
-        Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂parameters[1]
-        # for f in 𝓂.∂SS_equations_∂parameters[1]
-            out = f(X)
-            
-            # begin
-            #     lock(lk)
-            #     try
-                    @inbounds vals[out[2]] = out[1]
-            #     finally
-            #         unlock(lk)
-            #     end
-            # end
+        if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
+            if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
+                jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
+                jac_buffer.nzval .= 0
+            else
+                jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
+            end
+        else
+            jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
         end
 
-        Accessors.@reset 𝓂.∂SS_equations_∂parameters[2].nzval = vals
+        𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
+
+        ∂SS_equations_∂parameters = jac_buffer
+
         
-        ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters[2]
-
-        # vals = Float64[]
-
-        # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-        #     push!(vals, f(X)...)
-        # end
-
-        vals = zeros(Float64, length(𝓂.∂SS_equations_∂SS_and_pars[1]))
-
-        # lk = ReentrantLock()
-
-        Polyester.@batch minbatch = 200 for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-        # for f in 𝓂.∂SS_equations_∂SS_and_pars[1]
-            out = f(X)
-            
-            # begin
-            #     lock(lk)
-            #     try
-                    @inbounds vals[out[2]] = out[1]
-            #     finally
-            #         unlock(lk)
-            #     end
-            # end
+        if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(parameter_values)
+            if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
+                jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
+                jac_buffer.nzval .= 0
+            else
+                jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
+            end
+        else
+            jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
         end
 
-        𝓂.∂SS_equations_∂SS_and_pars[3] .*= 0
-        𝓂.∂SS_equations_∂SS_and_pars[3][𝓂.∂SS_equations_∂SS_and_pars[2]] .+= vals
+        𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
 
-        ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars[3]
+        ∂SS_equations_∂SS_and_pars = jac_buffer
 
-        # ∂SS_equations_∂parameters = 𝓂.∂SS_equations_∂parameters(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-        # ∂SS_equations_∂SS_and_pars = 𝓂.∂SS_equations_∂SS_and_pars(parameter_values, SS_and_pars[indexin(unknowns, SS_and_pars_names_lead_lag)]) |> Matrix
-        
-        ∂SS_equations_∂SS_and_pars_lu = RF.lu!(∂SS_equations_∂SS_and_pars, check = false)
+        ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
 
         if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
             if opts.verbose println("Failed to calculate implicit derivative of NSSS") end

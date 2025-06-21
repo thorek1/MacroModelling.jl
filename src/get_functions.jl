@@ -3671,8 +3671,12 @@ function get_non_stochastic_steady_state_residuals(𝓂::ℳ,
     vals = [combined_values[i] for i in unknowns]
 
     axis1 = vcat([Symbol("Equation" * sub(string(i))) for i in 1:length(vars_in_ss_equations)], [Symbol("CalibrationEquation" * sub(string(i))) for i in 1:length(𝓂.calibration_equations_parameters)])
+    
+    residual = zeros(length(vals))
 
-    KeyedArray(abs.(𝓂.SS_check_func(𝓂.parameter_values, vals)), Equation = axis1)
+    𝓂.SS_check_func(residual, 𝓂.parameter_values, vals)
+
+    KeyedArray(abs.(residual), Equation = axis1)
 end
 
 """
