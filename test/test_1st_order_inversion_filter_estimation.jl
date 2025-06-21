@@ -4,6 +4,7 @@ import ADTypes
 import Pigeons
 import Zygote
 import Turing: NUTS, sample, logpdf
+import ADTypes: AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
@@ -44,6 +45,7 @@ end
 n_samples = 1000
 
 samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion), NUTS(adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
