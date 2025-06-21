@@ -3,12 +3,13 @@
 ## High priority
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
+- [ ] add caches to lyapunov krylov solvers
+- [ ] eliminiate last elements of factorisation calls not using linearsolvers.jl, check whether they can be done with linearsolvers in case of a matrix as RHS (otherwise consider mumps for sparse matrix RHS)
+- [ ] check allocations of jacobian in sparse case (NAWM)
 - [ ] add to the doc/strings that KeyedArrays are part of the AxisKeyes.jl package so people can look up how to access elements there. otherwise they might confuse it for a format provided by the package and wouldnt know how to access elements from it
 - [ ] use isfresh flag on dense linear solves
 - [ ] fix borrowing_constraint how-to
 - [ ] implement check for plots, that they always return a plot (shocks = :none didnt return a plot)
-- [ ] implement benchmarks
-- [ ] write non allocating version of steady state functions
 - [ ] cache sparse kron, sylvester solution, and compressed kron in order to avoid allocs; check sparse kron! call
 - [ ] prettify plotlyjs plots
 - [ ] fix findiff and zygote consistency for llh derivatives of inversion filter
@@ -126,6 +127,8 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] weed out SS solver and saved objects
 
+- [x] implement benchmarks
+- [x] write non allocating version of steady state functions
 - [x] do SVD on matrices before solving first order. idea to solve in lower dimensional subspace. doesnt work as that is the whole point of the solution. what breaks is the X^2 as any transformation of X would have a term in the middle remaining
 - [x] automatically adjust plots for different legend widths and heights
 - [x] use ID for sparse output sylvester solvers (filed issue)
