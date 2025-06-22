@@ -50,7 +50,7 @@ StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [compat]
-ADTypes = "1.14.0"
+ADTypes = "1"
 Accessors = "0.1"
 Aqua = "0.8"
 AxisKeys = "0.2"

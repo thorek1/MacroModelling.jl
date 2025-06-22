@@ -1,4 +1,3 @@
-
 mutable struct krylov_caches{G <: AbstractFloat}
     gmres::GmresWorkspace{G,G,Vector{G}}
     dqgmres::DqgmresWorkspace{G,G,Vector{G}}

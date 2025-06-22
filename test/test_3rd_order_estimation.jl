@@ -3,6 +3,7 @@ import Turing
 import ADTypes
 import Pigeons
 import Turing: NUTS, sample, logpdf, PG, IS
+import ADTypes: AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
