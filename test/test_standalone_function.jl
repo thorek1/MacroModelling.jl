@@ -364,7 +364,7 @@ end
     
     @test isapprox(stdev_deriv[5,6],1.3135107627695757, rtol = 1e-6)
 
-    # derivatives of paramteres wrt non stochastic steady state
+    # derivatives of paramteres wrt non-stochastic steady state
     nsss_deriv = ForwardDiff.jacobian(x -> get_statistics(RBC_CME, x, parameters = RBC_CME.parameters, non_stochastic_steady_state = RBC_CME.var)[:non_stochastic_steady_state], RBC_CME.parameter_values)
     @test isapprox(nsss_deriv[4,1],3.296074644820076, rtol = 1e-6)
 end

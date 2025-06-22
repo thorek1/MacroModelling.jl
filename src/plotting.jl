@@ -1291,7 +1291,7 @@ function plot_solution(𝓂::ℳ,
     plot_count = 1
     return_plots = []
 
-    labels = Dict(  :first_order            => ["1st order perturbation",           "Non Stochastic Steady State"],
+    labels = Dict(  :first_order            => ["1st order perturbation",           "Non-stochastic Steady State"],
                     :second_order           => ["2nd order perturbation",           "Stochastic Steady State (2nd order)"],
                     :pruned_second_order    => ["Pruned 2nd order perturbation",    "Stochastic Steady State (Pruned 2nd order)"],
                     :third_order            => ["3rd order perturbation",           "Stochastic Steady State (3rd order)"],
