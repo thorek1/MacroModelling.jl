@@ -109,10 +109,10 @@ Parameters:   39</code></pre><p>First, we load the package and then use the <a h
        
            calibr_pi_obj | 1 = pi_obj[ss]
            calibr_pi | pi[ss] = pi_obj[ss]
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	4.777 seconds
-Set up non-stochastic steady state problem:				2.851 seconds
-Find non-stochastic steady state:					1.482 seconds
-Take symbolic derivatives up to first order:				1.475 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	5.145 seconds
+Set up non-stochastic steady state problem:				3.012 seconds
+Find non-stochastic steady state:					1.461 seconds
+Take symbolic derivatives up to first order:				1.5 seconds
 Model:        Smets_Wouters_2003
 Variables
  Total:       54
@@ -147,13 +147,13 @@ And data, <span class="sgr1">56×3 Matrix{Float64}</span>:
                     <span class="sgr35">(:Steady_state)</span>  <span class="sgr35">(:alpha)</span>      <span class="sgr35">(:beta)</span>
   <span class="sgr35">(:C)</span>               1.23956          7.19197      14.4994
   <span class="sgr35">(:C_f)</span>             1.23956          7.19197      14.4994
-  <span class="sgr35">(:G)</span>               0.362            1.81957e-15  -2.42609e-15
-  <span class="sgr35">(:G_f)</span>             0.362            1.81957e-15  -2.42609e-15
+  <span class="sgr35">(:G)</span>               0.362            1.51631e-15   2.42609e-15
+  <span class="sgr35">(:G_f)</span>             0.362            1.51631e-15   2.42609e-15
   <span class="sgr35">(:I)</span>               0.456928         3.13855      18.5261
   <span class="sgr35">(:I_f)</span>             0.456928         3.13855      18.5261
    ⋮
-  <span class="sgr35">(:r_k)</span>             0.035101        -3.68219e-16  -1.0203
-  <span class="sgr35">(:r_k_f)</span>           0.035101         3.89819e-16  -1.0203
+  <span class="sgr35">(:r_k)</span>             0.035101        -7.32504e-16  -1.0203
+  <span class="sgr35">(:r_k_f)</span>           0.035101         9.83941e-17  -1.0203
   <span class="sgr35">(:w_star)</span>          1.14353          4.37676      14.5872
   <span class="sgr35">(:z)</span>               1.0              0.0           0.0
   <span class="sgr35">(:z_f)</span>             1.0              0.0           0.0
@@ -167,14 +167,14 @@ And data, <span class="sgr1">56×3 Matrix{Float64}</span>:
                     <span class="sgr35">(:Steady_state)</span>  <span class="sgr35">(:G_bar)</span>      <span class="sgr35">(:alpha)</span>
   <span class="sgr35">(:C)</span>               1.25421         -0.47742       7.33193
   <span class="sgr35">(:C_f)</span>             1.25421         -0.47742       7.33193
-  <span class="sgr35">(:G)</span>               0.362            1.0           9.35834e-16
-  <span class="sgr35">(:G_f)</span>             0.362            1.0           9.35834e-16
+  <span class="sgr35">(:G)</span>               0.362            1.0          -1.87167e-15
+  <span class="sgr35">(:G_f)</span>             0.362            1.0          -1.87167e-15
   <span class="sgr35">(:I)</span>               0.47613          0.102174      3.29983
   <span class="sgr35">(:I_f)</span>             0.47613          0.102174      3.29983
    ⋮
-  <span class="sgr35">(:r_k)</span>             0.0340817        5.59321e-17  -8.40688e-16
-  <span class="sgr35">(:r_k_f)</span>           0.0340817        7.76944e-18  -1.24316e-16
-  <span class="sgr35">(:w_star)</span>          1.15842          1.7719e-15    4.5044
+  <span class="sgr35">(:r_k)</span>             0.0340817       -3.51154e-17   5.37971e-16
+  <span class="sgr35">(:r_k_f)</span>           0.0340817        3.31762e-17  -4.81107e-16
+  <span class="sgr35">(:w_star)</span>          1.15842          1.38539e-15   4.5044
   <span class="sgr35">(:z)</span>               1.0              0.0           0.0
   <span class="sgr35">(:z_f)</span>             1.0              0.0           0.0
   <span class="sgr35">(:calibr_pi_obj)</span>   1.0              0.0           0.0
@@ -187,8 +187,8 @@ And data, <span class="sgr1">54×3 Matrix{Float64}</span>:
              <span class="sgr35">(:Standard_deviation)</span>   <span class="sgr35">(:alpha)</span>        <span class="sgr35">(:beta)</span>
   <span class="sgr35">(:C)</span>        2.0521                  9.69554        -9.78014
   <span class="sgr35">(:C_f)</span>      3.05478                13.0917         -0.834005
-  <span class="sgr35">(:G)</span>        0.373165                3.5821e-14     -8.75583e-14
-  <span class="sgr35">(:G_f)</span>      0.373165                3.15632e-14     1.77905e-13
+  <span class="sgr35">(:G)</span>        0.373165                9.79824e-15    -1.47313e-13
+  <span class="sgr35">(:G_f)</span>      0.373165               -8.13098e-15    -1.00505e-13
   <span class="sgr35">(:I)</span>        3.00453                13.9594         95.911
   <span class="sgr35">(:I_f)</span>      3.46854                14.3686        105.856
    ⋮
@@ -296,19 +296,19 @@ And data, <span class="sgr1">54×9×21 Array{Float64, 3}</span>:
 And data, <span class="sgr1">29×54 adjoint(::Matrix{Float64})</span> with eltype Float64:
                    <span class="sgr35">(:C)</span>         <span class="sgr35">(:C_f)</span>        …  <span class="sgr35">(:z)</span>         <span class="sgr35">(:z_f)</span>
   <span class="sgr35">(:Steady_state)</span>   1.20438      1.20438          1.0          1.0
-  <span class="sgr35">(:C₍₋₁₎)</span>          0.536418     1.30247e-15      0.214756     1.74146e-14
+  <span class="sgr35">(:C₍₋₁₎)</span>          0.536418     2.40623e-15      0.214756     2.28323e-14
   <span class="sgr35">(:C_f₍₋₁₎)</span>        0.0163196    0.410787         0.00766973   0.139839
-  <span class="sgr35">(:I₍₋₁₎)</span>         -0.102895     6.42451e-14      0.317145     4.68577e-13
+  <span class="sgr35">(:I₍₋₁₎)</span>         -0.102895    -9.42903e-15      0.317145    -7.96394e-14
   <span class="sgr35">(:I_f₍₋₁₎)</span>        0.0447033   -0.24819      …   0.0276803    0.213957
-  <span class="sgr35">(:K₍₋₁₎)</span>          0.00880026  -1.66287e-15     -0.0587166   -1.89633e-14
+  <span class="sgr35">(:K₍₋₁₎)</span>          0.00880026  -5.03279e-16     -0.0587166   -5.76502e-15
    ⋮                                          ⋱   ⋮
   <span class="sgr35">(:eta_L₍ₓ₎)</span>       0.252424     0.838076         0.0982057    0.430915
-  <span class="sgr35">(:eta_R₍ₓ₎)</span>      -0.229757     1.41555e-14     -0.179716    -1.09889e-14
+  <span class="sgr35">(:eta_R₍ₓ₎)</span>      -0.229757    -5.52401e-15     -0.179716     4.35547e-15
   <span class="sgr35">(:eta_a₍ₓ₎)</span>       0.185454     0.699595     …  -0.551529     0.348639
   <span class="sgr35">(:eta_b₍ₓ₎)</span>       0.087379     0.0150811        0.0338767   -0.013001
-  <span class="sgr35">(:eta_p₍ₓ₎)</span>      -9.72053e-5   1.3541e-17      -0.00134983  -4.11856e-17
-  <span class="sgr35">(:eta_pi₍ₓ₎)</span>      0.0100939   -1.18881e-15      0.00816804   8.73282e-16
-  <span class="sgr35">(:eta_w₍ₓ₎)</span>      -4.24362e-5  -2.03197e-17      0.00222469  -4.60312e-18</code></pre><p>The solution provides information about how past states and present shocks impact present variables. The first row contains the SS for the variables denoted in the columns. The second to last rows contain the past states, with the time index <code>₍₋₁₎</code>, and present shocks, with exogenous variables denoted by <code>₍ₓ₎</code>. For example, the immediate impact of a shock to <code>eta_w</code> on <code>z</code> is 0.00222469.</p><p>There is also the possibility to visually inspect the solution using the <a href="../../api/#MacroModelling.plot_solution-Tuple{MacroModelling.ℳ, Union{String, Symbol}}"><code>plot_solution</code></a> function. Please note that you need to import the <code>StatsPlots</code> packages once before the first plot.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_solution(Smets_Wouters_2003, :pi, variables = [:C,:I,:K,:L,:W,:R])</code><code class="nohighlight hljs ansi" style="display:block;">1-element Vector{Any}:
+  <span class="sgr35">(:eta_p₍ₓ₎)</span>      -9.72053e-5  -3.40717e-17     -0.00134983   9.81319e-18
+  <span class="sgr35">(:eta_pi₍ₓ₎)</span>      0.0100939    4.44331e-16      0.00816804  -2.16982e-16
+  <span class="sgr35">(:eta_w₍ₓ₎)</span>      -4.24362e-5  -1.13954e-17      0.00222469  -1.68077e-18</code></pre><p>The solution provides information about how past states and present shocks impact present variables. The first row contains the SS for the variables denoted in the columns. The second to last rows contain the past states, with the time index <code>₍₋₁₎</code>, and present shocks, with exogenous variables denoted by <code>₍ₓ₎</code>. For example, the immediate impact of a shock to <code>eta_w</code> on <code>z</code> is 0.00222469.</p><p>There is also the possibility to visually inspect the solution using the <a href="../../api/#MacroModelling.plot_solution-Tuple{MacroModelling.ℳ, Union{String, Symbol}}"><code>plot_solution</code></a> function. Please note that you need to import the <code>StatsPlots</code> packages once before the first plot.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_solution(Smets_Wouters_2003, :pi, variables = [:C,:I,:K,:L,:W,:R])</code><code class="nohighlight hljs ansi" style="display:block;">1-element Vector{Any}:
  Plot{Plots.GRBackend() n=15}</code></pre><p><img src="../../assets/solution__SW03__1.png" alt="Smets_Wouters_2003 solution"/></p><p>The chart shows the first order perturbation solution mapping from the past state <code>pi</code> to the present variables <code>C</code>, <code>I</code>, <code>K</code>, <code>L</code>, <code>W</code>, and <code>R</code>. The state variable covers a range of two standard deviations around the non-stochastic steady state and all other states remain in the non-stochastic steady state.</p><h2 id="Obtain-array-of-IRFs-or-model-simulations"><a class="docs-heading-anchor" href="#Obtain-array-of-IRFs-or-model-simulations">Obtain array of IRFs or model simulations</a><a id="Obtain-array-of-IRFs-or-model-simulations-1"></a><a class="docs-heading-anchor-permalink" href="#Obtain-array-of-IRFs-or-model-simulations" title="Permalink"></a></h2><p>Last but not least the user might want to obtain simulated time series of the model or IRFs without plotting them. For IRFs this is possible by calling <a href="../../api/#MacroModelling.get_irf-Tuple{MacroModelling.ℳ}"><code>get_irf</code></a>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_irf(Smets_Wouters_2003)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 54-element Vector{Symbol}</span>
 →   <span class="sgr34">Periods ∈ 40-element UnitRange{Int64}</span>
@@ -330,7 +330,7 @@ And data, <span class="sgr1">54×40×9 Array{Float64, 3}</span>:
              <span class="sgr34">(1)</span>            <span class="sgr34">(2)</span>            …  <span class="sgr34">(39)</span>            <span class="sgr34">(40)</span>
   <span class="sgr35">(:C)</span>         0.185454       0.266366           0.0448634       0.0445393
   <span class="sgr35">(:C_f)</span>       0.699595       0.807224           0.0641954       0.0635383
-  <span class="sgr35">(:G)</span>         6.08256e-17    3.84951e-15        1.24648e-14     1.22363e-14
+  <span class="sgr35">(:G)</span>        -2.43302e-16    4.04074e-15        1.32264e-14     1.30044e-14
    ⋮                                       ⋱     ⋮
   <span class="sgr35">(:r_k_f)</span>     0.00206815     0.00250599   …    -0.0012247      -0.00120755
   <span class="sgr35">(:w_star)</span>   -0.0685999     -0.0257599          0.0104469       0.00989232
@@ -340,32 +340,32 @@ And data, <span class="sgr1">54×40×9 Array{Float64, 3}</span>:
 <span class="sgr35">[:, :, 9] ~ (:, :, :eta_w):</span>
              <span class="sgr34">(1)</span>            <span class="sgr34">(2)</span>            …  <span class="sgr34">(39)</span>            <span class="sgr34">(40)</span>
   <span class="sgr35">(:C)</span>        -4.24362e-5    -7.53116e-5        -0.000102464    -0.000101596
-  <span class="sgr35">(:C_f)</span>      -2.03197e-17    9.98476e-17       -2.41892e-17    -2.37212e-17
-  <span class="sgr35">(:G)</span>        -3.03719e-18    9.73899e-17       -4.25906e-17    -4.14515e-17
+  <span class="sgr35">(:C_f)</span>      -1.13954e-17    4.89608e-19        1.98321e-17     2.15779e-17
+  <span class="sgr35">(:G)</span>        -1.33453e-19    5.40487e-17       -2.7736e-17     -2.70499e-17
    ⋮                                       ⋱     ⋮
-  <span class="sgr35">(:r_k_f)</span>    -2.7306e-20     5.36926e-18  …     5.9348e-19      6.53394e-19
+  <span class="sgr35">(:r_k_f)</span>    -9.97046e-21    1.43371e-18  …    -6.45534e-19    -6.53016e-19
   <span class="sgr35">(:w_star)</span>    0.012691       0.00165858        -8.17445e-5     -7.60783e-5
   <span class="sgr35">(:z)</span>         0.00222469     0.00187724         0.000271989     0.000277738
-  <span class="sgr35">(:z_f)</span>      -4.60312e-18    9.06662e-16        1.00262e-16     1.10376e-16</code></pre><p>which returns a 3-dimensional <code>KeyedArray</code> (provided by the <code>AxisKeys</code> package) with variables  (absolute deviations from the relevant steady state by default) in rows, the period in columns, and the shocks as the third dimension.</p><p>For simulations this is possible by calling <a href="../../api/#MacroModelling.simulate-Tuple{MacroModelling.ℳ}"><code>simulate</code></a>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; simulate(Smets_Wouters_2003)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+  <span class="sgr35">(:z_f)</span>      -1.68077e-18    2.42887e-16       -1.08757e-16    -1.10005e-16</code></pre><p>which returns a 3-dimensional <code>KeyedArray</code> (provided by the <code>AxisKeys</code> package) with variables  (absolute deviations from the relevant steady state by default) in rows, the period in columns, and the shocks as the third dimension.</p><p>For simulations this is possible by calling <a href="../../api/#MacroModelling.simulate-Tuple{MacroModelling.ℳ}"><code>simulate</code></a>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; simulate(Smets_Wouters_2003)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 54-element Vector{Symbol}</span>
 →   <span class="sgr34">Periods ∈ 40-element UnitRange{Int64}</span>
 ◪   <span class="sgr35">Shocks ∈ 1-element Vector{Symbol}</span>
 And data, <span class="sgr1">54×40×1 Array{Float64, 3}</span>:
 <span class="sgr35">[:, :, 1] ~ (:, :, :simulate):</span>
              <span class="sgr34">(1)</span>          <span class="sgr34">(2)</span>          …  <span class="sgr34">(39)</span>          <span class="sgr34">(40)</span>
-  <span class="sgr35">(:C)</span>         1.62852      2.93255          0.0786923     0.280896
-  <span class="sgr35">(:C_f)</span>       2.80402      5.34999         -2.45044      -1.01826
-  <span class="sgr35">(:G)</span>         0.396353     0.204741        -0.089669     -0.144877
-  <span class="sgr35">(:G_f)</span>       0.396353     0.204741        -0.089669     -0.144877
-  <span class="sgr35">(:I)</span>         0.603482     1.4033     …    -2.77961      -2.71593
-  <span class="sgr35">(:I_f)</span>       0.979645     2.206           -4.27737      -3.98255
+  <span class="sgr35">(:C)</span>         0.463542     0.317558         2.00448       1.53763
+  <span class="sgr35">(:C_f)</span>       0.178501     0.555057         1.36998       1.74686
+  <span class="sgr35">(:G)</span>         0.459659     0.256947         0.161154      0.22352
+  <span class="sgr35">(:G_f)</span>       0.459659     0.256947         0.161154      0.22352
+  <span class="sgr35">(:I)</span>        -0.0190365   -0.262719   …     2.10248       1.83897
+  <span class="sgr35">(:I_f)</span>       0.0246802   -0.019744         0.0447685     0.219388
    ⋮                                   ⋱     ⋮
-  <span class="sgr35">(:q_f)</span>       1.21129     -0.976684         4.8214        3.75625
-  <span class="sgr35">(:r_k)</span>       0.0333679    0.0379702  …     0.0350698     0.0277186
-  <span class="sgr35">(:r_k_f)</span>     0.0399004    0.0476219        0.0146918     0.0200774
-  <span class="sgr35">(:w_star)</span>    0.488027     0.281373         0.978099      0.726259
-  <span class="sgr35">(:z)</span>         0.707842     1.48368          0.994744     -0.244499
-  <span class="sgr35">(:z_f)</span>       1.80906      3.11071         -2.44049      -1.53262</code></pre><p>which returns the simulated data in levels in a 3-dimensional <code>KeyedArray</code> (provided by the <code>AxisKeys</code> package) of the same structure as for the IRFs.</p><h2 id="Conditional-forecasts"><a class="docs-heading-anchor" href="#Conditional-forecasts">Conditional forecasts</a><a id="Conditional-forecasts-1"></a><a class="docs-heading-anchor-permalink" href="#Conditional-forecasts" title="Permalink"></a></h2><p>Conditional forecasting is a useful tool to incorporate for example forecasts into a model and then add shocks on top.</p><p>For example we might be interested in the model dynamics given a path for <code>Y</code> and <code>pi</code> for the first 4 quarters and the next quarter a negative shock to <code>eta_w</code> arrives. Furthermore, we want that the first two periods only a subset of shocks is used to match the conditions on the endogenous variables. This can be implemented using the <code>get_conditional_forecast</code> function and visualised with the <code>plot_conditional_forecast</code> function.</p><p>First, we define the conditions on the endogenous variables as deviations from the non-stochastic steady state (<code>Y</code> and <code>pi</code> in this case) using a <code>KeyedArray</code> from the <code>AxisKeys</code> package (check <a href="../../api/#MacroModelling.get_conditional_forecast-Tuple{MacroModelling.ℳ, Union{KeyedArray{Union{Nothing, Float64}}, KeyedArray{Float64}, SparseArrays.SparseMatrixCSC{Float64}, Matrix{Union{Nothing, Float64}}}}"><code>get_conditional_forecast</code></a> for other ways to define the conditions):</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using AxisKeys</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,4),Variables = [:Y, :pi], Periods = 1:4)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+  <span class="sgr35">(:q_f)</span>       3.38011      2.82046          2.37761       1.77656
+  <span class="sgr35">(:r_k)</span>       0.0351582    0.0297946  …     0.0444046     0.0411041
+  <span class="sgr35">(:r_k_f)</span>     0.032129     0.0325624        0.0309747     0.0325507
+  <span class="sgr35">(:w_star)</span>    0.635791     0.578204         2.77052       1.73523
+  <span class="sgr35">(:z)</span>         1.00964      0.105469         2.56836       2.01197
+  <span class="sgr35">(:z_f)</span>       0.49899      0.572048         0.304413      0.570087</code></pre><p>which returns the simulated data in levels in a 3-dimensional <code>KeyedArray</code> (provided by the <code>AxisKeys</code> package) of the same structure as for the IRFs.</p><h2 id="Conditional-forecasts"><a class="docs-heading-anchor" href="#Conditional-forecasts">Conditional forecasts</a><a id="Conditional-forecasts-1"></a><a class="docs-heading-anchor-permalink" href="#Conditional-forecasts" title="Permalink"></a></h2><p>Conditional forecasting is a useful tool to incorporate for example forecasts into a model and then add shocks on top.</p><p>For example we might be interested in the model dynamics given a path for <code>Y</code> and <code>pi</code> for the first 4 quarters and the next quarter a negative shock to <code>eta_w</code> arrives. Furthermore, we want that the first two periods only a subset of shocks is used to match the conditions on the endogenous variables. This can be implemented using the <code>get_conditional_forecast</code> function and visualised with the <code>plot_conditional_forecast</code> function.</p><p>First, we define the conditions on the endogenous variables as deviations from the non-stochastic steady state (<code>Y</code> and <code>pi</code> in this case) using a <code>KeyedArray</code> from the <code>AxisKeys</code> package (check <a href="../../api/#MacroModelling.get_conditional_forecast-Tuple{MacroModelling.ℳ, Union{KeyedArray{Union{Nothing, Float64}}, KeyedArray{Float64}, SparseArrays.SparseMatrixCSC{Float64}, Matrix{Union{Nothing, Float64}}}}"><code>get_conditional_forecast</code></a> for other ways to define the conditions):</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using AxisKeys</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,4),Variables = [:Y, :pi], Periods = 1:4)</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 2-element Vector{Symbol}</span>
 →   <span class="sgr34">Periods ∈ 4-element UnitRange{Int64}</span>
 And data, <span class="sgr1">2×4 Matrix{Union{Nothing, Float64}}</span>:
@@ -386,8 +386,8 @@ And data, <span class="sgr1">2×4 Matrix{Union{Nothing, Float64}}</span>:
 And data, <span class="sgr1">12×45 Matrix{Float64}</span>:
                 <span class="sgr34">(1)</span>           <span class="sgr34">(2)</span>            …  <span class="sgr34">(44)</span>            <span class="sgr34">(45)</span>
   <span class="sgr35">(:W)</span>           -0.00477569   -0.00178866        -0.00209378     -0.00154841
-  <span class="sgr35">(:Y)</span>           -0.01         -1.11022e-16        0.0028801       0.00269595
-  <span class="sgr35">(:pi)</span>           0.01         -2.60209e-18       -0.000376449    -0.00032659
+  <span class="sgr35">(:Y)</span>           -0.01          5.55112e-17        0.0028801       0.00269595
+  <span class="sgr35">(:pi)</span>           0.01          3.46945e-18       -0.000376449    -0.00032659
   <span class="sgr35">(:eta_G₍ₓ₎)</span>     0.0           0.0                0.0             0.0
   <span class="sgr35">(:eta_I₍ₓ₎)</span>     0.0           0.0          …     0.0             0.0
   <span class="sgr35">(:eta_L₍ₓ₎)</span>     0.0           0.0                0.0             0.0
@@ -398,4 +398,4 @@ And data, <span class="sgr1">12×45 Matrix{Float64}</span>:
   <span class="sgr35">(:eta_pi₍ₓ₎)</span>    0.548245     -0.563207           0.0             0.0
   <span class="sgr35">(:eta_w₍ₓ₎)</span>     0.0           0.0                0.0             0.0</code></pre><p>The function returns a <code>KeyedArray</code> (provided by the <code>AxisKeys</code> package) with the values of the endogenous variables and shocks matching the conditions exactly.</p><p>We can also plot the conditional forecast. Please note that you need to import the <code>StatsPlots</code> packages once before the first plot.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_conditional_forecast(Smets_Wouters_2003,conditions, shocks = shocks, plots_per_page = 6,variables = [:Y,:pi,:W],conditions_in_levels = false)</code><code class="nohighlight hljs ansi" style="display:block;">2-element Vector{Any}:
  Plot{Plots.GRBackend() n=25}
- Plot{Plots.GRBackend() n=16}</code></pre><p><img src="../../assets/conditional_fcst__SW03__conditional_forecast__1.png" alt="Smets_Wouters_2003 conditional forecast 1"/></p><p><img src="../../assets/conditional_fcst__SW03__conditional_forecast__2.png" alt="Smets_Wouters_2003 conditional forecast 2"/></p><p>and we need to set <code>conditions_in_levels = false</code> since the conditions are defined in deviations.</p><p>Note that the stars indicate the values the model is conditioned on.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../rbc/">« Write your first simple model - RBC</a><a class="docs-footer-nextpage" href="../calibration/">Calibration / method of moments (for higher order perturbation solutions) - Gali (2015) »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.13.0 on <span class="colophon-date" title="Sunday 22 June 2025 20:51">Sunday 22 June 2025</span>. Using Julia version 1.11.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ Plot{Plots.GRBackend() n=16}</code></pre><p><img src="../../assets/conditional_fcst__SW03__conditional_forecast__1.png" alt="Smets_Wouters_2003 conditional forecast 1"/></p><p><img src="../../assets/conditional_fcst__SW03__conditional_forecast__2.png" alt="Smets_Wouters_2003 conditional forecast 2"/></p><p>and we need to set <code>conditions_in_levels = false</code> since the conditions are defined in deviations.</p><p>Note that the stars indicate the values the model is conditioned on.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../rbc/">« Write your first simple model - RBC</a><a class="docs-footer-nextpage" href="../calibration/">Calibration / method of moments (for higher order perturbation solutions) - Gali (2015) »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.13.0 on <span class="colophon-date" title="Sunday 22 June 2025 21:30">Sunday 22 June 2025</span>. Using Julia version 1.11.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
