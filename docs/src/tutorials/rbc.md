@@ -1,6 +1,6 @@
 # Write your first model - simple RBC
 
-The following tutorial will walk you through the steps of writing down a model and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial. For the purpose of this tutorial we will work with a simplified version of a real business cycle (RBC) model. The model laid out below examines capital accumulation, consumption, and random technological progress. Households maximize lifetime utility from consumption, weighing current against future consumption. Firms produce using capital and a stochastic technology factor, setting capital rental rates based on marginal productivity. The model integrates households' decisions, firms' production, and random technological shifts to understand economic growth and dynamics.
+The following tutorial will walk you through the steps of writing down a model and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial. For the purpose of this tutorial we will work with a simplified version of a real business cycle (RBC) model. The model laid out below examines capital accumulation, consumption, and random technological progress. Households maximise lifetime utility from consumption, weighing current against future consumption. Firms produce using capital and a stochastic technology factor, setting capital rental rates based on marginal productivity. The model integrates households' decisions, firms' production, and random technological shifts to understand economic growth and dynamics.
 
 ## RBC - derivation of model equations
 
@@ -126,7 +126,7 @@ Given the equations and parameters, the package will first attempt to solve the 
 
 ## Plot impulse response functions (IRFs)
 
-A useful output to analyze are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
+A useful output to analyse are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non-stochastic steady state (SS) and calculates the first order perturbation solution.
 
 ```@repl tutorial_1
 import StatsPlots
@@ -240,7 +240,7 @@ plot_solution(RBC, :k)
 
 ![RBC solution](../assets/solution__RBC__1.png)
 
-The chart shows the first order perturbation solution mapping from the past state `k` to the present variables of the model. The state variable covers a range of two standard deviations around the non stochastic steady state and all other states remain in the non stochastic steady state.
+The chart shows the first order perturbation solution mapping from the past state `k` to the present variables of the model. The state variable covers a range of two standard deviations around the non-stochastic steady state and all other states remain in the non-stochastic steady state.
 
 ## Obtain array of IRFs or model simulations
 
@@ -267,7 +267,7 @@ Conditional forecasting is a useful tool to incorporate for example forecasts in
 
 For example we might be interested in the model dynamics given a path for `c` for the first 4 quarters and the next quarter a negative shock to `eps_z` arrives. This can be implemented using the `get_conditional_forecast` function and visualised with the `plot_conditional_forecast` function.
 
-First, we define the conditions on the endogenous variables as deviations from the non stochastic steady state (`c` in this case) using a `KeyedArray` from the `AxisKeys` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions):
+First, we define the conditions on the endogenous variables as deviations from the non-stochastic steady state (`c` in this case) using a `KeyedArray` from the `AxisKeys` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions):
 
 ```@repl tutorial_1
 using AxisKeys
