@@ -574,7 +574,7 @@ end
 
 #     # opt.xtol_abs = eps()
 #     # opt.ftol_abs = eps()
-#     # opt.constrtol_abs = eps() # doesnt work
+#     # opt.constrtol_abs = eps() # doesn't work
 #     # opt.xtol_rel = eps()
 #     # opt.ftol_rel = eps()
 #     opt.maxeval = max_iter
@@ -650,7 +650,7 @@ end
 #     # opt.ftol_abs = eps()
 #     # opt.xtol_rel = eps()
 #     # opt.ftol_rel = eps()
-#     # opt.constrtol_abs = eps() # doesnt work
+#     # opt.constrtol_abs = eps() # doesn't work
 #     opt.maxeval = max_iter
 
 #     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))
@@ -722,7 +722,7 @@ end
 #     # opt.ftol_abs = eps()
 #     # opt.xtol_rel = eps()
 #     # opt.ftol_rel = eps()
-#     # opt.constrtol_abs = eps() # doesnt work
+#     # opt.constrtol_abs = eps() # doesn't work
 #     opt.maxeval = max_iter
 
 #     NLopt.equality_constraint!(opt, constraint_optim, fill(eps(),size(𝐒ⁱ,1)))

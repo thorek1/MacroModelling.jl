@@ -8,7 +8,7 @@
 - [ ] check allocations of jacobian in sparse case (NAWM)
 - [ ] use isfresh flag on dense linear solves
 - [ ] fix borrowing_constraint how-to
-- [ ] implement check for plots, that they always return a plot (shocks = :none didnt return a plot)
+- [ ] implement check for plots, that they always return a plot (shocks = :none didn't return a plot)
 - [ ] cache sparse kron, sylvester solution, and compressed kron in order to avoid allocs; check sparse kron! call
 - [ ] prettify plotlyjs plots
 - [ ] fix findiff and zygote consistency for llh derivatives of inversion filter
@@ -35,7 +35,7 @@
 - [ ] switch from sympy to Symbolics
 - [ ] optimize second order estim with SW07 or NAWM
 - [ ] optimize third order with smaller model
-- [ ] add argument to plotting functions to replace names in plots (e.g. input a dictionnary: Dict(:dinve => "Investment growth"))
+- [ ] add argument to plotting functions to replace names in plots (e.g. input a dictionary: Dict(:dinve => "Investment growth"))
 - [ ] programmatic model writing: accept {i}[0] as definition for variable
 - [ ] fix higher order shock finder (3rd order) and check results for pruned second order. are the right state values taken for 1st and second order subprocesses?
 - [ ] take analytical derivatives of NSSS funcs to reduce allocation and speed up the NSSS solver
@@ -61,7 +61,7 @@
 - [ ] use faster derivatives for SS solver (currently forward diff)
 - [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
 - [ ] FastDifferentiation is faster in taking derivatives and more efficient in writing functions but does not support custom functions (e.g. normlogpdf)
-- [ ] fix this inference errors for large fuctions. they are slow. fix derivatives in general.
+- [ ] fix this inference errors for large functions. they are slow. fix derivatives in general.
 - [ ] check downgrade tests
 - [ ] put write_derivatives_function and lock structure inside function
 - [ ] take apart solve_matrix_equation for various cases
@@ -101,7 +101,7 @@
 - [ ] speed benchmarking (focus on ImplicitDiff part)
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
-- [ ] when doing calibration with optimiser have better return values when he doesnt find a solution (probably NaN)
+- [ ] when doing calibration with optimiser have better return values when he doesn't find a solution (probably NaN)
 - [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
 - [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
 - [ ] have get_std take variables as an input
@@ -129,7 +129,7 @@
 - [x] add to the doc/strings that KeyedArrays are part of the `AxisKeys` package so people can look up how to access elements there. otherwise they might confuse it for a format provided by the package and wouldnt know how to access elements from it
 - [x] implement benchmarks
 - [x] write non allocating version of steady state functions
-- [x] do SVD on matrices before solving first order. idea to solve in lower dimensional subspace. doesnt work as that is the whole point of the solution. what breaks is the X^2 as any transformation of X would have a term in the middle remaining
+- [x] do SVD on matrices before solving first order. idea to solve in lower dimensional subspace. doesn't work as that is the whole point of the solution. what breaks is the X^2 as any transformation of X would have a term in the middle remaining
 - [x] automatically adjust plots for different legend widths and heights
 - [x] use ID for sparse output sylvester solvers (filed issue)
 - [x] add user facing option to choose sylvester solver
@@ -144,8 +144,8 @@
 - [x] try a newton version of binder pesaran. it's very slow
 - [x] newton SS solver once sol was found
 - [x] fix presample period for higher order estim
-- [x] insight: spgemm in SparseArrays is the fastest way. threading doesnt work well due to memory/cache issues, csr format doesnt give many gains. other libraries dont improve over standard implementation (Finch...)
-- [x] use kalman filter to initialize inversion filter for third order or some other simplification; didnt do it bcs it seems the inversion filter is well behaved for reasonable shock sizes
+- [x] insight: spgemm in SparseArrays is the fastest way. threading doesn't work well due to memory/cache issues, csr format doesn't give many gains. other libraries dont improve over standard implementation (Finch...)
+- [x] use kalman filter to initialize inversion filter for third order or some other simplification; didn't do it bcs it seems the inversion filter is well behaved for reasonable shock sizes
 - [x] implement estimation tests for all models
 - [x] make plotting options as dynamic setting instead of default, accept kwargs
 - [x] streamline estimation part (dont do string matching... but rely on precomputed indices...)
@@ -159,18 +159,18 @@
 - [x] provide option for external SS guess; provided in parameters macro
 - [x] make it possible to run multiple ss solver parameter combination including starting points when solving a model
 - [x] automatically put the combi first which solves it fastest the first time
-- [x] write auto-tune in case he cant find SS (add it to the warning when he cant find the SS)
+- [x] write auto-tune in case he can't find SS (add it to the warning when he can't find the SS)
 - [x] nonlinear conditional forecasts for higher order and obc
 - [x] for cond forecasting and kalman, get rid of observables input and use axis key of data input
 - [x] fix translate dynare mod file from file written using write to dynare file (see test models): added retranslation to test
 - [x] use packages for kalman filter: nope sticking to own implementation
-- [x] check that there is an error if he cant find SS
+- [x] check that there is an error if he can't find SS
 - [x] bring solution error into an object of the model so we dont have to pass it on as output: errors get returned by functions and are thrown where appropriate
 - [x] include option to provide pruned states for irfs
 - [x] use other quadratic iteration for diffable first order solve (useful because schur can error in estimation): used try catch, schur is still fastest
 - [x] fix SS solver (failed for backus in guide): works now
 - [x] nonlinear estimation using unscented kalman filter / inversion filter (minimization problem: find shocks to match states with data): used inversion filter with gradient optim
-- [x] check if higher order effects might distort results for autocorr (problem with order deffinition) - doesnt seem to be the case; full_covar yields same result
+- [x] check if higher order effects might distort results for autocorr (problem with order definition) - doesn't seem to be the case; full_covar yields same result
 - [x] implement occasionally binding constraints with shocks
 - [x] add QUEST3 tests
 - [x] add obc tests
@@ -189,7 +189,7 @@
 - [x] redo naming in moments calc and make whole process faster (precalc wrangling matrices)
 - [x] write method of moments how to
 - [x] check tols - all set to eps() except for dependencies tol (1e-12)
-- [x] set to 0 SS values < 1e-12 - doesnt work with Zygote
+- [x] set to 0 SS values < 1e-12 - doesn't work with Zygote
 - [x] sylvester with analytical derivatives (much faster if sparse) instead of implicit diff - yes but there are still way too large matrices being realised. implicitdiff is better here
 - [x] autocorr to statistics output and in general for higher order pruned sols
 - [x] fix product moments and test for cases with more than 2 shocks
@@ -199,7 +199,7 @@
 - [x] recheck results for third order cov
 - [x] have a look again at get_statistics function
 - [x] consolidate sylvester solvers (diff)
-- [x] put outside of loop the ignore derviatives for derivatives
+- [x] put outside of loop the ignore derivatives for derivatives
 - [x] write function to smart select variables to calc cov for
 - [x] write get function for variables, parameters, equations with proper parsing so people can understand what happens when invoking for loops
 - [x] have for loop where the items are multiplied or divided or whatever, defined by operator | + or * only
@@ -215,7 +215,7 @@
 - [x] use krylov instead of linearsolve
 - [x] implement for loops in model macro (e.g. to setup multi country models)
 - [x] fix ss of pruned solution in plotsolution. seems detached
-- [x] try solve first order with JuMP - doesnt work because JuMP cannot handle matrix constraints/objectives 
+- [x] try solve first order with JuMP - doesn't work because JuMP cannot handle matrix constraints/objectives 
 - [x] get solution higher order with multidimensional array (states, 1 and 2 partial derivatives variables names as dimensions in 2order case)
 - [x] add pruning
 - [x] add other outputs from estimation (smoothed, filter states and shocks)
@@ -224,7 +224,7 @@
 - [x] see if we can avoid try catch and test for invertability instead
 - [x] have Flux solve SS field #gradient descent based is worse than LM based
 - [x] have parameters keyword accept Int and 2/3
-- [x] plot_solution colors change from 2nd to 2rd order
+- [x] plot_solution colors change from 2nd to 2nd order
 - [x] custom LM: optimize for other RBC models, use third order backtracking
 - [x] add SSS for third order (can be different than the one from 2nd order, see Gali (2015)) in solution plot; also put legend to the bottom as with Condition
 - [x] check out Aqua.jl as additional tests
@@ -266,7 +266,7 @@
 - [x] SS solve: add domain transformation optim
 - [x] revisit optimizers for SS
 - [x] figure out licenses
-- [x] SS: replace variables in log() with auxilliary variable which must be positive to help solver
+- [x] SS: replace variables in log() with auxiliary variable which must be positive to help solver
 - [x] complex example with lags > 1, [ss], calib equations, aux nonneg vars
 - [x] add NLboxsolve
 - [x] try NonlinearSolve - fails due to missing bounds
@@ -277,7 +277,7 @@
 
 - [ ] estimation codes with missing values (adopt kalman filter)
 - [ ] decide on whether levels = false means deviations from NSSS or relevant SS
-- [ ] whats a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
+- [ ] what's a good error measure for higher order solutions (taking whole dist of future shock into account)? use mean error for n number of future shocks
 - [ ] improve redundant calculations of SS and other parts of solution
 - [ ] restructure functions and containers so that compiler knows what types to expect
 - [ ] use RecursiveFactorization and TriangularSolve to solve, instead of MKL or OpenBLAS
@@ -293,8 +293,8 @@
 - [ ] print legend for algorithm in last subplot of plot only
 - [ ] select variables for moments
 
-- [x] rewrite first order with riccati equation MatrixEquations.jl: not necessary/feasable see dynare package
-- [x] test on highly [nonlinear model](https://www.sciencedirect.com/science/article/pii/S0165188917300970) # caldara et al is actually epstein zin wiht stochastic vol
+- [x] rewrite first order with riccati equation MatrixEquations.jl: not necessary/feasible see dynare package
+- [x] test on highly [nonlinear model](https://www.sciencedirect.com/science/article/pii/S0165188917300970) # caldara et al is actually epstein zin with stochastic vol
 - [x] conditional forecasting
 - [x] find way to recover from failed SS solution which is written to init guess
 - [x] redo ugly solution for selecting parameters to differentiate for
@@ -307,12 +307,12 @@
 - [x] write state space function for solution
 - [x] Status print for model container
 - [x] implenent 2nd + 3rd order perturbation
-- [x] implement fuctions for distributions
+- [x] implement functions for distributions
 - [x] try speedmapping.jl - no improvement
 - [x] moment matching
 - [x] write tests for higher order pert and standalone function
 - [x] add compression back in
-- [x] FixedPointAcceleration didnt improve on iterative procedure
+- [x] FixedPointAcceleration didn't improve on iterative procedure
 - [x] add exogenous variables in lead or lag
 - [x] regex in parser of SS and exo
 - [x] test SS solver on SW07

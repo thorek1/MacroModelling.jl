@@ -596,7 +596,7 @@ function filter_and_smooth(𝓂::ℳ,
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
-    @assert solution_error < opts.tol.NSSS_acceptance_tol "Could not solve non stochastic steady state." 
+    @assert solution_error < opts.tol.NSSS_acceptance_tol "Could not solve non-stochastic steady state." 
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
