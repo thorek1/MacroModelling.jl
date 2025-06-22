@@ -1039,9 +1039,11 @@ end
 
 # Programmatic model writing
 
-# Returns
-- `Nothing`. The macro assigns parameter values and calibration equations to `𝓂` in the calling scope.
 Variables and parameters indexed with curly braces can be either referenced specifically (e.g. `c{H}[ss]`) or generally (e.g. `alpha`). If they are referenced generally the parse assumes all instances (indices) are meant. For example, in a model where `alpha` has two indices `H` and `F`, the expression `alpha = 0.3` is interpreted as two expressions: `alpha{H} = 0.3` and `alpha{F} = 0.3`. The same goes for calibration equations.
+
+# Returns
+
+- `Nothing`. The macro assigns parameter values and calibration equations to `𝓂` in the calling scope.
 """
 macro parameters(𝓂,ex...)
     calib_equations = []
