@@ -1725,7 +1725,7 @@ ss(args...; kwargs...) = get_steady_state(args...; kwargs...)
 
 """
 $(SIGNATURES)
-Return the solution of the model. In the linear case it returns the the non-stochastic steady state (NSSS) followed by the linearised solution of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables, shocks, and perturbation parameter (:Volatility) as the other dimensions.
+Return the solution of the model. In the linear case it returns the non-stochastic steady state (NSSS) followed by the linearised solution of the model. In the nonlinear case (higher order perturbation) the function returns a multidimensional array with the endogenous variables as the second dimension and the state variables, shocks, and perturbation parameter (:Volatility) as the other dimensions.
 
 The values of the output represent the NSSS in the case of a linear solution and below it the effect that deviations from the NSSS of the respective past states, shocks, and perturbation parameter have (perturbation parameter = 1) on the present value (NSSS deviation) of the model variables.
 

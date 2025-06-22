@@ -126,7 +126,8 @@ Given the equations and parameters, the package will first attempt to solve the 
 
 ## Plot impulse response functions (IRFs)
 
-A useful output to analyze are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non-stochastic steady state (SS) and calculates the first order perturbation solution.
+A useful output to analyse are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non-stochastic steady state (SS) and calculates the first order perturbation solution.
+
 
 ```@repl tutorial_1
 import StatsPlots
@@ -224,7 +225,7 @@ get_autocorrelation(RBC)
 
 ## Model solution
 
-A further insightful output are the policy and transition functions of the the first order perturbation solution. To retrieve the solution we call the function [`get_solution`](@ref):
+A further insightful output are the policy and transition functions of the first order perturbation solution. To retrieve the solution we call the function [`get_solution`](@ref):
 
 ```@repl tutorial_1
 get_solution(RBC)
