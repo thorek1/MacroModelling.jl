@@ -82,9 +82,9 @@ end
 
 """
 $(SIGNATURES)
-Return the non-stochastic steady state (NSSS) equations of the model. The difference to the equations as they were written in the `@model` block is that exogenous shocks are set to `0`, time subscripts are eliminated (e.g. `c[-1]` becomes `c`), trivial simplifications are carried out (e.g. `log(k) - log(k) = 0`), and auxilliary variables are added for expressions that cannot become negative. 
+Return the non-stochastic steady state (NSSS) equations of the model. The difference to the equations as they were written in the `@model` block is that exogenous shocks are set to `0`, time subscripts are eliminated (e.g. `c[-1]` becomes `c`), trivial simplifications are carried out (e.g. `log(k) - log(k) = 0`), and auxiliary variables are added for expressions that cannot become negative. 
 
-Auxilliary variables facilitate the solution of the NSSS problem. The package substitutes expressions which cannot become negative with auxilliary variables and adds another equation to the system of equations determining the NSSS. For example, `log(c/q)` cannot be negative and `c/q` is substituted by an auxilliary varaible `➕₁` and an additional equation is added: `➕₁ = c / q`.
+Auxilliary variables facilitate the solution of the NSSS problem. The package substitutes expressions which cannot become negative with auxiliary variables and adds another equation to the system of equations determining the NSSS. For example, `log(c/q)` cannot be negative and `c/q` is substituted by an auxiliary variable `➕₁` and an additional equation is added: `➕₁ = c / q`.
 
 Note that the ouput assumes the equations are equal to 0. As in, `-z{δ} * ρ{δ} + z{δ}` implies `-z{δ} * ρ{δ} + z{δ} = 0` and therefore: `z{δ} * ρ{δ} = z{δ}`.
 
@@ -140,7 +140,7 @@ end
 
 """
 $(SIGNATURES)
-Return the augmented system of equations describing the model dynamics. Augmented means that, in case of variables with leads or lags larger than 1, or exogenous shocks with leads or lags, the system is augemented by auxilliary equations containing variables in lead or lag. The augmented system features only variables which are in the present `[0]`, future `[1]`, or past `[-1]`. For example, `Δk_4q[0] = log(k[0]) - log(k[-3])` contains `k[-3]`. By introducing 2 auxilliary variables (`kᴸ⁽⁻¹⁾` and `kᴸ⁽⁻²⁾` with `ᴸ` being the lead/lag operator) and augmenting the system (`kᴸ⁽⁻²⁾[0] = kᴸ⁽⁻¹⁾[-1]` and `kᴸ⁽⁻¹⁾[0] = k[-1]`) we can ensure that the timing is smaller than 1 in absolute terms: `Δk_4q[0] - (log(k[0]) - log(kᴸ⁽⁻²⁾[-1]))`.
+Return the augmented system of equations describing the model dynamics. Augmented means that, in case of variables with leads or lags larger than 1, or exogenous shocks with leads or lags, the system is augemented by auxiliary equations containing variables in lead or lag. The augmented system features only variables which are in the present `[0]`, future `[1]`, or past `[-1]`. For example, `Δk_4q[0] = log(k[0]) - log(k[-3])` contains `k[-3]`. By introducing 2 auxiliary variables (`kᴸ⁽⁻¹⁾` and `kᴸ⁽⁻²⁾` with `ᴸ` being the lead/lag operator) and augmenting the system (`kᴸ⁽⁻²⁾[0] = kᴸ⁽⁻¹⁾[-1]` and `kᴸ⁽⁻¹⁾[0] = k[-1]`) we can ensure that the timing is smaller than 1 in absolute terms: `Δk_4q[0] - (log(k[0]) - log(kᴸ⁽⁻²⁾[-1]))`.
 
 In case programmatic model writing was used this function returns the parsed equations (see loop over shocks in example).
 
@@ -555,7 +555,7 @@ end
 
 """
 $(SIGNATURES)
-Returns the variables of the model without timing subscripts and not including auxilliary variables.
+Returns the variables of the model without timing subscripts and not including auxiliary variables.
 
 In case programmatic model writing was used this function returns the parsed variables (see `z` in `Examples`).
 
@@ -609,15 +609,15 @@ end
 
 """
 $(SIGNATURES)
-Returns the auxilliary variables, without timing subscripts, added to the non-stochastic steady state problem because certain expression cannot be negative (e.g. given `log(c/q)` an auxilliary variable is created for `c/q`).
+Returns the auxiliary variables, without timing subscripts, added to the non-stochastic steady state problem because certain expression cannot be negative (e.g. given `log(c/q)` an auxiliary variable is created for `c/q`).
 
-See `get_steady_state_equations` for more details on the auxilliary variables and equations.
+See `get_steady_state_equations` for more details on the auxiliary variables and equations.
 
 # Arguments
 - $MODEL®
 
 # Returns
-- `Vector{String}` of the auxilliary parameters.
+- `Vector{String}` of the auxiliary parameters.
 
 # Examples
 ```jldoctest
@@ -644,29 +644,29 @@ end
     β = 0.95
 end
 
-get_nonnegativity_auxilliary_variables(RBC)
+get_nonnegativity_auxiliary_variables(RBC)
 # output
 2-element Vector{String}:
  "➕₁"
  "➕₂"
 ```
 """
-function get_nonnegativity_auxilliary_variables(𝓂::ℳ)::Vector{String}
+function get_nonnegativity_auxiliary_variables(𝓂::ℳ)::Vector{String}
     𝓂.➕_vars |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
 
 """
 $(SIGNATURES)
-Returns the auxilliary variables, without timing subscripts, part of the augmented system of equations describing the model dynamics. Augmented means that, in case of variables with leads or lags larger than 1, or exogenous shocks with leads or lags, the system is augemented by auxilliary variables containing variables or shocks in lead or lag. Because the original equations included variables with leads or lags certain expression cannot be negative (e.g. given `log(c/q)` an auxilliary variable is created for `c/q`).
+Returns the auxiliary variables, without timing subscripts, part of the augmented system of equations describing the model dynamics. Augmented means that, in case of variables with leads or lags larger than 1, or exogenous shocks with leads or lags, the system is augemented by auxiliary variables containing variables or shocks in lead or lag. Because the original equations included variables with leads or lags certain expression cannot be negative (e.g. given `log(c/q)` an auxiliary variable is created for `c/q`).
 
-See `get_dynamic_equations` for more details on the auxilliary variables and equations.
+See `get_dynamic_equations` for more details on the auxiliary variables and equations.
 
 # Arguments
 - $MODEL®
 
 # Returns
-- `Vector{String}` of the auxilliary parameters.
+- `Vector{String}` of the auxiliary parameters.
 
 # Examples
 ```jldoctest
@@ -693,7 +693,7 @@ end
     β = 0.95
 end
 
-get_dynamic_auxilliary_variables(RBC)
+get_dynamic_auxiliary_variables(RBC)
 # output
 3-element Vector{String}:
  "kᴸ⁽⁻²⁾"
@@ -701,7 +701,7 @@ get_dynamic_auxilliary_variables(RBC)
  "kᴸ⁽⁻¹⁾"
 ```
 """
-function get_dynamic_auxilliary_variables(𝓂::ℳ)::Vector{String}
+function get_dynamic_auxiliary_variables(𝓂::ℳ)::Vector{String}
     𝓂.aux |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 

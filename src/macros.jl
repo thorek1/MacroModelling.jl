@@ -15,7 +15,7 @@ Parses the model equations and assigns them to an object.
 Variables must be defined with their time subscript in square brackets.
 Endogenous variables can have the following:
 - present: `c[0]`
-- non-stcohastic steady state: `c[ss]` instead of `ss` any of the following is also a valid flag for the non-stochastic steady state: `ss`, `stst`, `steady`, `steadystate`, `steady_state`, and the parser is case-insensitive (`SS` or `sTst` will work as well).
+- non-stochastic steady state: `c[ss]` instead of `ss` any of the following is also a valid flag for the non-stochastic steady state: `ss`, `stst`, `steady`, `steadystate`, `steady_state`, and the parser is case-insensitive (`SS` or `sTst` will work as well).
 - past: `c[-1]` or any negative Integer: e.g. `c[-12]`
 - future: `c[1]` or any positive Integer: e.g. `c[16]` or `c[+16]`
 Signed integers are recognised and parsed as such.
@@ -49,6 +49,8 @@ Parameters and variables can be indexed using curly braces: e.g. `c{H}[0]`, `eps
 - generate equation with different indices in curly braces: `for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end`
 - generate multiple equations with different indices in curly braces: `for co in [H, F] K{co}[0] = (1-delta{co}) * K{co}[-1] + S{co}[0] end`
 - generate equation with different time indices: `Y_annual[0] = for lag in -3:0 Y[lag] end` or `R_annual[0] = for operator = :*, lag in -3:0 R[lag] end`
+# Returns
+- `Nothing`. The macro creates the model `𝓂` in the calling scope.
 """
 macro model(𝓂,ex...)
     # parse options
@@ -987,16 +989,16 @@ Adds parameter values and calibration equations to the previously defined model.
 Parameters can be defined in either of the following ways:
 - plain number: `δ = 0.02`
 - expression containing numbers: `δ = 1/50`
-- expression containing other parameters: `δ = 2 * std_z` in this case it is irrelevant if `std_z` is defined before or after. The definitons including other parameters are treated as a system of equaitons and solved accordingly.
-- expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it.
+- expression containing other parameters: `δ = 2 * std_z` in this case it is irrelevant if `std_z` is defined before or after. The definitions including other parameters are treated as a system of equations and solved accordingly.
+- expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneously with the non-stochastic steady state using the equation defined with it.
 
 # Optional arguments to be placed between `𝓂` and `ex`
 - `guess` [Type: `Dict{Symbol, <:Real}, Dict{String, <:Real}}`]: Guess for the non-stochastic steady state. The keys must be the variable (and calibrated parameters) names and the values the guesses. Missing values are filled with standard starting values.
-- `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non stochastic steady state is solved
+- `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non-stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
-- `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
+- `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non-stochastic steady state symbolically and fall back to a numerical solution if not possible
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. In case you want to work with higher order perturbation later on, respective derivatives will be taken at that stage.
-- `simplify` [Default: `true`, Type: `Bool`]: whether to elminiate redundant variables and simplify the non stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
+- `simplify` [Default: `true`, Type: `Bool`]: whether to eliminate redundant variables and simplify the non-stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
 
 
 
@@ -1037,7 +1039,9 @@ end
 
 # Programmatic model writing
 
-Variables and parameters indexed with curly braces can be either referenced specifically (e.g. `c{H}[ss]`) or generally (e.g. `alpha`). If they are referenced generaly the parse assumes all instances (indices) are meant. For example, in a model where `alpha` has two indices `H` and `F`, the expression `alpha = 0.3` is interpreted as two expressions: `alpha{H} = 0.3` and `alpha{F} = 0.3`. The same goes for calibration equations.
+# Returns
+- `Nothing`. The macro assigns parameter values and calibration equations to `𝓂` in the calling scope.
+Variables and parameters indexed with curly braces can be either referenced specifically (e.g. `c{H}[ss]`) or generally (e.g. `alpha`). If they are referenced generally the parse assumes all instances (indices) are meant. For example, in a model where `alpha` has two indices `H` and `F`, the expression `alpha = 0.3` is interpreted as two expressions: `alpha{H} = 0.3` and `alpha{F} = 0.3`. The same goes for calibration equations.
 """
 macro parameters(𝓂,ex...)
     calib_equations = []
@@ -1489,7 +1493,7 @@ macro parameters(𝓂,ex...)
         if !$precompile 
             start_time = time()
 
-            if !$silent print("Remove redundant variables in non stochastic steady state problem:\t") end
+            if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
 
             symbolics = create_symbols_eqs!(mod.$𝓂)
 
@@ -1500,7 +1504,7 @@ macro parameters(𝓂,ex...)
 
             start_time = time()
     
-            if !$silent print("Set up non stochastic steady state problem:\t\t\t\t") end
+            if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
             solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
 
@@ -1512,7 +1516,7 @@ macro parameters(𝓂,ex...)
         else
             start_time = time()
         
-            if !$silent print("Set up non stochastic steady state problem:\t\t\t\t") end
+            if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
             solve_steady_state!(mod.$𝓂, verbose = $verbose)
 
@@ -1527,7 +1531,7 @@ macro parameters(𝓂,ex...)
 
         if !$precompile
             if !$silent 
-                print("Find non stochastic steady state:\t\t\t\t\t") 
+                print("Find non-stochastic steady state:\t\t\t\t\t") 
             end
             # time_SS_real_solve = @elapsed 
             SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)

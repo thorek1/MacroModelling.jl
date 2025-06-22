@@ -266,7 +266,7 @@
 - [x] SS solve: add domain transformation optim
 - [x] revisit optimizers for SS
 - [x] figure out licenses
-- [x] SS: replace variables in log() with auxilliary variable which must be positive to help solver
+- [x] SS: replace variables in log() with auxiliary variable which must be positive to help solver
 - [x] complex example with lags > 1, [ss], calib equations, aux nonneg vars
 - [x] add NLboxsolve
 - [x] try NonlinearSolve - fails due to missing bounds

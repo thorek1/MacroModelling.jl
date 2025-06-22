@@ -5879,7 +5879,7 @@ function solve!(𝓂::ℳ;
 
             # end # timeit_debug
 
-            @assert solution_error < opts.tol.NSSS_acceptance_tol "Could not find non stochastic steady steady."
+            @assert solution_error < opts.tol.NSSS_acceptance_tol "Could not find non-stochastic steady state."
             
             # @timeit_debug timer "Calculate Jacobian" begin
 

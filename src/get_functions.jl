@@ -2,7 +2,7 @@
 $(SIGNATURES)
 Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`. 
 
-In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
+In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -549,7 +549,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
 - $VARIABLES®
-- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state substracted.
+- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
 - `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
 - $ALGORITHM®
 - $QME®
@@ -2641,7 +2641,7 @@ autocorr = get_autocorrelation
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non stochastic steady state (NSSS), and standard deviations, but can optionally return variances, and covariance matrix. Derivatives of the moments (except for covariance) can also be provided by setting `derivatives` to `true`.
+Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non-stochastic steady state (NSSS), and standard deviations, but can optionally return variances, and covariance matrix. Derivatives of the moments (except for covariance) can also be provided by setting `derivatives` to `true`.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -3199,7 +3199,7 @@ get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or pruned third order perturbation solution. By default returns a `Dict` with: non stochastic steady state (NSSS), and standard deviations, but can also return variances, and covariance matrix. Values are returned in the order given for the specific moment.
+Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or pruned third order perturbation solution. By default returns a `Dict` with: non-stochastic steady state (NSSS), and standard deviations, but can also return variances, and covariance matrix. Values are returned in the order given for the specific moment.
 Function to use when differentiating model moments with repect to parameters.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
