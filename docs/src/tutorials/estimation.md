@@ -151,7 +151,7 @@ plot(chain_NUTS);
 
 ![NUTS chain](../assets/FS2000_chain_NUTS.png)
 
-Next, we are plotting the posterior loglikelihood along two parameters dimensions, with the other parameters ket at the posterior mean, and add the samples to the visualisation. This visualisation allows us to understand the curvature of the posterior and puts the samples in context.
+Next, we are plotting the posterior loglikelihood along two parameters dimensions, with the other parameters kept at the posterior mean, and add the samples to the visualisation. This visualisation allows us to understand the curvature of the posterior and puts the samples in context.
 
 ```@repl tutorial_2
 using ComponentArrays, MCMCChains

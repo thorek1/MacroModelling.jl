@@ -256,7 +256,7 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 else
                     "\nCalibration\nequations:    " * repr(length(𝓂.calibration_equations))
                 end,
-                # "\n¹: including auxilliary variables"
+                # "\n¹: including auxiliary variables"
                 # "\nVariable bounds (upper,lower,any): ",sum(𝓂.upper_bounds .< Inf),", ",sum(𝓂.lower_bounds .> -Inf),", ",length(𝓂.bounds),
                 # "\nNon-stochastic-steady-state found: ",!𝓂.solution.outdated_NSSS
                 )
@@ -2163,7 +2163,7 @@ function convert_to_ss_equation(eq::Expr)::Expr
                     x.args[2] isa Int ?
                         x.args[3] isa Int ?
                             x :
-                        :($(x.args[3]) * $(x.args[2])) : # avoid 2X syntax. doesnt work with sympy
+                        :($(x.args[3]) * $(x.args[2])) : # avoid 2X syntax. doesn't work with sympy
                     x :
                 x :
             unblock(x) : 
@@ -2619,7 +2619,7 @@ function expand_indices(compressed_inputs::Vector{Symbol}, compressed_values::Ve
                 push!(expanded_inputs, expanded_list[idx])
                 push!(expanded_values, compressed_values[i])
             end
-        else#if par ∈ expanded_list ## breaks parameters defind in parameter block
+        else#if par ∈ expanded_list ## breaks parameters defined in parameter block
             push!(expanded_inputs, par)
             push!(expanded_values, compressed_values[i])
         end
@@ -2858,7 +2858,7 @@ function write_block_solution!(𝓂,
         end
     end
 
-    # separate out auxilliary variables (nonnegativity)
+    # separate out auxiliary variables (nonnegativity)
     # nnaux = []
     # nnaux_linear = []
     # nnaux_error = []
@@ -3183,7 +3183,7 @@ function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incide
             for var_combo in combinations(var_indices_to_select_from, n)
                 remaining_vars_in_remaining_eqs = setdiff(var_indices_in_remaining_eqs, var_combo)
                 # println("Solving for: ",vars_to_solve[var_combo]," in: ",eqs_to_solve[eq_combo])
-                if length(remaining_vars_in_remaining_eqs) == length(eqs_to_solve) - n # not sure whether this condition needs to be there. could be because if the last remaining vars not solved for in the block is not present in the remaining block he will not be able to solve it for the same reasons he wasnt able to solve the unpartitioned block 
+                if length(remaining_vars_in_remaining_eqs) == length(eqs_to_solve) - n # not sure whether this condition needs to be there. could be because if the last remaining vars not solved for in the block is not present in the remaining block he will not be able to solve it for the same reasons he wasn't able to solve the unpartitioned block 
                     if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve[eq_combo]))) > 15
                         soll = nothing
                     else
@@ -3219,7 +3219,7 @@ function make_equation_robust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}
     ss_and_aux_equations_error = Expr[]
     ss_and_aux_equations_error_dep = Expr[]
     rewritten_eqs = Union{Expr,Symbol}[]
-    # write down ss equations including nonnegativity auxilliary variables
+    # write down ss equations including nonnegativity auxiliary variables
     # find nonegative variables, parameters, or terms
     for eq in eqs
         if eq isa Symbol
@@ -4132,7 +4132,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                                 if scale == 1
                                     # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
                                     # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
-                                    # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesnt work with Zygote
+                                    # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesn't work with Zygote
                                     return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
                                 else
                                     reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
@@ -4266,7 +4266,7 @@ function solve_steady_state!(𝓂::ℳ;
         end
 
         
-        # separate out auxilliary variables (nonnegativity)
+        # separate out auxiliary variables (nonnegativity)
         nnaux = []
         # nnaux_linear = []
         # nnaux_error = []
@@ -4700,7 +4700,7 @@ function solve_steady_state!(𝓂::ℳ;
                                 end
                             end
 
-                            # Zero initial value if startin without guess
+                            # Zero initial value if starting without guess
                             if !isfinite(sum(abs,closest_solution[2]))
                                 closest_solution = copy(closest_solution)
                                 for i in 1:2:length(closest_solution)
@@ -4733,7 +4733,7 @@ function solve_steady_state!(𝓂::ℳ;
                                 if scale == 1
                                     # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
                                     # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
-                                    # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesnt work with Zygote
+                                    # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesn't work with Zygote
                                     return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
                                 else
                                     reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
@@ -5879,7 +5879,7 @@ function solve!(𝓂::ℳ;
 
             # end # timeit_debug
 
-            @assert solution_error < opts.tol.NSSS_acceptance_tol "Could not find non stochastic steady steady."
+            @assert solution_error < opts.tol.NSSS_acceptance_tol "Could not find non-stochastic steady state."
             
             # @timeit_debug timer "Calculate Jacobian" begin
 
@@ -8486,7 +8486,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     TT = 𝓂.timings
 
-    if solution_error > opts.tol.NSSS_acceptance_tol # || isnan(solution_error) if it's NaN the fisrt condition is false anyway
+    if solution_error > opts.tol.NSSS_acceptance_tol # || isnan(solution_error) if it's NaN the first condition is false anyway
         # println("NSSS not found")
         return TT, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
     end

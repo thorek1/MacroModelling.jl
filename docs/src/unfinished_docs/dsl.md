@@ -14,7 +14,7 @@ The most important rule is that variables are followed by the timing in square b
 
 A model written with this syntax allows the parser to identify, endogenous and exogenous variables and their timing as well as parameters.
 
-Note that variables in the present (period *t* or *0*) have to be denoted as such: `[0]`. The parser also takes care of creating auxilliary variables in case the model contains leads or lags of the variables larger than 1:
+Note that variables in the present (period *t* or *0*) have to be denoted as such: `[0]`. The parser also takes care of creating auxiliary variables in case the model contains leads or lags of the variables larger than 1:
 ```julia
 @model RBC_lead_lag begin
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
@@ -44,5 +44,5 @@ The parser recognises all functions in julia including those from [StatsFuns.jl]
 
 Given these rules it is straightforward to write down a model. Once declared using the `@model <name of the model>` macro, the package creates an object containing all necessary information regarding the equations of the model.
 
-## Lead / lags and auxilliary variables
+## Lead / lags and auxiliary variables
 

@@ -4,7 +4,7 @@
 
 `MacroModelling.jl` is a Julia package for developing and solving dynamic stochastic general equilibrium (DSGE) models.
 
-These kinds of models describe the behavior of a macroeconomy and are particularly suited for counterfactual analysis (economic policy evaluation) and exploring / quantifying specific mechanisms (academic research). Due to the complexity of these models, efficient numerical tools are required, as analytical solutions are often unavailable. `MacroModelling.jl` serves as a tool for handling the complexities involved, such as forward-looking expectations, nonlinearity, and high dimensionality.
+These kinds of models describe the behaviour of a macroeconomy and are particularly suited for counterfactual analysis (economic policy evaluation) and exploring / quantifying specific mechanisms (academic research). Due to the complexity of these models, efficient numerical tools are required, as analytical solutions are often unavailable. `MacroModelling.jl` serves as a tool for handling the complexities involved, such as forward-looking expectations, nonlinearity, and high dimensionality.
 
 The goal of this package is to reduce coding time and speed up model development by providing functions for working with discrete-time DSGE models. The user-friendly syntax, automatic variable declaration, and effective steady state solver facilitate fast prototyping of models. Furthermore, the package allows the user to work with nonlinear model solutions (up to third order (pruned) perturbation) and estimate the model using gradient based samplers (e.g. NUTS, or HMC). Currently, `DifferentiableStateSpaceModels.jl` is the only other package providing functionality to estimate using gradient based samplers but they use the start-of-period timing convention instead of the end-of-period timing convention used in most other packages. The target audience for the package includes central bankers, regulators, graduate students, and others working in academia with an interest in DSGE modelling.
 
@@ -15,19 +15,19 @@ As of now the package can:
 - calculate **first, second, and third order (pruned) perturbation** solutions (see [villemot2011solving](@citet), [andreasen2018pruning](@citet) and [levintal2017fifth](@citet)) using symbolic derivatives
 - handle **occasionally binding constraints** for linear and nonlinear solutions
 - calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts for linear and nonlinear solutions
-- calibrate parameters using (non stochastic) steady state relationships
+- calibrate parameters using (non-stochastic) steady state relationships
 - **match model moments** (also for pruned **higher order** solutions)
 - estimate the model on data (Kalman filter using first order perturbation; see [durbin2012time](@citet)) with **gradient based samplers** (e.g. NUTS, HMC) or **estimate nonlinear models** using the inversion filter
 - **differentiate** (forward AD) the model solution, Kalman filter loglikelihood (forward and reverse-mode AD), model moments, steady state, **with respect to the parameters**
 
 The package is not:
 
-- guaranteed to find the non stochastic steady state
+- guaranteed to find the non-stochastic steady state
 - the fastest package around if you already have a fast way to find the NSSS
 
 The former has to do with the fact that solving systems of nonlinear equations is hard (an active area of research). Especially in cases where the values of the solution are far apart (have a high standard deviation - e.g. `sol = [-46.324, .993457, 23523.3856]`), the algorithms have a hard time finding a solution. The recommended way to tackle this is to set bounds in the [`@parameters`](@ref) part (e.g. `r < 0.2`), so that the initial points are closer to the final solution (think of steady state interest rates not being higher than 20% - meaning not being higher than 0.2 or 1.2 depending on the definition).
 
-The latter has to do with the fact that julia code is fast once compiled, and that the package can spend more time finding the non stochastic steady state. This means that it takes more time from executing the code to define the model and parameters for the first time to seeing the first plots than with most other packages. But, once the functions are compiled and the non stochastic steady state has been found the user can benefit from the object oriented nature of the package and generate outputs or change parameters very fast.
+The latter has to do with the fact that julia code is fast once compiled, and that the package can spend more time finding the non-stochastic steady state. This means that it takes more time from executing the code to define the model and parameters for the first time to seeing the first plots than with most other packages. But, once the functions are compiled and the non-stochastic steady state has been found the user can benefit from the object oriented nature of the package and generate outputs or change parameters very fast.
 
 The package contains the following models in the `models` folder:
 

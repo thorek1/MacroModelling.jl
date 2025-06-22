@@ -2,7 +2,7 @@
 $(SIGNATURES)
 Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`. 
 
-In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
+In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -549,7 +549,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
 - $VARIABLES®
-- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state substracted.
+- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
 - `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
 - $ALGORITHM®
 - $QME®
@@ -658,7 +658,7 @@ function get_conditional_forecast(𝓂::ℳ,
     periods += max(size(conditions,2), shocks isa Nothing ? 1 : size(shocks,2)) # isa Nothing needed otherwise JET tests fail
 
     if conditions isa SparseMatrixCSC{Float64}
-        @assert length(𝓂.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.var)) * " variables (including auxilliary variables): " * repr(𝓂.var)
+        @assert length(𝓂.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.var)) * " variables (including auxiliary variables): " * repr(𝓂.var)
 
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.var),periods)
         nzs = findnz(conditions)
@@ -667,7 +667,7 @@ function get_conditional_forecast(𝓂::ℳ,
         end
         conditions = cond_tmp
     elseif conditions isa Matrix{Union{Nothing,Float64}}
-        @assert length(𝓂.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.var)) * " variables (including auxilliary variables): " * repr(𝓂.var)
+        @assert length(𝓂.var) == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(length(𝓂.var)) * " variables (including auxiliary variables): " * repr(𝓂.var)
 
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.var),periods)
         cond_tmp[:,axes(conditions,2)] = conditions
@@ -910,7 +910,7 @@ end
 """
 $(SIGNATURES)
 Return impulse response functions (IRFs) of the model.
-Function to use when differentiating IRFs with repect to parameters.
+Function to use when differentiating IRFs with respect to parameters.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -1264,7 +1264,7 @@ function get_irf(𝓂::ℳ;
     if occasionally_binding_constraints
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     elseif obc_shocks_included
-        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks witout enforcing the constraint is only compatible with first order perturbation solutions."
+        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks without enforcing the constraint is only compatible with first order perturbation solutions."
 
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     else
@@ -1450,7 +1450,7 @@ Return the (non-stochastic) steady state, calibrated parameters, and derivatives
 - $DERIVATIVES®
 - $PARAMETER_DERIVATIVES®
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation if no other higher order perturbation algorithm is provided in `algorithm`.
-- `return_variables_only` [Defaut: `false`, Type: `Bool`]: return only variables and not calibrated parameters.
+- `return_variables_only` [Default: `false`, Type: `Bool`]: return only variables and not calibrated parameters.
 - $ALGORITHM®
 - $QME®
 - $SYLVESTER®
@@ -1741,7 +1741,7 @@ The values of the output represent the NSSS in the case of a linear solution and
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` shows as columns the endogenous variables inlcuding the auxilliary endogenous and exogenous variables (due to leads and lags > 1). The rows and other dimensions (depending on the chosen perturbation order) include the NSSS for the linear case only, followed by the states, and exogenous shocks. Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
+- `KeyedArray` shows as columns the endogenous variables including the auxiliary endogenous and exogenous variables (due to leads and lags > 1). The rows and other dimensions (depending on the chosen perturbation order) include the NSSS for the linear case only, followed by the states, and exogenous shocks. Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
 
 # Examples
 ```jldoctest
@@ -1820,7 +1820,7 @@ function get_solution(𝓂::ℳ;
     end
 
     if algorithm == :second_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂, 
                                     𝓂.timings.nVars, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
@@ -1829,7 +1829,7 @@ function get_solution(𝓂::ℳ;
                             Variables = axis2,
                             States__Shocks² = axis1)
     elseif algorithm == :pruned_second_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂, 
                                     𝓂.timings.nVars, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
@@ -1838,7 +1838,7 @@ function get_solution(𝓂::ℳ;
                             Variables = axis2,
                             States__Shocks² = axis1)
     elseif algorithm == :third_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃, 
                                     𝓂.timings.nVars, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
@@ -1849,7 +1849,7 @@ function get_solution(𝓂::ℳ;
                             States__Shocks² = axis1,
                             States__Shocks³ = axis1)
     elseif algorithm == :pruned_third_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃, 
                                     𝓂.timings.nVars, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
@@ -1904,7 +1904,7 @@ get_perturbation_solution(args...; kwargs...) = get_solution(args...; kwargs...)
 """
 $(SIGNATURES)
 Return the components of the solution of the model: non-stochastic steady state (NSSS), and solution martrices corresponding to the order of the solution. Note that all returned objects have the variables in rows and the solution matrices have as columns the state variables followed by the perturbation/volatility parameter for higher order solution matrices and lastly the exogenous shocks. Higher order perturbation matrices are sparse and have the Kronecker product of the forementioned elements as columns. The last element, a Boolean indicates whether the solution is numerically accurate.
-Function to use when differentiating IRFs with repect to parameters.
+Function to use when differentiating IRFs with respect to parameters.
 
 # Arguments
 - $MODEL®
@@ -2004,10 +2004,10 @@ function get_solution(𝓂::ℳ,
     end
 
     if algorithm == :second_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                    𝓂.solution.perturbation.second_order_auxilliary_matrices,
+                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
                                                     𝓂.caches; 
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     T = 𝓂.timings, 
@@ -2015,18 +2015,18 @@ function get_solution(𝓂::ℳ,
 
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-        𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+        𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
 
         if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+            𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
         end
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
     
         𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                    𝓂.solution.perturbation.second_order_auxilliary_matrices,
+                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
                                                     𝓂.caches; 
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     T = 𝓂.timings, 
@@ -2034,18 +2034,18 @@ function get_solution(𝓂::ℳ,
     
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-        𝐒₂ *= 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+        𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
 
         if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+            𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
         end
 
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
                 
         𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
                                                     𝐒₁, 𝐒₂, 
-                                                    𝓂.solution.perturbation.second_order_auxilliary_matrices, 
-                                                    𝓂.solution.perturbation.third_order_auxilliary_matrices,
+                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices, 
+                                                    𝓂.solution.perturbation.third_order_auxiliary_matrices,
                                                     𝓂.caches; 
                                                     initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                     T = 𝓂.timings, 
@@ -2053,10 +2053,10 @@ function get_solution(𝓂::ℳ,
 
         if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
         
-        𝐒₃ *= 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
+        𝐒₃ *= 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
 
         if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-            𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+            𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
         end
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
@@ -2076,7 +2076,7 @@ If occasionally binding constraints are present in the model, they are not taken
 # Arguments
 - $MODEL®
 # Keyword Arguments
-- `periods` [Default: `[1:20...,Inf]`, Type: `Union{Vector{Int},Vector{Float64},UnitRange{Int64}}`]: vector of periods for which to calculate the conditional variance decomposition. If the vector conatins `Inf`, also the unconditional variance decomposition is calculated (same output as [`get_variance_decomposition`](@ref)).
+- `periods` [Default: `[1:20...,Inf]`, Type: `Union{Vector{Int},Vector{Float64},UnitRange{Int64}}`]: vector of periods for which to calculate the conditional variance decomposition. If the vector contains `Inf`, also the unconditional variance decomposition is calculated (same output as [`get_variance_decomposition`](@ref)).
 - $PARAMETERS®
 - $QME®
 - $LYAPUNOV®
@@ -2641,7 +2641,7 @@ autocorr = get_autocorrelation
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non stochastic steady state (NSSS), and standard deviations, but can optionally return variances, and covariance matrix. Derivatives of the moments (except for covariance) can also be provided by setting `derivatives` to `true`.
+Return the first and second moments of endogenous variables using the first, pruned second, or pruned third order perturbation solution. By default returns: non-stochastic steady state (NSSS), and standard deviations, but can optionally return variances, and covariance matrix. Derivatives of the moments (except for covariance) can also be provided by setting `derivatives` to `true`.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -3199,8 +3199,8 @@ get_mean(args...; kwargs...) =  get_moments(args...; kwargs..., variance = false
 
 """
 $(SIGNATURES)
-Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or pruned third order perturbation solution. By default returns a `Dict` with: non stochastic steady state (NSSS), and standard deviations, but can also return variances, and covariance matrix. Values are returned in the order given for the specific moment.
-Function to use when differentiating model moments with repect to parameters.
+Return the first and second moments of endogenous variables using either the linearised solution or the pruned second or pruned third order perturbation solution. By default returns a `Dict` with: non-stochastic steady state (NSSS), and standard deviations, but can also return variances, and covariance matrix. Values are returned in the order given for the specific moment.
+Function to use when differentiating model moments with respect to parameters.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -3209,12 +3209,12 @@ If occasionally binding constraints are present in the model, they are not taken
 - `parameter_values` [Type: `Vector`]: Parameter values. If `parameter_names` is not explicitly defined, `parameter_values` are assumed to correspond to the parameters and the order of the parameters declared in the `@parameters` block.
 # Keyword Arguments
 - `parameters` [Type: `Vector{Symbol}`]: Corresponding names in the same order as `parameter_values`.
-- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the NSSS of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
-- `mean` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the mean of selected variables (the mean for the linearised solution is the NSSS). Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
-- `standard_deviation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the standard deviation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
-- `variance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the variance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
-- `covariance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the covariance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
-- `autocorrelation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the autocorrelation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxilliary_and_obc` contains all shocks less those related to auxilliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxilliary variables. `:all` will contain all variables.
+- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the NSSS of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
+- `mean` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the mean of selected variables (the mean for the linearised solution is the NSSS). Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
+- `standard_deviation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the standard deviation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
+- `variance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the variance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
+- `covariance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the covariance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
+- `autocorrelation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the autocorrelation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
 - `autocorrelation_periods` [Default: `1:5`, Type = `UnitRange{Int}`]: periods for which to return the autocorrelation of selected variables
 - $ALGORITHM®
 - $QME®
