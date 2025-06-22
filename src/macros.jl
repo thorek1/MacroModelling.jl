@@ -49,6 +49,7 @@ Parameters and variables can be indexed using curly braces: e.g. `c{H}[0]`, `eps
 - generate equation with different indices in curly braces: `for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end`
 - generate multiple equations with different indices in curly braces: `for co in [H, F] K{co}[0] = (1-delta{co}) * K{co}[-1] + S{co}[0] end`
 - generate equation with different time indices: `Y_annual[0] = for lag in -3:0 Y[lag] end` or `R_annual[0] = for operator = :*, lag in -3:0 R[lag] end`
+    
 # Returns
 - `Nothing`. The macro creates the model `𝓂` in the calling scope.
 """
@@ -1038,11 +1039,9 @@ end
 ```
 
 # Programmatic model writing
-
 Variables and parameters indexed with curly braces can be either referenced specifically (e.g. `c{H}[ss]`) or generally (e.g. `alpha`). If they are referenced generally the parse assumes all instances (indices) are meant. For example, in a model where `alpha` has two indices `H` and `F`, the expression `alpha = 0.3` is interpreted as two expressions: `alpha{H} = 0.3` and `alpha{F} = 0.3`. The same goes for calibration equations.
 
 # Returns
-
 - `Nothing`. The macro assigns parameter values and calibration equations to `𝓂` in the calling scope.
 """
 macro parameters(𝓂,ex...)
