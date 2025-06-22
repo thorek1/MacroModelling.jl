@@ -64,6 +64,9 @@
 - [ ] FastDifferentiation is faster in taking derivatives and more efficient in writing functions but does not support custom functions (e.g. normlogpdf)
 - [ ] fix this inference errors for large fuctions. they are slow. fix derivatives in general.
 - [ ] check downgrade tests
+- [ ] obc and conditional forecasting should be the same problem. see if you can use the simple matrix linear algebra from cond fcst in obc
+- [ ] break point estimation, obc, shock decomp
+- [ ] higher ordshock decomps
 - [ ] put write_derivatives_function and lock structure inside function
 - [ ] take apart solve_matrix_equation for various cases
 - [ ] try static arrays in KF

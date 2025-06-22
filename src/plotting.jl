@@ -142,7 +142,6 @@ function plot_model_estimates(𝓂::ℳ,
 
     delete!(attributes_redux, :framestyle)
 
-
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
@@ -485,7 +484,7 @@ function plot_irf(𝓂::ℳ;
                     periods::Int = 40, 
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
                     variables::Union{Symbol_input,String_input} = :all_excluding_auxilliary_and_obc,
-                    parameters::ParameterType = nothing,
+                    parameters::Union{ParameterType, KeyedArray{Float64}, Dict{Int, Dict{Symbol, Real}}} = nothing,
                     show_plots::Bool = true,
                     save_plots::Bool = false,
                     save_plots_format::Symbol = :pdf,
@@ -528,44 +527,107 @@ function plot_irf(𝓂::ℳ;
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
-    
+
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+
+    @assert !(shocks == :none && generalised_irf) "Cannot compute generalised IRFs for model without shocks."
 
     stochastic_model = length(𝓂.timings.exo) > 0
 
     obc_model = length(𝓂.obc_violation_equations) > 0
-
-    if shocks isa Matrix{Float64}
-        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
-
-        shock_idx = 1
-
-        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ"),:]) > 1e-10
-    elseif shocks isa KeyedArray{Float64}
-        shock_idx = 1
-
-        obc_shocks = 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]
-
-        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(obc_shocks, axiskeys(shocks,1)),:)) > 1e-10
-    else
-        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
-
-        obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
-    end
-
-    if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
-        periods = max(periods, size(shocks)[2])
-    end
-
-    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
-
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     if ignore_obc
         occasionally_binding_constraints = false
     else
         occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
     end
+
+    if parameters isa ParameterType
+        break_points_dict = Dict{Int, Dict{Symbol, Float64}}(0 => Dict{Symbol, Float64}())
+        periods_of_change = [0]
+    else
+        break_points_dict = transform_break_points(parameters)
+        periods_of_change = break_points_dict |> keys |> collect |> sort
+    end
+
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+    
+        periods += size(shocks)[2]
+    
+        shock_idx = [1]
+        
+        shock_history = zeros(𝓂.timings.nExo, periods + periods_of_change[end], length(shock_idx))
+    
+        shock_history[:, 1:size(shocks)[2], 1] = shocks
+    
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ"),:]) > 1e-10
+    elseif shocks isa KeyedArray{Float64}
+        shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
+    
+        periods += size(shocks)[2]
+    
+        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks which are not part of the model."
+    
+        shock_idx = [1]
+    
+        shock_history = zeros(𝓂.timings.nExo, periods + periods_of_change[end], length(shock_idx))
+    
+        shock_history[indexin(shock_input,𝓂.timings.exo), 1:size(shocks)[2], 1] = shocks
+    
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(𝓂.timings.exo,axiskeys(shocks,1)),:)) > 1e-10
+    elseif shocks == :simulate
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    
+        shock_history = zeros(𝓂.timings.nExo, periods + periods_of_change[end], length(shock_idx))
+    
+        shock_history[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ"),:] .= 0
+    
+        obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
+    elseif shocks == :none
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    
+        shock_history = zeros(𝓂.timings.nExo, periods + periods_of_change[end], length(shock_idx))
+    
+        obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
+    elseif shocks isa Union{Symbol_input,String_input}
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    
+        shock_history = zeros(𝓂.timings.nExo, periods + periods_of_change[end], length(shock_idx))
+    
+        for (i,ii) in enumerate(shock_idx)
+            shock_history[ii,1,i] = negative_shock ? -1 : 1
+        end
+
+        obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
+    end
+    
+    solve!(𝓂, parameters = parameters isa ParameterType ? parameters : nothing, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+
+    axis1 = 𝓂.timings.var[var_idx]
+        
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
+
+    if shocks == :simulate
+        axis2 = [:simulate]
+    elseif shocks == :none
+        axis2 = [:none]
+    else
+        axis2 = shocks isa Union{Symbol_input,String_input} ? 
+            shock_idx isa Int ? 
+                [𝓂.timings.exo[shock_idx]] : 
+            𝓂.timings.exo[shock_idx] : 
+        [:Shock_matrix]
+
+        if any(x -> contains(string(x), "◖"), axis2)
+        axis2_decomposed = decompose_name.(axis2)
+        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+        end
 
     solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
 
@@ -588,7 +650,7 @@ function plot_irf(𝓂::ℳ;
             elseif algorithm == :pruned_third_order
                 initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
             else
-                initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
+                initial_state = initial_state - NSSS
             end
         else
             if algorithm ∉ [:pruned_second_order, :pruned_third_order]
@@ -596,18 +658,39 @@ function plot_irf(𝓂::ℳ;
             end
         end
     end
+
+    steady_states_and_state_update = Dict{Int, Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}, Function}}()
+
+    pre_break_point_parameters = deepcopy(𝓂.parameter_values)
     
+    reference_steady_states = zeros(𝓂.timings.nVars ,periods + periods_of_change[end])
 
-    if occasionally_binding_constraints
-        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
-    elseif obc_shocks_included
-        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks without enforcing the constraint is only compatible with first order perturbation solutions."
+    for (k,p) in enumerate(periods_of_change)
+        solve!(𝓂, parameters = break_points_dict[p], verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
 
-        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
-    else
-        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+        if occasionally_binding_constraints
+            state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
+        elseif obc_shocks_included
+            @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks witout enforcing the constraint is only compatible with first order perturbation solutions."
+    
+            state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
+        else
+            state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+        end
+
+        reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm)
+
+        steady_states_and_state_update[p] = (reference_steady_state, NSSS, SSS_delta, state_update)
+
+        concerned_periods = (k == 1 ? 1 : periods_of_change[k]):(k == length(periods_of_change) ? periods + periods_of_change[end] : periods_of_change[k+1] - 1)
+
+        for t in concerned_periods
+            reference_steady_states[:,t] .= reference_steady_state
+        end
     end
-
+    
+    solve!(𝓂, parameters = pre_break_point_parameters, verbose = verbose, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+    
     if generalised_irf
         Y = girf(state_update, 
                     initial_state, 
@@ -739,15 +822,16 @@ function plot_irf(𝓂::ℳ;
                     variables = variables, 
                     negative_shock = negative_shock) .+ SSS_delta[var_idx]
         else
-            Y = irf(state_update, 
-                    initial_state, 
-                    zeros(𝓂.timings.nVars),
-                    𝓂.timings;
-                    periods = periods, 
-                    shocks = shocks, 
-                    shock_size = shock_size,
-                    variables = variables, 
-                    negative_shock = negative_shock) .+ SSS_delta[var_idx]
+            levels = false
+
+            raw_Y =  irf(steady_states_and_state_update, 
+                        initial_state, 
+                        shock_history,
+                        shock_idx,
+                        levels,
+                        𝓂.timings)
+
+            Y = KeyedArray(raw_Y[var_idx,:,:];  Variables = axis1, Periods = 1:(periods + periods_of_change[end]), Shocks = axis2)
         end
     end
 
@@ -777,27 +861,30 @@ function plot_irf(𝓂::ℳ;
         end
 
         for i in 1:length(var_idx)
-            SS = reference_steady_state[var_idx[i]]
+            SS = reference_steady_states[var_idx[i],:]
 
-            can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
+            can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && SS[1] .> eps(Float32) # && periods_of_change == 1
 
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
                 push!(pp,begin
-                                StatsPlots.plot(Y[i,:,shock] .+ SS,
-                                                title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
+                                StatsPlots.plot(SS,
                                                 ylabel = "Level",
-                                                label = "")
+                                                label = "",
+                                                title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
+                                                color = :black)
 
                                 if can_dual_axis
                                     StatsPlots.plot!(StatsPlots.twinx(), 
-                                                        100*((Y[i,:,shock] .+ SS) ./ SS .- 1), 
+                                                        100*(SS .- SS[1]) ./ SS[1], 
                                                         ylabel = LaTeXStrings.L"\% \Delta", 
-                                                        label = "") 
+                                                        label = "",
+                                                        color = :black)
                                 end
 
-                                StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS], 
-                                                    color = :black, 
-                                                    label = "")                               
+                                StatsPlots.plot!(can_dual_axis ? [collect(Y[i,:,shock] .+ SS) collect(100*((Y[i,:,shock] .+ SS) ./ SS[1] .- 1))] : [Y[i,:,shock] .+ SS],
+                                                    label = "",
+                                                    grid = :all,
+                                                    color = 1)
                 end)
 
                 if !(plot_count % plots_per_page == 0)

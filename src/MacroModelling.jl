@@ -503,6 +503,175 @@ function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
 end
 
 
+# function match_conditions(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
+#     conditions, state_update, shocks, cond_var_idx, free_shock_idx, state, 𝒷 = p
+    
+#     if length(jac) > 0
+#         jac .= 𝒜.jacobian(𝒷(), xx -> begin
+#                                         shocks[free_shock_idx] .= xx
+#                                         return abs2.(conditions[cond_var_idx] - state_update(state, convert(typeof(xx), shocks))[cond_var_idx])
+#                                     end, X)[1]'
+#     end
+
+#     shocks[free_shock_idx] .= X
+
+#     res .= abs2.(conditions[cond_var_idx] - state_update(state, convert(typeof(X), shocks))[cond_var_idx])
+# end
+
+transform_break_points(break_points::Dict{Int, Dict{Symbol, Float64}}) = break_points
+
+function transform_break_points(break_points::KeyedArray{Float64})::Dict{Int, Dict{Symbol, Float64}}
+    dict = Dict{Int, Dict{Symbol, Float64}}()
+    
+    for i in 1:size(break_points,2)
+        time = axiskeys(break_points,2)[i]
+
+        if !haskey(dict, time)
+            dict[time] = Dict{Symbol, Float64}()
+        end
+        
+        for k in 1:size(break_points,1)
+            parameter = axiskeys(break_points,1)[k]
+            value = break_points[k,i]
+            if !(isnothing(value) || !isfinite(value))
+                dict[time][parameter] = value
+            end
+        end
+    end
+    
+    if !haskey(dict, 0)
+        dict[0] = Dict{Symbol, Float64}()
+    end
+
+    return dict
+end
+
+
+function minimize_distance_to_initial_data!(X::Vector{S}, grad::Vector{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
+    if state isa Vector{T}
+        pruning = false
+    else
+        pruning = true
+    end
+
+    if length(grad) > 0
+        grad .= 𝒜.gradient(𝒷(), xx -> begin
+                                        state_copy = deepcopy(state)
+
+                                        XX = reshape(xx, length(X) ÷ warmup_iters, warmup_iters)
+
+                                        for i in 1:warmup_iters
+                                            state_copy = state_update(state_copy, XX[:,i])
+                                        end
+
+                                        return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+                                    end, X)[1]
+    end
+
+    state_copy = deepcopy(state)
+
+    XX = reshape(X, length(X) ÷ warmup_iters, warmup_iters)
+
+    for i in 1:warmup_iters
+        state_copy = state_update(state_copy, XX[:,i])
+    end
+
+    return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+end
+
+
+
+
+function match_initial_data!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
+    if state isa Vector{T}
+        pruning = false
+    else
+        pruning = true
+    end
+
+    if length(jac) > 0
+        jac .= 𝒜.jacobian(𝒷(), xx -> begin
+                                        state_copy = deepcopy(state)
+
+                                        XX = reshape(xx, length(X) ÷ warmup_iters, warmup_iters)
+
+                                        for i in 1:warmup_iters
+                                            state_copy = state_update(state_copy, XX[:,i])
+                                        end
+
+                                        return precision_factor .* abs.(data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+                                    end, X)[1]'
+    end
+
+    if length(res) > 0
+        state_copy = deepcopy(state)
+
+        XX = reshape(X, length(X) ÷ warmup_iters, warmup_iters)
+
+        for i in 1:warmup_iters
+            state_copy = state_update(state_copy, XX[:,i])
+        end
+
+        res .= abs.(data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+    end
+end
+
+
+
+function minimize_distance_to_initial_data(X::Vector{S}, data::Vector{T}, state::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, warmup_iters::Int, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64, pruning::Bool)::S where {S, T}
+    state_copy = deepcopy(state)
+
+    XX = reshape(X, length(X) ÷ warmup_iters, warmup_iters)
+
+    for i in 1:warmup_iters
+        state_copy = state_update(state_copy, XX[:,i])
+    end
+
+    return precision_factor .* sum(abs2, data - (pruning ? sum(state_copy) : state_copy)[cond_var_idx])
+end
+
+
+
+
+
+function minimize_distance_to_data(X::Vector{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64, pruning::Bool)::S where {S, T}
+    return precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
+end
+
+
+function minimize_distance_to_data!(X::Vector{S}, grad::Vector{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
+    if State isa Vector{T}
+        pruning = false
+    else
+        pruning = true
+    end
+    
+    if length(grad) > 0
+        grad .= 𝒜.gradient(𝒷(), xx -> precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]
+    end
+
+    return precision_factor .* sum(abs2, Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
+end
+
+
+
+function match_data_sequence!(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, Data::Vector{T}, State::Union{Vector{T},Vector{Vector{T}}}, state_update::Function, cond_var_idx::Vector{Union{Nothing, Int64}}, precision_factor::Float64) where {S, T}
+    if State isa Vector{T}
+        pruning = false
+    else
+        pruning = true
+    end
+    
+    if length(jac) > 0
+        jac .= 𝒜.jacobian(𝒷(), xx -> precision_factor .* abs.(Data - (pruning ? sum(state_update(State, xx)) : state_update(State, xx))[cond_var_idx]), X)[1]'
+    end
+
+    if length(res) > 0
+        res .= precision_factor .* abs.(Data - (pruning ? sum(state_update(State, X)) : state_update(State, X))[cond_var_idx])
+    end
+end
+
+
 function set_up_obc_violation_function!(𝓂)
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
 
@@ -7554,8 +7723,7 @@ function irf(state_update::Function,
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
-    shock_size::Real = 1,
-    negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    negative_shock::Bool = false)
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -7589,7 +7757,7 @@ function irf(state_update::Function,
         shock_idx = parse_shocks_input_to_index(shocks,T)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T) |> sort
+    var_idx = parse_variables_input_to_index(variables, T)
 
     axis1 = T.var[var_idx]
         
@@ -7601,7 +7769,7 @@ function irf(state_update::Function,
     always_solved = true
 
     if shocks == :simulate
-        shock_history = randn(T.nExo,periods) * shock_size
+        shock_history = randn(T.nExo,periods)
 
         shock_history[contains.(string.(T.exo),"ᵒᵇᶜ"),:] .= 0
 
@@ -7648,9 +7816,9 @@ function irf(state_update::Function,
         Y = zeros(T.nVars,periods,length(shock_idx))
 
         for (i,ii) in enumerate(shock_idx)
-            if shocks ∉ [:simulate, :none] && shocks isa Union{Symbol_input,String_input}
+            if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
-                shock_history[ii,1] = negative_shock ? -shock_size : shock_size
+                shock_history[ii,1] = negative_shock ? -1 : 1
             end
 
             past_states = initial_state
@@ -7683,6 +7851,185 @@ function irf(state_update::Function,
     
         return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
     end
+end
+
+
+
+
+# function irf(steady_states_and_state_update::Dict{Int, Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}, Function}},
+#     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}},
+#     shock_history::Matrix{Float64},
+#     T::timings)
+function irf(steady_states_and_state_update::Dict{Int, Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}, Function}},
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}},
+    shock_history::Array{Float64,3},
+    shock_idx::Vector{Int},
+    levels::Bool,
+    T::timings)
+
+    periods = size(shock_history, 2)
+
+    Y = zeros(T.nVars, periods, length(shock_idx))
+
+    pruning = initial_state isa Vector{Vector{Float64}}
+
+    periods_of_change = steady_states_and_state_update |> keys |> collect |> sort
+
+    initial_state_copy = [deepcopy(initial_state) for _ in shock_idx]
+
+    for i in shock_idx
+        for (k,p) in enumerate(periods_of_change)
+            concerned_periods = (k == 1 ? 1 : periods_of_change[k]):(k == length(periods_of_change) ? periods : periods_of_change[k+1] - 1)
+
+            reference_steady_state, __, SSS_delta, state_update = steady_states_and_state_update[p]
+
+            if k > 1
+                ΔNSSS = steady_states_and_state_update[periods_of_change[k-1]][2] - steady_states_and_state_update[periods_of_change[k]][2]
+                ΔSSS_delta = steady_states_and_state_update[periods_of_change[k-1]][3] - steady_states_and_state_update[periods_of_change[k]][3]
+                
+                if pruning
+                    initial_state_copy[i][1] += ΔNSSS
+                    # initial_state_copy[i][2] += ΔNSSS#ΔSSS_delta
+                    if length(initial_state_copy[i]) > 3
+                        initial_state_copy[i][3] += ΔNSSS
+                    end
+                else
+                    initial_state_copy[i] += ΔNSSS
+                end
+            end
+
+            for t in concerned_periods
+                initial_state_copy[i] = state_update(initial_state_copy[i], shock_history[:,t,i])
+
+                Y[:,t,i] = (pruning ? sum(initial_state_copy[i]) : initial_state_copy[i]) .+ (levels ? reference_steady_state + SSS_delta : SSS_delta)
+            end
+        end
+    end
+
+    return Y
+end
+
+
+
+function girf(state_update::Function,
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
+    level::Vector{Float64}, 
+    T::timings; 
+    periods::Int = 40, 
+    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+    variables::Union{Symbol_input,String_input} = :all, 
+    negative_shock::Bool = false, 
+    warmup_periods::Int = 100, 
+    draws::Int = 50)
+
+    pruning = initial_state isa Vector{Vector{Float64}}
+
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        # periods += size(shocks)[2]
+
+        shock_history = zeros(T.nExo, periods)
+
+        shock_history[:,1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    elseif shocks isa KeyedArray{Float64}
+        shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
+
+        # periods += size(shocks)[2]
+
+        @assert length(setdiff(shock_input, T.exo)) == 0 "Provided shocks which are not part of the model."
+
+        shock_history = zeros(T.nExo, periods + 1)
+
+        shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,T)
+    end
+
+    var_idx = parse_variables_input_to_index(variables, T)
+
+    Y = zeros(T.nVars, periods + 1, length(shock_idx))
+
+    for (i,ii) in enumerate(shock_idx)
+        initial_state_copy = deepcopy(initial_state)
+
+        for draw in 1:draws
+            initial_state_copy² = deepcopy(initial_state_copy)
+
+            for i in 1:warmup_periods
+                initial_state_copy² = state_update(initial_state_copy², randn(T.nExo))
+            end
+
+            Y₁ = zeros(T.nVars, periods + 1)
+            Y₂ = zeros(T.nVars, periods + 1)
+
+            baseline_noise = randn(T.nExo)
+
+            if shocks != :simulate && shocks isa Union{Symbol_input,String_input}
+                shock_history = zeros(T.nExo,periods)
+                shock_history[ii,1] = negative_shock ? -1 : 1
+            end
+
+            if pruning
+                initial_state_copy² = state_update(initial_state_copy², baseline_noise)
+
+                initial_state₁ = deepcopy(initial_state_copy²)
+                initial_state₂ = deepcopy(initial_state_copy²)
+
+                Y₁[:,1] = initial_state_copy² |> sum
+                Y₂[:,1] = initial_state_copy² |> sum
+            else
+                Y₁[:,1] = state_update(initial_state_copy², baseline_noise)
+                Y₂[:,1] = state_update(initial_state_copy², baseline_noise)
+            end
+
+            for t in 1:periods
+                baseline_noise = randn(T.nExo)
+
+                if pruning
+                    initial_state₁ = state_update(initial_state₁, baseline_noise)
+                    initial_state₂ = state_update(initial_state₂, baseline_noise + shock_history[:,t])
+
+                    Y₁[:,t+1] = initial_state₁ |> sum
+                    Y₂[:,t+1] = initial_state₂ |> sum
+                else
+                    Y₁[:,t+1] = state_update(Y₁[:,t],baseline_noise)
+                    Y₂[:,t+1] = state_update(Y₂[:,t],baseline_noise + shock_history[:,t])
+                end
+            end
+
+            Y[:,:,i] += Y₂ - Y₁
+        end
+        Y[:,:,i] /= draws
+    end
+    
+    axis1 = T.var[var_idx]
+        
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
+
+    axis2 = shocks isa Union{Symbol_input,String_input} ? 
+                shock_idx isa Int ? 
+                    [T.exo[shock_idx]] : 
+                T.exo[shock_idx] : 
+            [:Shock_matrix]
+
+    if any(x -> contains(string(x), "◖"), axis2)
+        axis2_decomposed = decompose_name.(axis2)
+        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+    end
+
+    return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
 end
 
 
