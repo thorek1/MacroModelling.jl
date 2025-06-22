@@ -372,7 +372,7 @@ end
 function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             𝑺₁::AbstractMatrix{S},#first order solution
-                                            M₂::second_order_auxilliary_matrices,   # aux matrices
+                                            M₂::second_order_auxiliary_matrices,   # aux matrices
                                             ℂC::caches;
                                             T::timings,
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
@@ -500,7 +500,7 @@ function rrule(::typeof(calculate_second_order_solution),
                     ∇₁::AbstractMatrix{S}, #first order derivatives
                     ∇₂::SparseMatrixCSC{S}, #second order derivatives
                     𝑺₁::AbstractMatrix{S},#first order solution
-                    M₂::second_order_auxilliary_matrices,   # aux matrices
+                    M₂::second_order_auxiliary_matrices,   # aux matrices
                     ℂC::caches;
                     T::timings,
                     initial_guess::AbstractMatrix{R} = zeros(0,0),
@@ -771,8 +771,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             ∇₃::SparseMatrixCSC{S}, #third order derivatives
                                             𝑺₁::AbstractMatrix{S}, #first order solution
                                             𝐒₂::SparseMatrixCSC{S}, #second order solution
-                                            M₂::second_order_auxilliary_matrices,  # aux matrices second order
-                                            M₃::third_order_auxilliary_matrices,   # aux matrices third order
+                                            M₂::second_order_auxiliary_matrices,  # aux matrices second order
+                                            M₃::third_order_auxiliary_matrices,   # aux matrices third order
                                             ℂC::caches;
                                             T::timings,
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
@@ -1018,8 +1018,8 @@ function rrule(::typeof(calculate_third_order_solution),
                 ∇₃::SparseMatrixCSC{S}, #third order derivatives
                 𝑺₁::AbstractMatrix{S}, #first order solution
                 𝐒₂::SparseMatrixCSC{S}, #second order solution
-                M₂::second_order_auxilliary_matrices,  # aux matrices second order
-                M₃::third_order_auxilliary_matrices,   # aux matrices third order
+                M₂::second_order_auxiliary_matrices,  # aux matrices second order
+                M₃::third_order_auxiliary_matrices,   # aux matrices third order
                 ℂC::caches;
                 T::timings,
                 initial_guess::AbstractMatrix{Float64} = zeros(0,0),

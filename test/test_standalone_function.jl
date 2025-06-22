@@ -65,8 +65,8 @@ get_irf(RBC_CME, algorithm = :pruned_third_order)
 get_irf(RBC_CME, algorithm = :pruned_second_order)
 
 ∇₁ = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME)# |> Matrix
-∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.second_order_auxilliary_matrices.𝐔∇₂
-∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
+∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
 #SS = get_steady_state(RBC_CME, derivatives = false)
 
 
@@ -75,28 +75,28 @@ T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :
 first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁; T = T)# |> Matrix{Float32}
 
 second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, 
-                                                                RBC_CME.solution.perturbation.second_order_auxilliary_matrices,
+                                                                RBC_CME.solution.perturbation.second_order_auxiliary_matrices,
                                                                 RBC_CME.caches; 
                                                                 T = T)
 
 
-# second_order_solution *= RBC_CME.solution.perturbation.second_order_auxilliary_matrices.𝐔₂
+# second_order_solution *= RBC_CME.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
 
-second_order_solution = sparse(second_order_solution * RBC_CME.solution.perturbation.second_order_auxilliary_matrices.𝐔₂)
+second_order_solution = sparse(second_order_solution * RBC_CME.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
 
 third_order_solution, solved3 = calculate_third_order_solution(∇₁, 
                                                             ∇₂, 
                                                             ∇₃,
                                                             first_order_solution, 
                                                             second_order_solution, 
-                                                            RBC_CME.solution.perturbation.second_order_auxilliary_matrices, 
-                                                            RBC_CME.solution.perturbation.third_order_auxilliary_matrices, 
+                                                            RBC_CME.solution.perturbation.second_order_auxiliary_matrices, 
+                                                            RBC_CME.solution.perturbation.third_order_auxiliary_matrices, 
                                                             RBC_CME.caches; 
                                                             T = T)
 
-# third_order_solution *= RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔₃
+# third_order_solution *= RBC_CME.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
 
-third_order_solution = sparse(third_order_solution * RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔₃)
+third_order_solution = sparse(third_order_solution * RBC_CME.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
 
 @testset verbose = true "SS, derivatives of model at SS and solutions" begin
     NSSS =  [1.0
@@ -222,7 +222,7 @@ third_order_solution = sparse(third_order_solution * RBC_CME.solution.perturbati
         -0.0021014511165327685
         -0.0004090778090616675
         0.0004090778090616675],7,3375)
-    @test isapprox(∇₃ * RBC_CME.solution.perturbation.third_order_auxilliary_matrices.𝐔∇₃
+    @test isapprox(∇₃ * RBC_CME.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
     ,third_order_derivatives2,rtol = eps(Float32))
 
     first_order_solution2 = [ 0.9         5.41234e-16  -6.41848e-17   0.0           0.0068
