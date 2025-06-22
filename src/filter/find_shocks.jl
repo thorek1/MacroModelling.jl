@@ -198,7 +198,6 @@ function rrule(::typeof(find_shocks),
 end
 
 
-# TODO: forwarddiff for find_shocks
 @stable default_mode = "disable" begin
 
 function find_shocks(::Val{:LagrangeNewton},
