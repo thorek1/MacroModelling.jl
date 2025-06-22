@@ -77,7 +77,7 @@ Note that we have to write one parameter definition per line.
 ## Load data
 
 Given the equations and parameters, we only need the entries in the data which correspond to the observables in the model (need to have the exact same name) to estimate the model.
-First, we load in the data from a CSV file (using the CSV and DataFrames packages) and convert it to a `KeyedArray` (using the AxisKeys package). Furthermore, we log transform the data provided in levels, and last but not least we select only those variables in the data which are observables in the model.
+First, we load in the data from a CSV file (using the CSV and DataFrames packages) and convert it to a `KeyedArray` (provided by the `AxisKeys` package). Furthermore, we log transform the data provided in levels, and last but not least we select only those variables in the data which are observables in the model.
 
 ```@repl tutorial_2
 using CSV, DataFrames, AxisKeys
@@ -231,7 +231,7 @@ We estimated the model on two variables but our model allows us to look at all v
 get_estimated_variables(FS2000, data)
 ```
 
-Since we already solved the model with the parameters at the posterior mode we do not need to do so again. The function returns a `KeyedArray` (from the AxisKeys.jl package) with the values of the variables in levels at each point in time.
+Since we already solved the model with the parameters at the posterior mode we do not need to do so again. The function returns a `KeyedArray` (from the `AxisKeys` package) with the values of the variables in levels at each point in time.
 
 Another useful tool is a historical shock decomposition. It allows us to understand the contribution of the shocks for each variable. This can be done using the `get_shock_decomposition` function:
 

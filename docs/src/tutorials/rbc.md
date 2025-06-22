@@ -165,7 +165,7 @@ The plots show the models endogenous variables in response to random draws for a
 
 ## Plot specific series of shocks
 
-Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or a `KeyedArray` (the `KeyedArray` type is provided by the AxisKeys.jl package) of the series of shocks to the `shocks` argument of the [`plot_irf`](@ref) function:
+Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or a `KeyedArray` (the `KeyedArray` type is provided by the `AxisKeys` package) of the series of shocks to the `shocks` argument of the [`plot_irf`](@ref) function:
 
 ```@repl tutorial_1
 shock_series = zeros(1,4)
@@ -251,7 +251,7 @@ For IRFs this is possible by calling [`get_irf`](@ref):
 get_irf(RBC)
 ```
 
-which returns a 3-dimensional `KeyedArray` (provided by the AxisKeys.jl package) with variables (absolute deviations from the relevant steady state by default) in rows, the period in columns, and the shocks as the third dimension.
+which returns a 3-dimensional `KeyedArray` (provided by the `AxisKeys` package) with variables (absolute deviations from the relevant steady state by default) in rows, the period in columns, and the shocks as the third dimension.
 
 For simulations this is possible by calling [`simulate`](@ref):
 
@@ -259,7 +259,7 @@ For simulations this is possible by calling [`simulate`](@ref):
 simulate(RBC)
 ```
 
-which returns the simulated data in levels in a 3-dimensional `KeyedArray` (provided by the AxisKeys.jl package) of the same structure as for the IRFs.
+which returns the simulated data in levels in a 3-dimensional `KeyedArray` (provided by the `AxisKeys` package) of the same structure as for the IRFs.
 
 ## Conditional forecasts
 
@@ -275,7 +275,7 @@ conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,4),Variables = [:
 conditions[1:4] .= [-.01,0,.01,.02];
 ```
 
-Note that all other endogenous variables not part of the `KeyedArray` are also not conditioned on.
+Note that all other endogenous variables not part of the `KeyedArray` (provided by the `AxisKeys` package) are also not conditioned on.
 
 Next, we define the conditions on the shocks (`eps_z` in this case) using a `SparseArrayCSC` from the `SparseArrays` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions on the shocks):
 
@@ -293,7 +293,7 @@ Finally we can get the conditional forecast:
 get_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels = false)
 ```
 
-The function returns a `KeyedArray` with the values of the endogenous variables and shocks matching the conditions exactly.
+The function returns a `KeyedArray` (provided by the `AxisKeys` package) with the values of the endogenous variables and shocks matching the conditions exactly.
 
 We can also plot the conditional forecast. Please note that you need to import the `StatsPlots` packages once before the first plot. In order to plot we can use:
 
