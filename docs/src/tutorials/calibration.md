@@ -65,7 +65,7 @@ using MacroModelling
 end
 ```
 
-First, we load the package and then use the [`@model`](@ref) macro to define our model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between `begin` and `end`. Equations can contain an equality sign or the expression is assumed to equal 0. Equations cannot span multiple lines (unless you wrap the expression in brackets) and the timing of endogenous variables are expressed in the squared brackets following the variable name (e.g. `[-1]` for the past period). Exogenous variables (shocks) are followed by a keyword in squared brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julia's unicode capabilities (e.g. alpha can be written as α).
+First, we load the package and then use the [`@model`](@ref) macro to define our model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between `begin` and `end`. Equations can contain an equality sign or the expression is assumed to equal 0. Equations cannot span multiple lines (unless you wrap the expression in brackets) and the timing of endogenous variables are expressed in the square brackets following the variable name (e.g. `[-1]` for the past period). Exogenous variables (shocks) are followed by a keyword in square brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julia's unicode capabilities (e.g. alpha can be written as α).
 
 ## Define the parameters
 
@@ -203,7 +203,7 @@ Next, let's define a function measuring how close we are to our target for given
 function distance_to_target(parameter_value_inputs)
     model_statistics = get_statistics(Gali_2015, parameter_value_inputs, parameters = [:α, :std_a], mean = [:W_real], standard_deviation = [:Pi])
     targets = [0.7, 0.01]
-    return sum(abs2, vcat(model_statistics...) - targets)
+    return sum(abs2, vcat(model_statistics[:mean], model_statistics[:standard_deviation]) - targets)
 end
 ```
 
@@ -291,7 +291,7 @@ we need to define the target function and specify that we use a nonlinear soluti
 function distance_to_target(parameter_value_inputs)
     model_statistics = get_statistics(Gali_2015, parameter_value_inputs, algorithm = :pruned_third_order, parameters = [:α, :std_a], mean = [:W_real], standard_deviation = [:Pi])
     targets = [0.7, 0.01]
-    return sum(abs2, vcat(model_statistics...) - targets)
+    return sum(abs2, vcat(model_statistics[:mean], model_statistics[:standard_deviation]) - targets)
 end
 ```
 
@@ -319,7 +319,7 @@ get_statistics(Gali_2015, sol.minimizer, algorithm = :pruned_third_order, parame
 
 The solution does not match the standard deviation of inflation very well.
 
-Potentially the partial derivatives change a lot for small changes in parameters and even though the partial derivatives for standard deviation of inflation were large wrt `std_a` they might be small for value returned from the optimisation. We can check this with:
+Potentially the partial derivatives change a lot for small changes in parameters and even though the partial derivatives for standard deviation of inflation were large wrt `std_a` they might be small for values returned from the optimisation. We can check this with:
 
 ```@repl tutorial_3
 get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_third_order, parameters = [:α, :std_a] .=> sol.minimizer)
@@ -335,7 +335,7 @@ We need to redefine our target function and optimise it. Note that the previous 
 function distance_to_target(parameter_value_inputs)
     model_statistics = get_statistics(Gali_2015, parameter_value_inputs, algorithm = :pruned_third_order, parameters = [:α, :σ], mean = [:W_real], standard_deviation = [:Pi])
     targets = [0.7, 0.01]
-    return sum(abs2, vcat(model_statistics...) - targets)
+    return sum(abs2, vcat(model_statistics[:mean], model_statistics[:standard_deviation]) - targets)
 end
 
 sol = Optim.optimize(distance_to_target,

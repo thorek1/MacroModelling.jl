@@ -2,30 +2,93 @@
 
 ## High priority
 
+- [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
+- [ ] add caches to lyapunov krylov solvers
+- [ ] eliminiate last elements of factorisation calls not using linearsolvers.jl, check whether they can be done with linearsolvers in case of a matrix as RHS (otherwise consider mumps for sparse matrix RHS)
+- [ ] check allocations of jacobian in sparse case (NAWM)
+- [ ] add to the doc/strings that KeyedArrays are part of the AxisKeyes.jl package so people can look up how to access elements there. otherwise they might confuse it for a format provided by the package and wouldnt know how to access elements from it
+- [ ] use isfresh flag on dense linear solves
+- [ ] fix borrowing_constraint how-to
+- [ ] implement check for plots, that they always return a plot (shocks = :none didnt return a plot)
+- [ ] cache sparse kron, sylvester solution, and compressed kron in order to avoid allocs; check sparse kron! call
+- [ ] prettify plotlyjs plots
+- [ ] fix findiff and zygote consistency for llh derivatives of inversion filter
+- [ ] add correlation and other moments to get statistics
+- [ ] get irf with parameters for higher order and make it zygote compatible
+- [ ] implement rrule for higher order moments
+- [ ] add derivatives wrt covariance in get_moments
+- [ ] recheck function examples and docs (include output description)
+- [ ] Docs: document outputs and associated functions to work with function
+- [ ] write documentation/docstrings using copilot
+- [ ] implement get_conditional_variance_decomposition for higher order
+- [ ] improve model writing related errors. dont throw errors right away but collect them
+- [ ] moments related functions: fix return types and implement early returns on errors for 
 - [ ] ss transition by entering new parameters at given periods
+- [ ] implement forwarddiff for find_shocks
+- [ ] redo inversion filter 1st order rrule based on the higher order ones. the accumulated matmul might not be necessary at all
+- [ ] inversion filter: use subset of observables and states when propagating states (see kalman filter)
+- [ ] start filter from initial values provided by user
+- [ ] higher order estimation should start from mean not the stochastic steady state as the mean is the most likely starting point
+- [ ] large models will need functions to be compiled individually as done for higher order; when tackling that, also separate steady state related equations from the steady state, so that speed issue is addresses due to replacing parameters with the steady state equations from the parameter block; also creat non allocating (residuals) steady state function
+- [ ] allow to define y[ss] = 1 in parameters block
+- [ ] check tols throughout. adopt max(abs,rel*norm) tols
+- [ ] redo diffs (DiffInt or ForwardDiff or FastDiff)
+- [ ] switch from sympy to Symbolics
+- [ ] optimize second order estim with SW07 or NAWM
+- [ ] optimize third order with smaller model
+- [ ] add argument to plotting functions to replace names in plots (e.g. input a dictionnary: Dict(:dinve => "Investment growth"))
+- [ ] programmatic model writing: accept {i}[0] as definition for variable
+- [ ] fix higher order shock finder (3rd order) and check results for pruned second order. are the right state values taken for 1st and second order subprocesses?
+- [ ] take analytical derivatives of NSSS funcs to reduce allocation and speed up the NSSS solver
+- [ ] in the docs make it clear that for estimation you need to have variables which have the name of the observables in the dataframe and the parameters must be handed over to the get_loglikelihood function in the same order as declared. check with get_parameters
+- [ ] check out dense sparse matmul on transposed matrices
+- [ ] check out DiffInterface for NSSS solver
+- [ ] write plotting callback for NSSS solver
+- [ ] time NSSS solver and estimation codes
+- [ ] move korn_s_s_s to higher order aux variables
+- [ ] write own interior point solver
+- [ ] append forecast (no shocks) after estimated variables
+- [ ] write more tests for the plots
+- [ ] add background part in docs on NSSS solver (use material from presentation)
+- [ ] juliacon followup: checkout alloccheck, infiltrator, bestie, DifferentiableInterface, DepotDelivery, Interfaces, ThreadedDenseparseMul, Optimization Ensemble, redo Kalman filter with PDMats
+- [ ] use IrrationalConstants for log2pi...
+- [ ] checkout this invalidation precompile trick and g dalle part on precompilation
+- [ ] use sobol random numbers (gives you uniform but then use norminvcdf to get norm) to integrate out future randomness when solving with neural nets
+- [ ] do proper testing of ss solver with random set of params, equal across configs
+- [ ] load create parts of derivatives later and not directly after parameters block
+- [ ] fix model estimate plot. data not above estimate (should be red but is blue)
+- [ ] implement higher order (pruned) variance decomposition
+- [ ] try slicesampler instead of pigeons
+- [ ] use faster derivatives for SS solver (currently forward diff)
+- [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
+- [ ] FastDifferentiation is faster in taking derivatives and more efficient in writing functions but does not support custom functions (e.g. normlogpdf)
+- [ ] fix this inference errors for large fuctions. they are slow. fix derivatives in general.
 - [ ] check downgrade tests
 - [ ] obc and conditional forecasting should be the same problem. see if you can use the simple matrix linear algebra from cond fcst in obc
 - [ ] break point estimation, obc, shock decomp
 - [ ] higher ordshock decomps
+- [ ] put write_derivatives_function and lock structure inside function
+- [ ] take apart solve_matrix_equation for various cases
+- [ ] try static arrays in KF
+- [ ] check derivatives of erfcinv with Symbolics. seems off
+- [ ] have a workspace in the model object. to be accessed for example by the riccati solver at each run (instead of initialising values at each function call)
+- [ ] check why PG samples are off
+- [ ] optimise vanilla loglikelihood calculation and gradient thereof (incl comp time)
+- [ ] checkout dynamic perturbation for obc solution: https://www.southampton.ac.uk/~alexmen/dynamic_perturbation.pdf
+- [ ] checkout schedule free ADAM for global methods: https://github.com/facebookresearch/schedule_free
 - [ ] figure out why PG and IS return basically the prior
 - [ ] allow external functions to calculate the steady state (and hand it over via SS or get_loglikelihood function) - need to use the check function for implicit derivatives and cannot use it to get him a guess from which he can use internal solver going forward
 - [ ] go through custom SS solver once more and try to find parameters and logic that achieves best results
 - [ ] SS solver with less equations than variables
 - [ ] improve docs: timing in first sentence seems off; have something more general in first sentence; why is the syntax user friendly? give an example; make the former and the latter a footnote
-- [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
 - [ ] change docs to reflect that the output of irfs include aux vars and also the model info Base.show includes aux vars
-- [ ] recheck function examples and docs (include output description)
-- [ ] Docs: document outputs and associated functions to work with function
-- [ ] write documentation/docstrings using copilot
 - [ ] feedback: sell the sampler better (ESS vs dynare), more details on algorithm (SS solver)
 - [ ] NaNMath pow does not work (is not substituted)
 - [ ] check whether its possible to run parameters macro/block without rerunning model block
 - [ ] eliminate possible log, ^ terms in parameters block equations - because of nonnegativity errors
 - [ ] throw error when equations appear more than once
-- [ ] plot multiple solutions or models - multioptions in one graph
+- [ ] plot multiple solutions of models - multioptions in one graph
 - [ ] make SS calc faster (func and optim, maybe inplace ops)
-- [ ] try preallocation tools for forwarddiff
-- [ ] add nonlinear shock decomposition
 - [ ] check obc once more
 - [ ] rm obc vars from get_SS
 - [ ] check why warmup_iterations = 0 makes estimated shocks larger
@@ -35,13 +98,7 @@
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
 - [ ] cover nested case: min(50,a+b+max(c,10))
 - [ ] add balanced growth path handling
-- [ ] higher order solutions: some kron matrix mults are later compressed. write custom compressed kron mult; check if sometimes dense mult is faster? (e.g. GNSS2010 seems dense at higher order)
-- [ ] make inversion filter / higher order sols suitable for HMC (forward and reverse diff!!, currently only analytical pushforward, no implicitdiff) | analytic derivatives
-- [ ] speed up sparse matrix calcs in implicit diff of higher order funcs
-- [ ] compressed higher order derivatives and sparsity of jacobian
-- [ ] add user facing option to choose sylvester solver
 - [ ] autocorr and covariance with derivatives. return 3d array
-- [ ] use ID for sparse output sylvester solvers (filed issue)
 - [ ] add pydsge and econpizza to overview
 - [ ] add for loop parser in @parameters
 - [ ] implement more multi country models
@@ -50,7 +107,6 @@
 - [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
 - [ ] when doing calibration with optimiser have better return values when he doesnt find a solution (probably NaN)
 - [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
-- [ ] automatically adjust plots for different legend widths and heights
 - [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
 - [ ] have get_std take variables as an input
 - [ ] more informative errors when something goes wrong when writing a model
@@ -60,7 +116,7 @@
 - [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
 - [ ] write functions to debug (fix_SS.jl...)
 - [ ] model compression (speed up 2nd moment calc (derivatives) for large models; gradient loglikelihood is very slow due to large matmuls) -> model setup as maximisation problem (gEcon) -> HANK models
-- [ ] implement global solution methods
+- [ ] implement global solution methods - Julien Pascal, QuantEcon
 - [ ] add more models
 
 - [ ] use @assert for errors and @test_throws
@@ -74,6 +130,27 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] weed out SS solver and saved objects
 
+- [x] implement benchmarks
+- [x] write non allocating version of steady state functions
+- [x] do SVD on matrices before solving first order. idea to solve in lower dimensional subspace. doesnt work as that is the whole point of the solution. what breaks is the X^2 as any transformation of X would have a term in the middle remaining
+- [x] automatically adjust plots for different legend widths and heights
+- [x] use ID for sparse output sylvester solvers (filed issue)
+- [x] add user facing option to choose sylvester solver
+- [x] speed up sparse matrix calcs in implicit diff of higher order funcs
+- [x] compressed higher order derivatives and sparsity of jacobian
+- [x] dont use SS_solve_func but the wrapper instead (write forwarddiff wrapper)
+- [x] make inversion filter / higher order sols suitable for HMC (forward and reverse diff!!, currently only analytical pushforward, no implicitdiff) | analytic derivatives
+- [x] higher order solutions: some kron matrix mults are later compressed. write custom compressed kron mult; check if sometimes dense mult is faster? (e.g. GNSS2010 seems dense at higher order). wrote custom kron matmuls
+- [x] add nonlinear shock decomposition
+- [x] try preallocation tools for forwarddiff (DiffInterface). works
+- [x] analytical derivatives of inversion filter (higher order)
+- [x] try a newton version of binder pesaran. it's very slow
+- [x] newton SS solver once sol was found
+- [x] fix presample period for higher order estim
+- [x] insight: spgemm in SparseArrays is the fastest way. threading doesnt work well due to memory/cache issues, csr format doesnt give many gains. other libraries dont improve over standard implementation (Finch...)
+- [x] use kalman filter to initialize inversion filter for third order or some other simplification; didnt do it bcs it seems the inversion filter is well behaved for reasonable shock sizes
+- [x] implement estimation tests for all models
+- [x] make plotting options as dynamic setting instead of default, accept kwargs
 - [x] streamline estimation part (dont do string matching... but rely on precomputed indices...)
 - [x] estimation: run auto-tune before and use solver treating parameters as given
 - [x] use arraydist in tests and docs

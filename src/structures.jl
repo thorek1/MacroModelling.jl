@@ -94,58 +94,58 @@ struct timings
 end
 
 struct symbolics
-    ss_equations::Vector{SPyPyC.Sym}
-    dyn_equations::Vector{SPyPyC.Sym}
-    # dyn_equations_future::Vector{SPyPyC.Sym}
+    ss_equations::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
+    dyn_equations::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
+    # dyn_equations_future::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
 
-    # dyn_shift_var_present_list::Vector{Set{SPyPyC.Sym}}
-    # dyn_shift_var_past_list::Vector{Set{SPyPyC.Sym}}
-    # dyn_shift_var_future_list::Vector{Set{SPyPyC.Sym}}
+    # dyn_shift_var_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_shift_var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_shift_var_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
-    # dyn_shift2_var_past_list::Vector{Set{SPyPyC.Sym}}
+    # dyn_shift2_var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
-    dyn_var_present_list::Vector{Set{SPyPyC.Sym}}
-    dyn_var_past_list::Vector{Set{SPyPyC.Sym}}
-    dyn_var_future_list::Vector{Set{SPyPyC.Sym}}
-    # dyn_ss_list::Vector{Set{SPyPyC.Sym}}
-    dyn_exo_list::Vector{Set{SPyPyC.Sym}}
+    dyn_var_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    dyn_var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    dyn_var_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_ss_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    dyn_exo_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
-    # dyn_exo_future_list::Vector{Set{SPyPyC.Sym}}
-    # dyn_exo_present_list::Vector{Set{SPyPyC.Sym}}
-    # dyn_exo_past_list::Vector{Set{SPyPyC.Sym}} 
+    # dyn_exo_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_exo_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dyn_exo_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}} 
 
-    dyn_future_list::Vector{Set{SPyPyC.Sym}}
-    dyn_present_list::Vector{Set{SPyPyC.Sym}}
-    dyn_past_list::Vector{Set{SPyPyC.Sym}}
+    dyn_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    dyn_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    dyn_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
-    var_present_list::Vector{Set{SPyPyC.Sym}}
-    var_past_list::Vector{Set{SPyPyC.Sym}}
-    var_future_list::Vector{Set{SPyPyC.Sym}}
-    ss_list::Vector{Set{SPyPyC.Sym}}
-    var_list::Vector{Set{SPyPyC.Sym}}
-    # dynamic_variables_list::Vector{Set{SPyPyC.Sym}}
-    # dynamic_variables_future_list::Vector{Set{SPyPyC.Sym}}
+    var_present_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    var_past_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    var_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    ss_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    var_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dynamic_variables_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # dynamic_variables_future_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
-    par_list::Vector{Set{SPyPyC.Sym}}
+    par_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
-    calibration_equations::Vector{SPyPyC.Sym}
-    calibration_equations_parameters::Vector{SPyPyC.Sym}
-    # parameters::Vector{SPyPyC.Sym}
+    calibration_equations::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
+    calibration_equations_parameters::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
+    # parameters::Vector{SPyPyC.Sym{PythonCall.Core.Py}}
 
-    # var_present::Set{SPyPyC.Sym}
-    # var_past::Set{SPyPyC.Sym}
-    # var_future::Set{SPyPyC.Sym}
-    vars_in_ss_equations::Set{SPyPyC.Sym}
-    var::Set{SPyPyC.Sym}
-    ➕_vars::Set{SPyPyC.Sym}
+    # var_present::Set{SPyPyC.Sym{PythonCall.Core.Py}}
+    # var_past::Set{SPyPyC.Sym{PythonCall.Core.Py}}
+    # var_future::Set{SPyPyC.Sym{PythonCall.Core.Py}}
+    vars_in_ss_equations::Set{SPyPyC.Sym{PythonCall.Core.Py}}
+    var::Set{SPyPyC.Sym{PythonCall.Core.Py}}
+    ➕_vars::Set{SPyPyC.Sym{PythonCall.Core.Py}}
 
-    ss_calib_list::Vector{Set{SPyPyC.Sym}}
-    par_calib_list::Vector{Set{SPyPyC.Sym}}
+    ss_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    par_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 
-    var_redundant_list::Vector{Set{SPyPyC.Sym}}
-    # var_redundant_calib_list::Vector{Set{SPyPyC.Sym}}
-    # var_solved_list::Vector{Set{SPyPyC.Sym}}
-    # var_solved_calib_list::Vector{Set{SPyPyC.Sym}}
+    var_redundant_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # var_redundant_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # var_solved_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
+    # var_solved_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 end
 
 struct auxilliary_indices
@@ -166,7 +166,9 @@ end
 struct third_order_auxilliary_matrices
     𝐂₃::SparseMatrixCSC{Int}
     𝐔₃::SparseMatrixCSC{Int}
+    𝐈₃::Dict{Vector{Int}, Int}
 
+    𝐂∇₃::SparseMatrixCSC{Int}
     𝐔∇₃::SparseMatrixCSC{Int}
 
     𝐏::SparseMatrixCSC{Int}
@@ -190,41 +192,58 @@ end
 struct perturbation_solution
     solution_matrix::Matrix{Float64}
     state_update::Function
-    state_update_obc::Union{Function,Nothing}
+    state_update_obc::Function
 end
 
 struct second_order_perturbation_solution
-    solution_matrix::SparseMatrixCSC{Float64}
+    # solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
     state_update::Function
-    state_update_obc::Union{Function,Nothing}
+    state_update_obc::Function
 end
 
 struct third_order_perturbation_solution
-    solution_matrix::SparseMatrixCSC{Float64}
+    # solution_matrix::SparseMatrixCSC{Float64}
     stochastic_steady_state::Vector{Float64}
     state_update::Function
-    state_update_obc::Union{Function,Nothing}
+    state_update_obc::Function
 end
+
 
 mutable struct perturbation
     first_order::perturbation_solution
-    linear_time_iteration::perturbation_solution
-    quadratic_iteration::perturbation_solution
     second_order::second_order_perturbation_solution
     pruned_second_order::second_order_perturbation_solution
     third_order::third_order_perturbation_solution
     pruned_third_order::third_order_perturbation_solution
+    qme_solution::Matrix{Float64}
+    second_order_solution::AbstractMatrix{Float64}
+    third_order_solution::AbstractMatrix{Float64}
     auxilliary_indices::auxilliary_indices
     second_order_auxilliary_matrices::second_order_auxilliary_matrices
     third_order_auxilliary_matrices::third_order_auxilliary_matrices
 end
 
+mutable struct function_and_jacobian
+    func::Function
+    # func_aux::Function
+    func_buffer::Vector{<:Real}
+    # func_aux_buffer::Vector{<:Real}
+    jac::Function
+    jac_buffer::AbstractMatrix{<:Real}
+    chol_buffer::𝒮.LinearCache
+    lu_buffer::𝒮.LinearCache
+end
+
+struct ss_solve_block
+    ss_problem::function_and_jacobian
+    extended_ss_problem::function_and_jacobian
+end
 
 mutable struct solution
     perturbation::perturbation
     non_stochastic_steady_state::Vector{Float64}
-    algorithms::Set{Symbol}
+    # algorithms::Set{Symbol}
     outdated_algorithms::Set{Symbol}
     outdated_NSSS::Bool
     functions_written::Bool
@@ -233,10 +252,10 @@ end
 
 
 mutable struct solver_parameters
-    xtol::Float64 
-    ftol::Float64 
-    rel_xtol::Float64 
-    iterations::Int
+    # xtol::Float64 
+    # ftol::Float64 
+    # rel_xtol::Float64 
+    # iterations::Int
     ϕ̄::Float64    
     ϕ̂::Float64    
     μ̄¹::Float64   
@@ -351,13 +370,28 @@ mutable struct ℳ
     # non_linear_solved_vals
     # solved_sub_vals
     # solved_sub_values
-    ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
+    # ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
+    ss_solve_blocks_in_place::Vector{ss_solve_block}
+    # Vector{Tuple{
+    #     Tuple{
+    #         Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
+    #         Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
+    #         }, 
+    #     Tuple{
+    #         Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 
+    #         Tuple{AbstractMatrix{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}
+    #         }
+    #     }
+    # }
     # ss_solve_blocks_no_transform::Vector#{RuntimeGeneratedFunction}
     #ss_solve_blocks_optim::Vector#{RuntimeGeneratedFunction}
     # SS_init_guess::Vector{Real}
     NSSS_solver_cache::CircularBuffer{Vector{Vector{Float64}}}
     SS_solve_func::Function
+    # SS_calib_func::Function
     SS_check_func::Function
+    ∂SS_equations_∂parameters::Tuple{AbstractMatrix{<: Real}, Function}
+    ∂SS_equations_∂SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
     # nonlinear_solution_helper
     SS_dependencies::Any
 
@@ -379,12 +413,29 @@ mutable struct ℳ
 
     bounds::Dict{Symbol,Tuple{Float64,Float64}}
 
-    model_jacobian::Function
-    # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
-    model_hessian::Vector{Function}
-    model_third_order_derivatives::Vector{Function}
+    jacobian::Tuple{AbstractMatrix{<: Real},Function}
+    jacobian_parameters::Tuple{AbstractMatrix{<: Real},Function}
+    jacobian_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
+    hessian::Tuple{AbstractMatrix{<: Real},Function}
+    hessian_parameters::Tuple{AbstractMatrix{<: Real},Function}
+    hessian_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
+    third_order_derivatives::Tuple{AbstractMatrix{<: Real},Function}
+    third_order_derivatives_parameters::Tuple{AbstractMatrix{<: Real},Function}
+    third_order_derivatives_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
+
+    # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
+    # model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
+    # # model_jacobian_parameters::Function
+    # model_jacobian_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    # # model_jacobian::FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}#{typeof(model_jacobian)}
+    # model_hessian::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    # model_hessian_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    # model_third_order_derivatives::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
+    # model_third_order_derivatives_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
 
     timings::timings
+
+    caches::caches
 
     obc_violation_equations::Vector{Expr}
     # obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}
@@ -396,4 +447,5 @@ mutable struct ℳ
     solution::solution
     # symbolics::symbolics
 
+    estimation_helper::Dict{Vector{Symbol}, timings}
 end

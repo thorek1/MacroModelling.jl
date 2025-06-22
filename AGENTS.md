@@ -1,0 +1,9 @@
+- if you need to run julia use: 'curl -fsSL https://install.julialang.org -o juliaup.sh\nsh juliaup.sh --yes --default-channel release\nexport PATH="$HOME/.juliaup/bin:$PATH"' to install it
+- dont use the test suite to test changes. just pick a few models from the test_models.jl and run those commands
+- use the package "BenchmarkTools" to run benchmarks
+- if asked to benchmark different implementation have a look at the benchmarks.jl script in the benchmark folder
+- for benchmarks have a look at the benchmarks.jl script in the benchmark folder
+- try first to install R packages with micromamba and then using install.packages()
+- when implementing new functionality for the MacroModelling.jl package try to test it by writing a bespoke script for that functionality only, and avoid precomiling the whole MacroModelling package
+- run julia with -t auto
+- use this to install micromamba: "curl -Ls https://micro.mamba.pm/install.sh | MAMBA_NO_BANNER=1 MAMBA_NO_PROMPT=1 bash -s -- -b -u -p ~/micromamba"

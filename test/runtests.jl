@@ -1,12 +1,19 @@
+# using Revise
+test_set = ENV["TEST_SET"]
+using Preferences: set_preferences!
+set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation"
+] ? "disable" : "error")
+set_preferences!("MacroModelling", "dispatch_doctor_union_limit" => 4)
 using Test
 using MacroModelling
+import MacroModelling: clear_solution_caches!
 using Random
 using AxisKeys, SparseArrays
+import Zygote, FiniteDifferences, ForwardDiff
 import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
-using JET
+import LinearAlgebra as ℒ
 
-test_set = ENV["TEST_SET"]
 
 println("Running test set: $test_set")
 println("Threads used: ", Threads.nthreads())
@@ -31,6 +38,22 @@ include("functionality_tests.jl")
 #     include("optim_solver_params.jl")
 # end
 
+if test_set == "jet"
+    if VERSION < v"1.12"
+        using JET
+    end
+    
+    @testset verbose = true "Static checking (JET.jl)" begin
+        if VERSION < v"1.12"
+            JET.test_package(MacroModelling; target_defined_modules = true, toplevel_logger = nothing)
+        end
+    end
+end
+
+if test_set == "estimate_sw07"
+    include("test_sw07_estimation.jl")
+end
+
 if test_set == "estimation"
     include("test_estimation.jl")
 end
@@ -43,61 +66,293 @@ if test_set == "2nd_order_estimation"
     include("test_2nd_order_estimation.jl")
 end
 
+if test_set == "pruned_2nd_order_estimation"
+    include("test_pruned_2nd_order_estimation.jl")
+end
+
 if test_set == "3rd_order_estimation"
     include("test_3rd_order_estimation.jl")
 end
 
+if test_set == "pruned_3rd_order_estimation"
+    include("test_pruned_3rd_order_estimation.jl")
+end
 
-if test_set == "higher_order"
+
+if test_set == "plots_1"
     plots = true
-    test_higher_order = true
+	Random.seed!(1)
 
-    @testset verbose = true "Test various models: NSSS and 1st order solution" begin
-        include("test_models.jl")
+    @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
+        include("../models/Backus_Kehoe_Kydland_1992.jl")
+        functionality_test(Backus_Kehoe_Kydland_1992, plots = plots)
     end
+    Backus_Kehoe_Kydland_1992 = nothing
+    GC.gc()
+
+    @testset verbose = true "FS2000" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, plots = plots)
+    end
+    FS2000 = nothing
+    GC.gc()
+end
+
+if test_set == "plots_2"
+    plots = true
+	Random.seed!(1)
+
+    @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
+        include("../models/Smets_Wouters_2003.jl")
+        functionality_test(Smets_Wouters_2003, plots = plots)
+    end
+    Smets_Wouters_2003 = nothing
+    GC.gc()
+
+    @testset verbose = true "Smets and Wouters (2007) linear" begin
+        include("../models/Smets_Wouters_2007_linear.jl")
+        functionality_test(Smets_Wouters_2007_linear, plots = plots)
+    end
+    Smets_Wouters_2007_linear = nothing
+    GC.gc()
+
+    @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
+        include("../models/Smets_Wouters_2007.jl")
+        functionality_test(Smets_Wouters_2007, plots = plots)
+    end
+    Smets_Wouters_2007 = nothing
+    GC.gc()
+end
+
+if test_set == "plots_3"
+    plots = true
+	Random.seed!(1)
+
+    @testset verbose = true "Gali 2015 ELB" begin
+        include("../models/Gali_2015_chapter_3_obc.jl")
+        functionality_test(Gali_2015_chapter_3_obc, plots = plots)
+    end
+    Gali_2015_chapter_3_obc = nothing
+    GC.gc()
+end
+
+if test_set == "plots_4"
+    plots = true
+	Random.seed!(1)
+
+    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
+        functionality_test(m, plots = plots)
+        
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        for i in 1:100        
+            local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+            if isfinite(ℒ.norm(fin_grad))
+                println("Finite differences worked after $i iterations")
+                @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+                break
+            end
+        end
+
+        # @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+    end
+    m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables numerical SS" begin
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+        functionality_test(m, plots = plots)
+        
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        for i in 1:100        
+            local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+            if isfinite(ℒ.norm(fin_grad))
+                println("Finite differences worked after $i iterations")
+                @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+                break
+            end
+        end
+
+        # @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+    end
+    m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, and special functions" begin
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
+        functionality_test(m, plots = plots)
+
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+    
+        for i in 1:100        
+            local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x, verbose = true), m.parameter_values)
+            if isfinite(ℒ.norm(fin_grad))
+                println("Finite differences worked after $i iterations")
+                @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+                break
+            end
+        end
+
+        # @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+    end
+    m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME with calibration equations and parameter definitions" begin
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+        functionality_test(m, plots = plots)
+
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        for i in 1:100        
+            local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+            if isfinite(ℒ.norm(fin_grad))
+                println("Finite differences worked after $i iterations")
+                @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+                break
+            end
+        end
+
+        # @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+    end
+    m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME with calibration equations" begin
+        include("models/RBC_CME_calibration_equations.jl")
+        functionality_test(m, plots = plots)
+        
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        for i in 1:100        
+            local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+            if isfinite(ℒ.norm(fin_grad))
+                println("Finite differences worked after $i iterations")
+                @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+                break
+            end
+        end
+
+        # @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+    end
+    m = nothing
+    GC.gc()
+
+    @testset verbose = true "RBC_CME" begin
+        include("models/RBC_CME.jl")
+        functionality_test(m, plots = plots)
+
+        observables = [:R, :k]
+
+        Random.seed!(1)
+        simulated_data = simulate(m)
+
+        get_loglikelihood(m, simulated_data(observables, :, :simulate), m.parameter_values)
+
+        back_grad = Zygote.gradient(x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        # fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+
+        for i in 1:100        
+            local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(m, simulated_data(observables, :, :simulate), x), m.parameter_values)
+            if isfinite(ℒ.norm(fin_grad))
+                println("Finite differences worked after $i iterations")
+                @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+                break
+            end
+        end
+
+        # @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+    end
+    m = nothing
+    GC.gc()
+
+end
+
+
+if test_set == "higher_order_1"
+    plots = true
+    # test_higher_order = true
+
+    @testset verbose = true "FS2000 third order" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :third_order, plots = plots)
+    end
+    FS2000 = nothing
+    GC.gc()
+
+    @testset verbose = true "FS2000 pruned third order" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :pruned_third_order, plots = plots)
+    end
+    FS2000 = nothing
     GC.gc()
 
     @testset verbose = true "FS2000 second order" begin
         include("../models/FS2000.jl")
         functionality_test(FS2000, algorithm = :second_order, plots = plots)
     end
-    # FS2000 = nothing
-    GC.gc()
-
-    @testset verbose = true "FS2000 pruned second order" begin
-        # include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :pruned_second_order, plots = plots)
-    end
-    # FS2000 = nothing
-    GC.gc()
-
-    @testset verbose = true "FS2000 third order" begin
-        # include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :third_order, plots = plots)
-    end
-    # FS2000 = nothing
-    GC.gc()
-
-    @testset verbose = true "FS2000 pruned third order" begin
-        # include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :pruned_third_order, plots = plots)
-    end
     FS2000 = nothing
     GC.gc()
 
-    @testset verbose = true "RBC_CME with calibration equations and parameter definitions second order" begin
-        include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-        functionality_test(m, algorithm = :second_order, plots = plots)
+    @testset verbose = true "FS2000 pruned second order" begin
+        include("../models/FS2000.jl")
+        functionality_test(FS2000, algorithm = :pruned_second_order, plots = plots)
     end
-    # m = nothing
+    FS2000 = nothing
     GC.gc()
+end
 
-    @testset verbose = true "RBC_CME with calibration equations and parameter definitions third order" begin
-        # include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-        functionality_test(m, algorithm = :third_order, plots = plots)
-    end
-    m = nothing
-    GC.gc()
+
+if test_set == "higher_order_2"
+	Random.seed!(18400875)
+    plots = true
+    # test_higher_order = true
 
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned second order" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
@@ -112,6 +367,12 @@ if test_set == "higher_order"
     end
     m = nothing
     GC.gc()
+end
+
+
+if test_set == "higher_order_3"
+    plots = true
+    # test_higher_order = true
 
     @testset verbose = true "RBC_CME with calibration equations second order" begin
         include("models/RBC_CME_calibration_equations.jl")
@@ -140,112 +401,26 @@ if test_set == "higher_order"
     end
     m = nothing
     GC.gc()
-end
 
-
-
-
-
-if test_set == "plots"
-    plots = true
-
-    @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
-        include("../models/Backus_Kehoe_Kydland_1992.jl")
-        functionality_test(Backus_Kehoe_Kydland_1992, plots = plots)
-    end
-    Backus_Kehoe_Kydland_1992 = nothing
-    GC.gc()
-
-    @testset verbose = true "Gali 2015 ELB" begin
-        include("../models/Gali_2015_chapter_3_obc.jl")
-        functionality_test(Gali_2015_chapter_3_obc, plots = plots)
-    end
-    Gali_2015_chapter_3_obc = nothing
-    GC.gc()
-
-    @testset verbose = true "FS2000" begin
-        include("../models/FS2000.jl")
-        functionality_test(FS2000, plots = plots)
-    end
-    FS2000 = nothing
-    GC.gc()
-
-    @testset verbose = true "Smets and Wouters (2007) linear" begin
-        include("../models/Smets_Wouters_2007_linear.jl")
-        functionality_test(Smets_Wouters_2007_linear, plots = plots)
-    end
-    Smets_Wouters_2007_linear = nothing
-    GC.gc()
-
-    @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
-        include("../models/Smets_Wouters_2007.jl")
-        functionality_test(Smets_Wouters_2007, plots = plots)
-    end
-    Smets_Wouters_2007 = nothing
-    GC.gc()
-
-    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
-        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
-        functionality_test(m, plots = plots)
-    end
-    m = nothing
-    GC.gc()
-
-
-
-    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables numerical SS" begin
-        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
-        functionality_test(m, plots = plots)
-    end
-    m = nothing
-    GC.gc()
-
-    @testset verbose = true "RBC_CME with calibration equations, parameter definitions, and special functions" begin
-        include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
-        functionality_test(m, plots = plots)
-    end
-    m = nothing
-    GC.gc()
-
-    @testset verbose = true "RBC_CME with calibration equations and parameter definitions" begin
+    @testset verbose = true "RBC_CME with calibration equations and parameter definitions second order" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-        functionality_test(m, plots = plots)
+        functionality_test(m, algorithm = :second_order, plots = plots)
     end
-    m = nothing
+    # m = nothing
     GC.gc()
 
-
-    @testset verbose = true "RBC_CME with calibration equations" begin
-        include("models/RBC_CME_calibration_equations.jl")
-        functionality_test(m, plots = plots)
+    @testset verbose = true "RBC_CME with calibration equations and parameter definitions third order" begin
+        # include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
+        functionality_test(m, algorithm = :third_order, plots = plots)
     end
     m = nothing
-    GC.gc()
-
-
-
-    @testset verbose = true "RBC_CME" begin
-        include("models/RBC_CME.jl")
-        functionality_test(m, plots = plots)
-    end
-    m = nothing
-    GC.gc()
-
-
-
-    @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
-        include("../models/Smets_Wouters_2003.jl")
-        functionality_test(Smets_Wouters_2003, plots = plots)
-    end
-    Smets_Wouters_2003 = nothing
     GC.gc()
 end
-
 
 
 if test_set == "basic"
     plots = false
-    test_higher_order = false
+    # test_higher_order = false
 
     @testset verbose = true "Code quality (Aqua.jl)" begin
         # Aqua.test_all(MacroModelling)
@@ -260,22 +435,128 @@ if test_set == "basic"
     end
     GC.gc()
     
-    @testset verbose = true "Static checking (JET.jl)" begin
-        if VERSION >= v"1.9"
-            JET.test_package(MacroModelling; target_defined_modules = true, toplevel_logger = nothing)
-        end
-    end
-
+    # test_higher_order = true
     @testset verbose = true "Test various models: NSSS and 1st order solution" begin
         include("test_models.jl")
     end
     GC.gc()
+    # test_higher_order = false
+
+    @testset verbose = true "for and if loops" begin
+        include("models/Backus_Kehoe_Kydland_1992_for_if_test.jl")
+        include("models/Backus_Kehoe_Kydland_1992.jl")
+
+        std1 = get_std(Backus_Kehoe_Kydland_1992)
+        std2 = get_std(Backus_Kehoe_Kydland_1992_test)
+
+        common_keys1 = intersect(std1.keys[1], std2.keys[1])
+        common_keys2 = intersect(std1.keys[2], std2.keys[2])
+
+        @test isapprox(std2(common_keys1, common_keys2), std1(common_keys1, common_keys2), rtol = 1e-10)
+    end
 
     @testset verbose = true "Standalone functions" begin
         include("test_standalone_function.jl")
     end
     GC.gc()
 
+    @testset verbose = true "FS2000 precompile = true" begin
+        @model FS2000_pre precompile = true begin
+            dA[0] = exp(gam + z_e_a  *  e_a[x])
+            log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+            - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+            W[0] = l[0] / n[0]
+            - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+            R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+            1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+            c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+            P[0] * c[0] = m[0]
+            m[0] - 1 + d[0] = l[0]
+            e[0] = exp(z_e_a  *  e_a[x])
+            y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+            gy_obs[0] = dA[0] * y[0] / y[-1]
+            gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+            log_gy_obs[0] = log(gy_obs[0])
+            log_gp_obs[0] = log(gp_obs[0])
+        end
+        
+        @parameters FS2000_pre silent = true precompile = true begin  
+            alp     = 0.356
+            bet     = 0.993
+            gam     = 0.0085
+            mst     = 1.0002
+            rho     = 0.129
+            psi     = 0.65
+            del     = 0.01
+            z_e_a   = 0.035449
+            z_e_m   = 0.008862
+        end
+        
+        
+        SS_pre =    get_SS(FS2000_pre, silent = true)
+        SS_change_pre =    get_SS(FS2000_pre, parameters = :alp => 0.36, silent = true)
+        solution_pre =  get_solution(FS2000_pre, silent = true)
+        solution_change_pre =  get_solution(FS2000_pre, parameters = :alp => 0.35)
+        standard_deviation_pre =    get_standard_deviation(FS2000_pre)
+        correlation_pre =   get_correlation(FS2000_pre)
+        autocorrelation_pre =   get_autocorrelation(FS2000_pre)
+        variance_decomposition_pre =    get_variance_decomposition(FS2000_pre)
+        conditional_variance_decomposition_pre =    get_conditional_variance_decomposition(FS2000_pre)
+        irf_pre =   get_irf(FS2000_pre)  
+        
+        @model FS2000 begin
+            dA[0] = exp(gam + z_e_a  *  e_a[x])
+            log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+            - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+            W[0] = l[0] / n[0]
+            - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+            R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+            1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+            c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+            P[0] * c[0] = m[0]
+            m[0] - 1 + d[0] = l[0]
+            e[0] = exp(z_e_a  *  e_a[x])
+            y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+            gy_obs[0] = dA[0] * y[0] / y[-1]
+            gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+            log_gy_obs[0] = log(gy_obs[0])
+            log_gp_obs[0] = log(gp_obs[0])
+        end
+        
+        @parameters FS2000 begin  
+            alp     = 0.356
+            bet     = 0.993
+            gam     = 0.0085
+            mst     = 1.0002
+            rho     = 0.129
+            psi     = 0.65
+            del     = 0.01
+            z_e_a   = 0.035449
+            z_e_m   = 0.008862
+        end
+        
+        SS_nopre =    get_SS(FS2000, silent = true)
+        SS_change_nopre =    get_SS(FS2000, parameters = :alp => 0.36, silent = true)
+        solution_nopre =  get_solution(FS2000, silent = true)
+        solution_change_nopre =  get_solution(FS2000, parameters = :alp => 0.35)
+        standard_deviation_nopre =    get_standard_deviation(FS2000)
+        correlation_nopre =   get_correlation(FS2000)
+        autocorrelation_nopre =   get_autocorrelation(FS2000)
+        variance_decomposition_nopre =    get_variance_decomposition(FS2000)
+        conditional_variance_decomposition_nopre =    get_conditional_variance_decomposition(FS2000)
+        irf_nopre =   get_irf(FS2000)  
+        
+        @test isapprox(SS_nopre, SS_pre)
+        @test isapprox(SS_change_nopre, SS_change_pre)
+        @test isapprox(solution_nopre, solution_pre)
+        @test isapprox(solution_change_nopre, solution_change_pre)
+        @test isapprox(standard_deviation_nopre, standard_deviation_pre)
+        @test isapprox(correlation_nopre, correlation_pre)
+        @test isapprox(autocorrelation_nopre, autocorrelation_pre)
+        @test isapprox(variance_decomposition_nopre, variance_decomposition_pre)
+        @test isapprox(conditional_variance_decomposition_nopre, conditional_variance_decomposition_pre)
+        @test isapprox(irf_nopre, irf_pre)
+    end
 
     @testset verbose = true "Model without shocks" begin
         @model m begin
@@ -301,8 +582,8 @@ if test_set == "basic"
         init[2] *= 1.5
         get_irf(m, initial_state = init, shocks = :none)
 
-        plot_irf(m, initial_state = init, shocks = :none)
-        @test true
+        plots = plot_irf(m, initial_state = init, shocks = :none)
+        @test plots[1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
     end
     m = nothing
 
@@ -527,20 +808,19 @@ if test_set == "basic"
             std_z_delta = .005
         end
 
-        get_solution(RBC_CME)
+        sol = get_solution(RBC_CME)
 
-        get_solution(RBC_CME, algorithm = :linear_time_iteration)
+        # sol1 = get_solution(RBC_CME, algorithm = :linear_time_iteration, verbose = true)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
+        # @test isapprox(sol, sol1, atol = 1e-4)
 
-        get_solution(RBC_CME, algorithm = :quadratic_iteration)
+        # sol2 = get_solution(RBC_CME, algorithm = :quadratic_iteration, verbose = true)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        # @test isapprox(sol, sol2, atol = 1e-4)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C, RBC_CME.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        sol3 = get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
-
-
+        @test isapprox(sol, sol3, atol = 1e-4)
 
 
         # exo multi lead/lag >> 1
@@ -590,22 +870,28 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_mult)
+        m = RBC_CME_exo_mult
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_exo_mult, algorithm = :linear_time_iteration)
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_mult.solution.perturbation.first_order.solution_matrix[[1:4...,16:end...],15], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_mult.solution.perturbation.first_order.solution_matrix[[1:4...,16:end...],[1,10:12...,14]], atol = 1e-4)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
 
-        get_solution(RBC_CME_exo_mult, algorithm = :quadratic_iteration)
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_mult.solution.perturbation.quadratic_iteration.solution_matrix[[1:4...,16:end...],[1,10:12...,14]], atol = 1e-4)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        # @test isapprox(RBC_CME_exo_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_mult.solution.perturbation.first_order.C, RBC_CME_exo_mult.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
+        RBC_CME_exo_mult = nothing
+
 
         # endo/exo multi lead/lag >> 1
         @model RBC_CME_all_mult begin
@@ -655,24 +941,27 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_all_mult)
+        m = RBC_CME_all_mult
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_all_mult, algorithm = :linear_time_iteration)
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix[[1,6,7,10,22:end...],21], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix[[1,6,7,10,22:end...],[1,12:14...,16]], atol = 1e-4)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_all_mult, algorithm = :quadratic_iteration)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix[[1,6,7,10,22:end...],21], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.quadratic_iteration.solution_matrix[[1,6,7,10,22:end...],[1,12:14...,16]], atol = 1e-4)
-        # [[1:4...,16:end...],[1,10:12...,14]]
-        # @test isapprox(RBC_CME_all_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_all_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_all_mult.solution.perturbation.first_order.C, RBC_CME_all_mult.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
-        RBC_CME_exo_mult = nothing
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
+        RBC_CME_all_mult = nothing
 
 
         # exo lead >> 1
@@ -722,23 +1011,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_lead1)
+        m = RBC_CME_exo_lead1
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_exo_lead1, algorithm = :linear_time_iteration)
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[1:4...]], RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix[[1:4...,13:15...],[1:4...]], atol = 1e-4)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead1.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_exo_lead1, algorithm = :quadratic_iteration)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[1:4...]], RBC_CME_exo_lead1.solution.perturbation.quadratic_iteration.solution_matrix[[1:4...,13:15...],[1:4...]], atol = 1e-4)
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME_exo_lead1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead1.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_lead1.solution.perturbation.first_order.C, RBC_CME_exo_lead1.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_exo_lead1 = nothing
 
 
@@ -790,26 +1082,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_lag_mult)
+        m = RBC_CME_exo_lag_mult
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_exo_lag_mult, algorithm = :linear_time_iteration)
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix[[1:4...,13:15...],[1,10:12...,14]], atol = 1e-4)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag_mult.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_exo_lag_mult, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_exo_lag_mult.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag_mult.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_lag_mult.solution.perturbation.first_order.C, RBC_CME_exo_lag_mult.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
-        # irf(RBC_CME_exo_lag_mult)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        # irf(RBC_CME)
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
 
-        # irf(RBC_CME_exo_lag1)
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
 
+        m = nothing
         RBC_CME_exo_lag_mult = nothing
 
 
@@ -860,20 +1152,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_lag1)
+        m = RBC_CME_exo_lag1
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_exo_lag1, algorithm = :linear_time_iteration)
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],12], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix[[1:4...,13:end...],[1,10:12...,9]], atol = 1e-4)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag1.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_lag1.solution.perturbation.first_order.C, RBC_CME_exo_lag1.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_exo_lag1, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_exo_lag1.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag1.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_exo_lag1 = nothing
 
 
@@ -924,20 +1222,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_lead)
+        m = RBC_CME_exo_lead
+        
+        sol_exo = get_solution(m)
 
-        get_solution(RBC_CME_exo_lead, algorithm = :linear_time_iteration)
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix[[1:4...,6:8...],5], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[1:(end-1)...]], RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix[[1:4...,6:end...],[1:(end-1)...]], atol = 1e-4)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_lead.solution.perturbation.first_order.C, RBC_CME_exo_lead.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_exo_lead, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_exo_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lead.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_exo_lead = nothing
 
 
@@ -988,20 +1292,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_exo_lag)
+        m = RBC_CME_exo_lag
 
-        get_solution(RBC_CME_exo_lag, algorithm = :linear_time_iteration)
+        sol_exo = get_solution(m)
 
-        # @test isapprox(RBC_CME.solution.perturbation.first_order.C[:,2], RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix[[1:4...,6:8...],5], atol = 1e-4)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix[[1:4...,6:end...],[1,3,4,5,2]], atol = 1e-4)
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        @test isapprox(RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_exo_lag.solution.perturbation.first_order.C, RBC_CME_exo_lag.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        get_solution(RBC_CME_exo_lag, algorithm = :quadratic_iteration)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        @test isapprox(RBC_CME_exo_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_exo_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
 
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
+
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_exo_lag = nothing
 
         # Lags > 1
@@ -1051,21 +1361,27 @@ if test_set == "basic"
             rho_z_delta = .9
             std_z_delta = .005
         end
+
+        m = RBC_CME_lag
         
-        get_solution(RBC_CME_lag)
+        sol_exo = get_solution(m)
 
-        @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lag.solution.perturbation.first_order.solution_matrix[[1,4,5,8:11...],[1,4:end...]]
-        # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lag.solution.perturbation.first_order.C[[1,4,5,8:11...],:]
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        get_solution(RBC_CME_lag, algorithm = :linear_time_iteration)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lag.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_lag.solution.perturbation.first_order.C, RBC_CME_lag.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_lag, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_lag = nothing
 
         # Leads > 1
@@ -1115,20 +1431,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_lead)
+        m = RBC_CME_lead
+        
+        sol_exo = get_solution(m)
 
-        @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead.solution.perturbation.first_order.solution_matrix[[1,4,5,8:11...],:]
-        # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead.solution.perturbation.first_order.C[[1,4,5,8:11...],:]
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        get_solution(RBC_CME_lead, algorithm = :linear_time_iteration)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_lead.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_lead.solution.perturbation.first_order.C, RBC_CME_lead.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_lead, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_lead.solution.perturbation.first_order.solution_matrix, RBC_CME_lead.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_lead = nothing
 
 
@@ -1180,20 +1502,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_lead_lag)
+        m = RBC_CME_lead_lag
+        
+        sol_exo = get_solution(m)
 
-        @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead_lag.solution.perturbation.first_order.solution_matrix[[1,6,7,10:13...],[1,4:end...]]
-        # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead_lag.solution.perturbation.first_order.C[[1,6,7,(10:13)...],:]
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        get_solution(RBC_CME_lead_lag, algorithm = :linear_time_iteration)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_lead_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_lead_lag.solution.perturbation.first_order.C, RBC_CME_lead_lag.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_lead_lag, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_lead_lag.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_lead_lag = nothing
 
 
@@ -1247,20 +1575,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_lead_lag10)
+        m = RBC_CME_lead_lag10
+        
+        sol_exo = get_solution(m)
 
-        @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead_lag10.solution.perturbation.first_order.solution_matrix[[1,13,14,18:21...],[1,4:end...]]
-        # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead_lag10.solution.perturbation.first_order.C[[1,13,14,(18:21)...],:]
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        get_solution(RBC_CME_lead_lag10, algorithm = :linear_time_iteration)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_lead_lag10.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag10.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_lead_lag10.solution.perturbation.first_order.C, RBC_CME_lead_lag10.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_lead_lag10, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_lead_lag10.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag10.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_lead_lag10 = nothing
 
 
@@ -1314,20 +1648,26 @@ if test_set == "basic"
             std_z_delta = .005
         end
         
-        get_solution(RBC_CME_lead_lag20)
+        m = RBC_CME_lead_lag20
+        
+        sol_exo = get_solution(m)
 
-        @test RBC_CME.solution.perturbation.first_order.solution_matrix ≈ RBC_CME_lead_lag20.solution.perturbation.first_order.solution_matrix[[1,20,21,(26:29)...],[1,11:end...]]
-        # @test RBC_CME.solution.perturbation.first_order.C ≈ RBC_CME_lead_lag20.solution.perturbation.first_order.C[[1,20,21,(26:29)...],:]
+        # sol_exo1 = get_solution(m, algorithm = :linear_time_iteration, verbose = true)
 
-        get_solution(RBC_CME_lead_lag20, algorithm = :linear_time_iteration)
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
 
-        @test isapprox(RBC_CME_lead_lag20.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag20.solution.perturbation.linear_time_iteration.solution_matrix, atol = 1e-4)
-        # @test isapprox(RBC_CME_lead_lag20.solution.perturbation.first_order.C, RBC_CME_lead_lag20.solution.perturbation.linear_time_iteration.C, atol = 1e-4)
+        # @test isapprox(sol_exo, sol_exo1, atol = 1e-4)
 
-        get_solution(RBC_CME_lead_lag20, algorithm = :quadratic_iteration)
 
-        @test isapprox(RBC_CME_lead_lag20.solution.perturbation.first_order.solution_matrix, RBC_CME_lead_lag20.solution.perturbation.quadratic_iteration.solution_matrix, atol = 1e-4)
+        # sol_exo2 = get_solution(m, algorithm = :quadratic_iteration, verbose = true)
 
+        # @test isapprox(sol(axiskeys(sol, 1)[1:end-1],:), sol_exo2(axiskeys(sol, 1)[1:end-1], axiskeys(sol, 2)), atol = 1e-4)
+
+        sol_exo3 = get_solution(m, quadratic_matrix_equation_algorithm = :doubling, verbose = true)
+
+        @test isapprox(sol_exo, sol_exo3, atol = 1e-4)
+
+        m = nothing
         RBC_CME_lead_lag20 = nothing
     end
 
@@ -1727,7 +2067,7 @@ if test_set == "basic"
         # solve!(Smets_Wouters_2003, verbose = true)
 
 
-        @test isapprox(get_steady_state(Smets_Wouters_2003, verbose = true)(Smets_Wouters_2003.timings.var),
+        @test isapprox(get_steady_state(Smets_Wouters_2003, verbose = true)(Smets_Wouters_2003.timings.var,[:Steady_state]),
                         [  1.2043777509278788
                         1.2043777484127967
                         0.362
@@ -2025,7 +2365,84 @@ if test_set == "basic"
 
 
 
-    @testset verbose = true "First order: linear time iteration" begin
+    # @testset verbose = true "First order: linear time iteration" begin
+    #     # Numerical test with calibration targets
+    #     @model RBC_CME begin
+    #         y[0]=A[0]*k[-1]^alpha
+    #         1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    #         1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    #         R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    #         A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    #         z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    #         A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+    #     end
+
+
+    #     @parameters RBC_CME verbose = true begin
+    #         alpha | k[ss] / (4 * y[ss]) = cap_share
+    #         cap_share = 1.66
+    #         # alpha = .157
+
+    #         beta | R[ss] = R_ss # beta needs to enter into function: block in order to solve
+    #         R_ss = 1.0035
+    #         # beta = .999
+
+    #         # delta | c[ss]/y[ss] = 1 - I_K_ratio
+    #         delta | delta * k[ss] / y[ss] = I_K_ratio #check why this doesnt solve for y; because delta is not recognised as a free parameter here.
+    #         I_K_ratio = .15
+    #         # delta = .0226
+
+    #         Pibar | Pi[ss] = Pi_ss
+    #         Pi_ss = 1.0025
+    #         # Pibar = 1.0008
+
+    #         phi_pi = 1.5
+    #         rhoz = .9
+    #         std_eps = .0068
+    #         rho_z_delta = .9
+    #         std_z_delta = .005
+    #     end
+
+    #     get_solution(RBC_CME, algorithm = :linear_time_iteration)
+
+    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
+    #                                                                 6.73489e-6   0.000168887
+    #                                                                 1.01124e-5   0.000253583
+    #                                                                 -0.000365783  0.00217203
+    #                                                                 -0.00070019   0.00749279
+    #                                                                 0.0          0.00966482
+    #                                                                 0.005        0.0], atol = 1e-6)
+
+
+    #     get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :I_K_ratio => .1)
+
+    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
+    #         3.42408e-6   0.000111417
+    #         5.14124e-6   0.000167292
+    #     -0.000196196  0.00190741
+    #     -0.000430554  0.0066164
+    #         0.0          0.00852381
+    #         0.005        0.0], atol = 1e-6)
+
+
+    #     get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :cap_share => 1.5)
+
+    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
+    #     4.00629e-6   0.000118171
+    #     6.01543e-6   0.000177434
+    # -0.000207089  0.00201698
+    # -0.00041124   0.00639229
+    #     0.0          0.00840927
+    #     0.005        0.0], atol = 1e-6)
+
+    #     RBC_CME = nothing
+    # end
+
+
+
+
+
+    @testset verbose = true "First order: doubling" begin
         # Numerical test with calibration targets
         @model RBC_CME begin
             y[0]=A[0]*k[-1]^alpha
@@ -2063,9 +2480,9 @@ if test_set == "basic"
             std_z_delta = .005
         end
 
-        get_solution(RBC_CME, algorithm = :linear_time_iteration)
+        get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling)
 
-        @test isapprox(RBC_CME.solution.perturbation.linear_time_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
                                                                     6.73489e-6   0.000168887
                                                                     1.01124e-5   0.000253583
                                                                     -0.000365783  0.00217203
@@ -2074,9 +2491,9 @@ if test_set == "basic"
                                                                     0.005        0.0], atol = 1e-6)
 
 
-        get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :I_K_ratio => .1)
+        get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :I_K_ratio => .1)
 
-        @test isapprox(RBC_CME.solution.perturbation.linear_time_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
             3.42408e-6   0.000111417
             5.14124e-6   0.000167292
         -0.000196196  0.00190741
@@ -2085,86 +2502,9 @@ if test_set == "basic"
             0.005        0.0], atol = 1e-6)
 
 
-        get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :cap_share => 1.5)
+        get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :cap_share => 1.5)
 
-        @test isapprox(RBC_CME.solution.perturbation.linear_time_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
-        4.00629e-6   0.000118171
-        6.01543e-6   0.000177434
-    -0.000207089  0.00201698
-    -0.00041124   0.00639229
-        0.0          0.00840927
-        0.005        0.0], atol = 1e-6)
-
-        RBC_CME = nothing
-    end
-
-
-
-
-
-    @testset verbose = true "First order: quadratic iteration" begin
-        # Numerical test with calibration targets
-        @model RBC_CME begin
-            y[0]=A[0]*k[-1]^alpha
-            1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
-            1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
-            R[0] * beta =(Pi[0]/Pibar)^phi_pi
-            A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
-            z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
-            A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
-        end
-
-
-        @parameters RBC_CME verbose = true begin
-            alpha | k[ss] / (4 * y[ss]) = cap_share
-            cap_share = 1.66
-            # alpha = .157
-
-            beta | R[ss] = R_ss # beta needs to enter into function: block in order to solve
-            R_ss = 1.0035
-            # beta = .999
-
-            # delta | c[ss]/y[ss] = 1 - I_K_ratio
-            delta | delta * k[ss] / y[ss] = I_K_ratio #check why this doesnt solve for y; because delta is not recognised as a free parameter here.
-            I_K_ratio = .15
-            # delta = .0226
-
-            Pibar | Pi[ss] = Pi_ss
-            Pi_ss = 1.0025
-            # Pibar = 1.0008
-
-            phi_pi = 1.5
-            rhoz = .9
-            std_eps = .0068
-            rho_z_delta = .9
-            std_z_delta = .005
-        end
-
-        get_solution(RBC_CME, algorithm = :quadratic_iteration)
-
-        @test isapprox(RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
-                                                                    6.73489e-6   0.000168887
-                                                                    1.01124e-5   0.000253583
-                                                                    -0.000365783  0.00217203
-                                                                    -0.00070019   0.00749279
-                                                                    0.0          0.00966482
-                                                                    0.005        0.0], atol = 1e-6)
-
-
-        get_solution(RBC_CME, algorithm = :quadratic_iteration, parameters = :I_K_ratio => .1)
-
-        @test isapprox(RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
-            3.42408e-6   0.000111417
-            5.14124e-6   0.000167292
-        -0.000196196  0.00190741
-        -0.000430554  0.0066164
-            0.0          0.00852381
-            0.005        0.0], atol = 1e-6)
-
-
-        get_solution(RBC_CME, algorithm = :quadratic_iteration, parameters = :cap_share => 1.5)
-
-        @test isapprox(RBC_CME.solution.perturbation.quadratic_iteration.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
         4.00629e-6   0.000118171
         6.01543e-6   0.000177434
     -0.000207089  0.00201698
@@ -2237,8 +2577,8 @@ if test_set == "basic"
             # 0 < y < 10
             # 0 < c < 10
         end
-        plot_irf(RBC_CME)
-        @test true
+        plots = plot_irf(RBC_CME)
+        @test plots[1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
 
         RBC_CME = nothing
     end
