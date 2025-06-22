@@ -1133,7 +1133,7 @@ plot_forecast_error_variance_decomposition = plot_conditional_variance_decomposi
 
 """
 $(SIGNATURES)
-Plot the solution of the model (mapping of past states to present variables) around the relevant steady state (e.g. higher order perturbation algorithms are centered around the stochastic steady state). Each plot shows the relationship between the chosen state (defined in `state`) and one of the chosen variables (defined in `variables`). 
+Plot the solution of the model (mapping of past states to present variables) around the relevant steady state (e.g. higher order perturbation algorithms are centred around the stochastic steady state). Each plot shows the relationship between the chosen state (defined in `state`) and one of the chosen variables (defined in `variables`). 
 
 The relevant steady state is plotted along with the mapping from the chosen past state to one present variable per plot. All other (non-chosen) states remain in the relevant steady state.
 

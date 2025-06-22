@@ -49,7 +49,7 @@ Parameters and variables can be indexed using curly braces: e.g. `c{H}[0]`, `eps
 - generate equation with different indices in curly braces: `for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end`
 - generate multiple equations with different indices in curly braces: `for co in [H, F] K{co}[0] = (1-delta{co}) * K{co}[-1] + S{co}[0] end`
 - generate equation with different time indices: `Y_annual[0] = for lag in -3:0 Y[lag] end` or `R_annual[0] = for operator = :*, lag in -3:0 R[lag] end`
-    
+
 # Returns
 - `Nothing`. The macro creates the model `𝓂` in the calling scope.
 """
