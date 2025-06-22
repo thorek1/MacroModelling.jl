@@ -6,7 +6,7 @@
 - [ ] add caches to lyapunov krylov solvers
 - [ ] eliminiate last elements of factorisation calls not using linearsolvers.jl, check whether they can be done with linearsolvers in case of a matrix as RHS (otherwise consider mumps for sparse matrix RHS)
 - [ ] check allocations of jacobian in sparse case (NAWM)
-- [ ] add to the doc/strings that KeyedArrays are part of the AxisKeyes.jl package so people can look up how to access elements there. otherwise they might confuse it for a format provided by the package and wouldnt know how to access elements from it
+- [x] add to the doc/strings that KeyedArrays are part of the AxisKeys.jl package so people can look up how to access elements there. otherwise they might confuse it for a format provided by the package and wouldnt know how to access elements from it
 - [ ] use isfresh flag on dense linear solves
 - [ ] fix borrowing_constraint how-to
 - [ ] implement check for plots, that they always return a plot (shocks = :none didnt return a plot)

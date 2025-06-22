@@ -165,7 +165,7 @@ The plots show the models endogenous variables in response to random draws for a
 
 ## Plot specific series of shocks
 
-Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or `KeyedArray` of the series of shocks to the `shocks` argument of the [`plot_irf`](@ref) function:
+Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or a `KeyedArray` (the `KeyedArray` type is provided by the AxisKeys.jl package) of the series of shocks to the `shocks` argument of the [`plot_irf`](@ref) function:
 
 ```@repl tutorial_1
 shock_series = zeros(1,4)
@@ -251,7 +251,7 @@ For IRFs this is possible by calling [`get_irf`](@ref):
 get_irf(RBC)
 ```
 
-which returns a 3-dimensional `KeyedArray` with variables (absolute deviations from the relevant steady state by default) in rows, the period in columns, and the shocks as the third dimension.
+which returns a 3-dimensional `KeyedArray` (provided by the AxisKeys.jl package) with variables (absolute deviations from the relevant steady state by default) in rows, the period in columns, and the shocks as the third dimension.
 
 For simulations this is possible by calling [`simulate`](@ref):
 
@@ -259,7 +259,7 @@ For simulations this is possible by calling [`simulate`](@ref):
 simulate(RBC)
 ```
 
-which returns the simulated data in levels in a 3-dimensional `KeyedArray` of the same structure as for the IRFs.
+which returns the simulated data in levels in a 3-dimensional `KeyedArray` (provided by the AxisKeys.jl package) of the same structure as for the IRFs.
 
 ## Conditional forecasts
 
