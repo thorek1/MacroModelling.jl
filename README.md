@@ -25,14 +25,14 @@ As of now the package can:
 - calculate **first, second, and third order (pruned) perturbation** solutions using symbolic derivatives
 - handle **occasionally binding constraints** for linear and nonlinear solutions
 - calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts for linear and nonlinear solutions
-- calibrate parameters using (non stochastic) steady state relationships
+- calibrate parameters using (non-stochastic) steady state relationships
 - **match model moments** (also for pruned **higher order** solutions)
 - estimate the model on data (Kalman filter using first order perturbation) with **gradient based samplers** (e.g. NUTS, HMC) or **estimate nonlinear models** using the inversion filter
 - **differentiate** (forward AD) the model solution, Kalman filter loglikelihood (forward and reverse-mode AD), model moments, steady state, **with respect to the parameters**
 
 The package is not:
 
-- guaranteed to find the non stochastic steady state (solving systems of nonlinear equations is an active area of research)
+- guaranteed to find the non-stochastic steady state (solving systems of nonlinear equations is an active area of research)
 - the fastest package around if you already have a fast way to find the NSSS (time to first plot is long, time to second plot (with new parameters) is very short)
 
 For more details have a look at the [documentation](https://thorek1.github.io/MacroModelling.jl/stable).

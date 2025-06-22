@@ -1210,7 +1210,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # ℒ.axpy!(-1, 𝐗, tmp̄)
 
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
-    𝐗 += initial_guess # problematic with copyto! above. cant be axpy!
+    𝐗 += initial_guess # problematic with copyto! above. can't be axpy!
 
     ℒ.mul!(tmp̄, 𝐗, B)
     ℒ.mul!(𝐂¹, A, tmp̄)
@@ -1372,7 +1372,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # ℒ.axpy!(-1, 𝐗, tmp̄)
 
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
-    𝐗 += initial_guess # problematic with copyto! above. cant be axpy!
+    𝐗 += initial_guess # problematic with copyto! above. can't be axpy!
 
     ℒ.mul!(tmp̄, 𝐗, B)
     ℒ.mul!(𝐂¹, A, tmp̄)
@@ -1534,7 +1534,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     # ℒ.axpy!(-1, 𝐗, tmp̄)
 
     # reached_tol = denom == 0 ? 0.0 : ℒ.norm(tmp̄) / denom
-    𝐗 += initial_guess # problematic with copyto! above. cant be axpy!
+    𝐗 += initial_guess # problematic with copyto! above. can't be axpy!
 
     ℒ.mul!(tmp̄, 𝐗, B)
     ℒ.mul!(𝐂¹, A, tmp̄)

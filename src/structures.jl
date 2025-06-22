@@ -148,7 +148,7 @@ struct symbolics
     # var_solved_calib_list::Vector{Set{SPyPyC.Sym{PythonCall.Core.Py}}}
 end
 
-struct auxilliary_indices
+struct auxiliary_indices
     dyn_var_future_idx::Vector{Int}
     dyn_var_present_idx::Vector{Int}
     dyn_var_past_idx::Vector{Int}
@@ -156,14 +156,14 @@ struct auxilliary_indices
     shocks_ss::Vector{Int}
 end
 
-struct second_order_auxilliary_matrices
+struct second_order_auxiliary_matrices
     𝛔::SparseMatrixCSC{Int}
     𝐂₂::SparseMatrixCSC{Int}
     𝐔₂::SparseMatrixCSC{Int}
     𝐔∇₂::SparseMatrixCSC{Int}
 end
 
-struct third_order_auxilliary_matrices
+struct third_order_auxiliary_matrices
     𝐂₃::SparseMatrixCSC{Int}
     𝐔₃::SparseMatrixCSC{Int}
     𝐈₃::Dict{Vector{Int}, Int}
@@ -219,9 +219,9 @@ mutable struct perturbation
     qme_solution::Matrix{Float64}
     second_order_solution::AbstractMatrix{Float64}
     third_order_solution::AbstractMatrix{Float64}
-    auxilliary_indices::auxilliary_indices
-    second_order_auxilliary_matrices::second_order_auxilliary_matrices
-    third_order_auxilliary_matrices::third_order_auxilliary_matrices
+    auxiliary_indices::auxiliary_indices
+    second_order_auxiliary_matrices::second_order_auxiliary_matrices
+    third_order_auxiliary_matrices::third_order_auxiliary_matrices
 end
 
 mutable struct function_and_jacobian

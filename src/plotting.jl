@@ -1666,7 +1666,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     var_length = length(full_SS) - 𝓂.timings.nExo
 
     if conditions isa SparseMatrixCSC{Float64}
-        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxilliary variables): " * repr(var_names)
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
 
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
         nzs = findnz(conditions)
@@ -1675,7 +1675,7 @@ function plot_conditional_forecast(𝓂::ℳ,
         end
         conditions = cond_tmp
     elseif conditions isa Matrix{Union{Nothing,Float64}}
-        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxilliary variables): " * repr(var_names)
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
 
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
         cond_tmp[:,axes(conditions,2)] = conditions

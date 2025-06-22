@@ -1,6 +1,6 @@
 # Calibration / method of moments - Gali (2015)
 
-This tutorial is intended to show the workflow to calibrate a model using the method of moments. The tutorial is based on a standard model of monetary policy and will showcase the the use of gradient based optimisers and 2nd and 3rd order pruned solutions.
+This tutorial is intended to show the workflow to calibrate a model using the method of moments. The tutorial is based on a standard model of monetary policy and will showcase the use of gradient based optimisers and 2nd and 3rd order pruned solutions.
 
 ## Define the model
 

@@ -139,7 +139,6 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
         ℒ.mul!(state, 𝐒, vcat(state[T.past_not_future_and_mixed_idx], x))
         # state = 𝐒 * vcat(state[T.past_not_future_and_mixed_idx], x)
     end
-    # TODO: use subset of observables and states when propagating states (see kalman filter)
 
     # end # timeit_debug
     # end # timeit_debug
@@ -150,7 +149,6 @@ end
 
 end # dispatch_doctor
 
-## TODO: redo this rrule based on the higher order ones. the accumulated matmul might not be necessary at all
 function rrule(::typeof(calculate_inversion_filter_loglikelihood), 
                 ::Val{:first_order}, 
                 state::Vector{Vector{Float64}}, 
@@ -180,7 +178,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     logabsdets = 0.0
 
     @assert warmup_iterations == 0 "Warmup iterations not yet implemented for reverse-mode automatic differentiation."
-    # TODO: implement warmup iterations
 
     state = [copy(state) for _ in 1:size(data_in_deviations,2)+1]
 
@@ -270,7 +267,6 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     # ∂𝐒obs_idx   = copy(tmp1)
 
     # end # timeit_debug
-    # TODO: optimize allocations
     # pullback
     function inversion_pullback(∂llh)
         # @timeit_debug timer "Inversion filter - pullback" begin    
@@ -859,12 +855,12 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             end
             
             # aug_state₁ = [state₁; 1; x]
-            # ∂state[1] += ∂aug_state₁[1:length(∂state[1])] # TODO: cleanup length and size references
+            # ∂state[1] += ∂aug_state₁[1:length(∂state[1])]
             ℒ.axpy!(1, ∂aug_state₁[1:length(∂state[1])], ∂state[1])
 
             ∂x = ∂aug_state₁[T.nPast_not_future_and_mixed+2:end]
 
-            # aug_state₂ = [state₂; 0; zero(x)] # TODO: dont allocate new vector here
+            # aug_state₂ = [state₂; 0; zero(x)]
             # ∂state[2] += ∂aug_state₂[1:length(∂state[1])]
             ℒ.axpy!(1, ∂aug_state₂[1:length(∂state[1])], ∂state[2])
 
@@ -2450,7 +2446,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             end
 
             # aug_state₁[i] = [state₁; 1; x[i]]
-            ∂state[1] += ∂aug_state₁[1:length(∂state[1])] # TODO: cleanup length and size references
+            ∂state[1] += ∂aug_state₁[1:length(∂state[1])]
 
             ∂x = ∂aug_state₁[T.nPast_not_future_and_mixed+2:end]
 

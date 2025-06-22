@@ -287,7 +287,7 @@ shcks[5] =  3.0
 shcks[10] = 2.0
 shcks[15] = 1.0
 
-sks = KeyedArray(shcks;  Shocks = [:eps_z], Periods = 1:15)
+sks = KeyedArray(shcks;  Shocks = [:eps_z], Periods = 1:15)  # KeyedArray is provided by the `AxisKeys` package
 
 plot_irf(Gali_2015_chapter_3_obc, shocks = sks, periods = 10)
 ```
@@ -420,7 +420,7 @@ shcks = zeros(1,30)
 shcks[10] =  .6
 shcks[30] = -.6
 
-sks = KeyedArray(shcks;  Shocks = [:ε], Periods = 1:30)
+sks = KeyedArray(shcks;  Shocks = [:ε], Periods = 1:30)  # KeyedArray is provided by the `AxisKeys` package
 
 plot_irf(borrowing_constraint, shocks = sks, periods = 50)
 ```

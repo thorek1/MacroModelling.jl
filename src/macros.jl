@@ -49,6 +49,7 @@ Parameters and variables can be indexed using curly braces: e.g. `c{H}[0]`, `eps
 - generate equation with different indices in curly braces: `for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end`
 - generate multiple equations with different indices in curly braces: `for co in [H, F] K{co}[0] = (1-delta{co}) * K{co}[-1] + S{co}[0] end`
 - generate equation with different time indices: `Y_annual[0] = for lag in -3:0 Y[lag] end` or `R_annual[0] = for operator = :*, lag in -3:0 R[lag] end`
+
 # Returns
 - `Nothing`. The macro creates the model `𝓂` in the calling scope.
 """
@@ -125,7 +126,7 @@ macro model(𝓂,ex...)
     
     # obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
 
-    # write down dynamic equations and add auxilliary variables for leads and lags > 1
+    # write down dynamic equations and add auxiliary variables for leads and lags > 1
     for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
             # write down dynamic equations
@@ -143,7 +144,7 @@ macro model(𝓂,ex...)
                                     begin
                                         k = x.args[2].args[3]
                 
-                                        while k > 2 # create auxilliary dynamic equation for exogenous variables with lead > 1
+                                        while k > 2 # create auxiliary dynamic equation for exogenous variables with lead > 1
                                             if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎") ∈ aux_vars_created
                                                 break
                                             else
@@ -180,7 +181,7 @@ macro model(𝓂,ex...)
                                     begin
                                         k = - x.args[2].args[3]
                     
-                                        while k < -2 # create auxilliary dynamic equations for exogenous variables with lag < -1
+                                        while k < -2 # create auxiliary dynamic equations for exogenous variables with lag < -1
                                             if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎") ∈ aux_vars_created
                                                 break
                                             else
@@ -224,7 +225,7 @@ macro model(𝓂,ex...)
                                     begin
                                         k = x.args[2]
 
-                                        while k > 2 # create auxilliary dynamic equations for endogenous variables with lead > 1
+                                        while k > 2 # create auxiliary dynamic equations for endogenous variables with lead > 1
                                             if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎") ∈ aux_vars_created
                                                 break
                                             else
@@ -253,7 +254,7 @@ macro model(𝓂,ex...)
                                     begin
                                         Symbol(string(x.args[1]) * "₍₋" * sub(string(x.args[2])) * "₎")
                                     end :
-                                x.args[2] < -1 ?  # create auxilliary dynamic equations for endogenous variables with lag < -1
+                                x.args[2] < -1 ?  # create auxiliary dynamic equations for endogenous variables with lag < -1
                                     begin
                                         k = x.args[2]
 
@@ -309,7 +310,7 @@ macro model(𝓂,ex...)
             model_ex.args[i])
             push!(ss_equations,flatten(unblock(eqs)))
 
-            # write down ss equations including nonnegativity auxilliary variables
+            # write down ss equations including nonnegativity auxiliary variables
             # find nonegative variables, parameters, or terms
             eqs = postwalk(x -> 
                 x isa Expr ? 
@@ -558,7 +559,7 @@ macro model(𝓂,ex...)
         end
     end
 
-    # go through changed SS equations including nonnegative auxilliary variables
+    # go through changed SS equations including nonnegative auxiliary variables
     ss_aux_equations = Expr[]
 
     # tag vars and pars in changed SS equations
@@ -570,7 +571,7 @@ macro model(𝓂,ex...)
     var_present_list_aux_SS = []
     var_past_list_aux_SS = []
 
-    # # label all variables parameters and exogenous variables and timings for changed SS equations including nonnegativity auxilliary variables
+    # # label all variables parameters and exogenous variables and timings for changed SS equations including nonnegativity auxiliary variables
     for (idx,eq) in enumerate(ss_and_aux_equations)
         var_tmp = Set()
         ss_tmp = Set()
@@ -633,14 +634,14 @@ macro model(𝓂,ex...)
         push!(var_past_list_aux_SS,var_past_tmp)
 
 
-        # write down SS equations including nonnegativity auxilliary variables
+        # write down SS equations including nonnegativity auxiliary variables
         prs_ex = convert_to_ss_equation(eq)
         
         if idx ∈ ss_eq_aux_ind
             if precompile
                 ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],unblock(prs_ex).args[3]) 
             else
-                ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],simplify(unblock(prs_ex).args[3])) # simplify RHS if nonnegative auxilliary variable
+                ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],simplify(unblock(prs_ex).args[3])) # simplify RHS if nonnegative auxiliary variable
             end
         else
             if precompile
@@ -957,9 +958,9 @@ macro model(𝓂,ex...)
                                             zeros(0,0),                                 # 1st order sol
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 2nd order sol
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 3rd order sol
-                                            auxilliary_indices(Int[],Int[],Int[],Int[],Int[]),
-                                            second_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
-                                            third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
+                                            auxiliary_indices(Int[],Int[],Int[],Int[],Int[]),
+                                            second_order_auxiliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
+                                            third_order_auxiliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
                             ),
                             Float64[], 
                             # Set([:first_order]),
@@ -1038,10 +1039,10 @@ end
 ```
 
 # Programmatic model writing
+Variables and parameters indexed with curly braces can be either referenced specifically (e.g. `c{H}[ss]`) or generally (e.g. `alpha`). If they are referenced generally the parse assumes all instances (indices) are meant. For example, in a model where `alpha` has two indices `H` and `F`, the expression `alpha = 0.3` is interpreted as two expressions: `alpha{H} = 0.3` and `alpha{F} = 0.3`. The same goes for calibration equations.
 
 # Returns
 - `Nothing`. The macro assigns parameter values and calibration equations to `𝓂` in the calling scope.
-Variables and parameters indexed with curly braces can be either referenced specifically (e.g. `c{H}[ss]`) or generally (e.g. `alpha`). If they are referenced generally the parse assumes all instances (indices) are meant. For example, in a model where `alpha` has two indices `H` and `F`, the expression `alpha = 0.3` is interpreted as two expressions: `alpha{H} = 0.3` and `alpha{F} = 0.3`. The same goes for calibration equations.
 """
 macro parameters(𝓂,ex...)
     calib_equations = []
@@ -1156,7 +1157,7 @@ macro parameters(𝓂,ex...)
             x.head == :(=) ? 
                 typeof(x.args[2]) ∈ [Int, Float64] ?
                     x :
-                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? # this doesnt work really well yet
+                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? # this doesn't work really well yet
                     x.args[2] isa Expr ?
                         x.args[2].args[1] == :| ? # capture this case: b_star = b_share * y[ss] | b_star
                             begin # this is calibration by targeting SS values (conditional parameter at the end)
@@ -1253,7 +1254,7 @@ macro parameters(𝓂,ex...)
                         x.args[2] isa Int ?
                             x.args[3] isa Int ?
                                 x :
-                            :($(x.args[3]) * $(x.args[2])) : # 2Π => Π*2 (the former doesnt work with sympy)
+                            :($(x.args[3]) * $(x.args[2])) : # 2Π => Π*2 (the former doesn't work with sympy)
                         x :
                     x :
                 unblock(x) : 
@@ -1574,7 +1575,7 @@ macro parameters(𝓂,ex...)
             end
         end
 
-        write_auxilliary_indices!(mod.$𝓂)
+        write_auxiliary_indices!(mod.$𝓂)
 
         # time_dynamic_derivs = @elapsed 
         write_functions_mapping!(mod.$𝓂, $perturbation_order)
