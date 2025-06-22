@@ -78,7 +78,6 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     # timer = timer, 
 end
 
-# TODO: use higher level wrapper, like for lyapunov/sylvester
 # Specialization for :theoretical
 function get_initial_covariance(::Val{:theoretical}, 
                                 A::AbstractMatrix{S}, 

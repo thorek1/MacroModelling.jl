@@ -4997,8 +4997,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
     # res = ss_solve_blocks(parameters_and_solved_vars, guess)
 
-    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars) # TODO: make the block a struct
-    # TODO: do the function creation with Symbolics as this will solve the compilation bottleneck for large functions
+    SS_solve_block.ss_problem.func(SS_solve_block.ss_problem.func_buffer, guess, parameters_and_solved_vars)
 
     res = SS_solve_block.ss_problem.func_buffer
 
@@ -5686,7 +5685,6 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
                                                         x::Vector{ℱ.Dual{Z,S,N}},
                                                         𝓂::ℳ;
                                                         tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-# TODO: check whether this works with SParseMatrices
     𝐒₁̂ = ℱ.value.(𝐒₁)
     𝐒₂̂ = ℱ.value.(𝐒₂)
     𝐒₃̂ = ℱ.value.(𝐒₃)
@@ -6557,7 +6555,6 @@ function take_nth_order_derivatives(
 end
 
 
-# TODO: check why this takes so much longer than previous implementation
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; 
                                     density_threshold::Float64 = .1, 
                                     min_length::Int = 1000,
