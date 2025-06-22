@@ -324,3 +324,23 @@
 - [x] Save plot option
 - [x] Add shock to plot title
 - [x] print model name
+
+## Code notes
+
+The following tasks were extracted from comments in the code base. Each item references the relevant file and context.
+
+- [ ] `src/MacroModelling.jl` (`block_solver`): turn `SS_solve_block` into a proper struct
+- [ ] `src/MacroModelling.jl` (`block_solver`): create functions with Symbolics to reduce compilation time
+- [ ] `src/MacroModelling.jl` (`calculate_third_order_stochastic_steady_state`): verify sparse matrix support
+- [ ] `src/MacroModelling.jl` (`write_functions_mapping!`): investigate slow runtime compared to earlier version
+- [ ] `src/filter/inversion.jl` (`calculate_inversion_filter_loglikelihood`): use subsets of observables and states when propagating states
+- [ ] `src/filter/inversion.jl` (`rrule` for first order): rewrite based on higher order implementation to remove unnecessary matmul
+- [ ] `src/filter/inversion.jl` (`rrule` for first order): add warmup iterations
+- [ ] `src/filter/inversion.jl` (`rrule` for first order): reduce allocations in pullback
+- [ ] `src/filter/inversion.jl` (`rrule` for higher order): clean up length and size handling and avoid temporary vector allocations
+- [ ] `src/filter/find_shocks.jl`: add `ForwardDiff` support for `find_shocks`
+- [ ] `src/filter/kalman.jl`: wrap Lyapunov/Sylvester solvers with a higher level interface
+- [ ] `src/get_functions.jl`: verify derivatives against finite differences
+- [ ] `src/get_functions.jl` (`get_conditional_variance_decomposition`): extend to higher order solutions
+- [ ] `src/get_functions.jl` (`get_variance_decomposition`): extend to higher order solutions
+- [ ] `src/get_functions.jl` (`get_loglikelihood`): error when bounds are violated to catch wrong parameter ordering

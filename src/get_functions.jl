@@ -1662,7 +1662,6 @@ function get_steady_state(𝓂::ℳ;
     # return 𝓂.SS_solve_func(𝓂)
     # return (var .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[1:length(var)]),  (𝓂.par .=> 𝓂.parameter_to_steady_state(𝓂.parameter_values...)[length(var)+1:end])[getindex(1:length(𝓂.par),map(x->x ∈ collect(𝓂.calibration_equations_parameters),𝓂.par))]
 end
-# TODO: check that derivatives are in line with finitediff
 
 
 """
@@ -2066,7 +2065,6 @@ function get_solution(𝓂::ℳ,
 end
 
 
-# TODO: do this for higher order
 """
 $(SIGNATURES)
 Return the conditional variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
@@ -2252,7 +2250,6 @@ fevd = get_conditional_variance_decomposition
 
 
 
-# TODO: implement this for higher order
 """
 $(SIGNATURES)
 Return the variance decomposition of endogenous variables with regards to the shocks using the linearised solution. 
@@ -3503,7 +3500,6 @@ function get_loglikelihood(𝓂::ℳ,
     #     sylvester_algorithm = :bicgstab
     # end
 
-    # TODO: throw error for bounds violations, suggesting this might be due to wrong parameter ordering
     @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, you need to combine the estimated parameters with the other model parameters in one `Vector`. Make sure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
 
     # checks to avoid errors further down the line and inform the user
