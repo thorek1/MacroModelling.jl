@@ -1,6 +1,6 @@
 using MacroModelling
 import Turing, Pigeons, Mooncake
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, Beta, Normal, InverseGamma
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
