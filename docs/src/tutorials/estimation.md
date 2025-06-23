@@ -102,7 +102,7 @@ Next we define the parameter priors using the Turing package. The `@model` macro
 import Mooncake
 import DynamicPPL
 import Turing
-import Turing: NUTS, sample, logpdf, Beta, Normal, InverseGamma
+import Turing: AutoMooncake, NUTS, sample, logpdf, Beta, Normal, InverseGamma
 
 prior_distributions = [
     Beta(0.356, 0.02, Val(:μσ)),           # alp

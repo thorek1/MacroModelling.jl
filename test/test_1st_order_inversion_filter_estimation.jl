@@ -2,7 +2,7 @@ using MacroModelling
 import Turing
 import Pigeons
 import Mooncake
-import Turing: NUTS, sample, logpdf, Beta, Normal, InverseGamma
+import Turing: AutoMooncake, NUTS, sample, logpdf, Beta, Normal, InverseGamma
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
