@@ -22,7 +22,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with variables in rows, shocks in columns, and periods as the third dimension.
+- `KeyedArray` (from the `AxisKeys` package) with variables in rows, shocks in columns, and periods as the third dimension.
 
 # Examples
 ```jldoctest
@@ -190,7 +190,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with shocks in rows, and periods in columns.
+- `KeyedArray` (from the `AxisKeys` package) with shocks in rows, and periods in columns.
 
 # Examples
 ```jldoctest
@@ -318,7 +318,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with variables in rows, and periods in columns.
+- `KeyedArray` (from the `AxisKeys` package) with variables in rows, and periods in columns.
 
 # Examples
 ```jldoctest
@@ -442,7 +442,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with standard deviations in rows, and periods in columns.
+- `KeyedArray` (from the `AxisKeys` package) with standard deviations in rows, and periods in columns.
 
 # Examples
 ```jldoctest
@@ -559,7 +559,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with variables  and shocks in rows, and periods in columns.
+- `KeyedArray` (from the `AxisKeys` package) with variables  and shocks in rows, and periods in columns.
 
 # Examples
 ```jldoctest
@@ -1101,7 +1101,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with variables in rows, periods in columns, and shocks as the third dimension.
+- `KeyedArray` (from the `AxisKeys` package) with variables in rows, periods in columns, and shocks as the third dimension.
 
 # Examples
 ```jldoctest
@@ -1458,7 +1458,7 @@ Return the (non-stochastic) steady state, calibrated parameters, and derivatives
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with variables in rows. The columns show the (non-stochastic) steady state and parameters for which derivatives are taken. 
+- `KeyedArray` (from the `AxisKeys` package) with variables in rows. The columns show the (non-stochastic) steady state and parameters for which derivatives are taken. 
 
 # Examples
 ```jldoctest
@@ -1740,7 +1740,7 @@ The values of the output represent the NSSS in the case of a linear solution and
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` shows as columns the endogenous variables including the auxiliary endogenous and exogenous variables (due to leads and lags > 1). The rows and other dimensions (depending on the chosen perturbation order) include the NSSS for the linear case only, followed by the states, and exogenous shocks. Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
+- `KeyedArray` (from the `AxisKeys` package) with the endogenous variables including the auxiliary endogenous and exogenous variables (due to leads and lags > 1) as columns. The rows and other dimensions (depending on the chosen perturbation order) include the NSSS for the linear case only, followed by the states, and exogenous shocks. Subscripts following variable names indicate the timing (e.g. `variable₍₋₁₎`  indicates the variable being in the past). Superscripts indicate leads or lags (e.g. `variableᴸ⁽²⁾` indicates the variable being in lead by two periods). If no super- or subscripts follow the variable name, the variable is in the present.
 
 # Examples
 ```jldoctest
@@ -2082,7 +2082,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with variables in rows, shocks in columns, and periods as the third dimension.
+- `KeyedArray` (from the `AxisKeys` package) with variables in rows, shocks in columns, and periods as the third dimension.
 
 # Examples
 ```jldoctest part1
@@ -2266,7 +2266,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with variables in rows, and shocks in columns.
+- `KeyedArray` (from the `AxisKeys` package) with variables in rows, and shocks in columns.
 
 # Examples
 ```jldoctest part1
@@ -2404,7 +2404,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with variables in rows and columns.
+- `KeyedArray` (from the `AxisKeys` package) with variables in rows and columns.
 
 # Examples
 ```jldoctest part1
@@ -2520,7 +2520,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` with variables in rows and autocorrelation periods in columns.
+- `KeyedArray` (from the `AxisKeys` package) with variables in rows and autocorrelation periods in columns.
 
 # Examples
 ```jldoctest part1
@@ -2662,7 +2662,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VERBOSE®
 
 # Returns
-- `Dict{Symbol,KeyedArray}` containing the selected moments. All moments have variables as rows and the moment as the first column followed by partial derivatives wrt parameters.
+- `Dict{Symbol,KeyedArray}` containing the selected moments. All moments have variables as rows and the moment as the first column followed by partial derivatives wrt parameters. The `KeyedArray` type is provided by the `AxisKeys` package.
 
 # Examples
 ```jldoctest part1
@@ -3424,7 +3424,7 @@ end
 
 """
 $(SIGNATURES)
-Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). In case of a nonlinear solution algorithm the inversion filter will be used. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns.
+Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). In case of a nonlinear solution algorithm the inversion filter will be used. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
 
 This function is differentiable (so far for the Kalman filter only) and can be used in gradient based sampling or optimisation.
 
@@ -3568,7 +3568,7 @@ Calculate the residuals of the non-stochastic steady state equations of the mode
 
 # Arguments
 - $MODEL®
-- `values` [Type: `Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}`]: A Vector, Dict, or KeyedArray containing the values of the variables and calibrated parameters in the non-stochastic steady state equations (including calibration equations). 
+- `values` [Type: `Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}`]: A Vector, Dict, or KeyedArray containing the values of the variables and calibrated parameters in the non-stochastic steady state equations (including calibration equations). The `KeyedArray` type is provided by the `AxisKeys` package.
 
 # Keyword Arguments
 - $PARAMETERS®
@@ -3576,7 +3576,7 @@ Calculate the residuals of the non-stochastic steady state equations of the mode
 - $VERBOSE®
 
 # Returns
-- `KeyedArray` containing the absolute values of the residuals of the non-stochastic steady state equations.
+- `KeyedArray` (from the `AxisKeys` package) containing the absolute values of the residuals of the non-stochastic steady state equations.
 
 # Examples
 ```jldoctest
