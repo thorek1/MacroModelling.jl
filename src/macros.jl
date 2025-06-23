@@ -1,6 +1,3 @@
-
-import MacroTools: unblock, postwalk, @capture, flatten
-
 const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
 
@@ -18,7 +15,7 @@ Parses the model equations and assigns them to an object.
 Variables must be defined with their time subscript in square brackets.
 Endogenous variables can have the following:
 - present: `c[0]`
-- non-stcohastic steady state: `c[ss]` instead of `ss` any of the following is also a valid flag for the non-stochastic steady state: `ss`, `stst`, `steady`, `steadystate`, `steady_state`, and the parser is case-insensitive (`SS` or `sTst` will work as well).
+- non-stochastic steady state: `c[ss]` instead of `ss` any of the following is also a valid flag for the non-stochastic steady state: `ss`, `stst`, `steady`, `steadystate`, `steady_state`, and the parser is case-insensitive (`SS` or `sTst` will work as well).
 - past: `c[-1]` or any negative Integer: e.g. `c[-12]`
 - future: `c[1]` or any positive Integer: e.g. `c[16]` or `c[+16]`
 Signed integers are recognised and parsed as such.
@@ -52,6 +49,9 @@ Parameters and variables can be indexed using curly braces: e.g. `c{H}[0]`, `eps
 - generate equation with different indices in curly braces: `for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end`
 - generate multiple equations with different indices in curly braces: `for co in [H, F] K{co}[0] = (1-delta{co}) * K{co}[-1] + S{co}[0] end`
 - generate equation with different time indices: `Y_annual[0] = for lag in -3:0 Y[lag] end` or `R_annual[0] = for operator = :*, lag in -3:0 R[lag] end`
+
+# Returns
+- `Nothing`. The macro creates the model `𝓂` in the calling scope.
 """
 macro model(𝓂,ex...)
     # parse options
@@ -88,13 +88,14 @@ macro model(𝓂,ex...)
     solved_vars = [] 
     solved_vals = []
     
-    ss_solve_blocks = []
-    
+    # ss_solve_blocks = []
+    ss_solve_blocks_in_place = ss_solve_block[]
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
+    # SS_calib_func = x->x
     SS_check_func = x->x
-    ∂SS_equations_∂parameters = ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
-    ∂SS_equations_∂SS_and_pars = ([], Int[], zeros(1,1))
+    ∂SS_equations_∂parameters = (zeros(0,0), x->x) # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
+    ∂SS_equations_∂SS_and_pars = (zeros(0,0), x->x)  # ([], Int[], zeros(1,1))
     SS_dependencies = nothing
 
     original_equations = []
@@ -116,12 +117,16 @@ macro model(𝓂,ex...)
     dyn_eq_aux_ind = Int[]
 
     model_ex = parse_for_loops(ex[end])
+    
+    model_ex = resolve_if_expr(model_ex::Expr)::Expr
 
-    model_ex = parse_occasionally_binding_constraints(model_ex, max_obc_horizon = max_obc_horizon)
+    model_ex = remove_nothing(model_ex::Expr)::Expr
+
+    model_ex = parse_occasionally_binding_constraints(model_ex::Expr, max_obc_horizon = max_obc_horizon)::Expr
     
     # obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
 
-    # write down dynamic equations and add auxilliary variables for leads and lags > 1
+    # write down dynamic equations and add auxiliary variables for leads and lags > 1
     for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
             # write down dynamic equations
@@ -139,7 +144,7 @@ macro model(𝓂,ex...)
                                     begin
                                         k = x.args[2].args[3]
                 
-                                        while k > 2 # create auxilliary dynamic equation for exogenous variables with lead > 1
+                                        while k > 2 # create auxiliary dynamic equation for exogenous variables with lead > 1
                                             if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎") ∈ aux_vars_created
                                                 break
                                             else
@@ -176,7 +181,7 @@ macro model(𝓂,ex...)
                                     begin
                                         k = - x.args[2].args[3]
                     
-                                        while k < -2 # create auxilliary dynamic equations for exogenous variables with lag < -1
+                                        while k < -2 # create auxiliary dynamic equations for exogenous variables with lag < -1
                                             if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎") ∈ aux_vars_created
                                                 break
                                             else
@@ -220,7 +225,7 @@ macro model(𝓂,ex...)
                                     begin
                                         k = x.args[2]
 
-                                        while k > 2 # create auxilliary dynamic equations for endogenous variables with lead > 1
+                                        while k > 2 # create auxiliary dynamic equations for endogenous variables with lead > 1
                                             if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎") ∈ aux_vars_created
                                                 break
                                             else
@@ -249,7 +254,7 @@ macro model(𝓂,ex...)
                                     begin
                                         Symbol(string(x.args[1]) * "₍₋" * sub(string(x.args[2])) * "₎")
                                     end :
-                                x.args[2] < -1 ?  # create auxilliary dynamic equations for endogenous variables with lag < -1
+                                x.args[2] < -1 ?  # create auxiliary dynamic equations for endogenous variables with lag < -1
                                     begin
                                         k = x.args[2]
 
@@ -305,7 +310,7 @@ macro model(𝓂,ex...)
             model_ex.args[i])
             push!(ss_equations,flatten(unblock(eqs)))
 
-            # write down ss equations including nonnegativity auxilliary variables
+            # write down ss equations including nonnegativity auxiliary variables
             # find nonegative variables, parameters, or terms
             eqs = postwalk(x -> 
                 x isa Expr ? 
@@ -554,7 +559,7 @@ macro model(𝓂,ex...)
         end
     end
 
-    # go through changed SS equations including nonnegative auxilliary variables
+    # go through changed SS equations including nonnegative auxiliary variables
     ss_aux_equations = Expr[]
 
     # tag vars and pars in changed SS equations
@@ -566,7 +571,7 @@ macro model(𝓂,ex...)
     var_present_list_aux_SS = []
     var_past_list_aux_SS = []
 
-    # # label all variables parameters and exogenous variables and timings for changed SS equations including nonnegativity auxilliary variables
+    # # label all variables parameters and exogenous variables and timings for changed SS equations including nonnegativity auxiliary variables
     for (idx,eq) in enumerate(ss_and_aux_equations)
         var_tmp = Set()
         ss_tmp = Set()
@@ -629,14 +634,14 @@ macro model(𝓂,ex...)
         push!(var_past_list_aux_SS,var_past_tmp)
 
 
-        # write down SS equations including nonnegativity auxilliary variables
+        # write down SS equations including nonnegativity auxiliary variables
         prs_ex = convert_to_ss_equation(eq)
         
         if idx ∈ ss_eq_aux_ind
             if precompile
                 ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],unblock(prs_ex).args[3]) 
             else
-                ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],simplify(unblock(prs_ex).args[3])) # simplify RHS if nonnegative auxilliary variable
+                ss_aux_equation = Expr(:call,:-,unblock(prs_ex).args[2],simplify(unblock(prs_ex).args[3])) # simplify RHS if nonnegative auxiliary variable
             end
         else
             if precompile
@@ -864,9 +869,11 @@ macro model(𝓂,ex...)
                         $solved_vars, 
                         $solved_vals, 
 
-                        $ss_solve_blocks,
+                        # $ss_solve_blocks,
+                        $ss_solve_blocks_in_place,
                         $NSSS_solver_cache,
                         $SS_solve_func,
+                        # $SS_calib_func,
                         $SS_check_func,
                         $∂SS_equations_∂parameters,
                         $∂SS_equations_∂SS_and_pars,
@@ -885,15 +892,25 @@ macro model(𝓂,ex...)
 
                         $bounds,
 
+                        (zeros(0,0), x->x), # jacobian
+                        (zeros(0,0), x->x), # jacobian_parameters
+                        (zeros(0,0), x->x), # jacobian_SS_and_pars
+                        (zeros(0,0), x->x), # hessian
+                        (zeros(0,0), x->x), # hessian_parameters
+                        (zeros(0,0), x->x), # hessian_SS_and_pars
+                        (zeros(0,0), x->x), # third_order_derivatives
+                        (zeros(0,0), x->x), # third_order_derivatives_parameters
+                        (zeros(0,0), x->x), # third_order_derivatives_SS_and_pars
+                        # (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
-                        ([], Int[], zeros(1,1)), # model_jacobian
-                        # x->x, # model_jacobian_parameters
-                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian_SS_and_pars_vars
-                        # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
-                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_hessian
-                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_hessian_SS_and_pars_vars
-                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives
-                        ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives_SS_and_pars_vars
+                        # ([], Int[], zeros(1,1)), # model_jacobian
+                        # # x->x, # model_jacobian_parameters
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian_SS_and_pars_vars
+                        # # FWrap{Tuple{Vector{Float64}, Vector{Number}, Vector{Float64}}, SparseMatrixCSC{Float64}}(model_jacobian),
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_hessian
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_hessian_SS_and_pars_vars
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives
+                        # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives_SS_and_pars_vars
 
                         $T,
 
@@ -924,7 +941,12 @@ macro model(𝓂,ex...)
                             1, 0.0, 2),
 
                             solver_parameters(0.29645150804713516, 0.15969019747689142, 0.2693496924553368, 0.0034970496426367293, 0.5008694464959978, 0.6699637884425756, 1.611285608601616, 0.6899397454094642, 0.029431947073776017, 0.3142583183135748, 0.42018256598233805, 0.06924215548968618, 0.7804883376691316, 0.06394988937558344, 0.15004023218157433, 1.1769307574775534, 1.262653860526411, 0.029216109042280492, 0.5838043687191993, -6.690519495126307, 
-                            1, 0.0, 2)
+                            1, 0.0, 2),
+
+                            solver_parameters(86.68744085399935, 44.356034936019704, 3.0248550511209418, 2.5434387875674105, 0.44177199922855287, 11.258039640546523, 59.1538457315958, 50.22390673260303, 45.699696761126376, 76.139237123852, 7.474593067106561, 95.69459863829196, 6.651922334973468, 18.01104269012316, 7.843038549255355, 42.350869207246724, 12.544216405091063, 64.54315767944557, 11.098496176990707, 0.7910630794135145, 
+                            1, 0.0, 2),
+
+                            solver_parameters(4.1784912636092235, 1.8166012668623566, 0.5168801279930487, 78.18194336881028, 2.139580134601701, 0.4617967010780055, 33.95219683424897, 17.315839925955242, 2.220446049250313e-16, 12.287343174930065, 2.220446049250313e-16, 6.185479065850274, 88.3014875814592, 36.31304631280673, 5.262437586106421, 2.220446049250313e-16, 2.220446049250313e-16, 6.347784900438273, 0.7130503478600859, 0.6594888633818169, 1, 0.0, 2)
                         ],
 
                         solution(
@@ -936,9 +958,9 @@ macro model(𝓂,ex...)
                                             zeros(0,0),                                 # 1st order sol
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 2nd order sol
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 3rd order sol
-                                            auxilliary_indices(Int[],Int[],Int[],Int[],Int[]),
-                                            second_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
-                                            third_order_auxilliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
+                                            auxiliary_indices(Int[],Int[],Int[],Int[],Int[]),
+                                            second_order_auxiliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
+                                            third_order_auxiliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
                             ),
                             Float64[], 
                             # Set([:first_order]),
@@ -968,16 +990,16 @@ Adds parameter values and calibration equations to the previously defined model.
 Parameters can be defined in either of the following ways:
 - plain number: `δ = 0.02`
 - expression containing numbers: `δ = 1/50`
-- expression containing other parameters: `δ = 2 * std_z` in this case it is irrelevant if `std_z` is defined before or after. The definitons including other parameters are treated as a system of equaitons and solved accordingly.
-- expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneaously with the non-stochastic steady state using the equation defined with it.
+- expression containing other parameters: `δ = 2 * std_z` in this case it is irrelevant if `std_z` is defined before or after. The definitions including other parameters are treated as a system of equations and solved accordingly.
+- expressions containing a target parameter and an equations with endogenous variables in the non-stochastic steady state, and other parameters, or numbers: `k[ss] / (4 * q[ss]) = 1.5 | δ` or `α | 4 * q[ss] = δ * k[ss]` in this case the target parameter will be solved simultaneously with the non-stochastic steady state using the equation defined with it.
 
 # Optional arguments to be placed between `𝓂` and `ex`
 - `guess` [Type: `Dict{Symbol, <:Real}, Dict{String, <:Real}}`]: Guess for the non-stochastic steady state. The keys must be the variable (and calibrated parameters) names and the values the guesses. Missing values are filled with standard starting values.
-- `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non stochastic steady state is solved
+- `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non-stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
-- `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non stochastic steady state symbolically and fall back to a numerical solution if not possible
+- `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non-stochastic steady state symbolically and fall back to a numerical solution if not possible
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. In case you want to work with higher order perturbation later on, respective derivatives will be taken at that stage.
-- `simplify` [Default: `true`, Type: `Bool`]: whether to elminiate redundant variables and simplify the non stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
+- `simplify` [Default: `true`, Type: `Bool`]: whether to eliminate redundant variables and simplify the non-stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
 
 
 
@@ -1017,8 +1039,10 @@ end
 ```
 
 # Programmatic model writing
+Variables and parameters indexed with curly braces can be either referenced specifically (e.g. `c{H}[ss]`) or generally (e.g. `alpha`). If they are referenced generally the parse assumes all instances (indices) are meant. For example, in a model where `alpha` has two indices `H` and `F`, the expression `alpha = 0.3` is interpreted as two expressions: `alpha{H} = 0.3` and `alpha{F} = 0.3`. The same goes for calibration equations.
 
-Variables and parameters indexed with curly braces can be either referenced specifically (e.g. `c{H}[ss]`) or generally (e.g. `alpha`). If they are referenced generaly the parse assumes all instances (indices) are meant. For example, in a model where `alpha` has two indices `H` and `F`, the expression `alpha = 0.3` is interpreted as two expressions: `alpha{H} = 0.3` and `alpha{F} = 0.3`. The same goes for calibration equations.
+# Returns
+- `Nothing`. The macro assigns parameter values and calibration equations to `𝓂` in the calling scope.
 """
 macro parameters(𝓂,ex...)
     calib_equations = []
@@ -1133,7 +1157,7 @@ macro parameters(𝓂,ex...)
             x.head == :(=) ? 
                 typeof(x.args[2]) ∈ [Int, Float64] ?
                     x :
-                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? # this doesnt work really well yet
+                x.args[1] isa Symbol ?# || x.args[1] isa Expr ? # this doesn't work really well yet
                     x.args[2] isa Expr ?
                         x.args[2].args[1] == :| ? # capture this case: b_star = b_share * y[ss] | b_star
                             begin # this is calibration by targeting SS values (conditional parameter at the end)
@@ -1230,7 +1254,7 @@ macro parameters(𝓂,ex...)
                         x.args[2] isa Int ?
                             x.args[3] isa Int ?
                                 x :
-                            :($(x.args[3]) * $(x.args[2])) : # 2Π => Π*2 (the former doesnt work with sympy)
+                            :($(x.args[3]) * $(x.args[2])) : # 2Π => Π*2 (the former doesn't work with sympy)
                         x :
                     x :
                 unblock(x) : 
@@ -1470,7 +1494,7 @@ macro parameters(𝓂,ex...)
         if !$precompile 
             start_time = time()
 
-            if !$silent print("Remove redundant variables in non stochastic steady state problem:\t") end
+            if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
 
             symbolics = create_symbols_eqs!(mod.$𝓂)
 
@@ -1481,7 +1505,7 @@ macro parameters(𝓂,ex...)
 
             start_time = time()
     
-            if !$silent print("Set up non stochastic steady state problem:\t\t\t\t") end
+            if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
             solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
 
@@ -1493,32 +1517,11 @@ macro parameters(𝓂,ex...)
         else
             start_time = time()
         
-            if !$silent print("Set up non stochastic steady state problem:\t\t\t\t") end
+            if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
             solve_steady_state!(mod.$𝓂, verbose = $verbose)
 
             if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-        end
-
-        start_time = time()
-
-        if !$silent
-            if $perturbation_order == 1
-                print("Take symbolic derivatives up to first order:\t\t\t\t")
-            elseif $perturbation_order == 2
-                print("Take symbolic derivatives up to second order:\t\t\t\t")
-            elseif $perturbation_order == 3
-                print("Take symbolic derivatives up to third order:\t\t\t\t")
-            end
-        end
-
-        # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, $perturbation_order)
-
-        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-        
-        if !$silent
-            println(round(time() - start_time, digits = 3), " seconds")
         end
 
         start_time = time()
@@ -1529,7 +1532,7 @@ macro parameters(𝓂,ex...)
 
         if !$precompile
             if !$silent 
-                print("Find non stochastic steady state:\t\t\t\t\t") 
+                print("Find non-stochastic steady state:\t\t\t\t\t") 
             end
             # time_SS_real_solve = @elapsed 
             SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
@@ -1557,6 +1560,30 @@ macro parameters(𝓂,ex...)
 
             mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
             mod.$𝓂.solution.outdated_NSSS = false
+        end
+
+
+        start_time = time()
+
+        if !$silent
+            if $perturbation_order == 1
+                print("Take symbolic derivatives up to first order:\t\t\t\t")
+            elseif $perturbation_order == 2
+                print("Take symbolic derivatives up to second order:\t\t\t\t")
+            elseif $perturbation_order == 3
+                print("Take symbolic derivatives up to third order:\t\t\t\t")
+            end
+        end
+
+        write_auxiliary_indices!(mod.$𝓂)
+
+        # time_dynamic_derivs = @elapsed 
+        write_functions_mapping!(mod.$𝓂, $perturbation_order)
+
+        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        
+        if !$silent
+            println(round(time() - start_time, digits = 3), " seconds")
         end
 
         if !$silent Base.show(mod.$𝓂) end

@@ -1,7 +1,10 @@
 @stable default_mode = "disable" begin
 
-function levenberg_marquardt(f::Function, 
+function levenberg_marquardt(
+    fnj::function_and_jacobian,
+    # f::Function, 
     initial_guess::Array{T,1}, 
+    parameters_and_solved_vars::Array{T,1},
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1},
     parameters::solver_parameters;
@@ -44,25 +47,46 @@ function levenberg_marquardt(f::Function,
 
     max_linesearch_iterations = 600
 
-    function f̂(x) 
-        f(undo_transform(x,transformation_level))  
-        # f(undo_transform(x,transformation_level,shift))  
+    # function f̂(x) 
+    #     f(undo_transform(x,transformation_level))  
+    # #     # f(undo_transform(x,transformation_level,shift))  
+    # end
+    u_bounds = copy(upper_bounds)
+    l_bounds = copy(lower_bounds)
+    current_guess = copy(initial_guess)
+
+    for _ in 1:transformation_level
+        u_bounds .= asinh.(u_bounds)
+        l_bounds .= asinh.(l_bounds)
+        current_guess .= asinh.(current_guess)
     end
 
-    upper_bounds  = transform(upper_bounds,transformation_level)
-    # upper_bounds  = transform(upper_bounds,transformation_level,shift)
-    lower_bounds  = transform(lower_bounds,transformation_level)
-    # lower_bounds  = transform(lower_bounds,transformation_level,shift)
+    sol_cache = fnj.chol_buffer
 
-    current_guess = copy(transform(initial_guess,transformation_level))
-    # current_guess = copy(transform(initial_guess,transformation_level,shift))
+    current_guess_untransformed = copy(current_guess)
     previous_guess = similar(current_guess)
+    previous_guess_untransformed = similar(current_guess)
     guess_update = similar(current_guess)
+    factor = similar(current_guess)
+    best_previous_guess = similar(current_guess)
+    best_current_guess = similar(current_guess)
+    ∇ = fnj.jac_buffer
+    ∇̂ = sol_cache.A
+    # ∇̄ = similar(fnj.jac_buffer)
 
-    ∇ = Array{T,2}(undef, length(initial_guess), length(initial_guess))
-    ∇̂ = similar(∇)
-
-    prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
+    # ∇̂ = choose_matrix_format(∇' * ∇, multithreaded = false)
+    
+    # if ∇̂ isa SparseMatrixCSC
+    #     prob = 𝒮.LinearProblem(∇̂, guess_update, 𝒮.CHOLMODFactorization())
+    #     sol_cache = 𝒮.init(prob, 𝒮.CHOLMODFactorization())
+    # else
+        # X = ℒ.Symmetric(∇̂, :U)
+        # prob = 𝒮.LinearProblem(X, guess_update, 𝒮.CholeskyFactorization)
+        # prob = 𝒮.LinearProblem(∇̂, guess_update, 𝒮.CholeskyFactorization())
+        # sol_cache = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+    # end
+    
+    # prep = 𝒟.prepare_jacobian(f̂, backend, current_guess)
 
     largest_step = T(1.0)
     largest_residual = T(1.0)
@@ -77,50 +101,118 @@ function levenberg_marquardt(f::Function,
     grad_iter = 0
     func_iter = 0
 
-	for iter in 1:iterations
+    for iter in 1:iterations
         # make the jacobian and f calls nonallocating
-        𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
+        copy!(current_guess_untransformed, current_guess)
+        
+        if transformation_level > 0
+            factor .= 1
+            for _ in 1:transformation_level
+                factor .*= cosh.(current_guess_untransformed)
+                current_guess_untransformed .= sinh.(current_guess_untransformed)
+            end
+        end
+
+        fnj.jac(∇, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
+        # 𝒟.jacobian!(f̂, ∇, prep, backend, current_guess)
+
+        if transformation_level > 0
+            scale_columns!(∇, factor)
+            # if ∇ isa SparseMatrixCSC
+            #     # ∇̄ = ∇ .* factor'
+            #     copy!(∇̄.nzval, ∇.nzval)
+            #     @inbounds for j in 1:size(∇, 2)
+            #         col_start = ∇̄.colptr[j]
+            #         col_end = ∇̄.colptr[j+1] - 1
+            #         for k in col_start:col_end
+            #             ∇̄.nzval[k] *= factor[j]
+            #         end
+            #     end
+            # else
+            #     # ℒ.mul!(∇̄, ∇, factor')
+            #     @. ∇̄ = ∇ * factor'
+            #     # ∇ .*= factor'
+            # end
+        end
+
         grad_iter += 1
 
         previous_guess .= current_guess
 
         # ∇̂ .= ∇' * ∇
-        ℒ.mul!(∇̂, ∇', ∇)
-
-        μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
-        func_iter += 1
-
-        for i in 1:size(∇̂,1)
-            ∇̂[i,i] += μ¹s
-            ∇̂[i,i] += μ² * ∇̂[i,i]^p²
+        if ∇̂ isa SparseMatrixCSC
+            ∇̂ = ∇' * ∇
+        else
+            ℒ.mul!(∇̂, ∇', ∇)
         end
+
+        fnj.func(fnj.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
+
+        copy!(factor, fnj.func_buffer)
+
+        μ¹s = μ¹ * ℒ.dot(factor, factor)^p¹
+        # μ¹s = μ¹ * sum(abs2, f̂(current_guess))^p¹
+        func_iter += 1
+        
+        update_∇̂!(∇̂, μ¹s, μ², p²)
+        # @inbounds for i in 1:size(∇̂,1) # fix allocs here
+        #     ∇̂[i,i] += μ¹s
+        #     ∇̂[i,i] += μ² * ∇̂[i,i]^p²
+        # end
         # ∇̂ .+= μ¹ * sum(abs2, f̂(current_guess))^p¹ * ℒ.I + μ² * ℒ.Diagonal(∇̂).^p²
 
-        if !all(isfinite,∇̂)
+        finn = has_nonfinite(∇̂)
+
+        if finn
             largest_relative_step = 1.0
             largest_residual = 1.0
             break
         end
 
-        ∇̄ = ℒ.cholesky!(∇̂, check = false)
+        # fnj.func(fnj.func_buffer, current_guess_untransformed, parameters_and_solved_vars)
 
-        if !ℒ.issuccess(∇̄)
+        ℒ.mul!(guess_update, ∇', factor)
+
+        # X = ℒ.Symmetric(∇̂, :U)
+        # sol_cache.A = X
+        sol_cache.A = ∇̂
+        sol_cache.b = guess_update
+        𝒮.solve!(sol_cache)
+        copy!(guess_update, sol_cache.u)
+
+        if !isfinite(sum(guess_update))
             largest_relative_step = 1.0
             largest_residual = 1.0
             break
         end
 
-        ℒ.mul!(guess_update, ∇', f̂(current_guess))
-        ℒ.ldiv!(∇̄, guess_update)
         ℒ.axpy!(-1, guess_update, current_guess)
         # current_guess .-= ∇̄ \ ∇' * f̂(current_guess)
 
-        minmax!(current_guess, lower_bounds, upper_bounds)
+        minmax!(current_guess, l_bounds, u_bounds)
 
-        P = sum(abs2, f̂(previous_guess))
+        copy!(previous_guess_untransformed, previous_guess)
+
+        for _ in 1:transformation_level
+            previous_guess_untransformed .= sinh.(previous_guess_untransformed)
+        end
+        
+        # fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
+
+        P = ℒ.dot(factor, factor)
+        # P = sum(abs2, f̂(previous_guess))
         P̃ = P
         
-        P̋ = sum(abs2, f̂(current_guess))
+        copy!(current_guess_untransformed, current_guess)
+
+        for _ in 1:transformation_level
+            current_guess_untransformed .= sinh.(current_guess_untransformed)
+        end
+
+        fnj.func(fnj.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
+      
+        P̋ = ℒ.dot(fnj.func_buffer, fnj.func_buffer)
+        # P̋ = sum(abs2, f̂(current_guess))
 
         func_iter += 3
 
@@ -129,17 +221,30 @@ function levenberg_marquardt(f::Function,
 
         ν̂ = ν
 
-        guess_update .= current_guess - previous_guess
-        g = f̂(previous_guess)' * ∇ * guess_update
+        # guess_update .= current_guess - previous_guess
+        guess_update .= current_guess
+        guess_update .-= previous_guess
+
+        # fnj.func(fnj.func_buffer, previous_guess_untransformed, parameters_and_solved_vars)
+
+        # g = factor' * ∇̄ * guess_update
+        g = ℒ.dot(factor, ∇, guess_update)
+        # g = f̂(previous_guess)' * ∇ * guess_update
         U = sum(abs2,guess_update)
         func_iter += 1
 
         if P̋ > ρ * P 
             linesearch_iterations = 0
-            while P̋ > (1 + ν̂ - ρ¹ * α^2) * P̃ + ρ² * α^2 * g - ρ³ * α^2 * U && linesearch_iterations < max_linesearch_iterations
+
+            cond = condition_P̋(P̋, ν̂, ρ¹, α, P̃, ρ², g, ρ³, U)
+
+            while cond && linesearch_iterations < max_linesearch_iterations # fix allocs here
                 if backtracking_order == 2
                     # Quadratic backtracking line search
-                    α̂ = -g * α^2 / (2 * (P̋ - P̃ - g * α))
+
+                    α̂ = update_α̂(g, α, P̋, P̃)
+                    # α̂ = -g * α^2 / (2 * (P̋ - P̃ - g * α)) # fix allocs here
+
                 elseif backtracking_order == 3
                     # Cubic backtracking line search
                     a = (ᾱ^2 * (P̋ - P̃ - g * α) - α^2 * (P - P̃ - g * ᾱ)) / (ᾱ^2 * α^2 * (α - ᾱ))
@@ -157,22 +262,34 @@ function levenberg_marquardt(f::Function,
                     ᾱ = α
                 end
 
-                α̂ = min(α̂, ϕ̄ * α)
-                α = max(α̂, ϕ̂ * α)
+                α̂, α = minmax_α(α̂, ϕ̄, α, ϕ̂)
+                # α̂ = min(α̂, ϕ̄ * α)
+                # α = max(α̂, ϕ̂ * α)
                 
                 copy!(current_guess, previous_guess)
                 ℒ.axpy!(α, guess_update, current_guess)
                 # current_guess .= previous_guess + α * guess_update
-                minmax!(current_guess, lower_bounds, upper_bounds)
+                minmax!(current_guess, l_bounds, u_bounds)
                 
                 P = P̋
 
-                P̋ = sum(abs2, f̂(current_guess))
+                copy!(current_guess_untransformed, current_guess)
+
+                for _ in 1:transformation_level
+                    current_guess_untransformed .= sinh.(current_guess_untransformed)
+                end
+
+                fnj.func(fnj.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
+
+                P̋ = ℒ.dot(fnj.func_buffer, fnj.func_buffer)
+                # P̋ = sum(abs2, f̂(current_guess))
                 func_iter += 1
 
                 ν̂ *= α
 
                 linesearch_iterations += 1
+
+                cond = condition_P̋(P̋, ν̂, ρ¹, α, P̃, ρ², g, ρ³, U)
             end
 
             μ¹ *= λ̅¹
@@ -188,13 +305,28 @@ function levenberg_marquardt(f::Function,
             p² = min(p² / λ̂², p̄²)
         end
 
-        best_previous_guess = undo_transform(previous_guess,transformation_level)
-        best_current_guess = undo_transform(current_guess,transformation_level)
+        for _ in 1:transformation_level
+            best_previous_guess .= sinh.(previous_guess)
+            best_current_guess .= sinh.(current_guess)
+        end
 
-        largest_step = ℒ.norm(best_previous_guess - best_current_guess) # maximum(abs, previous_guess - current_guess)
+        # best_previous_guess = undo_transform(previous_guess, transformation_level)
+        # best_current_guess = undo_transform(current_guess, transformation_level)
+
+        @. factor = best_previous_guess - best_current_guess
+        largest_step = ℒ.norm(factor) # maximum(abs, previous_guess - current_guess)
         largest_relative_step = largest_step / max(ℒ.norm(best_previous_guess), ℒ.norm(best_current_guess)) # maximum(abs, (previous_guess - current_guess) ./ previous_guess)
         
-        largest_residual = ℒ.norm(f̂(current_guess)) # maximum(abs, f(undo_transform(current_guess,transformation_level)))
+        copy!(current_guess_untransformed, current_guess)
+
+        for _ in 1:transformation_level
+            current_guess_untransformed .= sinh.(current_guess_untransformed)
+        end
+
+        fnj.func(fnj.func_buffer::Vector{T}, current_guess_untransformed::Vector{T}, parameters_and_solved_vars::Vector{T})
+
+        largest_residual = ℒ.norm(fnj.func_buffer)    
+        # largest_residual = ℒ.norm(f̂(current_guess)) # maximum(abs, f(undo_transform(current_guess,transformation_level)))
         # largest_residual = maximum(abs, f(undo_transform(current_guess,transformation_level,shift)))
 
         # allow for norm increases (in both measures) as this can lead to the solution
@@ -206,15 +338,77 @@ function levenberg_marquardt(f::Function,
             # end
         end
     end
+    
+    for _ in 1:transformation_level
+        best_current_guess .= sinh.(current_guess)
+    end
 
-    best_guess = undo_transform(current_guess,transformation_level)
+    return best_current_guess, (grad_iter, func_iter, largest_relative_step, largest_residual)#, f(best_guess))
+end
 
-    return best_guess, (grad_iter, func_iter, largest_relative_step, largest_residual)#, f(best_guess))
+function scale_columns!(A::AbstractMatrix{T}, v::AbstractVector{T}) where T
+    @inbounds for j in 1:size(A, 2)
+        for i in 1:size(A, 1)
+            A[i, j] *= v[j]
+        end
+    end
+    return A
+end
+
+function scale_columns!(A::SparseMatrixCSC{T}, v::AbstractVector{T}) where T
+    @inbounds for j in 1:size(A, 2)
+        scale = v[j]
+        col_start = A.colptr[j]
+        col_end = A.colptr[j+1] - 1
+        for k in col_start:col_end
+            A.nzval[k] *= scale
+        end
+    end
+    return A
+end
+
+function update_∇̂!(∇̂::AbstractMatrix{T}, μ¹s::T, μ²::T, p²::T) where T <: Real
+    n = size(∇̂, 1)                # hoist size lookup
+    @inbounds for i in 1:n
+        x = ∇̂[i,i]                # read once
+        x += μ¹s
+        x += μ² * (x^p²)          # scalar pow, no array allocation
+        ∇̂[i,i] = x               # write back
+    end
+    return nothing
 end
 
 
-function newton(f::Function, 
+function minmax_α(α̂::T, ϕ̄::T, α::T, ϕ̂::T)::Tuple{T,T} where T <: Real
+    α̂ = min(α̂, ϕ̄ * α)
+    α = max(α̂, ϕ̂ * α)
+    return α̂, α
+end
+
+function condition_P̋(P̋::T, ν̂::T, ρ¹::T, α::T, P̃::T, ρ²::T, g::T, ρ³::T, U::T)::Bool where T <: Real
+    cond  = (1 + ν̂ - ρ¹ * α^2) * P̃ + ρ² * α^2 * g - ρ³ * α^2 * U
+    return P̋ > cond
+end
+
+function update_α̂(g::T, α::T, P̋::T, P̃::T)::T where T <: Real
+    return -g * α^2 / (2 * (P̋ - P̃ - g * α))
+end
+
+function has_nonfinite(A::AbstractArray)
+    @inbounds for x in A
+        if !isfinite(x)
+            return true
+        end
+    end
+    return false
+end
+
+
+function newton(
+    # f::Function, 
+    fnj::function_and_jacobian, 
     initial_guess::Array{T,1}, 
+    parameters_and_solved_vars::Array{T,1},
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1},
     parameters::solver_parameters;
@@ -227,51 +421,45 @@ function newton(f::Function,
     rel_xtol = tol.NSSS_rel_xtol
 
     iterations = 250
-    # transformation_level = 0 # parameters.transformation_level
+    transformation_level = 0 # parameters.transformation_level
 
     @assert size(lower_bounds) == size(upper_bounds) == size(initial_guess)
-    @assert all(lower_bounds .< upper_bounds)
+    # @assert all(lower_bounds .< upper_bounds)
 
-    # function f̂(x) 
-    #     f(undo_transform(x,transformation_level))  
-    # end
+    new_guess = initial_guess # fnj.lu_buffer.b
+    guess_update = fnj.lu_buffer.b
 
-    # upper_bounds  = transform(upper_bounds,transformation_level)
-    # lower_bounds  = transform(lower_bounds,transformation_level)
+    fnj.func(fnj.func_buffer, new_guess, parameters_and_solved_vars)
 
-    # new_guess = copy(transform(initial_guess,transformation_level))
+    new_residuals = fnj.func_buffer
+    # new_residuals = f(new_guess)
 
-    new_guess = copy(initial_guess)
+    ∇ = fnj.jac_buffer
 
-    new_residuals = f(new_guess)
-
-    ∇ = Array{T,2}(undef, length(new_guess), length(new_guess))
-
-    prep = 𝒟.prepare_jacobian(f, backend, new_guess)
-
-    # largest_step = zero(T) + 1
-    # largest_residual = zero(T) + 1
+    sol_cache = fnj.lu_buffer
 
     rel_xtol_reached = 1.0
     rel_ftol_reached = 1.0
     new_residuals_norm = 1.0
     guess_update_norm = 1.0
-    # init_residuals_norm = ℒ.norm(new_residuals)
+    
     iters = [0,0]
-    # resnorm = 1.0
-    # relresnorm = 1.0
+    
+    for iter in 1:iterations
+    
+        if ∇ isa SparseMatrixCSC
+            ∇.nzval .= 0
+        else
+            ∇ .= 0
+        end
 
-	for iter in 1:iterations
-    # while iter < iterations
-        𝒟.jacobian!(f, ∇, prep, backend, new_guess)
+        fnj.jac(∇, new_guess, parameters_and_solved_vars)
 
-        # old_residuals_norm = ℒ.norm(new_residuals)
+        fnj.func(new_residuals, new_guess, parameters_and_solved_vars)
 
-        # old_residuals = copy(new_residuals)
+        finn = has_nonfinite(new_residuals)
 
-        new_residuals = f(new_guess)
-
-        if !all(isfinite,new_residuals) 
+        if finn
             # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
@@ -285,16 +473,27 @@ function newton(f::Function,
             old_residuals_norm = new_residuals_norm
 
             new_residuals_norm = ℒ.norm(new_residuals)
-        
-            ∇̂ = ℒ.lu!(∇, check = false)
-        
-            ℒ.ldiv!(∇̂, new_residuals)
+            
+            if ∇ isa SparseMatrixCSC
+                sol_cache.A = ∇
+                sol_cache.b = new_residuals
+                𝒮.solve!(sol_cache)
+                guess_update .= sol_cache.u
+                new_residuals .= guess_update
+            else
+                fact∇ = ℒ.lu!(∇, check = false)
+                if !ℒ.issuccess(fact∇)
+                    fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+                end
+                ℒ.ldiv!(fact∇, new_residuals)
+            end
 
-            guess_update = new_residuals
+            guess_update_norm = ℒ.norm(new_residuals)
+            ℒ.axpy!(-1, new_residuals, new_guess)
+
+            # guess_update_norm = ℒ.norm(sol_cache.u)
     
-            guess_update_norm = ℒ.norm(guess_update)
-    
-            ℒ.axpy!(-1, guess_update, new_guess)
+            # ℒ.axpy!(-1, sol_cache.u, new_guess)
     
             iters[1] += 1
             iters[2] += 1
@@ -318,40 +517,35 @@ function newton(f::Function,
         #     return undo_transform(new_guess,transformation_level), (iter, zero(T), zero(T), resnorm) # f(undo_transform(new_guess,transformation_level)))
         # end
 
-        ∇̂ = ℒ.lu!(∇, check = false)
-        
-        if !ℒ.issuccess(∇̂)
-            # println("GN factorisation failed after $iter iterations; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
-            rel_xtol_reached = 1.0
-            rel_ftol_reached = 1.0
-            new_residuals_norm = 1.0
-            # iters = [iter,iter]
-            break
+        # sol_cache.A = ∇
+        # sol_cache.b = new_residuals
+        # 𝒮.solve!(sol_cache)
+        # copy!(guess_update, sol_cache.u)
+
+        if ∇ isa SparseMatrixCSC
+            sol_cache.A = ∇
+            sol_cache.b = new_residuals
+            𝒮.solve!(sol_cache)
+            guess_update .= sol_cache.u
+            new_residuals .= guess_update
+        else
+            fact∇ = ℒ.lu!(∇, check = false)
+            if !ℒ.issuccess(fact∇)
+                fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+            end
+            ℒ.ldiv!(fact∇, new_residuals)
         end
 
-        # ∇̂ = try 
-        #     ℒ.factorize(∇)
-        # catch
-        #     # println("GN fact failed after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
-        #     rel_xtol_reached = 1.0
-        #     rel_ftol_reached = 1.0
-        #     new_residuals_norm = 1.0
-        #     break
-        #     # ℒ.svd(fxλp)
-        #     # return undo_transform(new_guess,transformation_level), (iter, largest_step, largest_residual, f(undo_transform(new_guess,transformation_level)))
-        # end
+        guess_update_norm = ℒ.norm(new_residuals)
+        ℒ.axpy!(-1, new_residuals, new_guess)
 
-        # rel_ftol_reached = ℒ.norm(∇̂' \ new_residuals) / new_residuals_norm
+        # guess_update_norm = ℒ.norm(guess_update)
 
-        ℒ.ldiv!(∇̂, new_residuals)
+        # ℒ.axpy!(-1, guess_update, new_guess)
 
-        guess_update = new_residuals
+        finn = has_nonfinite(new_guess)
 
-        guess_update_norm = ℒ.norm(guess_update)
-
-        ℒ.axpy!(-1, guess_update, new_guess)
-
-        if !all(isfinite,new_guess) 
+        if finn
             # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
             rel_xtol_reached = 1.0
             rel_ftol_reached = 1.0
@@ -393,60 +587,78 @@ end
 
 
 # transformation of NSSS problem
-function transform(x::Vector{T}, option::Int, shift::AbstractFloat)::Vector{T} where T <: Real
-    if option == 4
-        return asinh.(asinh.(asinh.(asinh.(x .+ shift))))
-    elseif option == 3
-        return asinh.(asinh.(asinh.(x .+ shift)))
-    elseif option == 2
-        return asinh.(asinh.(x .+ shift))
-    elseif option == 1
-        return asinh.(x .+ shift)
-    else # if option == 0
-        return x .+ shift
-    end
-end
+# function transform(x::Vector{T}, option::Int, shift::AbstractFloat)::Vector{T} where T <: Real
+#     if option == 4
+#         return asinh.(asinh.(asinh.(asinh.(x .+ shift))))
+#     elseif option == 3
+#         return asinh.(asinh.(asinh.(x .+ shift)))
+#     elseif option == 2
+#         return asinh.(asinh.(x .+ shift))
+#     elseif option == 1
+#         return asinh.(x .+ shift)
+#     else # if option == 0
+#         return x .+ shift
+#     end
+# end
 
-function transform(x::Vector{T}, option::Int)::Vector{T} where T <: Real
-    if option == 4
-        return asinh.(asinh.(asinh.(asinh.(x))))
-    elseif option == 3
-        return asinh.(asinh.(asinh.(x)))
-    elseif option == 2
-        return asinh.(asinh.(x))
-    elseif option == 1
-        return asinh.(x)
-    else # if option == 0
-        return x
-    end
-end
+# function transform(x::Vector{T}, option::Int)::Vector{T} where T <: Real
+#     if option == 4
+#         return asinh.(asinh.(asinh.(asinh.(x))))
+#     elseif option == 3
+#         return asinh.(asinh.(asinh.(x)))
+#     elseif option == 2
+#         return asinh.(asinh.(x))
+#     elseif option == 1
+#         return asinh.(x)
+#     else # if option == 0
+#         return x
+#     end
+# end
 
-function undo_transform(x::Vector{T}, option::Int, shift::AbstractFloat)::Vector{T} where T <: Real
-    if option == 4
-        return sinh.(sinh.(sinh.(sinh.(x)))) .- shift
-    elseif option == 3
-        return sinh.(sinh.(sinh.(x))) .- shift
-    elseif option == 2
-        return sinh.(sinh.(x)) .- shift
-    elseif option == 1
-        return sinh.(x) .- shift
-    else # if option == 0
-        return x .- shift
-    end
-end
+# function undo_transform(x::Vector{T}, option::R, shift::AbstractFloat)::Vector{T} where {T,R}
+#     if option == 4
+#         return sinh.(sinh.(sinh.(sinh.(x)))) .- shift
+#     elseif option == 3
+#         return sinh.(sinh.(sinh.(x))) .- shift
+#     elseif option == 2
+#         return sinh.(sinh.(x)) .- shift
+#     elseif option == 1
+#         return sinh.(x) .- shift
+#     else # if option == 0
+#         return x .- shift
+#     end
+# end
 
-function undo_transform(x::Vector{T}, option::Int)::Vector{T} where T <: Real
-    if option == 4
-        return sinh.(sinh.(sinh.(sinh.(x))))
-    elseif option == 3
-        return sinh.(sinh.(sinh.(x)))
-    elseif option == 2
-        return sinh.(sinh.(x))
-    elseif option == 1
-        return sinh.(x)
-    else # if option == 0
-        return x
-    end
-end
+# function undo_transform(x::Vector{T}, option::R)::Vector{T} where {T,R}
+#     if option == 4
+#         return sinh.(sinh.(sinh.(sinh.(x))))
+#     elseif option == 3
+#         return sinh.(sinh.(sinh.(x)))
+#     elseif option == 2
+#         return sinh.(sinh.(x))
+#     elseif option == 1
+#         return sinh.(x)
+#     else # if option == 0
+#         return x
+#     end
+# end
+
+# function undo_transform(x::T, option::R)::T where {T,R}
+
+#     x = ifelse(option == 1, 
+#             sinh(x), 
+#             ifelse(option == 2, 
+#                 sinh(sinh(x)), 
+#                 ifelse(option == 3, 
+#                     sinh(sinh(sinh(x))), 
+#                     ifelse(option == 4, 
+#                         sinh(sinh(sinh(sinh(x)))), 
+#                         x
+#                     )
+#                 )
+#             )
+#         )
+#     return x
+# end
 
 end # dispatch_doctor

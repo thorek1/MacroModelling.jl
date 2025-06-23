@@ -74,7 +74,7 @@ using MacroModelling
 end
 ```
 
-In the background the system of equations is augmented by a series of anticipated shocks added to the equation containing the constraint (max/min operator). This explains the large number of auxilliary variables and shocks.
+In the background the system of equations is augmented by a series of anticipated shocks added to the equation containing the constraint (max/min operator). This explains the large number of auxiliary variables and shocks.
 
 Next we define the parameters including the new parameter defining the effective lower bound (which we set to 1, which implements a zero lower bound):
 
@@ -117,16 +117,16 @@ Next we define the parameters including the new parameter defining the effective
 end
 ```
 
-### Verify the non stochastic steady state
+### Verify the non-stochastic steady state
 
-Let's check out the non stochastic steady state (NSSS):
+Let's check out the non-stochastic steady state (NSSS):
 
 ```@repl howto_obc
 SS(Gali_2015_chapter_3_obc)
 SS(Gali_2015_chapter_3_obc)(:R,:)
 ```
 
-There are a few things to note here. First, we get the NSSS values of the auxilliary variables related to the occasionally binding constraint. Second, the NSSS value of `R` is 1, and thereby the effective lower bound is binding in the NSSS. While this is a viable NSSS it is not a viable approximation point for perturbation. We can only find a perturbation solution if the effective lower bound is not binding in NSSS. Calling `get_solution` reveals that there is no stable solution at this NSSS:
+There are a few things to note here. First, we get the NSSS values of the auxiliary variables related to the occasionally binding constraint. Second, the NSSS value of `R` is 1, and thereby the effective lower bound is binding in the NSSS. While this is a viable NSSS it is not a viable approximation point for perturbation. We can only find a perturbation solution if the effective lower bound is not binding in NSSS. Calling `get_solution` reveals that there is no stable solution at this NSSS:
 
 ```@repl howto_obc
 get_solution(Gali_2015_chapter_3_obc)
@@ -287,7 +287,7 @@ shcks[5] =  3.0
 shcks[10] = 2.0
 shcks[15] = 1.0
 
-sks = KeyedArray(shcks;  Shocks = [:eps_z], Periods = 1:15)
+sks = KeyedArray(shcks;  Shocks = [:eps_z], Periods = 1:15)  # KeyedArray is provided by the `AxisKeys` package
 
 plot_irf(Gali_2015_chapter_3_obc, shocks = sks, periods = 10)
 ```
@@ -366,7 +366,7 @@ We can write this model containing an occasionally binding constraint in a very 
 end
 ```
 
-In the background the system of equations is augmented by a series of anticipated shocks added to the equation containing the constraint (max/min operator). This explains the large number of auxilliary variables and shocks.
+In the background the system of equations is augmented by a series of anticipated shocks added to the equation containing the constraint (max/min operator). This explains the large number of auxiliary variables and shocks.
 
 Next we define the parameters as usual:
 
@@ -383,7 +383,7 @@ end
 
 ### Working with the model
 
-For the non stochastic steady state (NSSS) to exist the constraint has to be binding (`B[0] = m * Y[0]`). This implies a wedge in the Euler equation (`λ > 0`).
+For the non-stochastic steady state (NSSS) to exist the constraint has to be binding (`B[0] = m * Y[0]`). This implies a wedge in the Euler equation (`λ > 0`).
 
 We can check this by getting the NSSS:
 
@@ -420,7 +420,7 @@ shcks = zeros(1,30)
 shcks[10] =  .6
 shcks[30] = -.6
 
-sks = KeyedArray(shcks;  Shocks = [:ε], Periods = 1:30)
+sks = KeyedArray(shcks;  Shocks = [:ε], Periods = 1:30)  # KeyedArray is provided by the `AxisKeys` package
 
 plot_irf(borrowing_constraint, shocks = sks, periods = 50)
 ```

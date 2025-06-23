@@ -99,7 +99,7 @@ end
 
 Having defined parameters and variables with indices in the model block we can also declare parameter values, including by means of calibration equations, in the parameter block.
 
-In the above example we defined the production function fro countries `H` and `F`. Implicitly we have two parameters `alpha` and we can define their value individually by setting
+In the above example we defined the production function for countries `H` and `F`. Implicitly we have two parameters `alpha` and we can define their value individually by setting
 
 ```julia
 alpha{H} = 0.3

@@ -1,6 +1,6 @@
 # Write your first model - simple RBC
 
-The following tutorial will walk you through the steps of writing down a model and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial. For the purpose of this tutorial we will work with a simplified version of a real business cycle (RBC) model. The model laid out below examines capital accumulation, consumption, and random technological progress. Households maximize lifetime utility from consumption, weighing current against future consumption. Firms produce using capital and a stochastic technology factor, setting capital rental rates based on marginal productivity. The model integrates households' decisions, firms' production, and random technological shifts to understand economic growth and dynamics.
+The following tutorial will walk you through the steps of writing down a model and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial. For the purpose of this tutorial we will work with a simplified version of a real business cycle (RBC) model. The model laid out below examines capital accumulation, consumption, and random technological progress. Households maximise lifetime utility from consumption, weighing current against future consumption. Firms produce using capital and a stochastic technology factor, setting capital rental rates based on marginal productivity. The model integrates households' decisions, firms' production, and random technological shifts to understand economic growth and dynamics.
 
 ## RBC - derivation of model equations
 
@@ -126,7 +126,8 @@ Given the equations and parameters, the package will first attempt to solve the 
 
 ## Plot impulse response functions (IRFs)
 
-A useful output to analyze are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non stochastic steady state (SS) and calculates the first order perturbation solution.
+A useful output to analyse are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non-stochastic steady state (SS) and calculates the first order perturbation solution.
+
 
 ```@repl tutorial_1
 import StatsPlots
@@ -165,7 +166,7 @@ The plots show the models endogenous variables in response to random draws for a
 
 ## Plot specific series of shocks
 
-Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or `KeyedArray` of the series of shocks to the `shocks` argument of the [`plot_irf`](@ref) function:
+Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or a `KeyedArray` (the `KeyedArray` type is provided by the `AxisKeys` package) of the series of shocks to the `shocks` argument of the [`plot_irf`](@ref) function:
 
 ```@repl tutorial_1
 shock_series = zeros(1,4)
@@ -224,7 +225,7 @@ get_autocorrelation(RBC)
 
 ## Model solution
 
-A further insightful output are the policy and transition functions of the the first order perturbation solution. To retrieve the solution we call the function [`get_solution`](@ref):
+A further insightful output are the policy and transition functions of the first order perturbation solution. To retrieve the solution we call the function [`get_solution`](@ref):
 
 ```@repl tutorial_1
 get_solution(RBC)
@@ -240,7 +241,7 @@ plot_solution(RBC, :k)
 
 ![RBC solution](../assets/solution__RBC__1.png)
 
-The chart shows the first order perturbation solution mapping from the past state `k` to the present variables of the model. The state variable covers a range of two standard deviations around the non stochastic steady state and all other states remain in the non stochastic steady state.
+The chart shows the first order perturbation solution mapping from the past state `k` to the present variables of the model. The state variable covers a range of two standard deviations around the non-stochastic steady state and all other states remain in the non-stochastic steady state.
 
 ## Obtain array of IRFs or model simulations
 
@@ -251,7 +252,7 @@ For IRFs this is possible by calling [`get_irf`](@ref):
 get_irf(RBC)
 ```
 
-which returns a 3-dimensional `KeyedArray` with variables (absolute deviations from the relevant steady state by default) in rows, the period in columns, and the shocks as the third dimension.
+which returns a 3-dimensional `KeyedArray` (provided by the `AxisKeys` package) with variables (absolute deviations from the relevant steady state by default) in rows, the period in columns, and the shocks as the third dimension.
 
 For simulations this is possible by calling [`simulate`](@ref):
 
@@ -259,7 +260,7 @@ For simulations this is possible by calling [`simulate`](@ref):
 simulate(RBC)
 ```
 
-which returns the simulated data in levels in a 3-dimensional `KeyedArray` of the same structure as for the IRFs.
+which returns the simulated data in levels in a 3-dimensional `KeyedArray` (provided by the `AxisKeys` package) of the same structure as for the IRFs.
 
 ## Conditional forecasts
 
@@ -267,7 +268,7 @@ Conditional forecasting is a useful tool to incorporate for example forecasts in
 
 For example we might be interested in the model dynamics given a path for `c` for the first 4 quarters and the next quarter a negative shock to `eps_z` arrives. This can be implemented using the `get_conditional_forecast` function and visualised with the `plot_conditional_forecast` function.
 
-First, we define the conditions on the endogenous variables as deviations from the non stochastic steady state (`c` in this case) using a `KeyedArray` from the `AxisKeys` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions):
+First, we define the conditions on the endogenous variables as deviations from the non-stochastic steady state (`c` in this case) using a `KeyedArray` from the `AxisKeys` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions):
 
 ```@repl tutorial_1
 using AxisKeys
@@ -275,7 +276,7 @@ conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,4),Variables = [:
 conditions[1:4] .= [-.01,0,.01,.02];
 ```
 
-Note that all other endogenous variables not part of the `KeyedArray` are also not conditioned on.
+Note that all other endogenous variables not part of the `KeyedArray` (provided by the `AxisKeys` package) are also not conditioned on.
 
 Next, we define the conditions on the shocks (`eps_z` in this case) using a `SparseArrayCSC` from the `SparseArrays` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions on the shocks):
 
@@ -293,7 +294,7 @@ Finally we can get the conditional forecast:
 get_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels = false)
 ```
 
-The function returns a `KeyedArray` with the values of the endogenous variables and shocks matching the conditions exactly.
+The function returns a `KeyedArray` (provided by the `AxisKeys` package) with the values of the endogenous variables and shocks matching the conditions exactly.
 
 We can also plot the conditional forecast. Please note that you need to import the `StatsPlots` packages once before the first plot. In order to plot we can use:
 

@@ -28,7 +28,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     string.(Tuple(m.parameters[1:3])), 
                     string.(reshape(m.parameters[1:3],3,1))]
 
-    vars = [:all, :all_excluding_obc, :all_excluding_auxilliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
+    vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
 
     init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
 
@@ -2192,8 +2192,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     get_parameters_defining_parameters(m) 
     get_calibration_equation_parameters(m) 
     get_variables(m) 
-    get_nonnegativity_auxilliary_variables(m) 
-    get_dynamic_auxilliary_variables(m) 
+    get_nonnegativity_auxiliary_variables(m) 
+    get_dynamic_auxiliary_variables(m) 
     get_shocks(m) 
     get_state_variables(m) 
     get_jump_variables(m)

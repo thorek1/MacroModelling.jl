@@ -21,20 +21,22 @@ const default_plot_attributes = Dict(:size=>(700,500),
 
 @stable default_mode = "disable" begin
 """
-```
-gr_backend()
-```
-Renaming and reexport of Plot.jl function `gr()` to define GR.jl as backend
+    gr_backend()
+Renaming and reexport of StatsPlots function `gr()` to define GR.jl as backend.
+
+# Returns
+- `StatsPlots.GRBackend`: backend instance.
 """
 gr_backend(args...; kwargs...) = StatsPlots.gr(args...; kwargs...)
 
 
 
 """
-```
-plotlyjs_backend()
-```
-Renaming and reexport of Plot.jl function `plotlyjs()` to define PlotlyJS.jl as backend
+    plotlyjs_backend()
+Renaming and reexport of StatsPlots function `plotlyjs()` to define PlotlyJS.jl as backend.
+
+# Returns
+- `StatsPlots.PlotlyJSBackend`: backend instance.
 """
 plotlyjs_backend(args...; kwargs...) = StatsPlots.plotlyjs(args...; kwargs...)
 
@@ -47,7 +49,7 @@ Plot model estimates of the variables given the data. The default plot shows the
 The left axis shows the level, and the right the deviation from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks, and number of pages per shock.
 In case `shock_decomposition = true`, the plot shows the variables, shocks, and data in absolute deviations from the relevant steady state as a stacked bar chart per period.
 
-For higher order perturbation solutions the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaciton between (pruned second order) states and contemporaneous shocks.
+For higher order perturbation solutions the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -433,9 +435,11 @@ end
 
 
 
-
 """
 Wrapper for [`plot_model_estimates`](@ref) with `shock_decomposition = true`.
+
+# Returns
+- `Vector{Plot}` of individual plots
 """
 plot_shock_decomposition(args...; kwargs...) =  plot_model_estimates(args...; kwargs..., shock_decomposition = true)
 
@@ -1149,11 +1153,11 @@ plot_forecast_error_variance_decomposition(args...; kwargs...) = plot_conditiona
 
 """
 $(SIGNATURES)
-Plot the solution of the model (mapping of past states to present variables) around the relevant steady state (e.g. higher order perturbation algorithms are centered around the stochastic steady state). Each plot shows the relationship between the chosen state (defined in `state`) and one of the chosen variables (defined in `variables`). 
+Plot the solution of the model (mapping of past states to present variables) around the relevant steady state (e.g. higher order perturbation algorithms are centred around the stochastic steady state). Each plot shows the relationship between the chosen state (defined in `state`) and one of the chosen variables (defined in `variables`). 
 
 The relevant steady state is plotted along with the mapping from the chosen past state to one present variable per plot. All other (non-chosen) states remain in the relevant steady state.
 
-In the case of pruned higher order solutions there are as many (latent) state vectors as the perturbation order. The first and third order baseline state vectors are the non stochastic steady state and the second order baseline state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order baseline state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of inifitely many possible mappings.
+In the case of pruned higher order solutions there are as many (latent) state vectors as the perturbation order. The first and third order baseline state vectors are the non-stochastic steady state and the second order baseline state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order baseline state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non-stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of infinitely many possible mappings.
 
 If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
 
@@ -1307,7 +1311,7 @@ function plot_solution(𝓂::ℳ,
     plot_count = 1
     return_plots = []
 
-    labels = Dict(  :first_order            => ["1st order perturbation",           "Non Stochastic Steady State"],
+    labels = Dict(  :first_order            => ["1st order perturbation",           "Non-stochastic Steady State"],
                     :second_order           => ["2nd order perturbation",           "Stochastic Steady State (2nd order)"],
                     :pruned_second_order    => ["Pruned 2nd order perturbation",    "Stochastic Steady State (Pruned 2nd order)"],
                     :third_order            => ["3rd order perturbation",           "Stochastic Steady State (3rd order)"],
@@ -1519,7 +1523,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
 - $VARIABLES®
-- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state substracted.
+- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
 - $ALGORITHM®
 - `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
 - $SHOW_PLOTS®
@@ -1682,7 +1686,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     var_length = length(full_SS) - 𝓂.timings.nExo
 
     if conditions isa SparseMatrixCSC{Float64}
-        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxilliary variables): " * repr(var_names)
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
 
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
         nzs = findnz(conditions)
@@ -1691,7 +1695,7 @@ function plot_conditional_forecast(𝓂::ℳ,
         end
         conditions = cond_tmp
     elseif conditions isa Matrix{Union{Nothing,Float64}}
-        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxilliary variables): " * repr(var_names)
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
 
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
         cond_tmp[:,axes(conditions,2)] = conditions

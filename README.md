@@ -14,7 +14,7 @@
 
 `MacroModelling.jl` is a Julia package for developing and solving dynamic stochastic general equilibrium (DSGE) models.
 
-These kinds of models describe the behavior of a macroeconomy and are particularly suited for counterfactual analysis (economic policy evaluation) and exploring / quantifying specific mechanisms (academic research). Due to the complexity of these models, efficient numerical tools are required, as analytical solutions are often unavailable. `MacroModelling.jl` serves as a tool for handling the complexities involved, such as forward-looking expectations, nonlinearity, and high dimensionality.
+These kinds of models describe the behaviour of a macroeconomy and are particularly suited for counterfactual analysis (economic policy evaluation) and exploring / quantifying specific mechanisms (academic research). Due to the complexity of these models, efficient numerical tools are required, as analytical solutions are often unavailable. `MacroModelling.jl` serves as a tool for handling the complexities involved, such as forward-looking expectations, nonlinearity, and high dimensionality.
 
 The goal of this package is to reduce coding time and speed up model development by providing functions for working with discrete-time DSGE models. The user-friendly syntax, automatic variable declaration, and effective steady state solver facilitate fast prototyping of models. Furthermore, the package allows the user to work with nonlinear model solutions (up to third order (pruned) perturbation) and estimate the model using gradient based samplers (e.g. NUTS, or HMC). Currently, `DifferentiableStateSpaceModels.jl` is the only other package providing functionality to estimate using gradient based samplers but they use the start-of-period timing convention instead of the end-of-period timing convention used in most other packages. The target audience for the package includes central bankers, regulators, graduate students, and others working in academia with an interest in DSGE modelling.
 
@@ -25,14 +25,14 @@ As of now the package can:
 - calculate **first, second, and third order (pruned) perturbation** solutions using symbolic derivatives
 - handle **occasionally binding constraints** for linear and nonlinear solutions
 - calculate (generalised) impulse response functions, simulate the model, or do conditional forecasts for linear and nonlinear solutions
-- calibrate parameters using (non stochastic) steady state relationships
+- calibrate parameters using (non-stochastic) steady state relationships
 - **match model moments** (also for pruned **higher order** solutions)
 - estimate the model on data (Kalman filter using first order perturbation) with **gradient based samplers** (e.g. NUTS, HMC) or **estimate nonlinear models** using the inversion filter
 - **differentiate** (forward AD) the model solution, Kalman filter loglikelihood (forward and reverse-mode AD), model moments, steady state, **with respect to the parameters**
 
 The package is not:
 
-- guaranteed to find the non stochastic steady state (solving systems of nonlinear equations is an active area of research)
+- guaranteed to find the non-stochastic steady state (solving systems of nonlinear equations is an active area of research)
 - the fastest package around if you already have a fast way to find the NSSS (time to first plot is long, time to second plot (with new parameters) is very short)
 
 For more details have a look at the [documentation](https://thorek1.github.io/MacroModelling.jl/stable).
@@ -102,7 +102,7 @@ The package contains the following models in the `models` folder:
 ||MacroModelling.jl|[dynare](https://www.dynare.org)|[DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl)|[dolo.py](https://www.econforge.org/dolo.py/)|[SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl)|[DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl)|[StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/)|[IRIS](https://iris.igpmn.org)|[RISE](https://github.com/jmaih/RISE_toolbox)|[NBTOOLBOX](https://github.com/Coksp1/NBTOOLBOX/tree/main/Documentation)|[gEcon](http://gecon.r-forge.r-project.org)|[GDSGE](https://www.gdsge.com)|[Taylor Projection](https://sites.google.com/site/orenlevintal/taylor-projection)|
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 **Host language**|julia|MATLAB|julia|Python|julia|julia|julia|MATLAB|MATLAB|MATLAB|R|MATLAB|MATLAB|
-**Non stochastic steady state solver**|*symbolic* or numerical solver of independent blocks; symbolic removal of variables redundant in steady state; inclusion of calibration equations in problem|numerical solver of independent blocks or user-supplied values/functions||numerical solver of independent blocks or user-supplied values/functions|numerical solver|numerical solver or user supplied values/equations|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|user-supplied steady state file or numerical solver|numerical solver; inclusion of calibration equations in problem|||
+**Non-stochastic steady state solver**|*symbolic* or numerical solver of independent blocks; symbolic removal of variables redundant in steady state; inclusion of calibration equations in problem|numerical solver of independent blocks or user-supplied values/functions||numerical solver of independent blocks or user-supplied values/functions|numerical solver|numerical solver or user supplied values/equations|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|user-supplied steady state file or numerical solver|numerical solver; inclusion of calibration equations in problem|||
 **Automatic declaration of variables and parameters**|yes|||||||||||||
 **Derivatives wrt parameters**|yes|||||yes|||||||
 **Perturbation solution order**|1, 2, 3|k|1|1, 2, 3|1, 2, 3|1, 2|1|1|1 to 5|1|1||1 to 5|
