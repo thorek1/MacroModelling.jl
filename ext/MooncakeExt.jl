@@ -23,9 +23,9 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_NSSS_an
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.calculate_first_order_solution), Matrix{R}} where R <: AbstractFloat true
 
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.calculate_second_order_solution), AbstractMatrix{R}, SparseArrays.SparseMatrixCSC{R}, AbstractMatrix{R}, MacroModelling.second_order_auxilliary_matrices, MacroModelling.caches} where R <: AbstractFloat true
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.calculate_second_order_solution), AbstractMatrix{R}, SparseArrays.SparseMatrixCSC{R}, AbstractMatrix{R}, MacroModelling.second_order_auxiliary_matrices, MacroModelling.caches} where R <: AbstractFloat true
 
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.calculate_second_order_solution), AbstractMatrix{R}, SparseArrays.SparseMatrixCSC{R}, SparseArrays.SparseMatrixCSC{R}, AbstractMatrix{R}, SparseArrays.SparseMatrixCSC{R}, MacroModelling.second_order_auxilliary_matrices, MacroModelling.third_order_auxilliary_matrices, MacroModelling.caches} where R <: AbstractFloat true
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.calculate_second_order_solution), AbstractMatrix{R}, SparseArrays.SparseMatrixCSC{R}, SparseArrays.SparseMatrixCSC{R}, AbstractMatrix{R}, SparseArrays.SparseMatrixCSC{R}, MacroModelling.second_order_auxiliary_matrices, MacroModelling.third_order_auxiliary_matrices, MacroModelling.caches} where R <: AbstractFloat true
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.solve_lyapunov_equation), AbstractMatrix{R}, AbstractMatrix{R}} where R <: AbstractFloat true
 
