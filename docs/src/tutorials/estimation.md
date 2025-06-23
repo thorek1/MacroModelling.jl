@@ -99,11 +99,10 @@ data = data(observables,:)
 Next we define the parameter priors using the Turing package. The `@model` macro of the Turing package allows us to define the prior distributions over the parameters and combine it with the (Kalman filter) loglikelihood of the model and parameters given the data with the help of the `get_loglikelihood` function. We define the prior distributions in an array and pass it on to the `arraydist` function inside the `@model` macro from the Turing package. It is also possible to define the prior distributions inside the macro but especially for reverse mode auto differentiation the `arraydist` function is substantially faster. When defining the prior distributions we can rely n the distribution implemented in the Distributions package. Note that the `μσ` parameter allows us to hand over the moments (`μ` and `σ`) of the distribution as parameters in case of the non-normal distributions (Gamma, Beta, InverseGamma), and we can also define upper and lower bounds truncating the distribution as third and fourth arguments to the distribution functions. Last but not least, we define the loglikelihood and add it to the posterior loglikelihood with the help of the `@addlogprob!` macro.
 
 ```@repl tutorial_2
-import Zygote
+import Mooncake
 import DynamicPPL
 import Turing
 import Turing: NUTS, sample, logpdf, Beta, Normal, InverseGamma
-import ADTypes: AutoZygote
 
 prior_distributions = [
     Beta(0.356, 0.02, Val(:μσ)),           # alp
@@ -137,7 +136,7 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000);
 
 n_samples = 1000
 
-chain_NUTS  = sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = false);
+chain_NUTS  = sample(FS2000_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = false);
 ```
 
 ### Inspect posterior
@@ -211,7 +210,7 @@ Other than the mean and median of the posterior distribution we can also calcula
 
 ```@repl tutorial_2
 modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
-                                        adtype = AutoZygote(), 
+                                        adtype = AutoMooncake(; config=nothing), 
                                         initial_params = FS2000.parameter_values)
 ```
 
