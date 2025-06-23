@@ -1,9 +1,8 @@
 using MacroModelling
 import Turing
-import ADTypes
+import Mooncake
 import Pigeons
-import Turing: NUTS, sample, logpdf, PG, IS
-import ADTypes: AutoZygote
+import Turing: AutoMooncake, NUTS, sample, logpdf, PG, IS, Beta, Normal, InverseGamma
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
@@ -36,14 +35,14 @@ include("models/Caldara_et_al_2012_estim.jl")
 dists = [
     Normal(0, 1),                           # dȳ
     Normal(0, 1),                           # dc̄
-    Beta(0.95, 0.005, μσ = true),           # β
-    Beta(0.33, 0.05, μσ = true),            # ζ
-    Beta(0.02, 0.01, μσ = true),            # δ
-    Beta(0.75, 0.01, μσ = true),            # λ
+    Beta(0.95, 0.005, Val(:μσ)),           # β
+    Beta(0.33, 0.05, Val(:μσ)),            # ζ
+    Beta(0.02, 0.01, Val(:μσ)),            # δ
+    Beta(0.75, 0.01, Val(:μσ)),            # λ
     Normal(1, .25),                         # ψ
-    InverseGamma(0.021, Inf, μσ = true),    # σ̄
-    InverseGamma(0.1, Inf, μσ = true),      # η
-    Beta(0.75, 0.02, μσ = true)             # ρ
+    InverseGamma(0.021, Inf, Val(:μσ)),    # σ̄
+    InverseGamma(0.1, Inf, Val(:μσ)),      # η
+    Beta(0.75, 0.02, Val(:μσ))             # ρ
 ]
 
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
@@ -72,7 +71,7 @@ mode_estimateNM = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood,
 
 mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
                                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                                adtype = ADTypes.AutoZygote(),
+                                                adtype = AutoMooncake(; config=nothing),
 
                                                 iterations = 100,
                                                 # show_trace = true,
@@ -85,10 +84,10 @@ println("Mode variable values (L-BFGS): $init_params")
 
 n_samples = 100
 
-samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = init_params)
+samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = init_params)
 
 
-println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
@@ -161,15 +160,15 @@ println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 
 
 # Turing.@model function FS2000_loglikelihood_function(data, m)
-#     alp     ~ Beta(0.356, 0.02, μσ = true)
-#     bet     ~ Beta(0.993, 0.002, μσ = true)
+#     alp     ~ Beta(0.356, 0.02, Val(:μσ))
+#     bet     ~ Beta(0.993, 0.002, Val(:μσ))
 #     gam     ~ Normal(0.0085, 0.003)
 #     mst     ~ Normal(1.0002, 0.007)
-#     rho     ~ Beta(0.129, 0.223, μσ = true)
-#     psi     ~ Beta(0.65, 0.05, μσ = true)
-#     del     ~ Beta(0.01, 0.005, μσ = true)
-#     z_e_a   ~ InverseGamma(0.035449, Inf, μσ = true)
-#     z_e_m   ~ InverseGamma(0.008862, Inf, μσ = true)
+#     rho     ~ Beta(0.129, 0.223, Val(:μσ))
+#     psi     ~ Beta(0.65, 0.05, Val(:μσ))
+#     del     ~ Beta(0.01, 0.005, Val(:μσ))
+#     z_e_a   ~ InverseGamma(0.035449, Inf, Val(:μσ))
+#     z_e_m   ~ InverseGamma(0.008862, Inf, Val(:μσ))
 #     # println([alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m])
 #     Turing.@addlogprob! get_loglikelihood(m, data, [alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m], algorithm = :pruned_second_order)
 # end
@@ -200,15 +199,15 @@ println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 #             log_lik -= get_loglikelihood(Caldara_et_al_2012_estim, data, x, algorithm = :pruned_third_order)
 #             log_lik -= logpdf(Normal(0, 1),dȳ)
 #             log_lik -= logpdf(Normal(0, 1),dc̄)
-#             log_lik -= logpdf(Beta(0.993, 0.05, μσ = true),β)
-#             log_lik -= logpdf(Beta(0.356, 0.05, μσ = true),ζ)
-#             log_lik -= logpdf(Beta(0.02, 0.01, μσ = true),δ)
-#             log_lik -= logpdf(Beta(0.5, 0.25, μσ = true),λ)
+#             log_lik -= logpdf(Beta(0.993, 0.05, Val(:μσ)),β)
+#             log_lik -= logpdf(Beta(0.356, 0.05, Val(:μσ)),ζ)
+#             log_lik -= logpdf(Beta(0.02, 0.01, Val(:μσ)),δ)
+#             log_lik -= logpdf(Beta(0.5, 0.25, Val(:μσ)),λ)
 #             log_lik -= logpdf(Normal(1, .25),ψ)
 #             # log_lik -= logpdf(Normal(40, 10),γ)
-#             log_lik -= logpdf(InverseGamma(0.021, Inf, μσ = true),σ̄)
-#             log_lik -= logpdf(InverseGamma(0.1, Inf, μσ = true),η)
-#             log_lik -= logpdf(Beta(0.5, 0.25, μσ = true),ρ)
+#             log_lik -= logpdf(InverseGamma(0.021, Inf, Val(:μσ)),σ̄)
+#             log_lik -= logpdf(InverseGamma(0.1, Inf, Val(:μσ)),η)
+#             log_lik -= logpdf(Beta(0.5, 0.25, Val(:μσ)),ρ)
         
 #             return log_lik
 #         end, parameters)
@@ -219,15 +218,15 @@ println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 #     log_lik -= get_loglikelihood(Caldara_et_al_2012_estim, data, parameters, algorithm = :pruned_third_order)
 #     log_lik -= logpdf(Normal(0, 1),dȳ)
 #     log_lik -= logpdf(Normal(0, 1),dc̄)
-#     log_lik -= logpdf(Beta(0.95, 0.005, μσ = true),β)
-#     log_lik -= logpdf(Beta(0.33, 0.05, μσ = true),ζ)
-#     log_lik -= logpdf(Beta(0.02, 0.01, μσ = true),δ)
-#     log_lik -= logpdf(Beta(0.75, 0.01, μσ = true),λ)
+#     log_lik -= logpdf(Beta(0.95, 0.005, Val(:μσ)),β)
+#     log_lik -= logpdf(Beta(0.33, 0.05, Val(:μσ)),ζ)
+#     log_lik -= logpdf(Beta(0.02, 0.01, Val(:μσ)),δ)
+#     log_lik -= logpdf(Beta(0.75, 0.01, Val(:μσ)),λ)
 #     log_lik -= logpdf(Normal(1, .25),ψ)
 #     # log_lik -= logpdf(Normal(40, 10),γ)
-#     log_lik -= logpdf(InverseGamma(0.021, Inf, μσ = true),σ̄)
-#     log_lik -= logpdf(InverseGamma(0.1, Inf, μσ = true),η)
-#     log_lik -= logpdf(Beta(0.75, 0.02, μσ = true),ρ)
+#     log_lik -= logpdf(InverseGamma(0.021, Inf, Val(:μσ)),σ̄)
+#     log_lik -= logpdf(InverseGamma(0.1, Inf, Val(:μσ)),η)
+#     log_lik -= logpdf(Beta(0.75, 0.02, Val(:μσ)),ρ)
 #     println(log_lik)
 #     return log_lik
 # end

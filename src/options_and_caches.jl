@@ -175,11 +175,3 @@ function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol 
 end
 
 end # dispatch_doctor
-
-const default_plot_attributes = Dict(:size=>(700,500),
-                                :plot_titlefont => 10, 
-                                :titlefont => 10, 
-                                :guidefont => 8, 
-                                :legendfontsize => 8, 
-                                :tickfontsize => 8,
-                                :framestyle => :semi)
