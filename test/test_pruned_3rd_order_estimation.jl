@@ -1,9 +1,8 @@
 using MacroModelling
 import Turing
-import ADTypes
+import Mooncake
 import Pigeons
 import Turing: NUTS, sample, logpdf, PG, IS, Beta, Normal, InverseGamma
-import ADTypes: AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
@@ -72,7 +71,7 @@ mode_estimateNM = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood,
 
 mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
                                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                                adtype = ADTypes.AutoZygote(),
+                                                adtype = AutoMooncake(; config=nothing),
 
                                                 iterations = 100,
                                                 # show_trace = true,
@@ -85,10 +84,10 @@ println("Mode variable values (L-BFGS): $init_params")
 
 n_samples = 100
 
-samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = init_params)
+samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = init_params)
 
 
-println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
