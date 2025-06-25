@@ -1,4 +1,8 @@
 import LaTeXStrings
+
+const irf_active_plot_container = []
+const model_estimates_active_plot_container = []
+
 @stable default_mode = "disable" begin
 """
     gr_backend()
@@ -123,6 +127,25 @@ function plot_model_estimates(𝓂::ℳ,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                                 lyapunov_algorithm::Symbol = :doubling)
     # @nospecialize # reduce compile time                            
+
+    args_and_kwargs = Dict(:model_name => 𝓂.model_name,
+                           :data => data,
+                           :parameters => parameters,
+                           :algorithm => algorithm,
+                           :filter => filter,
+                           :warmup_iterations => warmup_iterations,
+                           :variables => variables,
+                           :shocks => shocks,
+                           :presample_periods => presample_periods,
+                           :data_in_levels => data_in_levels,
+                           :shock_decomposition => shock_decomposition,
+                           :smooth => smooth,
+                           :tol => tol,
+                           :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
+                           :sylvester_algorithm => sylvester_algorithm,
+                           :lyapunov_algorithm => lyapunov_algorithm)
+
+    push!(model_estimates_active_plot_container, args_and_kwargs)
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -488,7 +511,7 @@ plot_irf(RBC)
 function plot_irf(𝓂::ℳ;
                     periods::Int = 40, 
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
-                    variables::Union{Symbol_input,String_input} = :all_excluding_auxilliary_and_obc,
+                    variables::Union{Symbol_input,String_input} = :all_excluding_auxiliary_and_obc,
                     parameters::ParameterType = nothing,
                     show_plots::Bool = true,
                     save_plots::Bool = false,
@@ -769,6 +792,9 @@ function plot_irf(𝓂::ℳ;
 
     return_plots = []
 
+    shock_names = []
+    variable_names = []
+
     for shock in 1:length(shock_idx)
         n_subplots = length(var_idx)
         pp = []
@@ -786,9 +812,17 @@ function plot_irf(𝓂::ℳ;
             can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
 
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
+                variable_name = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]])
+
+                new_name  = setdiff(variable_name, variable_names)
+                
+                if length(new_name) > 0
+                    push!(variable_names, (new_name))
+                end
+
                 push!(pp,begin
                                 StatsPlots.plot(Y[i,:,shock] .+ SS,
-                                                title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
+                                                title = variable_name,
                                                 ylabel = "Level",
                                                 label = "")
 
@@ -812,15 +846,36 @@ function plot_irf(𝓂::ℳ;
                     if shocks == :simulate
                         shock_string = ": simulate all"
                         shock_name = "simulation"
+
+                        new_shock  = setdiff(shock_name, shock_names)
+                        
+                        if length(new_shock) > 0
+                            push!(shock_names, (new_shock))
+                        end
                     elseif shocks == :none
                         shock_string = ""
                         shock_name = "no_shock"
+                        new_shock  = setdiff(shock_name, shock_names)
+                        
+                        if length(new_shock) > 0
+                            push!(shock_names, (new_shock))
+                        end
                     elseif shocks isa Union{Symbol_input,String_input}
                         shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
                         shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                        new_shock  = setdiff(shock_name, shock_names)
+                        
+                        if length(new_shock) > 0
+                            push!(shock_names, (new_shock))
+                        end
                     else
                         shock_string = "Series of shocks"
                         shock_name = "shock_matrix"
+                        new_shock  = setdiff(shock_name, shock_names)
+                        
+                        if length(new_shock) > 0
+                            push!(shock_names, (new_shock))
+                        end
                     end
 
                     p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
@@ -846,15 +901,35 @@ function plot_irf(𝓂::ℳ;
             if shocks == :simulate
                 shock_string = ": simulate all"
                 shock_name = "simulation"
+                new_shock  = setdiff(shock_name, shock_names)
+                
+                if length(new_shock) > 0
+                    push!(shock_names, (new_shock))
+                end
             elseif shocks == :none
                 shock_string = ""
                 shock_name = "no_shock"
+                new_shock  = setdiff(shock_name, shock_names)
+                
+                if length(new_shock) > 0
+                    push!(shock_names, (new_shock))
+                end
             elseif shocks isa Union{Symbol_input,String_input}
                 shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
                 shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                new_shock  = setdiff(shock_name, shock_names)
+                
+                if length(new_shock) > 0
+                    push!(shock_names, (new_shock))
+                end
             else
                 shock_string = "Series of shocks"
                 shock_name = "shock_matrix"
+                new_shock  = setdiff(shock_name, shock_names)
+                
+                if length(new_shock) > 0
+                    push!(shock_names, (new_shock))
+                end
             end
 
             p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
@@ -870,6 +945,34 @@ function plot_irf(𝓂::ℳ;
             end
         end
     end
+
+
+    args_and_kwargs = Dict(:model_name => 𝓂.model_name,
+                           :periods => periods,
+                           :shocks => shocks,
+                           :variables => variables,
+                           :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
+                           :algorithm => algorithm,
+                           :shock_size => shock_size,
+                           :negative_shock => negative_shock,
+                           :generalised_irf => generalised_irf,
+                           :initial_state => initial_state,
+                           :ignore_obc => ignore_obc,
+                           :tol => tol,
+                           :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
+                           :sylvester_algorithm => sylvester_algorithm,
+                           :lyapunov_algorithm => lyapunov_algorithm,
+                           :plot_data => Y,
+                           :variable_names => variable_names,
+                           :shock_names => shock_names,
+                           :shock_idx => shock_idx,
+                           :var_idx => var_idx)
+
+    while length(irf_active_plot_container) > 0
+        pop!(irf_active_plot_container)
+    end
+    
+    push!(irf_active_plot_container, args_and_kwargs)
 
     return return_plots
 end
