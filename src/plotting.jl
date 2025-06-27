@@ -1,7 +1,7 @@
 import LaTeXStrings
 
-const irf_active_plot_container = []
-const model_estimates_active_plot_container = []
+const irf_active_plot_container = Dict[]
+const model_estimates_active_plot_container = Dict[]
 
 @stable default_mode = "disable" begin
 """
@@ -977,6 +977,472 @@ function plot_irf(𝓂::ℳ;
     return return_plots
 end
 
+
+
+function plot_irf!(𝓂::ℳ;
+                    periods::Int = 40, 
+                    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
+                    variables::Union{Symbol_input,String_input} = :all_excluding_auxiliary_and_obc,
+                    parameters::ParameterType = nothing,
+                    show_plots::Bool = true,
+                    save_plots::Bool = false,
+                    save_plots_format::Symbol = :pdf,
+                    save_plots_path::String = ".",
+                    plots_per_page::Int = 9, 
+                    algorithm::Symbol = :first_order,
+                    shock_size::Real = 1,
+                    negative_shock::Bool = false,
+                    generalised_irf::Bool = false,
+                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+                    ignore_obc::Bool = false,
+                    plot_attributes::Dict = Dict(),
+                    verbose::Bool = false,
+                    tol::Tolerances = Tolerances(),
+                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
+                    lyapunov_algorithm::Symbol = :doubling)
+    # @nospecialize # reduce compile time                
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
+                    lyapunov_algorithm = lyapunov_algorithm)
+
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
+                
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
+
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+    
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+
+    stochastic_model = length(𝓂.timings.exo) > 0
+
+    obc_model = length(𝓂.obc_violation_equations) > 0
+
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        shock_idx = 1
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ"),:]) > 1e-10
+    elseif shocks isa KeyedArray{Float64}
+        shock_idx = 1
+
+        obc_shocks = 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(obc_shocks, axiskeys(shocks,1)),:)) > 1e-10
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+
+        obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
+    end
+
+    if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
+        periods = max(periods, size(shocks)[2])
+    end
+
+    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+
+    if ignore_obc
+        occasionally_binding_constraints = false
+    else
+        occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
+    end
+
+    solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
+    
+    unspecified_initial_state = initial_state == [0.0]
+
+    if unspecified_initial_state
+        if algorithm == :pruned_second_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+        else
+            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
+        end
+    else
+        if initial_state isa Vector{Float64}
+            if algorithm == :pruned_second_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
+            elseif algorithm == :pruned_third_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+            else
+                initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
+            end
+        else
+            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+            end
+        end
+    end
+    
+
+    if occasionally_binding_constraints
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
+    elseif obc_shocks_included
+        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks without enforcing the constraint is only compatible with first order perturbation solutions."
+
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
+    else
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+    end
+
+    if generalised_irf
+        Y = girf(state_update, 
+                    initial_state, 
+                    zeros(𝓂.timings.nVars), 
+                    𝓂.timings; 
+                    periods = periods, 
+                    shocks = shocks, 
+                    shock_size = shock_size,
+                    variables = variables, 
+                    negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
+    else
+        if occasionally_binding_constraints
+            function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
+                unconditional_forecast_horizon = 𝓂.max_obc_horizon
+
+                reference_ss = 𝓂.solution.non_stochastic_steady_state
+
+                obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+
+                periods_per_shock = 𝓂.max_obc_horizon + 1
+                
+                num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
+                
+                p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
+
+                constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
+
+                if constraints_violated
+                    opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
+                    # check whether auglag is more reliable and efficient here
+                    opt.min_objective = obc_objective_optim_fun
+
+                    opt.xtol_abs = eps(Float32)
+                    opt.ftol_abs = eps(Float32)
+                    opt.maxeval = 500
+                    
+                    # Adding constraints
+                    # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
+                    # upper bounds don't work because it can be that bounds can only be enforced with offsetting (previous periods negative shocks) positive shocks. also in order to enforce the bound over the length of the forecasting horizon the shocks might be in the last period. that's why an approach whereby you increase the anticipation horizon of shocks can be more costly due to repeated computations.
+                    # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
+
+                    upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
+                    
+                    NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
+
+                    (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
+                    
+                    # solved = ret ∈ Symbol.([
+                    #     NLopt.SUCCESS,
+                    #     NLopt.STOPVAL_REACHED,
+                    #     NLopt.FTOL_REACHED,
+                    #     NLopt.XTOL_REACHED,
+                    #     NLopt.ROUNDOFF_LIMITED,
+                    # ])
+                    
+                    present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
+
+                    constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
+
+                    solved = !constraints_violated
+                else
+                    solved = true
+                end
+                # if constraints_violated
+                #     obc_shock_timing = convert_superscript_to_integer.(string.(𝓂.timings.exo[obc_shock_idx]))
+                
+                #     for anticipated_shock_horizon in 1:periods_per_shock
+                #         anticipated_shock_subset = obc_shock_timing .< anticipated_shock_horizon
+                    
+                #         function obc_violation_function_wrapper(x::Vector{T}) where T
+                #             y = zeros(T, length(anticipated_shock_subset))
+                        
+                #             y[anticipated_shock_subset] = x
+                        
+                #             return 𝓂.obc_violation_function(y, p)
+                #         end
+                        
+                #         opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks * anticipated_shock_horizon)
+                        
+                #         opt.min_objective = obc_objective_optim_fun
+
+                #         opt.xtol_rel = eps()
+                        
+                #         # Adding constraints
+                #         # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock)
+                #         # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
+
+                #         upper_bounds = fill(eps(), 1 + 2*(num_shocks*periods_per_shock-1))
+                        
+                #         NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, obc_violation_function_wrapper), upper_bounds)
+
+                #         (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks * anticipated_shock_horizon))
+                        
+                #         solved = ret ∈ Symbol.([
+                #             NLopt.SUCCESS,
+                #             NLopt.STOPVAL_REACHED,
+                #             NLopt.FTOL_REACHED,
+                #             NLopt.XTOL_REACHED,
+                #             NLopt.ROUNDOFF_LIMITED,
+                #         ])
+                        
+                #         present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")][anticipated_shock_subset] .= x
+
+                #         constraints_violated = any(𝓂.obc_violation_function(present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")], p) .> eps(Float32))
+                        
+                #         solved = solved && !constraints_violated
+
+                #         if solved break end
+                #     end
+
+                #     solved = !any(𝓂.obc_violation_function(present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")], p) .> eps(Float32))
+                # else
+                #     solved = true
+                # end
+
+                present_states = state_update(present_states, present_shocks)
+
+                return present_states, present_shocks, solved
+            end
+
+            Y =  irf(state_update,
+                    obc_state_update,
+                    initial_state, 
+                    zeros(𝓂.timings.nVars),
+                    𝓂.timings;
+                    periods = periods, 
+                    shocks = shocks, 
+                    shock_size = shock_size,
+                    variables = variables, 
+                    negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        else
+            Y = irf(state_update, 
+                    initial_state, 
+                    zeros(𝓂.timings.nVars),
+                    𝓂.timings;
+                    periods = periods, 
+                    shocks = shocks, 
+                    shock_size = shock_size,
+                    variables = variables, 
+                    negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        end
+    end
+
+    shock_dir = negative_shock ? "Shock⁻" : "Shock⁺"
+
+    if shocks == :none
+        shock_dir = ""
+    end
+    if shocks == :simulate
+        shock_dir = "Shocks"
+    end
+    if !(shocks isa Union{Symbol_input,String_input})
+        shock_dir = ""
+    end
+
+    return_plots = []
+
+    shock_names = []
+    variable_names = []
+
+    for shock in 1:length(shock_idx)
+        n_subplots = length(var_idx)
+        pp = []
+        pane = 1
+        plot_count = 1
+        for i in 1:length(var_idx)
+            if all(isapprox.(Y[i,:,shock], 0, atol = eps(Float32)))
+                n_subplots -= 1
+            end
+        end
+
+        for i in 1:length(var_idx)
+            SS = reference_steady_state[var_idx[i]]
+
+            can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
+
+            if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
+                variable_name = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]])
+
+                new_name  = setdiff(variable_name, variable_names)
+                
+                if length(new_name) > 0
+                    push!(variable_names, (new_name))
+                end
+
+                push!(pp,begin
+                                StatsPlots.plot(Y[i,:,shock] .+ SS,
+                                                title = variable_name,
+                                                ylabel = "Level",
+                                                label = "")
+
+                                if can_dual_axis
+                                    StatsPlots.plot!(StatsPlots.twinx(), 
+                                                        100*((Y[i,:,shock] .+ SS) ./ SS .- 1), 
+                                                        ylabel = LaTeXStrings.L"\% \Delta", 
+                                                        label = "") 
+                                end
+
+                                StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS], 
+                                                    color = :black, 
+                                                    label = "")                               
+                end)
+
+                if !(plot_count % plots_per_page == 0)
+                    plot_count += 1
+                else
+                    plot_count = 1
+
+                    if shocks == :simulate
+                        shock_string = ": simulate all"
+                        shock_name = "simulation"
+
+                        new_shock  = setdiff(shock_name, shock_names)
+                        
+                        if length(new_shock) > 0
+                            push!(shock_names, (new_shock))
+                        end
+                    elseif shocks == :none
+                        shock_string = ""
+                        shock_name = "no_shock"
+                        new_shock  = setdiff(shock_name, shock_names)
+                        
+                        if length(new_shock) > 0
+                            push!(shock_names, (new_shock))
+                        end
+                    elseif shocks isa Union{Symbol_input,String_input}
+                        shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                        shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                        new_shock  = setdiff(shock_name, shock_names)
+                        
+                        if length(new_shock) > 0
+                            push!(shock_names, (new_shock))
+                        end
+                    else
+                        shock_string = "Series of shocks"
+                        shock_name = "shock_matrix"
+                        new_shock  = setdiff(shock_name, shock_names)
+                        
+                        if length(new_shock) > 0
+                            push!(shock_names, (new_shock))
+                        end
+                    end
+
+                    p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
+
+                    push!(return_plots,p)
+
+                    if show_plots
+                        display(p)
+                    end
+
+                    if save_plots
+                        StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                    end
+
+                    pane += 1
+
+                    pp = []
+                end
+            end
+        end
+        
+        if length(pp) > 0
+            if shocks == :simulate
+                shock_string = ": simulate all"
+                shock_name = "simulation"
+                new_shock  = setdiff(shock_name, shock_names)
+                
+                if length(new_shock) > 0
+                    push!(shock_names, (new_shock))
+                end
+            elseif shocks == :none
+                shock_string = ""
+                shock_name = "no_shock"
+                new_shock  = setdiff(shock_name, shock_names)
+                
+                if length(new_shock) > 0
+                    push!(shock_names, (new_shock))
+                end
+            elseif shocks isa Union{Symbol_input,String_input}
+                shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                new_shock  = setdiff(shock_name, shock_names)
+                
+                if length(new_shock) > 0
+                    push!(shock_names, (new_shock))
+                end
+            else
+                shock_string = "Series of shocks"
+                shock_name = "shock_matrix"
+                new_shock  = setdiff(shock_name, shock_names)
+                
+                if length(new_shock) > 0
+                    push!(shock_names, (new_shock))
+                end
+            end
+
+            p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
+
+            push!(return_plots,p)
+
+            if show_plots
+                display(p)
+            end
+
+            if save_plots
+                StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+            end
+        end
+    end
+
+
+    args_and_kwargs = Dict(:model_name => 𝓂.model_name,
+                           :periods => periods,
+                           :shocks => shocks,
+                           :variables => variables,
+                           :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
+                           :algorithm => algorithm,
+                           :shock_size => shock_size,
+                           :negative_shock => negative_shock,
+                           :generalised_irf => generalised_irf,
+                           :initial_state => initial_state,
+                           :ignore_obc => ignore_obc,
+                           :tol => tol,
+                           :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
+                           :sylvester_algorithm => sylvester_algorithm,
+                           :lyapunov_algorithm => lyapunov_algorithm,
+                           :plot_data => Y,
+                           :variable_names => variable_names,
+                           :shock_names => shock_names,
+                           :shock_idx => shock_idx,
+                           :var_idx => var_idx)
+
+    push!(irf_active_plot_container, args_and_kwargs)
+
+    return return_plots
+end
 
 
 

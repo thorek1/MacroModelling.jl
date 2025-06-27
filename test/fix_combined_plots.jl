@@ -17,3 +17,9 @@ end;
 end;
 
 plot_irf(RBC)
+
+MacroModelling.plot_irf!(RBC, parameters = :std_z => 0.012)
+
+MacroModelling.irf_active_plot_container
+
+MacroModelling.compare_args_and_kwargs(MacroModelling.irf_active_plot_container)

@@ -267,6 +267,49 @@ check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋�
 
 end # dispatch_doctor
 
+function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
+    N = length(dicts)
+    @assert N ≥ 2 "Need at least two dictionaries to compare"
+
+    diffs = Dict{Symbol,Any}()
+
+    # assume all dictionaries share the same set of keys
+    for k in keys(dicts[1])
+        if k in [:plot_data, :plot_type]
+            # skip keys that are not relevant for comparison
+            continue
+        end
+
+        vals = [d[k] for d in dicts]
+
+        if all(v -> v isa Dict, vals)
+            # recurse into nested dictionaries
+            nested = compare_args_and_kwargs(vals)
+            if !isempty(nested)
+                diffs[k] = nested
+            end
+
+        elseif all(v -> v isa AbstractArray, vals)
+            # compare by length and elementwise equality
+            base = vals[1]
+            identical = all(v -> length(v) == length(base) && all(v .== base), vals[2:end])
+            if !identical
+                diffs[k] = vals
+            end
+
+        else
+            # scalar or other types
+            identical = all(v -> v == vals[1], vals[2:end])
+            if !identical
+                diffs[k] = vals
+            end
+        end
+    end
+
+    return diffs
+end
+
+
 function mul_reverse_AD!(   C::Matrix{S},
                             A::AbstractMatrix{M},
                             B::AbstractMatrix{N}) where {S <: Real, M <: Real, N <: Real}
