@@ -30,7 +30,7 @@ backend = 𝒟.AutoForwardDiff()
 # 𝒷 = Diffractor.DiffractorForwardBackend
 
 import LoopVectorization: @turbo
-import Polyester
+# import Polyester
 import NLopt
 import Optim, LineSearches
 # import Zygote
@@ -1659,66 +1659,66 @@ function compressed_kron³(a::AbstractMatrix{T};
 end
 
 
-function kron³(A::AbstractSparseMatrix{T}, M₃::third_order_auxiliary_matrices) where T <: Real
-    rows, cols, vals = findnz(A)
+# function kron³(A::AbstractSparseMatrix{T}, M₃::third_order_auxiliary_matrices) where T <: Real
+#     rows, cols, vals = findnz(A)
 
-    # Dictionary to accumulate sums of values for each coordinate
-    result_dict = Dict{Tuple{Int, Int}, T}()
+#     # Dictionary to accumulate sums of values for each coordinate
+#     result_dict = Dict{Tuple{Int, Int}, T}()
 
-    # Using a single iteration over non-zero elements
-    nvals = length(vals)
+#     # Using a single iteration over non-zero elements
+#     nvals = length(vals)
 
-    lk = ReentrantLock()
+#     lk = ReentrantLock()
 
-    Polyester.@batch for i in 1:nvals
-    # for i in 1:nvals
-        for j in 1:nvals
-            for k in 1:nvals
-                r1, c1, v1 = rows[i], cols[i], vals[i]
-                r2, c2, v2 = rows[j], cols[j], vals[j]
-                r3, c3, v3 = rows[k], cols[k], vals[k]
+#     Polyester.@batch for i in 1:nvals
+#     # for i in 1:nvals
+#         for j in 1:nvals
+#             for k in 1:nvals
+#                 r1, c1, v1 = rows[i], cols[i], vals[i]
+#                 r2, c2, v2 = rows[j], cols[j], vals[j]
+#                 r3, c3, v3 = rows[k], cols[k], vals[k]
                 
-                sorted_cols = [c1, c2, c3]
-                sorted_rows = [r1, r2, r3] # a lot of time spent here
-                sort!(sorted_rows, rev = true) # a lot of time spent here
+#                 sorted_cols = [c1, c2, c3]
+#                 sorted_rows = [r1, r2, r3] # a lot of time spent here
+#                 sort!(sorted_rows, rev = true) # a lot of time spent here
                 
-                if haskey(M₃.𝐈₃, sorted_cols) # && haskey(M₃.𝐈₃, sorted_rows) # a lot of time spent here
-                    row_idx = M₃.𝐈₃[sorted_rows]
-                    col_idx = M₃.𝐈₃[sorted_cols]
+#                 if haskey(M₃.𝐈₃, sorted_cols) # && haskey(M₃.𝐈₃, sorted_rows) # a lot of time spent here
+#                     row_idx = M₃.𝐈₃[sorted_rows]
+#                     col_idx = M₃.𝐈₃[sorted_cols]
 
-                    key = (row_idx, col_idx)
+#                     key = (row_idx, col_idx)
 
-                    # begin
-                    #     lock(lk)
-                    #     try
-                            if haskey(result_dict, key)
-                                result_dict[key] += v1 * v2 * v3
-                            else
-                                result_dict[key] = v1 * v2 * v3
-                            end
-                    #     finally
-                    #         unlock(lk)
-                    #     end
-                    # end
-                end
-            end
-        end
-    end
+#                     # begin
+#                     #     lock(lk)
+#                     #     try
+#                             if haskey(result_dict, key)
+#                                 result_dict[key] += v1 * v2 * v3
+#                             else
+#                                 result_dict[key] = v1 * v2 * v3
+#                             end
+#                     #     finally
+#                     #         unlock(lk)
+#                     #     end
+#                     # end
+#                 end
+#             end
+#         end
+#     end
 
-    # Extract indices and values from the dictionary
-    result_rows = Int[]
-    result_cols = Int[]
-    result_vals = T[]
+#     # Extract indices and values from the dictionary
+#     result_rows = Int[]
+#     result_cols = Int[]
+#     result_vals = T[]
 
-    for (ks, valu) in result_dict
-        push!(result_rows, ks[1])
-        push!(result_cols, ks[2])
-        push!(result_vals, valu)
-    end
+#     for (ks, valu) in result_dict
+#         push!(result_rows, ks[1])
+#         push!(result_cols, ks[2])
+#         push!(result_vals, valu)
+#     end
     
-    # Create the sparse matrix from the collected indices and values
-    return sparse!(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
-end
+#     # Create the sparse matrix from the collected indices and values
+#     return sparse!(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
+# end
 
 function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},
                                 B::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}; 
