@@ -983,15 +983,13 @@ function plot_irf_subplot(irf_data::AbstractVector{S}, steady_state::S, variable
 end
 
 function plot_irf_subplot(irf_data::Vector{<:AbstractVector{S}}, steady_state::Vector{S}, variable_name::String, can_dual_axis::Bool) where S <: AbstractFloat
-    can_dual_axis = can_dual_axis && (maximum(steady_state) - minimum(steady_state) < 1e-12)
-
-    ylabel1 = can_dual_axis ? "Level" : "abs. " * LaTeXStrings.L"\Delta"
+    same_ss = maximum(steady_state) - minimum(steady_state) < 1e-12
 
     plot_dat = []
     plot_dat_dual = []
     
     for i in 1:length(irf_data)
-        if can_dual_axis
+        if can_dual_axis && same_ss
             push!(plot_dat, irf_data[i] .+ steady_state[i])
             push!(plot_dat_dual, 100 * ((irf_data[i] .+ steady_state[i]) ./ steady_state[i] .- 1))
         else
@@ -1002,17 +1000,17 @@ function plot_irf_subplot(irf_data::Vector{<:AbstractVector{S}}, steady_state::V
 
     p = StatsPlots.plot(plot_dat,
                         title = variable_name,
-                        ylabel = ylabel1,
+                        ylabel = same_ss ? "Level" : "abs. " * LaTeXStrings.L"\Delta",
                         label = "")
 
-    if can_dual_axis
+    if can_dual_axis && same_ss
         StatsPlots.plot!(StatsPlots.twinx(), 
                          plot_dat_dual, 
                          ylabel = LaTeXStrings.L"\% \Delta", 
                          label = "") 
     end
 
-    StatsPlots.hline!(can_dual_axis ? [steady_state[1] 0] : [0], 
+    StatsPlots.hline!(can_dual_axis && same_ss ? [steady_state[1] 0] : [same_ss ? steady_state[1] : 0], 
                       color = :black, 
                       label = "")
                       
