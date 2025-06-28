@@ -820,23 +820,7 @@ function plot_irf(𝓂::ℳ;
                     push!(variable_names, (new_name))
                 end
 
-                push!(pp,begin
-                                StatsPlots.plot(Y[i,:,shock] .+ SS,
-                                                title = variable_name,
-                                                ylabel = "Level",
-                                                label = "")
-
-                                if can_dual_axis
-                                    StatsPlots.plot!(StatsPlots.twinx(), 
-                                                        100*((Y[i,:,shock] .+ SS) ./ SS .- 1), 
-                                                        ylabel = LaTeXStrings.L"\% \Delta", 
-                                                        label = "") 
-                                end
-
-                                StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS], 
-                                                    color = :black, 
-                                                    label = "")                               
-                end)
+                push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, can_dual_axis))
 
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
@@ -963,6 +947,7 @@ function plot_irf(𝓂::ℳ;
                            :sylvester_algorithm => sylvester_algorithm,
                            :lyapunov_algorithm => lyapunov_algorithm,
                            :plot_data => Y,
+                           :reference_steady_state => reference_steady_state,
                            :variable_names => variable_names,
                            :shock_names => shock_names,
                            :shock_idx => shock_idx,
@@ -977,6 +962,62 @@ function plot_irf(𝓂::ℳ;
     return return_plots
 end
 
+
+function plot_irf_subplot(irf_data::AbstractVector{S}, steady_state::S, variable_name::String, can_dual_axis::Bool) where S <: AbstractFloat
+    p = StatsPlots.plot(irf_data .+ steady_state,
+                        title = variable_name,
+                        ylabel = "Level",
+                        label = "")
+
+    if can_dual_axis
+        StatsPlots.plot!(StatsPlots.twinx(), 
+                         100*((irf_data .+ steady_state) ./ steady_state .- 1), 
+                         ylabel = LaTeXStrings.L"\% \Delta", 
+                         label = "") 
+    end
+
+    StatsPlots.hline!(can_dual_axis ? [steady_state 0] : [steady_state], 
+                      color = :black, 
+                      label = "")                               
+    return p
+end
+
+function plot_irf_subplot(irf_data::Vector{<:AbstractVector{S}}, steady_state::Vector{S}, variable_name::String, can_dual_axis::Bool) where S <: AbstractFloat
+    can_dual_axis = can_dual_axis && (maximum(steady_state) - minimum(steady_state) < 1e-12)
+
+    ylabel1 = can_dual_axis ? "Level" : "abs. " * LaTeXStrings.L"\Delta"
+
+    plot_dat = []
+    plot_dat_dual = []
+    
+    for i in 1:length(irf_data)
+        if can_dual_axis
+            push!(plot_dat, irf_data[i] .+ steady_state[i])
+            push!(plot_dat_dual, 100 * ((irf_data[i] .+ steady_state[i]) ./ steady_state[i] .- 1))
+        else
+            push!(plot_dat, irf_data[i])
+        end
+    end
+
+
+    p = StatsPlots.plot(plot_dat,
+                        title = variable_name,
+                        ylabel = ylabel1,
+                        label = "")
+
+    if can_dual_axis
+        StatsPlots.plot!(StatsPlots.twinx(), 
+                         plot_dat_dual, 
+                         ylabel = LaTeXStrings.L"\% \Delta", 
+                         label = "") 
+    end
+
+    StatsPlots.hline!(can_dual_axis ? [steady_state[1] 0] : [0], 
+                      color = :black, 
+                      label = "")
+                      
+    return p
+end
 
 
 function plot_irf!(𝓂::ℳ;
@@ -1261,6 +1302,10 @@ function plot_irf!(𝓂::ℳ;
         shock_dir = ""
     end
 
+    Ys = [[i[:plot_data] for i in irf_active_plot_container]..., Y]
+    
+    reference_steady_states = [[i[:reference_steady_state] for i in irf_active_plot_container]..., reference_steady_state]
+
     return_plots = []
 
     shock_names = []
@@ -1290,24 +1335,10 @@ function plot_irf!(𝓂::ℳ;
                 if length(new_name) > 0
                     push!(variable_names, (new_name))
                 end
-
-                push!(pp,begin
-                                StatsPlots.plot(Y[i,:,shock] .+ SS,
-                                                title = variable_name,
-                                                ylabel = "Level",
-                                                label = "")
-
-                                if can_dual_axis
-                                    StatsPlots.plot!(StatsPlots.twinx(), 
-                                                        100*((Y[i,:,shock] .+ SS) ./ SS .- 1), 
-                                                        ylabel = LaTeXStrings.L"\% \Delta", 
-                                                        label = "") 
-                                end
-
-                                StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS], 
-                                                    color = :black, 
-                                                    label = "")                               
-                end)
+                
+                # push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, can_dual_axis))
+                
+                push!(pp, plot_irf_subplot([k[i,:,shock] for k in Ys], [k[var_idx[i]] for k in reference_steady_states], variable_name, can_dual_axis))
 
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
@@ -1434,6 +1465,7 @@ function plot_irf!(𝓂::ℳ;
                            :sylvester_algorithm => sylvester_algorithm,
                            :lyapunov_algorithm => lyapunov_algorithm,
                            :plot_data => Y,
+                           :reference_steady_state => reference_steady_state,
                            :variable_names => variable_names,
                            :shock_names => shock_names,
                            :shock_idx => shock_idx,
