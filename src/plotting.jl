@@ -1298,6 +1298,19 @@ function plot_irf!(𝓂::ℳ;
 
     push!(irf_active_plot_container, args_and_kwargs)
 
+    diffdict = compare_args_and_kwargs(irf_active_plot_container)
+    
+    param_nms = diffdict[:parameters]|>keys|>collect|>sort
+
+    plot_vector = Pair{String,Any}[]
+    for param in param_nms
+        push!(plot_vector, String(param) => diffdict[:parameters][param])
+    end
+
+    pushfirst!(plot_vector, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
+
+    annotate_plot = plot_df(plot_vector)
+
     return_plots = []
 
     for shock in 1:length(shock_idx)
@@ -1342,7 +1355,13 @@ function plot_irf!(𝓂::ℳ;
                         shock_name = "shock_matrix"
                     end
 
-                    p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
+                    ppp = StatsPlots.plot(pp...; attributes...)
+                    
+                    p = StatsPlots.plot(ppp,
+                                        annotate_plot, 
+                                        layout = StatsPlots.grid(2, 1, heights = [0.8, 0.2]),
+                                        plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                        attributes_redux...)
 
                     push!(return_plots,p)
 
@@ -1376,7 +1395,13 @@ function plot_irf!(𝓂::ℳ;
                 shock_name = "shock_matrix"
             end
 
-            p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
+            ppp = StatsPlots.plot(pp...; attributes...)
+            
+            p = StatsPlots.plot(ppp,
+                                annotate_plot, 
+                                layout = StatsPlots.grid(2, 1, heights = [0.8, 0.2]),
+                                plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                attributes_redux...)
 
             push!(return_plots,p)
 
@@ -1417,9 +1442,9 @@ function plot_df(plot_vector::Vector{Pair{String,Any}})
  
     # overlay the header and numeric values
     for j in 1:ncols
-        annotate!(df_plot, j, 1, text(plot_vector[j].first, :center, 8)) # Header
+        StatsPlots.annotate!(df_plot, j, 1, StatsPlots.text(plot_vector[j].first, :center, 8)) # Header
         for i in 1:nrows
-            annotate!(df_plot, j, i + 1, text(string(plot_vector[j].second[i]), :center, 8))
+            StatsPlots.annotate!(df_plot, j, i + 1, StatsPlots.text(string(plot_vector[j].second[i]), :center, 8))
         end
     end
 
@@ -1895,15 +1920,15 @@ function plot_solution(𝓂::ℳ,
     end
 
     StatsPlots.scatter!(fill(0,1,1), 
-    label = "", 
-    marker = :rect,
-    markerstrokecolor = :white,
-    markerstrokewidth = 0, 
-    markercolor = :white,
-    linecolor = :white, 
-    linewidth = 0, 
-    framestyle = :none, 
-    legend = :inside)
+                        label = "", 
+                        marker = :rect,
+                        markerstrokecolor = :white,
+                        markerstrokewidth = 0, 
+                        markercolor = :white,
+                        linecolor = :white, 
+                        linewidth = 0, 
+                        framestyle = :none, 
+                        legend = :inside)
 
     has_impact_dict = Dict()
     variable_dict = Dict()
