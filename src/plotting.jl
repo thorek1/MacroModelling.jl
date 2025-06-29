@@ -790,146 +790,17 @@ function plot_irf(𝓂::ℳ;
         shock_dir = ""
     end
 
-    return_plots = []
-
-    shock_names = []
-    variable_names = []
-
-    for shock in 1:length(shock_idx)
-        n_subplots = length(var_idx)
-        pp = []
-        pane = 1
-        plot_count = 1
-        for i in 1:length(var_idx)
-            if all(isapprox.(Y[i,:,shock], 0, atol = eps(Float32)))
-                n_subplots -= 1
-            end
-        end
-
-        for i in 1:length(var_idx)
-            SS = reference_steady_state[var_idx[i]]
-
-            can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
-
-            if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
-                variable_name = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]])
-
-                new_name  = setdiff(variable_name, variable_names)
-                
-                if length(new_name) > 0
-                    push!(variable_names, (new_name))
-                end
-
-                push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, can_dual_axis))
-
-                if !(plot_count % plots_per_page == 0)
-                    plot_count += 1
-                else
-                    plot_count = 1
-
-                    if shocks == :simulate
-                        shock_string = ": simulate all"
-                        shock_name = "simulation"
-
-                        new_shock  = setdiff(shock_name, shock_names)
-                        
-                        if length(new_shock) > 0
-                            push!(shock_names, (new_shock))
-                        end
-                    elseif shocks == :none
-                        shock_string = ""
-                        shock_name = "no_shock"
-                        new_shock  = setdiff(shock_name, shock_names)
-                        
-                        if length(new_shock) > 0
-                            push!(shock_names, (new_shock))
-                        end
-                    elseif shocks isa Union{Symbol_input,String_input}
-                        shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                        shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                        new_shock  = setdiff(shock_name, shock_names)
-                        
-                        if length(new_shock) > 0
-                            push!(shock_names, (new_shock))
-                        end
-                    else
-                        shock_string = "Series of shocks"
-                        shock_name = "shock_matrix"
-                        new_shock  = setdiff(shock_name, shock_names)
-                        
-                        if length(new_shock) > 0
-                            push!(shock_names, (new_shock))
-                        end
-                    end
-
-                    p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
-
-                    push!(return_plots,p)
-
-                    if show_plots
-                        display(p)
-                    end
-
-                    if save_plots
-                        StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
-                    end
-
-                    pane += 1
-
-                    pp = []
-                end
-            end
-        end
-        
-        if length(pp) > 0
-            if shocks == :simulate
-                shock_string = ": simulate all"
-                shock_name = "simulation"
-                new_shock  = setdiff(shock_name, shock_names)
-                
-                if length(new_shock) > 0
-                    push!(shock_names, (new_shock))
-                end
-            elseif shocks == :none
-                shock_string = ""
-                shock_name = "no_shock"
-                new_shock  = setdiff(shock_name, shock_names)
-                
-                if length(new_shock) > 0
-                    push!(shock_names, (new_shock))
-                end
-            elseif shocks isa Union{Symbol_input,String_input}
-                shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                new_shock  = setdiff(shock_name, shock_names)
-                
-                if length(new_shock) > 0
-                    push!(shock_names, (new_shock))
-                end
-            else
-                shock_string = "Series of shocks"
-                shock_name = "shock_matrix"
-                new_shock  = setdiff(shock_name, shock_names)
-                
-                if length(new_shock) > 0
-                    push!(shock_names, (new_shock))
-                end
-            end
-
-            p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
-
-            push!(return_plots,p)
-
-            if show_plots
-                display(p)
-            end
-
-            if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
-            end
-        end
+    if shocks == :simulate
+        shock_names = ["simulation"]
+    elseif shocks == :none
+        shock_names = ["no_shock"]
+    elseif shocks isa Union{Symbol_input,String_input}
+        shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx])
+    else
+        shock_names = ["shock_matrix"]
     end
-
+    
+    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
 
     args_and_kwargs = Dict(:model_name => 𝓂.model_name,
                            :periods => periods,
@@ -958,6 +829,97 @@ function plot_irf(𝓂::ℳ;
     end
     
     push!(irf_active_plot_container, args_and_kwargs)
+
+    return_plots = []
+
+    for shock in 1:length(shock_idx)
+        n_subplots = length(var_idx)
+        pp = []
+        pane = 1
+        plot_count = 1
+
+        for i in 1:length(var_idx)
+            if all(isapprox.(Y[i,:,shock], 0, atol = eps(Float32)))
+                n_subplots -= 1
+            end
+        end
+
+        for i in 1:length(var_idx)
+            SS = reference_steady_state[var_idx[i]]
+
+            can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
+
+            if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
+                variable_name = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]])
+
+                push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, can_dual_axis))
+
+                if !(plot_count % plots_per_page == 0)
+                    plot_count += 1
+                else
+                    plot_count = 1
+
+                    if shocks == :simulate
+                        shock_string = ": simulate all"
+                        shock_name = "simulation"
+                    elseif shocks == :none
+                        shock_string = ""
+                        shock_name = "no_shock"
+                    elseif shocks isa Union{Symbol_input,String_input}
+                        shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                        shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                    else
+                        shock_string = "Series of shocks"
+                        shock_name = "shock_matrix"
+                    end
+
+                    p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
+
+                    push!(return_plots,p)
+
+                    if show_plots
+                        display(p)
+                    end
+
+                    if save_plots
+                        StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                    end
+
+                    pane += 1
+
+                    pp = []
+                end
+            end
+        end
+        
+        if length(pp) > 0
+            if shocks == :simulate
+                shock_string = ": simulate all"
+                shock_name = "simulation"
+            elseif shocks == :none
+                shock_string = ""
+                shock_name = "no_shock"
+            elseif shocks isa Union{Symbol_input,String_input}
+                shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+            else
+                shock_string = "Series of shocks"
+                shock_name = "shock_matrix"
+            end
+
+            p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
+
+            push!(return_plots,p)
+
+            if show_plots
+                display(p)
+            end
+
+            if save_plots
+                StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+            end
+        end
+    end
 
     return return_plots
 end
@@ -1300,152 +1262,17 @@ function plot_irf!(𝓂::ℳ;
         shock_dir = ""
     end
 
-    Ys = [[i[:plot_data] for i in irf_active_plot_container]..., Y]
-    
-    reference_steady_states = [[i[:reference_steady_state] for i in irf_active_plot_container]..., reference_steady_state]
-
-    return_plots = []
-
-    shock_names = []
-    variable_names = []
-
-    for shock in 1:length(shock_idx)
-        n_subplots = length(var_idx)
-        pp = []
-        pane = 1
-        plot_count = 1
-        for i in 1:length(var_idx)
-            if all(isapprox.(Y[i,:,shock], 0, atol = eps(Float32)))
-                n_subplots -= 1
-            end
-        end
-
-        for i in 1:length(var_idx)
-            SS = reference_steady_state[var_idx[i]]
-
-            can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
-
-            if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
-                variable_name = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]])
-
-                new_name  = setdiff(variable_name, variable_names)
-                
-                if length(new_name) > 0
-                    push!(variable_names, (new_name))
-                end
-                
-                # push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, can_dual_axis))
-                
-                push!(pp, plot_irf_subplot([k[i,:,shock] for k in Ys], [k[var_idx[i]] for k in reference_steady_states], variable_name, can_dual_axis))
-
-                if !(plot_count % plots_per_page == 0)
-                    plot_count += 1
-                else
-                    plot_count = 1
-
-                    if shocks == :simulate
-                        shock_string = ": simulate all"
-                        shock_name = "simulation"
-
-                        new_shock  = setdiff(shock_name, shock_names)
-                        
-                        if length(new_shock) > 0
-                            push!(shock_names, (new_shock))
-                        end
-                    elseif shocks == :none
-                        shock_string = ""
-                        shock_name = "no_shock"
-                        new_shock  = setdiff(shock_name, shock_names)
-                        
-                        if length(new_shock) > 0
-                            push!(shock_names, (new_shock))
-                        end
-                    elseif shocks isa Union{Symbol_input,String_input}
-                        shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                        shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                        new_shock  = setdiff(shock_name, shock_names)
-                        
-                        if length(new_shock) > 0
-                            push!(shock_names, (new_shock))
-                        end
-                    else
-                        shock_string = "Series of shocks"
-                        shock_name = "shock_matrix"
-                        new_shock  = setdiff(shock_name, shock_names)
-                        
-                        if length(new_shock) > 0
-                            push!(shock_names, (new_shock))
-                        end
-                    end
-
-                    p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
-
-                    push!(return_plots,p)
-
-                    if show_plots
-                        display(p)
-                    end
-
-                    if save_plots
-                        StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
-                    end
-
-                    pane += 1
-
-                    pp = []
-                end
-            end
-        end
-        
-        if length(pp) > 0
-            if shocks == :simulate
-                shock_string = ": simulate all"
-                shock_name = "simulation"
-                new_shock  = setdiff(shock_name, shock_names)
-                
-                if length(new_shock) > 0
-                    push!(shock_names, (new_shock))
-                end
-            elseif shocks == :none
-                shock_string = ""
-                shock_name = "no_shock"
-                new_shock  = setdiff(shock_name, shock_names)
-                
-                if length(new_shock) > 0
-                    push!(shock_names, (new_shock))
-                end
-            elseif shocks isa Union{Symbol_input,String_input}
-                shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                new_shock  = setdiff(shock_name, shock_names)
-                
-                if length(new_shock) > 0
-                    push!(shock_names, (new_shock))
-                end
-            else
-                shock_string = "Series of shocks"
-                shock_name = "shock_matrix"
-                new_shock  = setdiff(shock_name, shock_names)
-                
-                if length(new_shock) > 0
-                    push!(shock_names, (new_shock))
-                end
-            end
-
-            p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
-
-            push!(return_plots,p)
-
-            if show_plots
-                display(p)
-            end
-
-            if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
-            end
-        end
+    if shocks == :simulate
+        shock_names = ["simulation"]
+    elseif shocks == :none
+        shock_names = ["no_shock"]
+    elseif shocks isa Union{Symbol_input,String_input}
+        shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx])
+    else
+        shock_names = ["shock_matrix"]
     end
-
+    
+    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
 
     args_and_kwargs = Dict(:model_name => 𝓂.model_name,
                            :periods => periods,
@@ -1471,9 +1298,133 @@ function plot_irf!(𝓂::ℳ;
 
     push!(irf_active_plot_container, args_and_kwargs)
 
+    return_plots = []
+
+    for shock in 1:length(shock_idx)
+        n_subplots = length(var_idx)
+        pp = []
+        pane = 1
+        plot_count = 1
+        for i in 1:length(var_idx)
+            if all(isapprox.(Y[i,:,shock], 0, atol = eps(Float32)))
+                n_subplots -= 1
+            end
+        end
+
+        for i in 1:length(var_idx)
+            SS = reference_steady_state[var_idx[i]]
+
+            can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
+
+            if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
+                variable_name = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]])
+                
+                # push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, can_dual_axis))
+                
+                push!(pp, plot_irf_subplot([k[:plot_data][i,:,shock] for k in irf_active_plot_container], [k[:reference_steady_state][var_idx[i]] for k in irf_active_plot_container], variable_name, can_dual_axis))
+
+                if !(plot_count % plots_per_page == 0)
+                    plot_count += 1
+                else
+                    plot_count = 1
+
+                    if shocks == :simulate
+                        shock_string = ": simulate all"
+                        shock_name = "simulation"
+                    elseif shocks == :none
+                        shock_string = ""
+                        shock_name = "no_shock"
+                    elseif shocks isa Union{Symbol_input,String_input}
+                        shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                        shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                    else
+                        shock_string = "Series of shocks"
+                        shock_name = "shock_matrix"
+                    end
+
+                    p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
+
+                    push!(return_plots,p)
+
+                    if show_plots
+                        display(p)
+                    end
+
+                    if save_plots
+                        StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                    end
+
+                    pane += 1
+
+                    pp = []
+                end
+            end
+        end
+        
+        if length(pp) > 0
+            if shocks == :simulate
+                shock_string = ": simulate all"
+                shock_name = "simulation"
+            elseif shocks == :none
+                shock_string = ""
+                shock_name = "no_shock"
+            elseif shocks isa Union{Symbol_input,String_input}
+                shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+            else
+                shock_string = "Series of shocks"
+                shock_name = "shock_matrix"
+            end
+
+            p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
+
+            push!(return_plots,p)
+
+            if show_plots
+                display(p)
+            end
+
+            if save_plots
+                StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+            end
+        end
+    end
+
     return return_plots
 end
 
+
+
+function plot_df(plot_vector::Vector{Pair{String,Any}})
+    # Determine dimensions from plot_vector
+    ncols = length(plot_vector)
+    nrows = length(plot_vector[1].second)
+        
+    bg_matrix = ones(nrows + 1, ncols)
+    bg_matrix[1, :] .= 0.35 # Header row
+    for i in 3:2:nrows+1
+        bg_matrix[i, :] .= 0.85
+    end
+ 
+    # draw the "cells"
+    df_plot = StatsPlots.heatmap(bg_matrix;
+                c = StatsPlots.cgrad([:lightgrey, :white]),      # Color gradient for background
+                yflip = true,  
+                tick = :none,
+                legend = false,
+                framestyle = :none,
+                cbar = false)
+ 
+    # overlay the header and numeric values
+    for j in 1:ncols
+        annotate!(df_plot, j, 1, text(plot_vector[j].first, :center, 8)) # Header
+        for i in 1:nrows
+            annotate!(df_plot, j, i + 1, text(string(plot_vector[j].second[i]), :center, 8))
+        end
+    end
+
+    return df_plot
+end
 
 
 # """
