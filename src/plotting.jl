@@ -1302,14 +1302,17 @@ function plot_irf!(𝓂::ℳ;
     
     param_nms = diffdict[:parameters]|>keys|>collect|>sort
 
-    plot_vector = Pair{String,Any}[]
+    annotate_ss = Pair{String,Any}[]
+
+    annotate_params = Pair{String,Any}[]
+
     for param in param_nms
-        push!(plot_vector, String(param) => diffdict[:parameters][param])
+        push!(annotate_params, String(param) => diffdict[:parameters][param])
     end
 
-    pushfirst!(plot_vector, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
+    pushfirst!(annotate_params, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
 
-    annotate_plot = plot_df(plot_vector)
+    annotate_params_plot = plot_df(annotate_params)
 
     return_plots = []
 
@@ -1333,8 +1336,16 @@ function plot_irf!(𝓂::ℳ;
                 variable_name = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]])
                 
                 # push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, can_dual_axis))
-                
-                push!(pp, plot_irf_subplot([k[:plot_data][i,:,shock] for k in irf_active_plot_container], [k[:reference_steady_state][var_idx[i]] for k in irf_active_plot_container], variable_name, can_dual_axis))
+                SSs = [k[:reference_steady_state][var_idx[i]] for k in irf_active_plot_container]
+
+                if maximum(SSs) - minimum(SSs) > 1e-10
+                    push!(annotate_ss, String(variable_name) => SSs)
+                end
+
+                push!(pp, plot_irf_subplot( [k[:plot_data][i,:,shock] for k in irf_active_plot_container], 
+                                            SSs, 
+                                            variable_name, 
+                                            can_dual_axis))
 
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
@@ -1357,8 +1368,12 @@ function plot_irf!(𝓂::ℳ;
 
                     ppp = StatsPlots.plot(pp...; attributes...)
                     
+                    annotate_ss_plot = plot_df(annotate_ss)
+
+                    ppp2 = StatsPlots.plot(annotate_params_plot, annotate_ss_plot; attributes...)
+                    
                     p = StatsPlots.plot(ppp,
-                                        annotate_plot, 
+                                        ppp2, 
                                         layout = StatsPlots.grid(2, 1, heights = [0.8, 0.2]),
                                         plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                         attributes_redux...)
@@ -1374,12 +1389,14 @@ function plot_irf!(𝓂::ℳ;
                     end
 
                     pane += 1
+                    
+                    annotate_ss = Pair{String,Any}[]
 
                     pp = []
                 end
             end
         end
-        
+
         if length(pp) > 0
             if shocks == :simulate
                 shock_string = ": simulate all"
@@ -1397,8 +1414,12 @@ function plot_irf!(𝓂::ℳ;
 
             ppp = StatsPlots.plot(pp...; attributes...)
             
+            annotate_ss_plot = plot_df(annotate_ss)
+
+            ppp2 = StatsPlots.plot(annotate_params_plot, annotate_ss_plot; attributes...)
+            
             p = StatsPlots.plot(ppp,
-                                annotate_plot, 
+                                ppp2, 
                                 layout = StatsPlots.grid(2, 1, heights = [0.8, 0.2]),
                                 plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                 attributes_redux...)
