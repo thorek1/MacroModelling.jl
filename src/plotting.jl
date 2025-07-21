@@ -1302,7 +1302,9 @@ function plot_irf!(𝓂::ℳ;
     
     param_nms = diffdict[:parameters]|>keys|>collect|>sort
 
-    annotate_ss = Pair{String,Any}[]
+    annotate_ss = [Pair{String,Any}[]]
+
+    annotate_ss_page = Pair{String,Any}[]
 
     annotate_params = Pair{String,Any}[]
 
@@ -1339,7 +1341,7 @@ function plot_irf!(𝓂::ℳ;
                 SSs = [k[:reference_steady_state][var_idx[i]] for k in irf_active_plot_container]
 
                 if maximum(SSs) - minimum(SSs) > 1e-10
-                    push!(annotate_ss, String(variable_name) => SSs)
+                    push!(annotate_ss_page, String(variable_name) => minimal_sigfig_strings(SSs))
                 end
 
                 push!(pp, plot_irf_subplot( [k[:plot_data][i,:,shock] for k in irf_active_plot_container], 
@@ -1367,7 +1369,7 @@ function plot_irf!(𝓂::ℳ;
                     end
 
                     ppp = StatsPlots.plot(pp...; attributes...)
-                    
+
                     annotate_ss_plot = plot_df(annotate_ss)
 
                     ppp2 = StatsPlots.plot(annotate_params_plot, annotate_ss_plot; attributes...)
@@ -1389,12 +1391,17 @@ function plot_irf!(𝓂::ℳ;
                     end
 
                     pane += 1
-                    
-                    annotate_ss = Pair{String,Any}[]
+
+                    push!(annotate_ss, annotate_ss_page)
+
+                    annotate_ss_page = Pair{String,Any}[]
 
                     pp = []
                 end
             end
+
+            push!(annotate_ss, annotate_ss_page)
+                    
         end
 
         if length(pp) > 0
@@ -1414,9 +1421,21 @@ function plot_irf!(𝓂::ℳ;
 
             ppp = StatsPlots.plot(pp...; attributes...)
             
-            annotate_ss_plot = plot_df(annotate_ss)
+            if length(annotate_ss[pane-1]) > 0
+                annotate_ss_plot = plot_df(annotate_ss[pane-1])
 
-            ppp2 = StatsPlots.plot(annotate_params_plot, annotate_ss_plot; attributes...)
+                ppp2 = StatsPlots.plot(annotate_params_plot, annotate_ss_plot; attributes...)
+
+                p = StatsPlots.plot(ppp,
+                                    ppp2, 
+                                    layout = StatsPlots.grid(2, 1, heights = [0.8, 0.2]),
+                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                    attributes_redux...)
+            else
+                p = StatsPlots.plot(ppp,
+                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                    attributes_redux...)
+            end
             
             p = StatsPlots.plot(ppp,
                                 ppp2, 
@@ -1439,6 +1458,91 @@ function plot_irf!(𝓂::ℳ;
     return return_plots
 end
 
+function minimal_sigfig_strings(v::AbstractVector{<:Real};
+        min_sig::Int = 3, n::Int = 10, dup_tol::Float64 = 1e-13)
+
+    idx = collect(eachindex(v))
+    finite_mask = map(x -> isfinite(x) && x != 0, v)
+    work_idx = filter(i -> finite_mask[i], idx)
+    sorted_idx = sort(work_idx, by = i -> v[i])
+    mwork = length(sorted_idx)
+
+    # Gaps to nearest neighbour
+    gaps = Dict{Int,Float64}()
+    for (k, i) in pairs(sorted_idx)
+        x = float(v[i])
+        if mwork == 1
+            gaps[i] = Inf
+        elseif k == 1
+            gaps[i] = abs(v[sorted_idx[k+1]] - x)
+        elseif k == mwork
+            gaps[i] = abs(x - v[sorted_idx[k-1]])
+        else
+            g1 = abs(x - v[sorted_idx[k-1]])
+            g2 = abs(v[sorted_idx[k+1]] - x)
+            gaps[i] = min(g1, g2)
+        end
+    end
+
+    # Duplicate clusters (within dup_tol)
+    duplicate = Dict{Int,Bool}()
+    k = 1
+    while k <= mwork
+        i = sorted_idx[k]
+        cluster = [i]
+        x = v[i]
+        j = k + 1
+        while j <= mwork && abs(v[sorted_idx[j]] - x) <= dup_tol
+            push!(cluster, sorted_idx[j])
+            j += 1
+        end
+        isdup = length(cluster) > 1
+        for c in cluster
+            duplicate[c] = isdup
+        end
+        k = j
+    end
+
+    # Required significant digits for distinction
+    req_sig = Dict{Int,Int}()
+    for i in sorted_idx
+        if duplicate[i]
+            req_sig[i] = min_sig  # will apply rule anyway
+        else
+            x = float(v[i])
+            g = gaps[i]
+            if g == 0.0
+                req_sig[i] = min_sig
+            else
+                m = floor(log10(abs(x))) + 1
+                s = max(min_sig, ceil(Int, m - log10(g)))
+                # Apply rule: if they differ only after more than n sig digits
+                if s > n
+                    req_sig[i] = min_sig
+                else
+                    req_sig[i] = s
+                end
+            end
+        end
+    end
+
+    # Format output
+    out = Vector{String}(undef, length(v))
+    for i in eachindex(v)
+        x = v[i]
+        if !(isfinite(x)) || x == 0
+            # For zero or non finite just echo (rule does not change them)
+            out[i] = string(x)
+        elseif haskey(req_sig, i)
+            s = req_sig[i]
+            out[i] = string(round(x, sigdigits = s))
+        else
+            # Non finite or zero already handled; fallback
+            out[i] = string(x)
+        end
+    end
+    return out
+end
 
 
 function plot_df(plot_vector::Vector{Pair{String,Any}})
