@@ -482,10 +482,16 @@ function newton(
                 new_residuals .= guess_update
             else
                 fact∇ = ℒ.lu!(∇, check = false)
-                if !ℒ.issuccess(fact∇)
-                    fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+                try
+                    if !ℒ.issuccess(fact∇)
+                        fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+                    end
+                    ℒ.ldiv!(fact∇, new_residuals)
+                catch
+                    rel_xtol_reached = typemax(T)
+                    new_residuals_norm = typemax(T)
+                    break
                 end
-                ℒ.ldiv!(fact∇, new_residuals)
             end
 
             guess_update_norm = ℒ.norm(new_residuals)
@@ -530,10 +536,16 @@ function newton(
             new_residuals .= guess_update
         else
             fact∇ = ℒ.lu!(∇, check = false)
-            if !ℒ.issuccess(fact∇)
-                fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+            try
+                if !ℒ.issuccess(fact∇)
+                    fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+                end
+                ℒ.ldiv!(fact∇, new_residuals)
+            catch
+                rel_xtol_reached = typemax(T)
+                new_residuals_norm = typemax(T)
+                break
             end
-            ℒ.ldiv!(fact∇, new_residuals)
         end
 
         guess_update_norm = ℒ.norm(new_residuals)

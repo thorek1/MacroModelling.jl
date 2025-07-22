@@ -77,16 +77,14 @@ function find_shocks(::Val{:LagrangeNewton},
         #     return x, false
         # end
 
-        f̂xλp = try 
-            ℒ.factorize(fxλp)
+        try
+            f̂xλp = ℒ.factorize(fxλp)
+            ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
         catch
             # ℒ.svd(fxλp)
             # println("factorization fails")
             return x, false
         end
-
-        # Δxλ = fxλp \ fxλ
-        ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
         
         if !all(isfinite,Δxλ) break end
         
@@ -283,16 +281,14 @@ function find_shocks(::Val{:LagrangeNewton},
         # fXλp = [reshape((2 * 𝐒ⁱ²ᵉ + 6 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(ℒ.I(length(x)),x)))' * λ, size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)) - 2*ℒ.I(size(𝐒ⁱ, 2))  (𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))'
         #         -(𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x)), x) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(length(x)), ℒ.kron(x, x)))  zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 1))]
         
-        f̂xλp = try 
-            ℒ.factorize(fxλp)
+        try
+            f̂xλp = ℒ.factorize(fxλp)
+            ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
         catch
             # ℒ.svd(fxλp)
             # println("factorization fails")
             return x, false
         end
-
-        # Δxλ = fxλp \ fxλ
-        ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
         
         if !all(isfinite,Δxλ) break end
         
