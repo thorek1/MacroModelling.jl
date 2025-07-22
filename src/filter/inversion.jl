@@ -729,10 +729,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         copy!(jacct, jacc[i]')
 
-        jacc_fact = ℒ.factorize(jacct) # otherwise this fails for nshocks > nexo
-
-        # λ[i] = jacc[i]' \ x[i] * 2
-        ℒ.ldiv!(λ[i], jacc_fact, x[i])
+        try
+            jacc_fact = ℒ.factorize(jacct) # otherwise this fails for nshocks > nexo
+            # λ[i] = jacc[i]' \ x[i] * 2
+            ℒ.ldiv!(λ[i], jacc_fact, x[i])
+        catch
+            if opts.verbose println("Inversion filter failed at step $i") end
+            return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        end
 
         ℒ.rmul!(λ[i], 2)
     
@@ -1410,10 +1414,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         copy!(jacct, jacc[i]')
 
-        jacc_fact = ℒ.factorize(jacct)
-
-        # λ[i] = jacc[i]' \ x[i] * 2
-        ℒ.ldiv!(λ[i], jacc_fact, x[i])
+        try
+            jacc_fact = ℒ.factorize(jacct)
+            # λ[i] = jacc[i]' \ x[i] * 2
+            ℒ.ldiv!(λ[i], jacc_fact, x[i])
+        catch
+            if opts.verbose println("Inversion filter failed at step $i") end
+            return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        end
 
         # ℒ.ldiv!(λ[i], jacc_fact', x[i])
         ℒ.rmul!(λ[i], 2)
