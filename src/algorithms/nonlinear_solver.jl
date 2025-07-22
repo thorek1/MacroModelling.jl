@@ -482,19 +482,15 @@ function newton(
                 new_residuals .= guess_update
             else
                 fact∇ = ℒ.lu!(∇, check = false)
-                if !ℒ.issuccess(fact∇)
-                    fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
-                end
-                
                 try
+                    if !ℒ.issuccess(fact∇)
+                        fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+                    end
                     ℒ.ldiv!(fact∇, new_residuals)
                 catch
-                    # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
-                    rel_xtol_reached = 1.0
-                    rel_ftol_reached = 1.0
-                    new_residuals_norm = 1.0
-                    # iters = [iter,iter]
-                    break 
+                    rel_xtol_reached = typemax(T)
+                    new_residuals_norm = typemax(T)
+                    break
                 end
             end
 
@@ -540,19 +536,15 @@ function newton(
             new_residuals .= guess_update
         else
             fact∇ = ℒ.lu!(∇, check = false)
-            if !ℒ.issuccess(fact∇)
-                fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
-            end
-            
             try
+                if !ℒ.issuccess(fact∇)
+                    fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+                end
                 ℒ.ldiv!(fact∇, new_residuals)
             catch
-                # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
-                rel_xtol_reached = 1.0
-                rel_ftol_reached = 1.0
-                new_residuals_norm = 1.0
-                # iters = [iter,iter]
-                break 
+                rel_xtol_reached = typemax(T)
+                new_residuals_norm = typemax(T)
+                break
             end
         end
 
