@@ -485,7 +485,17 @@ function newton(
                 if !ℒ.issuccess(fact∇)
                     fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
                 end
-                ℒ.ldiv!(fact∇, new_residuals)
+                
+                try
+                    ℒ.ldiv!(fact∇, new_residuals)
+                catch
+                    # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
+                    rel_xtol_reached = 1.0
+                    rel_ftol_reached = 1.0
+                    new_residuals_norm = 1.0
+                    # iters = [iter,iter]
+                    break 
+                end
             end
 
             guess_update_norm = ℒ.norm(new_residuals)
@@ -533,7 +543,17 @@ function newton(
             if !ℒ.issuccess(fact∇)
                 fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
             end
-            ℒ.ldiv!(fact∇, new_residuals)
+            
+            try
+                ℒ.ldiv!(fact∇, new_residuals)
+            catch
+                # println("GN not finite after $iter iteration; - rel_xtol: $rel_xtol_reached; ftol: $new_residuals_norm")  # rel_ftol: $rel_ftol_reached; 
+                rel_xtol_reached = 1.0
+                rel_ftol_reached = 1.0
+                new_residuals_norm = 1.0
+                # iters = [iter,iter]
+                break 
+            end
         end
 
         guess_update_norm = ℒ.norm(new_residuals)
