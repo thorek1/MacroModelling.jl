@@ -44,8 +44,7 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, Int, Int, MacroModelling.Cal
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, Symbol, AbstractFloat, AbstractFloat, Bool, typeof(MacroModelling.solve_lyapunov_equation), AbstractMatrix{R}, AbstractMatrix{R}} where R <: AbstractFloat true
 
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, AbstractMatrix{<:AbstractFloat}, Symbol, AbstractFloat, AbstractFloat, MacroModelling.sylvester_caches, Bool,
-    ::typeof(MacroModelling.solve_sylvester_equation), AbstractMatrix{R}, AbstractMatrix{R}, AbstractMatrix{R}} where R <: AbstractFloat true
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, AbstractMatrix{<:AbstractFloat}, Symbol, AbstractFloat, AbstractFloat, MacroModelling.sylvester_caches, Bool, typeof(MacroModelling.solve_sylvester_equation), AbstractMatrix{R}, AbstractMatrix{R}, AbstractMatrix{R}} where R <: AbstractFloat true
 
 
 function ChainRulesCore.rrule(func_ir::Any,
