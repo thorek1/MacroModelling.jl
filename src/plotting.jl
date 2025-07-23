@@ -488,7 +488,7 @@ plot_irf(RBC)
 function plot_irf(𝓂::ℳ;
                     periods::Int = 40, 
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
-                    variables::Union{Symbol_input,String_input} = :all_excluding_auxilliary_and_obc,
+                    variables::Union{Symbol_input,String_input} = :all_excluding_auxiliary_and_obc,
                     parameters::ParameterType = nothing,
                     show_plots::Bool = true,
                     save_plots::Bool = false,
