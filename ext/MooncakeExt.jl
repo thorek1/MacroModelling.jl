@@ -14,15 +14,33 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, AbstractFloat, typeof(MacroM
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, AbstractFloat, typeof(MacroModelling.calculate_third_order_stochastic_steady_state), Val{:newton}, Matrix{Float64}, SparseArrays.AbstractSparseMatrix{Float64}, SparseArrays.AbstractSparseMatrix{Float64}, Vector{Float64}, MacroModelling.ℳ} true
 
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, MacroModelling.CalculationOptions, typeof(MacroModelling.get_NSSS_and_parameters), MacroModelling.ℳ, Vector{S}} where S <: AbstractFloat true
+# Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, MacroModelling.CalculationOptions, typeof(MacroModelling.get_NSSS_and_parameters), MacroModelling.ℳ, Vector{S}} where S <: AbstractFloat true
 
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, typeof(MacroModelling.calculate_jacobian), Vector{M}, Vector{N}, MacroModelling.ℳ} where {M <: AbstractFloat, N <: AbstractFloat}
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{T¹, typeof(MacroModelling.get_NSSS_and_parameters), T², T³} where {T¹,T²,T³} true
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.get_NSSS_and_parameters), T¹,T²} where {T¹,T²} true
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{T¹, typeof(MacroModelling.calculate_jacobian), T², T³, T⁴} where {T¹,T²,T³,T⁴} true
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.calculate_jacobian), T², T³, T⁴} where {T²,T³,T⁴} true
+
+# Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, typeof(MacroModelling.calculate_jacobian), Vector{M}, Vector{N}, MacroModelling.ℳ} where {M <: AbstractFloat, N <: AbstractFloat}
+
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.run_kalman_iterations),  T³, T⁴, T⁵, T⁶,T⁷} where {T³,T⁴,T⁵,T⁶,T⁷} true
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{T¹,T²,typeof(MacroModelling.run_kalman_iterations),  T³, T⁴, T⁵, T⁶,T⁷} where {T¹,T²,T³,T⁴,T⁵,T⁶,T⁷} true
+
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, typeof(MacroModelling.calculate_hessian), Vector{M}, Vector{N}, MacroModelling.ℳ} where {M <: AbstractFloat, N <: AbstractFloat}
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, typeof(MacroModelling.calculate_third_order_derivatives), Vector{M}, Vector{N}, MacroModelling.ℳ} where {M <: AbstractFloat, N <: AbstractFloat}
 
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, MacroModelling.timings, MacroModelling.CalculationOptions, AbstractMatrix{R}, typeof(MacroModelling.calculate_first_order_solution), Matrix{R}} where R <: AbstractFloat true
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{T¹, T², T³, T⁴, typeof(MacroModelling.calculate_first_order_solution), T⁵} where {T¹,T²,T³,T⁴,T⁵} true
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.calculate_first_order_solution), T⁵} where {T⁵} true
+
+# Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, MacroModelling.timings, MacroModelling.CalculationOptions, AbstractMatrix{R}, typeof(MacroModelling.calculate_first_order_solution), Matrix{R}} where R <: AbstractFloat true
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, MacroModelling.timings, AbstractMatrix{R}, MacroModelling.CalculationOptions, typeof(MacroModelling.calculate_second_order_solution), AbstractMatrix{R}, SparseArrays.SparseMatrixCSC{R}, AbstractMatrix{R}, MacroModelling.second_order_auxiliary_matrices, MacroModelling.caches} where R <: AbstractFloat true
 
@@ -42,7 +60,13 @@ Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, Int, Int, MacroModelling.Cal
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, Int, Int, MacroModelling.CalculationOptions, Symbol, typeof(MacroModelling.calculate_inversion_filter_loglikelihood), Val{:third_order}, Vector{Float64}, Vector{AbstractMatrix{Float64}}, Matrix{Float64}, Union{Vector{String}, Vector{Symbol}}, MacroModelling.timings} true
 
-Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, Symbol, AbstractFloat, AbstractFloat, Bool, typeof(MacroModelling.solve_lyapunov_equation), AbstractMatrix{R}, AbstractMatrix{R}} where R <: AbstractFloat true
+# Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, Symbol, AbstractFloat, AbstractFloat, Bool, typeof(MacroModelling.solve_lyapunov_equation), AbstractMatrix{R}, AbstractMatrix{R}} where R <: AbstractFloat true
+
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{T¹, T², T³, T⁴, typeof(MacroModelling.solve_lyapunov_equation), T⁵, T⁶} where {T¹,T²,T³,T⁴,T⁵,T⁶} true
+
+Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{typeof(MacroModelling.solve_lyapunov_equation), T⁵, T⁶} where {T⁵,T⁶} true
+
 
 Mooncake.@from_rrule Mooncake.DefaultCtx Tuple{Any, AbstractMatrix{<:AbstractFloat}, Symbol, AbstractFloat, AbstractFloat, MacroModelling.sylvester_caches, Bool, typeof(MacroModelling.solve_sylvester_equation), AbstractMatrix{R}, AbstractMatrix{R}, AbstractMatrix{R}} where R <: AbstractFloat true
 
@@ -111,13 +135,13 @@ function ChainRulesCore.rrule(func_ir::Any,
         Val(:newton), S1, S2, S3, x, m; tol=tol)
 end
 
-function ChainRulesCore.rrule(func_ir::Any,
-    opts::MacroModelling.CalculationOptions,
-    ::typeof(MacroModelling.get_NSSS_and_parameters),
-    m::MacroModelling.ℳ,
-    x::Vector{S}) where {S<:AbstractFloat}
-    ChainRulesCore.rrule(MacroModelling.get_NSSS_and_parameters, m, x; opts=opts)
-end
+# function ChainRulesCore.rrule(func_ir::Any,
+#     opts::MacroModelling.CalculationOptions,
+#     ::typeof(MacroModelling.get_NSSS_and_parameters),
+#     m::MacroModelling.ℳ,
+#     x::Vector{S}) where {S<:AbstractFloat}
+#     ChainRulesCore.rrule(MacroModelling.get_NSSS_and_parameters, m, x; opts=opts)
+# end
 
 function ChainRulesCore.rrule(func_ir::Any,
     T::MacroModelling.timings,
