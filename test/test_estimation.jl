@@ -33,15 +33,18 @@ dists = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m)
+Turing.@model function FS2000_loglikelihood_function(data, m, on_failure_likelihood)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params)
+        Turing.@addlogprob! get_loglikelihood(m, 
+                                                data, 
+                                                all_params, 
+                                                on_failure_likelihood = on_failure_likelihood)
     end
 end
 
-FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000)
+FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, -Inf)
 
 
 n_samples = 1000
@@ -61,7 +64,7 @@ sample_nuts = mean(samps).nt.mean
 
 
 # generate a Pigeons log potential
-FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000))
+FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, -floatmax(Float64)))
 
 init_params = FS2000.parameter_values
 
