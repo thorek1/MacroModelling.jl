@@ -3479,7 +3479,7 @@ function get_loglikelihood(𝓂::ℳ,
                             parameter_values::Vector{S}; 
                             algorithm::Symbol = :first_order, 
                             filter::Symbol = :kalman, 
-                            on_failure_likelihood::U = -Inf,
+                            on_failure_loglikelihood::U = -Inf,
                             warmup_iterations::Int = 0, 
                             presample_periods::Int = 0,
                             initial_covariance::Symbol = :theoretical,
@@ -3524,7 +3524,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     if bounds_violated 
         # println("Bounds violated")
-        return on_failure_likelihood
+        return on_failure_loglikelihood
     end
 
     NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
@@ -3540,7 +3540,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     if !solved 
         # println("Main call: 1st order solution not found")
-        return on_failure_likelihood 
+        return on_failure_loglikelihood 
     end
  
     if collect(axiskeys(data,1)) isa Vector{String}
@@ -3554,7 +3554,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Filter" begin
 
-    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_likelihood) # timer = timer
+    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood) # timer = timer
 
     # end # timeit_debug
 

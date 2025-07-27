@@ -35,7 +35,7 @@ dists = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_likelihood)
+Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_loglikelihood)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
@@ -43,7 +43,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_fail
                                                 data, 
                                                 all_params, 
                                                 algorithm = algorithm, 
-                                                on_failure_likelihood = on_failure_likelihood)
+                                                on_failure_loglikelihood = on_failure_loglikelihood)
     end
 end
 

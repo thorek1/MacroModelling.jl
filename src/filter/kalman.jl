@@ -13,7 +13,7 @@ function calculate_loglikelihood(::Val{:kalman},
                                 warmup_iterations, 
                                 filter_algorithm, 
                                 opts,
-                                on_failure_likelihood) #; 
+                                on_failure_loglikelihood) #; 
                                 # timer::TimerOutput = TimerOutput())
     return calculate_kalman_filter_loglikelihood(observables, 
                                                 𝐒, 
@@ -23,7 +23,7 @@ function calculate_loglikelihood(::Val{:kalman},
                                                 initial_covariance = initial_covariance, 
                                                 # timer = timer, 
                                                 opts = opts,
-                                                on_failure_likelihood = on_failure_likelihood)
+                                                on_failure_loglikelihood = on_failure_loglikelihood)
 end
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
@@ -31,13 +31,13 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
                                                 data_in_deviations::Matrix{S},
                                                 T::timings; 
                                                 # timer::TimerOutput = TimerOutput(), 
-                                                on_failure_likelihood::U = -Inf,
+                                                on_failure_loglikelihood::U = -Inf,
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_likelihood = on_failure_likelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
@@ -47,12 +47,12 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
                                                 T::timings; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0, 
-                                                on_failure_likelihood::U = -Inf,
+                                                on_failure_loglikelihood::U = -Inf,
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_likelihood = on_failure_likelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
@@ -64,7 +64,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
                                                 lyapunov_algorithm::Symbol = :doubling,
-                                                on_failure_likelihood::U = -Inf,
+                                                on_failure_loglikelihood::U = -Inf,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
@@ -79,7 +79,7 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     P = get_initial_covariance(Val(initial_covariance), A, 𝐁, opts = opts)
     # timer = timer, 
 
-    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods, verbose = opts.verbose, on_failure_likelihood = on_failure_likelihood)
+    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
@@ -116,7 +116,7 @@ function run_kalman_iterations(A::Matrix{S},
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S}; 
                                 presample_periods::Int = 0,
-                                on_failure_likelihood::U = -Inf,
+                                on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
                                 verbose::Bool = false)::S where {S <: Float64, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter" begin
@@ -145,7 +145,7 @@ function run_kalman_iterations(A::Matrix{S},
     for t in 1:size(data_in_deviations, 2)
         if !all(isfinite.(z)) 
             if verbose println("KF not finite at step $t") end
-            return on_failure_likelihood 
+            return on_failure_loglikelihood 
         end
 
         ℒ.axpby!(1, data_in_deviations[:, t], -1, z)
@@ -161,7 +161,7 @@ function run_kalman_iterations(A::Matrix{S},
 
         if !ℒ.issuccess(luF)
             if verbose println("KF factorisation failed step $t") end
-            return on_failure_likelihood
+            return on_failure_loglikelihood
         end
 
         Fdet = ℒ.det(luF)
@@ -169,7 +169,7 @@ function run_kalman_iterations(A::Matrix{S},
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
             if verbose println("KF factorisation failed step $t") end
-            return on_failure_likelihood
+            return on_failure_loglikelihood
         end
 
         # invF = inv(luF) ###
@@ -226,7 +226,7 @@ function run_kalman_iterations(A::Matrix{S},
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S}; 
                                 presample_periods::Int = 0,
-                                on_failure_likelihood::U = -Inf,
+                                on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
                                 verbose::Bool = false)::S where {S <: ℱ.Dual, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
@@ -243,7 +243,7 @@ function run_kalman_iterations(A::Matrix{S},
     for t in 1:size(data_in_deviations, 2)
         if !all(isfinite.(z)) 
             if verbose println("KF not finite at step $t") end
-            return on_failure_likelihood 
+            return on_failure_loglikelihood 
         end
 
         v = data_in_deviations[:, t] - z
@@ -254,7 +254,7 @@ function run_kalman_iterations(A::Matrix{S},
 
         if !ℒ.issuccess(luF)
             if verbose println("KF factorisation failed step $t") end
-            return on_failure_likelihood
+            return on_failure_loglikelihood
         end
 
         Fdet = ℒ.det(luF)
@@ -262,7 +262,7 @@ function run_kalman_iterations(A::Matrix{S},
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
             if verbose println("KF factorisation failed step $t") end
-            return on_failure_likelihood
+            return on_failure_loglikelihood
         end
 
         invF = inv(luF) ###
@@ -294,7 +294,7 @@ function rrule(::typeof(run_kalman_iterations),
                     P, 
                     data_in_deviations; 
                     presample_periods = 0,
-                    on_failure_likelihood = -Inf,
+                    on_failure_loglikelihood = -Inf,
                     # timer::TimerOutput = TimerOutput(),
                     verbose::Bool = false)
     # @timeit_debug timer "Calculate Kalman filter - forward" begin
@@ -331,7 +331,7 @@ function rrule(::typeof(run_kalman_iterations),
     for t in 2:T
         if !all(isfinite.(z)) 
             if verbose println("KF not finite at step $t") end
-            return on_failure_likelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
         end
 
         v[t] .= data_in_deviations[:, t-1] .- z#[t-1]
@@ -346,7 +346,7 @@ function rrule(::typeof(run_kalman_iterations),
     
         if !ℒ.issuccess(luF)
             if verbose println("KF factorisation failed step $t") end
-            return on_failure_likelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
         Fdet = ℒ.det(luF)
@@ -354,7 +354,7 @@ function rrule(::typeof(run_kalman_iterations),
         # Early return if determinant is too small, indicating numerical instability.
         if Fdet < eps(Float64)
             if verbose println("KF factorisation failed step $t") end
-            return on_failure_likelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
         
         # invF[t] .= inv(luF)
