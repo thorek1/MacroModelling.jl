@@ -226,8 +226,9 @@ function run_kalman_iterations(A::Matrix{S},
                                 P::Matrix{S}, 
                                 data_in_deviations::Matrix{S}; 
                                 presample_periods::Int = 0,
+                                on_failure_likelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
-                                verbose::Bool = false)::S where S <: ℱ.Dual
+                                verbose::Bool = false)::S where {S <: ℱ.Dual, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
     u = zeros(S, size(C,2))
 
