@@ -34,31 +34,35 @@ dists = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m, filter)
+Turing.@model function FS2000_loglikelihood_function(data, m, filter, on_failure_loglikelihood)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params, filter = filter)
+        Turing.@addlogprob! get_loglikelihood(m, 
+                                                data, 
+                                                all_params, 
+                                                filter = filter,
+                                                on_failure_loglikelihood = on_failure_loglikelihood)
     end
 end
 
 n_samples = 1000
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion), NUTS(adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), NUTS(adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
-modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS2000, :inversion), 
+modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                                         adtype = ADTypes.AutoZygote(), 
                                         initial_params = FS2000.parameter_values)
 
 println("Mode variable values: $(modeFS2000i.values); Mode loglikelihood: $(modeFS2000i.lp)")
 
-FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :inversion))
+FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :inversion, -floatmax(Float64)))
 
 init_params = FS2000.parameter_values
 
