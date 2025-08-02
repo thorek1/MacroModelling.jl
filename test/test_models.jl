@@ -498,6 +498,57 @@ JQ_2012_RBC = nothing
 
 
 
+
+include("../models/Gali_2015_chapter_3_nonlinear.jl")
+moments = get_moments(Gali_2015_chapter_3_nonlinear, derivatives = false)
+
+@test isapprox(moments[:non_stochastic_steady_state]([:C,:N,:M_real,:Y],:),[0.95058, 0.934655, 0.915236, 0.95058],rtol = 1e-5)
+
+var_dec = get_var_decomp(Gali_2015_chapter_3_nonlinear)
+
+@test isapprox(var_dec(:C,:) * 100, [27.53, 0.72,  71.76],rtol = 1e-3)
+@test isapprox(var_dec(:R,:) * 100, [15.37, 0.23, 84.40],rtol = 1e-3)
+@test isapprox(var_dec(:Y,:) * 100, [27.53, 0.72, 71.76],rtol = 1e-3)
+
+# if test_higher_order
+    mean_2nd = get_mean(Gali_2015_chapter_3_nonlinear, algorithm = :pruned_second_order, derivatives = false)
+
+    @test isapprox(mean_2nd(:C),0.9156,rtol = 1e-3)
+# end
+
+model = Gali_2015_chapter_3_nonlinear
+
+observables = [:N,:Y]
+
+Random.seed!(1)
+simulated_data = simulate(model)
+
+get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
+
+back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
+
+# fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
+
+for i in 1:100        
+    local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
+    if isfinite(ℒ.norm(fin_grad))
+        println("Finite differences worked after $i iterations")
+        @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+        break
+    end
+end
+
+# @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
+
+write_to_dynare_file(Gali_2015_chapter_3_nonlinear)
+translate_dynare_file("Gali_2015_chapter_3_nonlinear.mod")
+include("Gali_2015_chapter_3_nonlinear.jl")
+get_solution(Gali_2015_chapter_3_nonlinear)
+Gali_2015_chapter_3_nonlinear = nothing
+
+
+
+
 include("../models/Ghironi_Melitz_2005.jl")
 moments = get_moments(Ghironi_Melitz_2005, derivatives = false)
 
@@ -547,58 +598,6 @@ translate_dynare_file("Ghironi_Melitz_2005.mod")
 include("Ghironi_Melitz_2005.jl")
 get_solution(Ghironi_Melitz_2005)
 Ghironi_Melitz_2005 = nothing
-
-
-
-
-
-
-include("../models/Gali_2015_chapter_3_nonlinear.jl")
-moments = get_moments(Gali_2015_chapter_3_nonlinear, derivatives = false)
-
-@test isapprox(moments[:non_stochastic_steady_state]([:C,:N,:M_real,:Y],:),[0.95058, 0.934655, 0.915236, 0.95058],rtol = 1e-5)
-
-var_dec = get_var_decomp(Gali_2015_chapter_3_nonlinear)
-
-@test isapprox(var_dec(:C,:) * 100, [27.53, 0.72,  71.76],rtol = 1e-3)
-@test isapprox(var_dec(:R,:) * 100, [15.37, 0.23, 84.40],rtol = 1e-3)
-@test isapprox(var_dec(:Y,:) * 100, [27.53, 0.72, 71.76],rtol = 1e-3)
-
-# if test_higher_order
-    mean_2nd = get_mean(Gali_2015_chapter_3_nonlinear, algorithm = :pruned_second_order, derivatives = false)
-
-    @test isapprox(mean_2nd(:C),0.9156,rtol = 1e-3)
-# end
-
-model = Gali_2015_chapter_3_nonlinear
-
-observables = [:N,:Y]
-
-Random.seed!(1)
-simulated_data = simulate(model)
-
-get_loglikelihood(model, simulated_data(observables, :, :simulate), model.parameter_values)
-
-back_grad = Zygote.gradient(x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
-
-# fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x, verbose = true), model.parameter_values)
-
-for i in 1:100        
-    local fin_grad = FiniteDifferences.grad(FiniteDifferences.central_fdm(4,1),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
-    if isfinite(ℒ.norm(fin_grad))
-        println("Finite differences worked after $i iterations")
-        @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
-        break
-    end
-end
-
-# @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-6)
-
-write_to_dynare_file(Gali_2015_chapter_3_nonlinear)
-translate_dynare_file("Gali_2015_chapter_3_nonlinear.mod")
-include("Gali_2015_chapter_3_nonlinear.jl")
-get_solution(Gali_2015_chapter_3_nonlinear)
-Gali_2015_chapter_3_nonlinear = nothing
 
 
 
