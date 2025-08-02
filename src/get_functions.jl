@@ -3439,6 +3439,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $FILTER®
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data for which the loglikelihood is discarded.
 - `initial_covariance` [Default: `:theoretical`, Type: `Symbol`]: defines the method to initialise the Kalman filters covariance matrix. It can be initialised with the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`).
+- `on_failure_loglikelihood` [Default: `-Inf`, Type: `AbstractFloat`]: value to return if the loglikelihood calculation fails. Setting this to a finite value can avoid errors in codes that rely on finite loglikelihood values, such as e.g. slice samplers (in Pigeons.jl).
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -3479,6 +3480,7 @@ function get_loglikelihood(𝓂::ℳ,
                             parameter_values::Vector{S}; 
                             algorithm::Symbol = :first_order, 
                             filter::Symbol = :kalman, 
+                            on_failure_loglikelihood::U = -Inf,
                             warmup_iterations::Int = 0, 
                             presample_periods::Int = 0,
                             initial_covariance::Symbol = :theoretical,
@@ -3487,7 +3489,7 @@ function get_loglikelihood(𝓂::ℳ,
                             quadratic_matrix_equation_algorithm::Symbol = :schur, 
                             lyapunov_algorithm::Symbol = :doubling, 
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                            verbose::Bool = false)::S where S <: Real
+                            verbose::Bool = false)::S where {S <: Real, U <: AbstractFloat}
                             # timer::TimerOutput = TimerOutput(),
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -3523,7 +3525,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     if bounds_violated 
         # println("Bounds violated")
-        return -Inf 
+        return on_failure_loglikelihood
     end
 
     NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
@@ -3539,7 +3541,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     if !solved 
         # println("Main call: 1st order solution not found")
-        return -Inf 
+        return on_failure_loglikelihood 
     end
  
     if collect(axiskeys(data,1)) isa Vector{String}
@@ -3553,7 +3555,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Filter" begin
 
-    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts) # timer = timer
+    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood) # timer = timer
 
     # end # timeit_debug
 

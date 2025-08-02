@@ -3,6 +3,8 @@
 ## High priority
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
+- [ ] add FRB US model
+- [ ] error when parsing expression of the form: XYZ[0] = 0
 - [ ] add caches to lyapunov krylov solvers
 - [ ] allow not to define all parameters in @parameters and enter them later in subsequent calls. so you can do things like loading them from a file and putting them in. internally he would need to delay the solution until all parameters are defined
 - [ ] eliminiate last elements of factorisation calls not using linearsolvers.jl, check whether they can be done with linearsolvers in case of a matrix as RHS (otherwise consider mumps for sparse matrix RHS)

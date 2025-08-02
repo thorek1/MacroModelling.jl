@@ -45,18 +45,22 @@ dists = [
     Beta(0.75, 0.02, Val(:μσ))             # ρ
 ]
 
-Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
+Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :third_order)
+        Turing.@addlogprob! get_loglikelihood(m, 
+                                                data, 
+                                                all_params, 
+                                                algorithm = :third_order, 
+                                                on_failure_loglikelihood = on_failure_loglikelihood)
     end
 end
 
 
 Random.seed!(3)
 
-Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)
+Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -Inf)
 
 # samps = @time sample(Caldara_et_al_2012_loglikelihood, PG(100), 10, progress = true)#, init_params = sol)
 
@@ -89,9 +93,9 @@ sample_nuts = mean(samps).nt.mean
 
 
 # generate a Pigeons log potential
-Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim))
+Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)))
 
-LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim), (all_params = init_params,))
+LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)), (all_params = init_params,))
 
 if isfinite(LLH)
     const Caldara_LP = typeof(Caldara_lp)
