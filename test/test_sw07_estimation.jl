@@ -1,7 +1,8 @@
 using MacroModelling
-using Mooncake
+import ADTypes: AutoZygote
+import Zygote
 import Turing, Pigeons
-import Turing: AutoMooncake, NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
@@ -115,7 +116,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear
 
 n_samples = 1000
 
-samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, 
+samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, 
                             # initial_params = inits,
                             progress = true)
 
@@ -152,7 +153,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 
 n_samples = 1000
 
-samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, 
+samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, 
                             # initial_params = inits,
                             progress = true)
 

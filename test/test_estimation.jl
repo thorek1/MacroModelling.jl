@@ -1,6 +1,7 @@
 using MacroModelling
-import Turing, Pigeons, Mooncake
-import Turing: AutoMooncake, NUTS, sample, logpdf, Beta, Normal, InverseGamma
+import Turing, Pigeons, Zygote
+import ADTypes: AutoZygote
+import Turing: NUTS, sample, logpdf, Beta, Normal, InverseGamma
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
@@ -49,10 +50,10 @@ samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, i
 
 println("Mean variable values (ForwardDiff): $(mean(samps).nt.mean)")
 
-samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoMooncake(; config=nothing)), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 
-println("Mean variable values (Mooncake): $(mean(samps).nt.mean)")
+println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
@@ -92,7 +93,7 @@ modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
                                         # Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                                         # Optim.NelderMead(), 
-                                        adtype = AutoMooncake(; config=nothing), 
+                                        adtype = AutoZygote(), 
                                         # maxiters = 100,
                                         # lb = [0,0,-10,-10,0,0,0,0,0], 
                                         # ub = [1,1,10,10,1,1,1,100,100], 
