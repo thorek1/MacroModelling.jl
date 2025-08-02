@@ -1,6 +1,5 @@
 using MacroModelling
 import ADTypes: AutoZygote
-import Zygote
 import Turing, Pigeons
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches

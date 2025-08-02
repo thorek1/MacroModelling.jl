@@ -99,22 +99,21 @@ data = data(observables,:)
 Next we define the parameter priors using the Turing package. The `@model` macro of the Turing package allows us to define the prior distributions over the parameters and combine it with the (Kalman filter) loglikelihood of the model and parameters given the data with the help of the `get_loglikelihood` function. We define the prior distributions in an array and pass it on to the `arraydist` function inside the `@model` macro from the Turing package. It is also possible to define the prior distributions inside the macro but especially for reverse mode auto differentiation the `arraydist` function is substantially faster. When defining the prior distributions we can rely n the distribution implemented in the Distributions package. Note that the `μσ` parameter allows us to hand over the moments (`μ` and `σ`) of the distribution as parameters in case of the non-normal distributions (Gamma, Beta, InverseGamma), and we can also define upper and lower bounds truncating the distribution as third and fourth arguments to the distribution functions. Last but not least, we define the loglikelihood and add it to the posterior loglikelihood with the help of the `@addlogprob!` macro.
 
 ```@repl tutorial_2
-import Zygote
 import DynamicPPL
 import Turing
-import Turing: NUTS, sample, logpdf, Beta, Normal, InverseGamma
+import Turing: NUTS, sample, logpdf
 import ADTypes: AutoZygote
 
 prior_distributions = [
-    Beta(0.356, 0.02, Val(:μσ)),           # alp
-    Beta(0.993, 0.002, Val(:μσ)),          # bet
+    Beta(0.356, 0.02, μσ = true),           # alp
+    Beta(0.993, 0.002, μσ = true),          # bet
     Normal(0.0085, 0.003),                  # gam
     Normal(1.0002, 0.007),                  # mst
-    Beta(0.129, 0.223, Val(:μσ)),          # rho
-    Beta(0.65, 0.05, Val(:μσ)),            # psi
-    Beta(0.01, 0.005, Val(:μσ)),           # del
-    InverseGamma(0.035449, Inf, Val(:μσ)), # z_e_a
-    InverseGamma(0.008862, Inf, Val(:μσ))  # z_e_m
+    Beta(0.129, 0.223, μσ = true),          # rho
+    Beta(0.65, 0.05, μσ = true),            # psi
+    Beta(0.01, 0.005, μσ = true),           # del
+    InverseGamma(0.035449, Inf, μσ = true), # z_e_a
+    InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
 Turing.@model function FS2000_loglikelihood_function(data, model)
