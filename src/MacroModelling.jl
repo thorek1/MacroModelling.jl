@@ -4176,8 +4176,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             end
                     #     end
                     end
-                    return [0.0], (1, 0)
+                    return zeros($(length(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)) + length(𝓂.calibration_equations_parameters))), (1, 0)
                 end)
+
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
     # 𝓂.SS_solve_func = eval(solve_exp)
@@ -4777,7 +4778,7 @@ function solve_steady_state!(𝓂::ℳ;
                             end
                     #     end
                     end
-                    return [0.0], (1, 0)
+                    return zeros($(length(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)) + length(𝓂.calibration_equations_parameters))), (1, 0)
                 end)
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
