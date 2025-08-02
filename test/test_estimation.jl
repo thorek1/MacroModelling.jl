@@ -22,15 +22,15 @@ data = data(observables,:)
 
 # Handling distributions with varying parameters using arraydist
 dists = [
-    Beta(0.356, 0.02, Val(:μσ)),           # alp
-    Beta(0.993, 0.002, Val(:μσ)),          # bet
+    Beta(0.356, 0.02, μσ = true),           # alp
+    Beta(0.993, 0.002, μσ = true),          # bet
     Normal(0.0085, 0.003),                  # gam
     Normal(1.0002, 0.007),                  # mst
-    Beta(0.129, 0.223, Val(:μσ)),          # rho
-    Beta(0.65, 0.05, Val(:μσ)),            # psi
-    Beta(0.01, 0.005, Val(:μσ)),           # del
-    InverseGamma(0.035449, Inf, Val(:μσ)), # z_e_a
-    InverseGamma(0.008862, Inf, Val(:μσ))  # z_e_m
+    Beta(0.129, 0.223, μσ = true),          # rho
+    Beta(0.65, 0.05, μσ = true),            # psi
+    Beta(0.01, 0.005, μσ = true),           # del
+    InverseGamma(0.035449, Inf, μσ = true), # z_e_a
+    InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
 Turing.@model function FS2000_loglikelihood_function(data, m, on_failure_loglikelihood)

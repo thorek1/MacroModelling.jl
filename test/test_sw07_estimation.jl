@@ -30,38 +30,38 @@ data = rekey(data, :Variable => observables)
 
 # Handling distributions with varying parameters using arraydist
 dists = [
-InverseGamma(0.1, 2.0, 0.01, 3.0, Val(:μσ)),   # z_ea
-InverseGamma(0.1, 2.0, 0.025,5.0, Val(:μσ)),   # z_eb
-InverseGamma(0.1, 2.0, 0.01, 3.0, Val(:μσ)),   # z_eg
-InverseGamma(0.1, 2.0, 0.01, 3.0, Val(:μσ)),   # z_eqs
-InverseGamma(0.1, 2.0, 0.01, 3.0, Val(:μσ)),   # z_em
-InverseGamma(0.1, 2.0, 0.01, 3.0, Val(:μσ)),   # z_epinf
-InverseGamma(0.1, 2.0, 0.01, 3.0, Val(:μσ)),   # z_ew
-Beta(0.5, 0.2, 0.01, 0.9999, Val(:μσ)),        # crhoa
-Beta(0.5, 0.2, 0.01, 0.9999, Val(:μσ)),        # crhob
-Beta(0.5, 0.2, 0.01, 0.9999, Val(:μσ)),        # crhog
-Beta(0.5, 0.2, 0.01, 0.9999, Val(:μσ)),        # crhoqs
-Beta(0.5, 0.2, 0.01, 0.9999, Val(:μσ)),        # crhoms
-Beta(0.5, 0.2, 0.01, 0.9999, Val(:μσ)),        # crhopinf
-Beta(0.5, 0.2, 0.001,0.9999, Val(:μσ)),        # crhow
-Beta(0.5, 0.2, 0.01, 0.9999, Val(:μσ)),        # cmap
-Beta(0.5, 0.2, 0.01, 0.9999, Val(:μσ)),        # cmaw
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_ea
+InverseGamma(0.1, 2.0, 0.025,5.0, μσ = true),   # z_eb
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_eg
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_eqs
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_em
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_epinf
+InverseGamma(0.1, 2.0, 0.01, 3.0, μσ = true),   # z_ew
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoa
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhob
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhog
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoqs
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhoms
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # crhopinf
+Beta(0.5, 0.2, 0.001,0.9999, μσ = true),        # crhow
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # cmap
+Beta(0.5, 0.2, 0.01, 0.9999, μσ = true),        # cmaw
 Normal(4.0, 1.5,   2.0, 15.0),                  # csadjcost
 Normal(1.50,0.375, 0.25, 3.0),                  # csigma
-Beta(0.7, 0.1, 0.001, 0.99, Val(:μσ)),         # chabb
-Beta(0.5, 0.1, 0.3, 0.95, Val(:μσ)),           # cprobw
+Beta(0.7, 0.1, 0.001, 0.99, μσ = true),         # chabb
+Beta(0.5, 0.1, 0.3, 0.95, μσ = true),           # cprobw
 Normal(2.0, 0.75, 0.25, 10.0),                  # csigl
-Beta(0.5, 0.10, 0.5, 0.95, Val(:μσ)),          # cprobp
-Beta(0.5, 0.15, 0.01, 0.99, Val(:μσ)),         # cindw
-Beta(0.5, 0.15, 0.01, 0.99, Val(:μσ)),         # cindp
-Beta(0.5, 0.15, 0.01, 0.99999, Val(:μσ)),      # czcap
+Beta(0.5, 0.10, 0.5, 0.95, μσ = true),          # cprobp
+Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # cindw
+Beta(0.5, 0.15, 0.01, 0.99, μσ = true),         # cindp
+Beta(0.5, 0.15, 0.01, 0.99999, μσ = true),      # czcap
 Normal(1.25, 0.125, 1.0, 3.0),                  # cfc
 Normal(1.5, 0.25, 1.0, 3.0),                    # crpi
-Beta(0.75, 0.10, 0.5, 0.975, Val(:μσ)),        # crr
+Beta(0.75, 0.10, 0.5, 0.975, μσ = true),        # crr
 Normal(0.125, 0.05, 0.001, 0.5),                # cry
 Normal(0.125, 0.05, 0.001, 0.5),                # crdy
-Gamma(0.625, 0.1, 0.1, 2.0, Val(:μσ)),         # constepinf
-Gamma(0.25, 0.1, 0.01, 2.0, Val(:μσ)),         # constebeta
+Gamma(0.625, 0.1, 0.1, 2.0, μσ = true),         # constepinf
+Gamma(0.25, 0.1, 0.01, 2.0, μσ = true),         # constebeta
 Normal(0.0, 2.0, -10.0, 10.0),                  # constelab
 Normal(0.4, 0.10, 0.1, 0.8),                    # ctrend
 Normal(0.5, 0.25, 0.01, 2.0),                   # cgy
