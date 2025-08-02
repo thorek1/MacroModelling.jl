@@ -2,7 +2,7 @@ using MacroModelling
 import Turing
 import ADTypes: AutoZygote
 import Pigeons
-import Turing: NUTS, sample, logpdf, PG, IS, Beta, Normal, InverseGamma
+import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
