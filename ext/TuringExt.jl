@@ -19,9 +19,9 @@ Convenience wrapper for the Beta distribution. Can also be parameterized by mean
 - `σ` [Type: `Real`]: The second parameter (β) of the distribution, or the standard deviation when `μσ=true`.
 
 # Keyword Arguments
-- `μσ` [Type: `Bool`, Default: `true`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the `α` and `β` parameters. Defaults to `false`.
+- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the `α` and `β` parameters. Defaults to `false`.
 """
-function Beta(μ::Real, σ::Real; μσ::Bool=true)
+function Beta(μ::Real, σ::Real; μσ::Bool=false)
     if μσ
         # Calculate alpha and beta from mean (μ) and standard deviation (σ)
         a = ((1 - μ) / σ ^ 2 - 1) * μ ^ 2
@@ -42,9 +42,9 @@ Convenience wrapper for the truncated Beta distribution. Can also be parameteriz
 - `upper_bound` [Type: `Real`]: The truncation upper bound of the distribution.
 
 # Keyword Arguments
-- `μσ` [Type: `Bool`, Default: `true`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the `α` and `β` parameters. Defaults to `false`.
+- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the `α` and `β` parameters. Defaults to `false`.
 """
-function Beta(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=true)
+function Beta(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=false)
     # Create the base distribution, then truncate it
     dist = Beta(μ, σ; μσ=μσ)
     return truncated(dist, lower_bound, upper_bound)
@@ -64,9 +64,9 @@ Convenience wrapper for the Inverse Gamma distribution. Can also be parameterize
 - `σ` [Type: `Real`]: The scale parameter (β) of the distribution, or the standard deviation when `μσ=true`.
 
 # Keyword Arguments
-- `μσ` [Type: `Bool`, Default: `true`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `β` parameters. Defaults to `false`.
+- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `β` parameters. Defaults to `false`.
 """
-function InverseGamma(μ::Real, σ::Real; μσ::Bool=true)
+function InverseGamma(μ::Real, σ::Real; μσ::Bool=false)
     if μσ
         # Calculate shape (α) and scale (β) from mean (μ) and standard deviation (σ)
         α = (μ / σ)^2 + 2
@@ -88,9 +88,9 @@ Convenience wrapper for the truncated Inverse Gamma distribution. Can also be pa
 - `upper_bound` [Type: `Real`]: The truncation upper bound of the distribution.
 
 # Keyword Arguments
-- `μσ` [Type: `Bool`, Default: `true`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `β` parameters.
+- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `β` parameters.
 """
-function InverseGamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=true)
+function InverseGamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=false)
     # Create the base distribution, then truncate it
     dist = InverseGamma(μ, σ; μσ=μσ)
     return truncated(dist, lower_bound, upper_bound)
@@ -110,9 +110,9 @@ Convenience wrapper for the Gamma distribution. Can also be parameterized by mea
 - `σ` [Type: `Real`]: The rate parameter (θ) of the distribution, or the standard deviation when `μσ=true`.
 
 # Keyword Arguments
-- `μσ` [Type: `Bool`, Default: `true`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `θ` parameters.
+- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `θ` parameters.
 """
-function Gamma(μ::Real, σ::Real; μσ::Bool=true)
+function Gamma(μ::Real, σ::Real; μσ::Bool=false)
     if μσ
         # Calculate shape (α) and scale (θ) from mean (μ) and standard deviation (σ)
         θ = σ^2 / μ
@@ -134,9 +134,9 @@ Convenience wrapper for the truncated Gamma distribution. Can also be parameteri
 - `upper_bound` [Type: `Real`]: The truncation upper bound of the distribution.
 
 # Keyword Arguments
-- `μσ` [Type: `Bool`, Default: `true`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `θ` parameters.
+- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `θ` parameters.
 """
-function Gamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=true)
+function Gamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=false)
     # Create the base distribution, then truncate it
     dist = Gamma(μ, σ; μσ=μσ)
     return truncated(dist, lower_bound, upper_bound)
