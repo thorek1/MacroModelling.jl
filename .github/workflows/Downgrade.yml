@@ -17,11 +17,15 @@ jobs:
     strategy:
       matrix:
         version: ['lts']
+        test_set: ["basic"]
+        os: [ubuntu-latest]
+        arch: [x64]
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
+          arch: ${{ matrix.arch }}  
       - uses: julia-actions/julia-downgrade-compat@v2
 #        if: ${{ matrix.version == 'lts' }}
         with:
