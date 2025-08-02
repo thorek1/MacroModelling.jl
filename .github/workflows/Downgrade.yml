@@ -1,11 +1,11 @@
 name: Downgrade
 on:
-  workflow_dispatch:  # allows manual triggering
-  pull_request:
+  pull_request_target:
     branches:
       - master
     paths-ignore:
       - 'docs/**'
+  workflow_dispatch:  # allows manual triggering
   push:
     branches:
       - master
