@@ -88,7 +88,7 @@ println("Mode variable values (L-BFGS): $init_params")
 
 n_samples = 100
 
-samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = init_params)
+samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = AutoZygote()), n_samples, progress = true, initial_params = init_params)
 
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
