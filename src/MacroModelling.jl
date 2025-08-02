@@ -135,6 +135,8 @@ export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simu
 export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
 export plotlyjs_backend, gr_backend
 
+export Normal, Beta, Cauchy, Gamma, InverseGamma
+
 export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations, get_girf
 export get_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution
@@ -172,6 +174,15 @@ function plot_model_estimates   end
 function plot_shock_decomposition   end
 function plotlyjs_backend   end
 function gr_backend end
+
+
+# TuringExt
+
+function Normal  end
+function Beta   end
+function Cauchy   end
+function Gamma  end
+function InverseGamma  end
 
 # Remove comment for debugging
 # export block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth

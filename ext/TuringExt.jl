@@ -1,8 +1,13 @@
 module TuringExt
 
-import Turing: Beta, InverseGamma, Gamma, Normal, Cauchy, truncated
+# We only import `truncated` now, as we will be defining our own wrappers
+# with the same names as the distributions.
+import Turing: truncated
+# We explicitly refer to the Turing distributions to avoid method overwriting.
+import Turing
 import DocStringExtensions: SIGNATURES
 using DispatchDoctor
+import MacroModelling: Normal, Beta, Cauchy, Gamma, InverseGamma
 
 @stable default_mode = "disable" begin
 
@@ -12,20 +17,22 @@ using DispatchDoctor
 
 """
 $(SIGNATURES)
-Convenience wrapper for the Beta distribution. Can also be parameterized by mean and standard deviation.
+Constructs a `Beta` distribution, optionally parameterized by its mean and standard deviation.
 
 # Arguments
 - `μ` [Type: `Real`]: The first parameter (α) of the distribution, or the mean when `μσ=true`.
 - `σ` [Type: `Real`]: The second parameter (β) of the distribution, or the standard deviation when `μσ=true`.
 
 # Keyword Arguments
-- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the `α` and `β` parameters. Defaults to `false`.
+- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the `α` and `β` parameters.
 """
 function Beta(μ::Real, σ::Real; μσ::Bool=false)
     if μσ
         # Calculate alpha and beta from mean (μ) and standard deviation (σ)
-        a = ((1 - μ) / σ ^ 2 - 1) * μ ^ 2
-        return Turing.Beta(a, a * (1 / μ - 1))
+        ν = μ * (1 - μ) / σ^2 - 1
+        α = μ * ν
+        β = (1 - μ) * ν
+        return Turing.Beta(α, β)
     end
     # By default, treat μ and σ as the distribution parameters α and β
     return Turing.Beta(μ, σ)
@@ -33,7 +40,7 @@ end
 
 """
 $(SIGNATURES)
-Convenience wrapper for the truncated Beta distribution. Can also be parameterized by mean and standard deviation.
+Constructs a truncated `Beta` distribution, optionally parameterized by its mean and standard deviation.
 
 # Arguments
 - `μ` [Type: `Real`]: The first parameter (α) of the distribution, or the mean when `μσ=true`.
@@ -42,7 +49,7 @@ Convenience wrapper for the truncated Beta distribution. Can also be parameteriz
 - `upper_bound` [Type: `Real`]: The truncation upper bound of the distribution.
 
 # Keyword Arguments
-- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the `α` and `β` parameters. Defaults to `false`.
+- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the `α` and `β` parameters.
 """
 function Beta(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=false)
     # Create the base distribution, then truncate it
@@ -57,14 +64,14 @@ end
 
 """
 $(SIGNATURES)
-Convenience wrapper for the Inverse Gamma distribution. Can also be parameterized by mean and standard deviation.
+Constructs an `InverseGamma` distribution, optionally parameterized by its mean and standard deviation.
 
 # Arguments
 - `μ` [Type: `Real`]: The shape parameter (α) of the distribution, or the mean when `μσ=true`.
 - `σ` [Type: `Real`]: The scale parameter (β) of the distribution, or the standard deviation when `μσ=true`.
 
 # Keyword Arguments
-- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `β` parameters. Defaults to `false`.
+- `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `β` parameters.
 """
 function InverseGamma(μ::Real, σ::Real; μσ::Bool=false)
     if μσ
@@ -79,7 +86,7 @@ end
 
 """
 $(SIGNATURES)
-Convenience wrapper for the truncated Inverse Gamma distribution. Can also be parameterized by mean and standard deviation.
+Constructs a truncated `InverseGamma` distribution, optionally parameterized by its mean and standard deviation.
 
 # Arguments
 - `μ` [Type: `Real`]: The shape parameter (α) of the distribution, or the mean when `μσ=true`.
@@ -103,7 +110,7 @@ end
 
 """
 $(SIGNATURES)
-Convenience wrapper for the Gamma distribution. Can also be parameterized by mean and standard deviation.
+Constructs a `Gamma` distribution, optionally parameterized by its mean and standard deviation.
 
 # Arguments
 - `μ` [Type: `Real`]: The shape parameter (α) of the distribution, or the mean when `μσ=true`.
@@ -125,7 +132,7 @@ end
 
 """
 $(SIGNATURES)
-Convenience wrapper for the truncated Gamma distribution. Can also be parameterized by mean and standard deviation.
+Constructs a truncated `Gamma` distribution, optionally parameterized by its mean and standard deviation.
 
 # Arguments
 - `μ` [Type: `Real`]: The shape parameter (α) of the distribution, or the mean when `μσ=true`.
@@ -149,7 +156,7 @@ end
 
 """
 $(SIGNATURES)
-Convenience wrapper for the truncated Normal distribution.
+Convenience wrapper for the truncated `Normal` distribution.
 
 # Arguments
 - `μ` [Type: `Real`]: The mean of the distribution.
@@ -161,9 +168,13 @@ function Normal(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real)
     truncated(Turing.Normal(μ, σ), lower_bound, upper_bound)
 end
 
+function Normal(μ::Real, σ::Real)
+    Turing.Normal(μ, σ)
+end
+
 """
 $(SIGNATURES)
-Convenience wrapper for the truncated Cauchy distribution.
+Convenience wrapper for the truncated `Cauchy` distribution.
 
 # Arguments
 - `μ` [Type: `Real`]: The location parameter.
@@ -174,6 +185,11 @@ Convenience wrapper for the truncated Cauchy distribution.
 function Cauchy(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real)
     truncated(Turing.Cauchy(μ, σ), lower_bound, upper_bound)
 end
+
+function Cauchy(μ::Real, σ::Real)
+    Turing.Cauchy(μ, σ)
+end
+
 
 end # @stable
 
