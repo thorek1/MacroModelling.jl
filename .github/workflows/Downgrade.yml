@@ -32,3 +32,5 @@ jobs:
           skip: Pkg,TOML
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+        env:
+          TEST_SET: ${{ matrix.test_set }}
