@@ -2819,6 +2819,7 @@ function write_block_solution!(𝓂,
                                 cse = true,
                                 skipzeros = true, 
                                 density_threshold::Float64 = .1,
+                                nnz_parallel_threshold::Int = 5000,
                                 min_length::Int = 10000)
 
     # ➕_vars = Symbol[]
@@ -2991,7 +2992,7 @@ function write_block_solution!(𝓂,
 
     lennz = length(replaced_solved_vals)
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -3042,7 +3043,7 @@ function write_block_solution!(𝓂,
 
     lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -3107,7 +3108,7 @@ function write_block_solution!(𝓂,
 
     ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -3615,6 +3616,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                     cse = true,
                                     skipzeros = true, 
                                     density_threshold::Float64 = .1,
+                                    nnz_parallel_threshold::Int = 5000,
                                     min_length::Int = 10000)
     unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
 
@@ -3670,7 +3672,7 @@ function write_ss_check_function!(𝓂::ℳ;
 
     lennz = length(ss_equations_sub)
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -3723,7 +3725,7 @@ function write_ss_check_function!(𝓂::ℳ;
         buffer.nzval .= 0
     end
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -3754,7 +3756,7 @@ function write_ss_check_function!(𝓂::ℳ;
         buffer.nzval .= 0
     end
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -4193,6 +4195,7 @@ function solve_steady_state!(𝓂::ℳ;
                             cse = true,
                             skipzeros = true,
                             density_threshold::Float64 = .1,
+                            nnz_parallel_threshold::Int = 5000,
                             min_length::Int = 1000,
                             verbose::Bool = false)
     write_ss_check_function!(𝓂)
@@ -4403,7 +4406,7 @@ function solve_steady_state!(𝓂::ℳ;
     
         lennz = length(replaced_solved_vals)
     
-        if lennz > 1500
+        if lennz > nnz_parallel_threshold
             parallel = Symbolics.ShardedForm(1500,4)
         else
             parallel = Symbolics.SerialForm()
@@ -4454,7 +4457,7 @@ function solve_steady_state!(𝓂::ℳ;
 
         lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
 
-        if lennz > 1500
+        if lennz > nnz_parallel_threshold
             parallel = Symbolics.ShardedForm(1500,4)
         else
             parallel = Symbolics.SerialForm()
@@ -4519,7 +4522,7 @@ function solve_steady_state!(𝓂::ℳ;
 
         ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
 
-        if lennz > 1500
+        if lennz > nnz_parallel_threshold
             parallel = Symbolics.ShardedForm(1500,4)
         else
             parallel = Symbolics.SerialForm()
@@ -6582,6 +6585,7 @@ end
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; 
                                     density_threshold::Float64 = .1, 
                                     min_length::Int = 1000,
+                                    nnz_parallel_threshold::Int = 5000,
                                     # parallel = Symbolics.SerialForm(),
                                     # parallel = Symbolics.ShardedForm(1500,4),
                                     cse = true,
@@ -6702,7 +6706,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         buffer.nzval .= 0
     end
     
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -6732,7 +6736,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         buffer_parameters.nzval .= 0
     end
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -6762,7 +6766,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         buffer_SS_and_pars.nzval .= 0
     end
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -6817,7 +6821,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #         buffer.nzval .= 0
     #     end
 
-    #     if lennz > 1500
+    #     if lennz > nnz_parallel_threshold
     #         parallel = Symbolics.ShardedForm(1500,4)
     #     else
     #         parallel = Symbolics.SerialForm()
@@ -6848,7 +6852,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #         buffer.nzval .= 0
     #     end
 
-    #     if lennz > 1500
+    #     if lennz > nnz_parallel_threshold
     #         parallel = Symbolics.ShardedForm(1500,4)
     #     else
     #         parallel = Symbolics.SerialForm()
@@ -6885,7 +6889,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
@@ -6915,7 +6919,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_parameters.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
@@ -6945,7 +6949,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_SS_and_pars.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
@@ -6983,7 +6987,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
@@ -7013,7 +7017,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_parameters.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
@@ -7043,7 +7047,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_SS_and_pars.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
