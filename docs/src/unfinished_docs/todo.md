@@ -4,6 +4,7 @@
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
 - [ ] add FRB US model
+- [ ] check again return value when NSSS not found, maybe NaN is better here
 - [ ] error when parsing expression of the form: XYZ[0] = 0
 - [ ] add caches to lyapunov krylov solvers
 - [ ] allow not to define all parameters in @parameters and enter them later in subsequent calls. so you can do things like loading them from a file and putting them in. internally he would need to delay the solution until all parameters are defined
