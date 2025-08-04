@@ -2819,7 +2819,7 @@ function write_block_solution!(𝓂,
                                 cse = true,
                                 skipzeros = true, 
                                 density_threshold::Float64 = .1,
-                                nnz_parallel_threshold::Int = 5000,
+                                nnz_parallel_threshold::Int = 1000000,
                                 min_length::Int = 10000)
 
     # ➕_vars = Symbol[]
@@ -3616,7 +3616,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                     cse = true,
                                     skipzeros = true, 
                                     density_threshold::Float64 = .1,
-                                    nnz_parallel_threshold::Int = 5000,
+                                    nnz_parallel_threshold::Int = 1000000,
                                     min_length::Int = 10000)
     unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
 
@@ -4195,7 +4195,7 @@ function solve_steady_state!(𝓂::ℳ;
                             cse = true,
                             skipzeros = true,
                             density_threshold::Float64 = .1,
-                            nnz_parallel_threshold::Int = 5000,
+                            nnz_parallel_threshold::Int = 1000000,
                             min_length::Int = 1000,
                             verbose::Bool = false)
     write_ss_check_function!(𝓂)
@@ -6585,7 +6585,7 @@ end
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; 
                                     density_threshold::Float64 = .1, 
                                     min_length::Int = 1000,
-                                    nnz_parallel_threshold::Int = 5000,
+                                    nnz_parallel_threshold::Int = 1000000,
                                     # parallel = Symbolics.SerialForm(),
                                     # parallel = Symbolics.ShardedForm(1500,4),
                                     cse = true,
