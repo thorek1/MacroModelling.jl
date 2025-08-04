@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Programmatic model writing using for-loops · MacroModelling.jl</title><meta name="title" content="Programmatic model writing using for-loops · MacroModelling.jl"/><meta property="og:title" content="Programmatic model writing using for-loops · MacroModelling.jl"/><meta property="twitter:title" content="Programmatic model writing using for-loops · MacroModelling.jl"/><meta name="description" content="Documentation for MacroModelling.jl."/><meta property="og:description" content="Documentation for MacroModelling.jl."/><meta property="twitter:description" content="Documentation for MacroModelling.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">MacroModelling.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Introduction</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../../tutorials/install/">Installation</a></li><li><a class="tocitem" href="../../tutorials/rbc/">Write your first simple model - RBC</a></li><li><a class="tocitem" href="../../tutorials/sw03/">Work with a more complex model - Smets and Wouters (2003)</a></li><li><a class="tocitem" href="../../tutorials/calibration/">Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)</a></li><li><a class="tocitem" href="../../tutorials/estimation/">Estimate a model using gradient based samplers - Schorfheide (2000)</a></li></ul></li><li><span class="tocitem">How-to guides</span><ul><li class="is-active"><a class="tocitem" href>Programmatic model writing using for-loops</a><ul class="internal"><li><a class="tocitem" href="#Model-block"><span>Model block</span></a></li><li><a class="tocitem" href="#Parameter-block"><span>Parameter block</span></a></li></ul></li><li><a class="tocitem" href="../obc/">Occasionally binding constraints</a></li></ul></li><li><a class="tocitem" href="../../api/">API</a></li><li><a class="tocitem" href="../../call_index/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">How-to guides</a></li><li class="is-active"><a href>Programmatic model writing using for-loops</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Programmatic model writing using for-loops</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl/blob/main/docs/src/how-to/loops.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Programmatic-model-writing"><a class="docs-heading-anchor" href="#Programmatic-model-writing">Programmatic model writing</a><a id="Programmatic-model-writing-1"></a><a class="docs-heading-anchor-permalink" href="#Programmatic-model-writing" title="Permalink"></a></h1><p>Programmatic model writing is a powerful tool to write complex models using concise code. More specifically, the <code>@model</code> and <code>@parameters</code> macros allow for the use of indexed variables and for-loops.</p><h2 id="Model-block"><a class="docs-heading-anchor" href="#Model-block">Model block</a><a id="Model-block-1"></a><a class="docs-heading-anchor-permalink" href="#Model-block" title="Permalink"></a></h2><h3 id="for-loops-for-time-indices"><a class="docs-heading-anchor" href="#for-loops-for-time-indices">for loops for time indices</a><a id="for-loops-for-time-indices-1"></a><a class="docs-heading-anchor-permalink" href="#for-loops-for-time-indices" title="Permalink"></a></h3><p>In practice this means that you no longer need to write this:</p><pre><code class="language-julia hljs">Y_annual[0] = Y[0] + Y[-1] + Y[-2] + Y[-3]</code></pre><p>but instead you can write this:</p><pre><code class="language-julia hljs">Y_annual[0] = for lag in -3:0 Y[lag] end</code></pre><p>In the background the package expands the <code>for</code> loop and adds up the elements for the different values of <code>lag</code>.</p><p>In case you don&#39;t want the elements to be added up but multiply the items you can do so:</p><pre><code class="language-julia hljs">R_annual[0] = for operator = :*, lag in -3:0 R[lag] end</code></pre><h3 id="for-loops-for-variables-/-parameter-specific-indices"><a class="docs-heading-anchor" href="#for-loops-for-variables-/-parameter-specific-indices">for loops for variables / parameter specific indices</a><a id="for-loops-for-variables-/-parameter-specific-indices-1"></a><a class="docs-heading-anchor-permalink" href="#for-loops-for-variables-/-parameter-specific-indices" title="Permalink"></a></h3><p>Another use-case are models with repetitive equations such as multi-sector or multi-country models.</p><p>For example, defining the production function for two countries (home country <code>H</code> and foreign country <code>F</code>) would  look as follows without the use of programmatic features:</p><pre><code class="language-julia hljs">y_H[0] = A_H[0] * k_H[-1]^alpha_H
+y_F[0] = A_F[0] * k_F[-1]^alpha_F</code></pre><p>and this can be written more conveniently using loops:</p><pre><code class="language-julia hljs">for co in [H, F] y{co}[0] = A{co}[0] * k{co}[-1]^alpha{co} end</code></pre><p>Note that the package internally writes out the for loop and creates two equations; one each for country <code>H</code> and <code>F</code>. The variables and parameters are indexed using the curly braces <code>{}</code>. These can also be used outside loops. When using more than one index it is important to make sure the indices are in the right order.</p><h3 id="Example-model-block"><a class="docs-heading-anchor" href="#Example-model-block">Example model block</a><a id="Example-model-block-1"></a><a class="docs-heading-anchor-permalink" href="#Example-model-block" title="Permalink"></a></h3><p>Putting these these elements together we can write the multi-country model equations of the Backus, Kehoe and Kydland (1992) model like this:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using MacroModelling</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; @model Backus_Kehoe_Kydland_1992 begin
+           for co in [H, F]
+               Y{co}[0] = ((LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1 - theta{co}))^(-nu{co}) + sigma{co} * Z{co}[-1]^(-nu{co}))^(-1 / nu{co})
+       
+               K{co}[0] = (1 - delta{co}) * K{co}[-1] + S{co}[0]
+       
+               X{co}[0] = for lag in (-4+1):0 phi{co} * S{co}[lag] end
+       
+               A{co}[0] = (1 - eta{co}) * A{co}[-1] + N{co}[0]
+       
+               L{co}[0] = 1 - alpha{co} * N{co}[0] - (1 - alpha{co}) * eta{co} * A{co}[-1]
+       
+               U{co}[0] = (C{co}[0]^mu{co} * L{co}[0]^(1 - mu{co}))^gamma{co}
+       
+               psi{co} * mu{co} / C{co}[0] * U{co}[0] = LGM[0]
+       
+               psi{co} * (1 - mu{co}) / L{co}[0] * U{co}[0] * (-alpha{co}) = - LGM[0] * (1 - theta{co}) / N{co}[0] * (LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1 - theta{co}))^(-nu{co}) * Y{co}[0]^(1 + nu{co})
+       
+               for lag in 0:(4-1)
+                   beta{co}^lag * LGM[lag]*phi{co}
+               end +
+               for lag in 1:4
+                   -beta{co}^lag * LGM[lag] * phi{co} * (1 - delta{co})
+               end = beta{co}^4 * LGM[+4] * theta{co} / K{co}[0] * (LAMBDA{co}[+4] * K{co}[0]^theta{co} * N{co}[+4]^(1 - theta{co})) ^ (-nu{co}) * Y{co}[+4]^(1 + nu{co})
+       
+               LGM[0] = beta{co} * LGM[+1] * (1 + sigma{co} * Z{co}[0]^(-nu{co} - 1) * Y{co}[+1]^(1 + nu{co}))
+       
+               NX{co}[0] = (Y{co}[0] - (C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1])) / Y{co}[0]
+           end
+       
+           (LAMBDA{H}[0] - 1) = rho{H}{H} * (LAMBDA{H}[-1] - 1) + rho{H}{F} * (LAMBDA{F}[-1] - 1) + Z_E{H} * E{H}[x]
+       
+           (LAMBDA{F}[0] - 1) = rho{F}{F} * (LAMBDA{F}[-1] - 1) + rho{F}{H} * (LAMBDA{H}[-1] - 1) + Z_E{F} * E{F}[x]
+       
+           for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Model:        Backus_Kehoe_Kydland_1992
+Variables
+ Total:       56
+  Auxiliary:  31
+ States:      20
+  Auxiliary:  10
+ Jumpers:     28
+  Auxiliary:  21
+Shocks:       2
+Parameters:   28</code></pre><h2 id="Parameter-block"><a class="docs-heading-anchor" href="#Parameter-block">Parameter block</a><a id="Parameter-block-1"></a><a class="docs-heading-anchor-permalink" href="#Parameter-block" title="Permalink"></a></h2><p>Having defined parameters and variables with indices in the model block we can also declare parameter values, including by means of calibration equations, in the parameter block.</p><p>In the above example we defined the production function for countries <code>H</code> and <code>F</code>. Implicitly we have two parameters <code>alpha</code> and we can define their value individually by setting</p><pre><code class="language-julia hljs">alpha{H} = 0.3
+alpha{F} = 0.3</code></pre><p>or jointly by writing</p><pre><code class="language-julia hljs">alpha = 0.3</code></pre><p>By not using the index, the package understands that there are two parameters with this name and different indices and will set both accordingly.</p><p>This logic extends to calibration equations. We can write:</p><pre><code class="language-julia hljs">y{H}[ss] = 1 | alpha{H}
+y{F}[ss] = 1 | alpha{F}</code></pre><p>to find the value of <code>alpha</code> that corresponds to <code>y</code> being equal to 1 in the non-stochastic steady state. Alternatively we can not use indices and the package understands that we refer to both indices:</p><pre><code class="language-julia hljs">y[ss] = 1 | alpha</code></pre><p>Making use of the indices we could also target a level of <code>y</code> for country <code>H</code> with <code>alpha</code> for country <code>H</code> and target ratio of the two <code>y</code>s with the <code>alpha</code> for country <code>F</code>:</p><pre><code class="language-julia hljs">y{H}[ss] = 1 | alpha{H}
+y{H}[ss] / y{F}[ss] = y_ratio | alpha{F}
+y_ratio =  0.9</code></pre><h3 id="Example-parameter-block"><a class="docs-heading-anchor" href="#Example-parameter-block">Example parameter block</a><a id="Example-parameter-block-1"></a><a class="docs-heading-anchor-permalink" href="#Example-parameter-block" title="Permalink"></a></h3><p>Making use of this and continuing the example of the Backus, Kehoe and Kydland (1992) model we can define the parameters as follows:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; @parameters Backus_Kehoe_Kydland_1992 begin
+           K_ss = 11
+           K[ss] = K_ss | beta
+       
+           mu      =    0.34
+           gamma   =    -1.0
+           alpha   =    1
+           eta     =    0.5
+           theta   =    0.36
+           nu      =    3
+           sigma   =    0.01
+           delta   =    0.025
+           phi     =    1/4
+           psi     =    0.5
+       
+           Z_E = 0.00852
+       
+           rho{H}{H} = 0.906
+           rho{F}{F} = rho{H}{H}
+           rho{H}{F} = 0.088
+           rho{F}{H} = rho{H}{F}
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	0.539 seconds
+Set up non-stochastic steady state problem:				1.663 seconds
+Find non-stochastic steady state:					1.343 seconds
+Take symbolic derivatives up to first order:				2.036 seconds
+Model:        Backus_Kehoe_Kydland_1992
+Variables
+ Total:       56
+  Auxiliary:  31
+ States:      20
+  Auxiliary:  10
+ Jumpers:     28
+  Auxiliary:  21
+Shocks:       2
+Parameters:   28
+Calibration
+equations:    2</code></pre></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../../tutorials/estimation/">« Estimate a model using gradient based samplers - Schorfheide (2000)</a><a class="docs-footer-nextpage" href="../obc/">Occasionally binding constraints »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Monday 4 August 2025 07:25">Monday 4 August 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
