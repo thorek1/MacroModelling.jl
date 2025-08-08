@@ -1337,6 +1337,16 @@ function plot_irf!(𝓂::ℳ;
 
     annotate_params_plot = plot_df(annotate_params)
 
+    legend_plot = StatsPlots.plot(framestyle = :none, legend_columns = length(irf_active_plot_container)) 
+
+    for (i,k) in enumerate(irf_active_plot_container)
+        StatsPlots.plot!(legend_plot,
+        fill(0,1,1), 
+        framestyle = :none, 
+        legend = :inside, 
+        label = i)
+    end
+
     return_plots = []
 
     for shock in 1:length(shock_idx)
@@ -1369,7 +1379,7 @@ function plot_irf!(𝓂::ℳ;
                                             SSs, 
                                             variable_name, 
                                             can_dual_axis))
-
+                
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
                 else
@@ -1395,10 +1405,10 @@ function plot_irf!(𝓂::ℳ;
 
                     ppp2 = StatsPlots.plot(annotate_params_plot, annotate_ss_plot; attributes...)
                     
-                        println("here")
                     p = StatsPlots.plot(ppp,
+                                        legend_plot,
                                         ppp2, 
-                                        layout = StatsPlots.grid(2, 1, heights = [0.8, 0.2]),
+                                        layout = StatsPlots.grid(3, 1, heights = [15, 1, 5] ./ 21),
                                         plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                         attributes_redux...)
 
@@ -1448,12 +1458,15 @@ function plot_irf!(𝓂::ℳ;
                 ppp2 = StatsPlots.plot(annotate_params_plot, annotate_ss_plot; attributes...)
 
                 p = StatsPlots.plot(ppp,
+                                    legend_plot,
                                     ppp2, 
-                                    layout = StatsPlots.grid(2, 1, heights = [0.8, 0.2]),
+                                    layout = StatsPlots.grid(3, 1, heights = [15, 1, 5] ./ 21),
                                     plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                     attributes_redux...)
             else
                 p = StatsPlots.plot(ppp,
+                                    legend_plot,
+                                    layout = StatsPlots.grid(2, 1, heights = [9, 1] ./ 10),
                                     plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                     attributes_redux...)
             end
