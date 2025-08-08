@@ -1403,22 +1403,32 @@ function plot_irf!(𝓂::ℳ;
 
                     ppp = StatsPlots.plot(pp...; attributes...)
 
+                    ppp_pars = StatsPlots.plot(annotate_params_plot; attributes...)
+                    
+                    pushfirst!(annotate_ss_page, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
+
                     push!(annotate_ss, annotate_ss_page)
 
                     if length(annotate_ss[pane]) > 0
                         annotate_ss_plot = plot_df(annotate_ss[pane])
 
-                        ppp2 = StatsPlots.plot(annotate_params_plot, annotate_ss_plot; attributes...)
+                        ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes...)
+    
+                        p = StatsPlots.plot(ppp,
+                                            legend_plot,
+                                            ppp_pars, 
+                                            ppp_ss, 
+                                            layout = StatsPlots.grid(4, 1, heights = [37, 1, 9, 9] ./ 56),
+                                            plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                            attributes_redux...)
                     else
-                        ppp2 = StatsPlots.plot(annotate_params_plot; attributes...)
+                        p = StatsPlots.plot(ppp,
+                                            legend_plot,
+                                            ppp_pars, 
+                                            layout = StatsPlots.grid(3, 1, heights = [15, 1, 5] ./ 21),
+                                            plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                            attributes_redux...)
                     end
-
-                    p = StatsPlots.plot(ppp,
-                                        legend_plot,
-                                        ppp2, 
-                                        layout = StatsPlots.grid(3, 1, heights = [15, 1, 5] ./ 21),
-                                        plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                        attributes_redux...)
 
                     push!(return_plots,p)
 
@@ -1439,6 +1449,8 @@ function plot_irf!(𝓂::ℳ;
             end   
         end
 
+        pushfirst!(annotate_ss_page, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
+
         push!(annotate_ss, annotate_ss_page)
         
         if length(pp) > 0
@@ -1458,20 +1470,32 @@ function plot_irf!(𝓂::ℳ;
 
             ppp = StatsPlots.plot(pp...; attributes...)
 
+            ppp_pars = StatsPlots.plot(annotate_params_plot; attributes...)
+            
+            pushfirst!(annotate_ss_page, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
+
+            push!(annotate_ss, annotate_ss_page)
+
             if length(annotate_ss[pane]) > 0
                 annotate_ss_plot = plot_df(annotate_ss[pane])
 
-                ppp2 = StatsPlots.plot(annotate_params_plot, annotate_ss_plot; attributes...)
-            else
-                ppp2 = StatsPlots.plot(annotate_params_plot; attributes...)
-            end
+                ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes...)
 
-            p = StatsPlots.plot(ppp,
-                                legend_plot,
-                                ppp2, 
-                                layout = StatsPlots.grid(3, 1, heights = [15, 1, 5] ./ 21),
-                                plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                p = StatsPlots.plot(ppp,
+                                    legend_plot,
+                                    ppp_pars, 
+                                    ppp_ss, 
+                                    layout = StatsPlots.grid(4, 1, heights = [37, 1, 9, 9] ./ 56),
+                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                     attributes_redux...)
+            else
+                p = StatsPlots.plot(ppp,
+                                    legend_plot,
+                                    ppp_pars, 
+                                    layout = StatsPlots.grid(3, 1, heights = [15, 1, 5] ./ 21),
+                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                    attributes_redux...)
+            end
 
             push!(return_plots,p)
 
