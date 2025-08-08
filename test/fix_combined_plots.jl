@@ -22,7 +22,52 @@ MacroModelling.plot_irf!(RBC, parameters = [:std_z => 0.012, :β => 0.95, :ρ =>
 
 MacroModelling.plot_irf!(RBC, parameters = [:std_z => 0.01, :β => 0.957, :ρ => 0.5])
 
-MacroModelling.irf_active_plot_container
+MacroModelling.plot_irf!(RBC, parameters = [:std_z => 0.01, :β => 0.97, :ρ => 0.5])
+
+MacroModelling.plot_irf!(RBC, parameters = [:std_z => 0.01, :β => 0.97, :ρ => 0.55])
+
+MacroModelling.plot_irf!(RBC, parameters = [:std_z => 0.021, :β => 0.97, :ρ => 0.55])
+
+
+include("models/SW07_nonlinear.jl")
+
+plot_irf(SW07_nonlinear, shocks = :ew, 
+                        variables = [:gam1,:gam2,:gam3,
+                        :gamw1,:gamw2,:gamw3,
+                        :inve,:kp,:k],
+                        parameters = [:curvw => 10, :calfa => 0.18003])
+
+MacroModelling.plot_irf!(SW07_nonlinear, 
+                        shocks = :ew,
+                        variables = [:gam1,:gam2,:gam3,
+                        :gamw1,:gamw2,:gamw3,
+                        :inve,:kp,:k],
+                        parameters = :calfa => 0.18)
+
+MacroModelling.plot_irf!(SW07_nonlinear, 
+                        shocks = :ew,
+                        variables = [:gam1,:gam2,:gam3,
+                        :gamw1,:gamw2,:gamw3,
+                        :inve,:kp,:k],
+                        parameters = :curvw => 9)
+
+MacroModelling.plot_irf!(SW07_nonlinear, 
+                        shocks = :ew,
+                        variables = [:gam1,:gam2,:gam3,
+                        :gamw1,:gamw2,:gamw3,
+                        :inve,:kp,:k],
+                        parameters = :cgy => .5)
+
+MacroModelling.plot_irf!(SW07_nonlinear, 
+                        shocks = :ew,
+                        plots_per_page = 4,
+                        # variables = [:dy,:robs,:y,
+                        # :xi,:ygap,
+                        # :wnew,:xi,:ygap,
+                        # :k,:kp,:r],
+                        parameters = :ctrend => .5)
+
+get_parameters(SW07_nonlinear, values = true)
 
 diffdict = MacroModelling.compare_args_and_kwargs(MacroModelling.irf_active_plot_container)
 
