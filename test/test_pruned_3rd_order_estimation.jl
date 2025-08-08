@@ -1,9 +1,8 @@
 using MacroModelling
 import Turing
-import ADTypes
+import ADTypes: AutoZygote
 import Pigeons
 import Turing: NUTS, sample, logpdf, PG, IS
-import ADTypes: AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
@@ -46,18 +45,22 @@ dists = [
     Beta(0.75, 0.02, μσ = true)             # ρ
 ]
 
-Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m)
+Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = :pruned_third_order)
+        Turing.@addlogprob! get_loglikelihood(m, 
+                                                data, 
+                                                all_params, 
+                                                algorithm = :pruned_third_order, 
+                                                on_failure_loglikelihood = on_failure_loglikelihood)
     end
 end
 
 
 Random.seed!(3)
 
-Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim)
+Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -Inf)
 
 # samps = @time sample(Caldara_et_al_2012_loglikelihood, PG(100), 10, progress = true)#, init_params = sol)
 
@@ -72,7 +75,7 @@ mode_estimateNM = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood,
 
 mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
                                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                                adtype = ADTypes.AutoZygote(),
+                                                adtype = AutoZygote(),
 
                                                 iterations = 100,
                                                 # show_trace = true,
@@ -85,7 +88,7 @@ println("Mode variable values (L-BFGS): $init_params")
 
 n_samples = 100
 
-samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = init_params)
+samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = AutoZygote()), n_samples, progress = true, initial_params = init_params)
 
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
@@ -94,9 +97,9 @@ sample_nuts = mean(samps).nt.mean
 
 
 # generate a Pigeons log potential
-Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim))
+Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)))
 
-LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim), (all_params = init_params,))
+LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)), (all_params = init_params,))
 
 if isfinite(LLH)
     const Caldara_LP = typeof(Caldara_lp)

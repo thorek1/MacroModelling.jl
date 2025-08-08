@@ -1047,7 +1047,7 @@ function solve_sylvester_equation(A::DenseMatrix{T},
     ℒ.axpy!(-1, initial_guess, 𝐂¹)
 
     𝐂 = try 
-        MatrixEquations.sylvd(-A, B, 𝐂¹)
+        MatrixEquations.sylvd(-A, B, 𝐂¹)::Matrix{T}
     catch
         return C, 0, 1.0
     end

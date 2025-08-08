@@ -11,7 +11,8 @@ function calculate_loglikelihood(::Val{:inversion},
                                 state, 
                                 warmup_iterations, 
                                 filter_algorithm, 
-                                opts) #; 
+                                opts,
+                                on_failure_loglikelihood) #; 
                                 # timer::TimerOutput = TimerOutput())
     return calculate_inversion_filter_loglikelihood(Val(algorithm), 
                                                     state, 
@@ -23,7 +24,8 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     presample_periods = presample_periods, 
                                                     filter_algorithm = filter_algorithm, 
                                                     # timer = timer, 
-                                                    opts = opts)
+                                                    opts = opts,
+                                                    on_failure_loglikelihood = on_failure_loglikelihood)
 end
 
 
@@ -36,8 +38,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
+                                                    on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where R <: AbstractFloat
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
     # @timeit_debug timer "Inversion filter" begin    
     # first order
     state = copy(state[1])
@@ -97,7 +100,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
 
         if !ℒ.issuccess(jacdecomp)
             if opts.verbose println("Inversion filter failed") end
-            return -Inf
+            return on_failure_loglikelihood
         end
 
         logabsdets = ℒ.logabsdet(jac)[1]
@@ -106,20 +109,20 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
         jacdecomp = try ℒ.svd(jac)
         catch
             if opts.verbose println("Inversion filter failed") end
-            return -Inf
+            return on_failure_loglikelihood
         end
         
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac))
         invjac = try inv(jacdecomp)
         catch
             if opts.verbose println("Inversion filter failed") end
-            return -Inf
+            return on_failure_loglikelihood
         end
     end
 
     logabsdets *= size(data_in_deviations,2) - presample_periods
     
-    if !isfinite(logabsdets) return -Inf end
+    if !isfinite(logabsdets) return on_failure_loglikelihood end
 
     𝐒obs = 𝐒[cond_var_idx,1:end-T.nExo]
 
@@ -133,7 +136,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
 
         if i > presample_periods
             shocks² += sum(abs2,x)
-            if !isfinite(shocks²) return -Inf end
+            if !isfinite(shocks²) return on_failure_loglikelihood end
         end
 
         ℒ.mul!(state, 𝐒, vcat(state[T.past_not_future_and_mixed_idx], x))
@@ -158,6 +161,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 T::timings; 
                 # timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0, 
+                on_failure_loglikelihood = -Inf,
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
@@ -196,7 +200,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         if !ℒ.issuccess(jacdecomp)
             if opts.verbose println("Inversion filter failed") end
-            return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
         invjac = inv(jacdecomp)
@@ -209,7 +213,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     logabsdets *= size(data_in_deviations,2) - presample_periods
 
     if !isfinite(logabsdets) 
-        return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
     @views 𝐒obs = 𝐒[obs_idx,1:end-T.nExo]
@@ -223,7 +227,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         if i > presample_periods
             shocks² += sum(abs2,x[i])
             if !isfinite(shocks²) 
-                return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+                return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
             end
         end
 
@@ -234,7 +238,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     llh = -(logabsdets + shocks² + (length(observables) * (warmup_iterations + n_obs - presample_periods)) * log(2 * 3.141592653589793)) / 2
     
     if llh < -1e12
-        return -Inf, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return on_failure_loglikelihood, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
     ∂𝐒 = zero(𝐒)
@@ -329,9 +333,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     T::timings; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
+                                                    on_failure_loglikelihood::U = -Inf,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where R <: AbstractFloat
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
     # @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
              
@@ -477,7 +482,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
             #                             shock_independent)
                 if !matched
                     if opts.verbose println("Inversion filter failed at step $i") end
-                    return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
+                    return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
                 end 
             # end
         # end
@@ -527,7 +532,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
             shocks² += sum(abs2,x)
             
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return -Inf
+                return on_failure_loglikelihood
             end
         end
 
@@ -562,6 +567,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 observables::Union{Vector{String}, Vector{Symbol}},
                 T::timings; 
                 # timer::TimerOutput = TimerOutput(),
+                on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
@@ -717,7 +723,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
         if !matched
             if opts.verbose println("Inversion filter failed at step $i") end
-            return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end
 
         # jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ * ℒ.kron(ℒ.I(length(x[i])), x[i])
@@ -729,10 +735,19 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         copy!(jacct, jacc[i]')
 
-        jacc_fact = ℒ.factorize(jacct) # otherwise this fails for nshocks > nexo
+        jacc_fact = try
+                        ℒ.factorize(jacct) # otherwise this fails for nshocks > nexo
+                    catch
+                        if opts.verbose println("Inversion filter failed at step $i") end
+                        return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
 
-        # λ[i] = jacc[i]' \ x[i] * 2
-        ℒ.ldiv!(λ[i], jacc_fact, x[i])
+        try
+            ℒ.ldiv!(λ[i], jacc_fact, x[i])
+        catch
+            if opts.verbose println("Inversion filter failed at step $i") end
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        end
 
         ℒ.rmul!(λ[i], 2)
     
@@ -760,7 +775,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             shocks² += sum(abs2,x[i])
             
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
             end
         end
     
@@ -1022,10 +1037,11 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
                                                     # timer::TimerOutput = TimerOutput(),
+                                                    on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where R <: AbstractFloat
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
     # @timeit_debug timer "2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -1162,7 +1178,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
             #                             shock_independent)
                 if !matched
                     if opts.verbose println("Inversion filter failed at step $i") end
-                    return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
+                    return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
                 end 
             # end
         # end
@@ -1212,7 +1228,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
             shocks² += sum(abs2,x)
 
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return -Inf
+                return on_failure_loglikelihood
             end
         end
 
@@ -1248,6 +1264,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 observables::Union{Vector{String}, Vector{Symbol}},
                 T::timings; 
                 # timer::TimerOutput = TimerOutput(),
+                on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
@@ -1398,7 +1415,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         if !matched
             if opts.verbose println("Inversion filter failed at step $i") end
-            return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end
         
         ℒ.kron!(kron_buffer2, J, x[i])
@@ -1410,10 +1427,19 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         copy!(jacct, jacc[i]')
 
-        jacc_fact = ℒ.factorize(jacct)
+        jacc_fact = try
+                        ℒ.factorize(jacct)
+                    catch
+                        if opts.verbose println("Inversion filter failed at step $i") end
+                        return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                    end
 
-        # λ[i] = jacc[i]' \ x[i] * 2
-        ℒ.ldiv!(λ[i], jacc_fact, x[i])
+        try
+            ℒ.ldiv!(λ[i], jacc_fact, x[i])
+        catch
+            if opts.verbose println("Inversion filter failed at step $i") end
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+        end
 
         # ℒ.ldiv!(λ[i], jacc_fact', x[i])
         ℒ.rmul!(λ[i], 2)
@@ -1443,7 +1469,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             shocks² += sum(abs2, x[i])
             
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
             end
         end
         
@@ -1678,10 +1704,11 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings;
                                                     # timer::TimerOutput = TimerOutput(), 
+                                                    on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where R <: AbstractFloat
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
     # @timeit_debug timer "Inversion filter" begin
 
     precision_factor = 1.0
@@ -1963,7 +1990,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
         if !matched
             if opts.verbose println("Inversion filter failed at step $i") end
-            return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
+            return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
         end 
             # println("COBYLA: $matched; current x: $x")
             # if !matched
@@ -2053,7 +2080,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
             shocks² += sum(abs2,x)
             
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return -Inf
+                return on_failure_loglikelihood
             end
         end
 
@@ -2106,6 +2133,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 observables::Union{Vector{String}, Vector{Symbol}},
                 T::timings; 
                 # timer::TimerOutput = TimerOutput(),
+                on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
@@ -2316,7 +2344,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
 
         if !matched
             if opts.verbose println("Inversion filter failed at step $i") end
-            return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end 
         
         jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ[i] * ℒ.kron(ℒ.I(T.nExo), x[i]) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), kronxx[i])
@@ -2346,7 +2374,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             shocks² += sum(abs2,x[i])
 
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
             end
         end
     
@@ -2656,10 +2684,11 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     observables::Union{Vector{String}, Vector{Symbol}},
                                                     T::timings; 
                                                     # timer::TimerOutput = TimerOutput(),
+                                                    on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
-                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where R <: AbstractFloat
+                                                    filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
     # @timeit_debug timer "3rd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -2865,7 +2894,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
 
         if !matched
             if opts.verbose println("Inversion filter failed at step $i") end
-            return -Inf # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
+            return on_failure_loglikelihood # it can happen that there is no solution. think of a = bx + cx² where a is negative, b is zero and c is positive 
         end 
             # println("COBYLA: $matched; current x: $x")
             # if !matched
@@ -2947,7 +2976,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
             shocks² += sum(abs2,x)
             
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return -Inf
+                return on_failure_loglikelihood
             end
         end
 
@@ -2978,6 +3007,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 observables::Union{Vector{String}, Vector{Symbol}},
                 T::timings; 
                 # timer::TimerOutput = TimerOutput(),
+                on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
@@ -3160,7 +3190,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     
         if !matched
             if opts.verbose println("Inversion filter failed at step $i") end
-            return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+            return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
         end
 
         jacc[i] =  𝐒ⁱ + 2 * 𝐒ⁱ²ᵉ[i] * ℒ.kron(ℒ.I(T.nExo), x[i]) + 3 * 𝐒ⁱ³ᵉ * ℒ.kron(ℒ.I(T.nExo), kronxx[i])
@@ -3190,7 +3220,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             shocks² += sum(abs2,x[i])
             
             if !isfinite(logabsdets) || !isfinite(shocks²)
-                return -Inf, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
+                return on_failure_loglikelihood, x -> NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
             end
         end
     

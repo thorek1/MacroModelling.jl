@@ -65,8 +65,6 @@ import RecursiveFactorization as RF
 using RuntimeGeneratedFunctions
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
-using Requires
-
 import Reexport
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
@@ -130,17 +128,17 @@ include("./filter/kalman.jl")
 
 # end # DispatchDoctor
 
-function __init__()
-    @require StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd" include("plotting.jl")
-    @require Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0" include("priors.jl")
-end
-
 
 export @model, @parameters, solve!
+
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
-export plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
+export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
+export plotlyjs_backend, gr_backend
+
+export Normal, Beta, Cauchy, Gamma, InverseGamma
+
 export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations, get_girf
-export get_conditional_forecast, plot_conditional_forecast
+export get_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS, ss, sss
 export get_non_stochastic_steady_state_residuals, get_residuals, check_residuals
@@ -150,8 +148,6 @@ export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditiona
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution #, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export get_shock_decomposition, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations, get_loglikelihood
-export plotlyjs_backend, gr_backend
-export Beta, InverseGamma, Gamma, Normal, Cauchy
 export Tolerances
 
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
@@ -160,6 +156,33 @@ export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare,
 export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables
 # Internal
 export irf, girf
+
+# StatsPlotsExt
+
+function plot_irfs  end
+function plot_irf   end
+function plot_IRF   end
+function plot_girf  end
+function plot_solution  end
+function plot_simulations   end
+function plot_simulation    end
+function plot_conditional_variance_decomposition    end
+function plot_forecast_error_variance_decomposition end
+function plot_fevd  end
+function plot_conditional_forecast  end
+function plot_model_estimates   end
+function plot_shock_decomposition   end
+function plotlyjs_backend   end
+function gr_backend end
+
+
+# TuringExt
+
+function Normal  end
+function Beta   end
+function Cauchy   end
+function Gamma  end
+function InverseGamma  end
 
 # Remove comment for debugging
 # export block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
@@ -2839,6 +2862,7 @@ function write_block_solution!(𝓂,
                                 cse = true,
                                 skipzeros = true, 
                                 density_threshold::Float64 = .1,
+                                nnz_parallel_threshold::Int = 1000000,
                                 min_length::Int = 10000)
 
     # ➕_vars = Symbol[]
@@ -3011,7 +3035,7 @@ function write_block_solution!(𝓂,
 
     lennz = length(replaced_solved_vals)
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -3062,7 +3086,7 @@ function write_block_solution!(𝓂,
 
     lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -3127,7 +3151,7 @@ function write_block_solution!(𝓂,
 
     ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -3635,6 +3659,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                     cse = true,
                                     skipzeros = true, 
                                     density_threshold::Float64 = .1,
+                                    nnz_parallel_threshold::Int = 1000000,
                                     min_length::Int = 10000)
     unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
 
@@ -3690,7 +3715,7 @@ function write_ss_check_function!(𝓂::ℳ;
 
     lennz = length(ss_equations_sub)
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -3743,7 +3768,7 @@ function write_ss_check_function!(𝓂::ℳ;
         buffer.nzval .= 0
     end
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -3774,7 +3799,7 @@ function write_ss_check_function!(𝓂::ℳ;
         buffer.nzval .= 0
     end
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -4196,8 +4221,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                             end
                     #     end
                     end
-                    return [0.0], (1, 0)
+                    return zeros($(length(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)) + length(𝓂.calibration_equations_parameters))), (1, 0)
                 end)
+
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
     # 𝓂.SS_solve_func = eval(solve_exp)
@@ -4212,6 +4238,7 @@ function solve_steady_state!(𝓂::ℳ;
                             cse = true,
                             skipzeros = true,
                             density_threshold::Float64 = .1,
+                            nnz_parallel_threshold::Int = 1000000,
                             min_length::Int = 1000,
                             verbose::Bool = false)
     write_ss_check_function!(𝓂)
@@ -4422,7 +4449,7 @@ function solve_steady_state!(𝓂::ℳ;
     
         lennz = length(replaced_solved_vals)
     
-        if lennz > 1500
+        if lennz > nnz_parallel_threshold
             parallel = Symbolics.ShardedForm(1500,4)
         else
             parallel = Symbolics.SerialForm()
@@ -4473,7 +4500,7 @@ function solve_steady_state!(𝓂::ℳ;
 
         lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
 
-        if lennz > 1500
+        if lennz > nnz_parallel_threshold
             parallel = Symbolics.ShardedForm(1500,4)
         else
             parallel = Symbolics.SerialForm()
@@ -4538,7 +4565,7 @@ function solve_steady_state!(𝓂::ℳ;
 
         ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
 
-        if lennz > 1500
+        if lennz > nnz_parallel_threshold
             parallel = Symbolics.ShardedForm(1500,4)
         else
             parallel = Symbolics.SerialForm()
@@ -4797,7 +4824,7 @@ function solve_steady_state!(𝓂::ℳ;
                             end
                     #     end
                     end
-                    return [0.0], (1, 0)
+                    return zeros($(length(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)) + length(𝓂.calibration_equations_parameters))), (1, 0)
                 end)
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
@@ -4851,7 +4878,7 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int 
                             Optim.SAMIN(verbosity = verbosity, nt = 5, ns = 5), 
                             Optim.Options(time_limit = maxtime, iterations = maxiter))::Optim.MultivariateOptimizationResults
 
-    pars = Optim.minimizer(sol)
+    pars = Optim.minimizer(sol)::Vector{Float64}
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
@@ -6601,6 +6628,7 @@ end
 function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int; 
                                     density_threshold::Float64 = .1, 
                                     min_length::Int = 1000,
+                                    nnz_parallel_threshold::Int = 1000000,
                                     # parallel = Symbolics.SerialForm(),
                                     # parallel = Symbolics.ShardedForm(1500,4),
                                     cse = true,
@@ -6721,7 +6749,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         buffer.nzval .= 0
     end
     
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -6751,7 +6779,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         buffer_parameters.nzval .= 0
     end
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -6781,7 +6809,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         buffer_SS_and_pars.nzval .= 0
     end
 
-    if lennz > 1500
+    if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
     else
         parallel = Symbolics.SerialForm()
@@ -6836,7 +6864,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #         buffer.nzval .= 0
     #     end
 
-    #     if lennz > 1500
+    #     if lennz > nnz_parallel_threshold
     #         parallel = Symbolics.ShardedForm(1500,4)
     #     else
     #         parallel = Symbolics.SerialForm()
@@ -6867,7 +6895,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     #         buffer.nzval .= 0
     #     end
 
-    #     if lennz > 1500
+    #     if lennz > nnz_parallel_threshold
     #         parallel = Symbolics.ShardedForm(1500,4)
     #     else
     #         parallel = Symbolics.SerialForm()
@@ -6904,7 +6932,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
@@ -6934,7 +6962,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_parameters.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
@@ -6964,7 +6992,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_SS_and_pars.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
@@ -7002,7 +7030,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
@@ -7032,7 +7060,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_parameters.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
@@ -7062,7 +7090,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                 buffer_SS_and_pars.nzval .= 0
             end
 
-            if lennz > 1500
+            if lennz > nnz_parallel_threshold
                 parallel = Symbolics.ShardedForm(1500,4)
             else
                 parallel = Symbolics.SerialForm()
@@ -8226,9 +8254,9 @@ end
 end # dispatch_doctor
 
 function rrule(::typeof(get_NSSS_and_parameters), 
-                𝓂, 
-                parameter_values; 
-                opts::CalculationOptions = merge_calculation_options()) 
+                𝓂::ℳ, 
+                parameter_values::Vector{S}; 
+                opts::CalculationOptions = merge_calculation_options()) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
 

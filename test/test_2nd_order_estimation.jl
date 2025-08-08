@@ -1,10 +1,8 @@
 using MacroModelling
 import Turing
-import ADTypes
 import Pigeons
-import Zygote
-import Turing: NUTS, sample, logpdf
 import ADTypes: AutoZygote
+import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
@@ -35,11 +33,15 @@ dists = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m, algorithm)
+Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_loglikelihood)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params, algorithm = algorithm)
+        Turing.@addlogprob! get_loglikelihood(m, 
+                                                data, 
+                                                all_params, 
+                                                algorithm = algorithm, 
+                                                on_failure_loglikelihood = on_failure_loglikelihood)
     end
 end
 
@@ -48,7 +50,7 @@ Random.seed!(30)
 
 n_samples = 500
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order), NUTS(adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
@@ -56,11 +58,11 @@ println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 sample_nuts = mean(samps).nt.mean
 
 # generate a Pigeons log potential
-FS2000_2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order))
+FS2000_2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order, -floatmax(Float64)))
 
 init_params = sample_nuts
 
-LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :second_order), (all_params = init_params,))
+LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :second_order, -floatmax(Float64)), (all_params = init_params,))
 
 if isfinite(LLH)
     const FS2000_2nd_LP = typeof(FS2000_2nd_lp)

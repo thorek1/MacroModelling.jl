@@ -1,7 +1,7 @@
 using MacroModelling
-import Turing, Pigeons, Zygote
+import Turing, Pigeons
+import ADTypes: AutoZygote
 import Turing: NUTS, sample, logpdf
-import ADTypes
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
@@ -33,26 +33,27 @@ dists = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m)
+Turing.@model function FS2000_loglikelihood_function(data, m, on_failure_loglikelihood)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, data, all_params)
+        Turing.@addlogprob! get_loglikelihood(m, 
+                                                data, 
+                                                all_params, 
+                                                on_failure_loglikelihood = on_failure_loglikelihood)
     end
 end
 
-FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000)
+FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, -Inf)
 
 
 n_samples = 1000
 
-# using Zygote
-# Turing.setadbackend(:zygote)
 samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 println("Mean variable values (ForwardDiff): $(mean(samps).nt.mean)")
 
-samps = @time sample(FS2000_loglikelihood, NUTS(adtype = ADTypes.AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
@@ -61,7 +62,7 @@ sample_nuts = mean(samps).nt.mean
 
 
 # generate a Pigeons log potential
-FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000))
+FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, -floatmax(Float64)))
 
 init_params = FS2000.parameter_values
 
@@ -95,7 +96,7 @@ modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
                                         # Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 2)), 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                                         # Optim.NelderMead(), 
-                                        adtype = ADTypes.AutoZygote(), 
+                                        adtype = AutoZygote(), 
                                         # maxiters = 100,
                                         # lb = [0,0,-10,-10,0,0,0,0,0], 
                                         # ub = [1,1,10,10,1,1,1,100,100], 

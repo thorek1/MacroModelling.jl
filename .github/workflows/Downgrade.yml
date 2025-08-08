@@ -1,11 +1,11 @@
 name: Downgrade
 on:
-  workflow_dispatch:  # allows manual triggering
-  pull_request:
+  pull_request_target:
     branches:
       - master
     paths-ignore:
       - 'docs/**'
+  workflow_dispatch:  # allows manual triggering
   push:
     branches:
       - master
@@ -17,14 +17,20 @@ jobs:
     strategy:
       matrix:
         version: ['lts']
+        test_set: ["basic"]
+        os: [ubuntu-latest]
+        arch: [x64]
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
-      - uses: julia-actions/julia-downgrade-compat@v1
+          arch: ${{ matrix.arch }}  
+      - uses: julia-actions/julia-downgrade-compat@v2
 #        if: ${{ matrix.version == 'lts' }}
         with:
           skip: Pkg,TOML
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+        env:
+          TEST_SET: ${{ matrix.test_set }}
