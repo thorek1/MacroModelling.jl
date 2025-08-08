@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
+- [ ] replace RF with LinearSolve codes (RF has too many dependencies)
 - [ ] add FRB US model
 - [ ] check again return value when NSSS not found, maybe NaN is better here
 - [ ] error when parsing expression of the form: XYZ[0] = 0
