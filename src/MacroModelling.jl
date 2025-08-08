@@ -131,7 +131,7 @@ include("./filter/kalman.jl")
 
 export @model, @parameters, solve!
 
-export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
+export plot_irfs, plot_irf, plot_irf!, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
 export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
 export plotlyjs_backend, gr_backend
 
@@ -161,6 +161,7 @@ export irf, girf
 
 function plot_irfs  end
 function plot_irf   end
+function plot_irf!   end
 function plot_IRF   end
 function plot_girf  end
 function plot_solution  end

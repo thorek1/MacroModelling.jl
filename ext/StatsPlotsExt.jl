@@ -13,7 +13,7 @@ import SparseArrays: SparseMatrixCSC
 import NLopt
 using DispatchDoctor
 
-import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend
+import MacroModelling: plot_irfs, plot_irf, plot_irf!, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs
 
 const default_plot_attributes = Dict(:size=>(700,500),
                                 :plot_titlefont => 10, 
@@ -1323,7 +1323,7 @@ function plot_irf!(𝓂::ℳ;
     
     param_nms = diffdict[:parameters]|>keys|>collect|>sort
 
-    annotate_ss = [Pair{String,Any}[]]
+    annotate_ss = Vector{Pair{String, Any}}[]
 
     annotate_ss_page = Pair{String,Any}[]
 
@@ -1395,6 +1395,7 @@ function plot_irf!(𝓂::ℳ;
 
                     ppp2 = StatsPlots.plot(annotate_params_plot, annotate_ss_plot; attributes...)
                     
+                        println("here")
                     p = StatsPlots.plot(ppp,
                                         ppp2, 
                                         layout = StatsPlots.grid(2, 1, heights = [0.8, 0.2]),
@@ -1419,12 +1420,11 @@ function plot_irf!(𝓂::ℳ;
 
                     pp = []
                 end
-            end
-
-            push!(annotate_ss, annotate_ss_page)
-                    
+            end   
         end
 
+        push!(annotate_ss, annotate_ss_page)
+        
         if length(pp) > 0
             if shocks == :simulate
                 shock_string = ": simulate all"
@@ -1441,9 +1441,9 @@ function plot_irf!(𝓂::ℳ;
             end
 
             ppp = StatsPlots.plot(pp...; attributes...)
-            
-            if length(annotate_ss[pane-1]) > 0
-                annotate_ss_plot = plot_df(annotate_ss[pane-1])
+
+            if length(annotate_ss[pane]) > 0
+                annotate_ss_plot = plot_df(annotate_ss[pane])
 
                 ppp2 = StatsPlots.plot(annotate_params_plot, annotate_ss_plot; attributes...)
 
@@ -1458,12 +1458,6 @@ function plot_irf!(𝓂::ℳ;
                                     attributes_redux...)
             end
             
-            p = StatsPlots.plot(ppp,
-                                ppp2, 
-                                layout = StatsPlots.grid(2, 1, heights = [0.8, 0.2]),
-                                plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                attributes_redux...)
-
             push!(return_plots,p)
 
             if show_plots
