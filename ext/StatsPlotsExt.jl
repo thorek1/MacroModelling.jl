@@ -976,8 +976,8 @@ function plot_irf_subplot(irf_data::Vector{<:AbstractVector{S}}, steady_state::V
 
     for (i,(y, ss)) in enumerate(zip(irf_data, steady_state))
         if !isnan(ss)
+            stst = ss
             if can_dual_axis && same_ss
-                stst = ss
                 push!(plot_dat, y .+ ss)
                 push!(plot_dat_dual, 100 * ((y .+ ss) ./ ss .- 1))
             else
@@ -1000,7 +1000,6 @@ function plot_irf_subplot(irf_data::Vector{<:AbstractVector{S}}, steady_state::V
                          color = pal[pal_val]',
                          label = "") 
     end
-
     StatsPlots.hline!(can_dual_axis && same_ss ? [stst 0] : [same_ss ? stst : 0], 
                       color = :black, 
                       label = "")
@@ -1418,6 +1417,8 @@ function plot_irf!(𝓂::ℳ;
 
                     if all((k[:plot_data][var_idx,:,shock_idx] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
                         can_dual_axis = can_dual_axis && true
+                    else
+                        can_dual_axis = can_dual_axis && false
                     end
                 end
             end
@@ -1555,7 +1556,7 @@ function plot_irf!(𝓂::ℳ;
 
             ppp_pars = StatsPlots.plot(annotate_diff_input_plot; attributes...)
             
-            pushfirst!(annotate_ss_page, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
+            pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
 
             push!(annotate_ss, annotate_ss_page)
 
