@@ -33,16 +33,16 @@ include("models/SW07_nonlinear.jl")
 
 plot_irf(SW07_nonlinear, shocks = :ew, 
                         variables = [:gam1,:gam2,:gam3,
-                        :gamw1,:gamw2,:gamw3,
+                        # :gamw1,:gamw2,:gamw3,
                         :inve,:kp,:k],
-                        parameters = [:curvw => 10, :calfa => 0.18003])
+                        parameters = [:ctrend => .35, :curvw => 10, :calfa => 0.18003])
 
 MacroModelling.plot_irf!(SW07_nonlinear, 
                         shocks = :ew,
                         variables = [:gam1,:gam2,:gam3,
-                        :gamw1,:gamw2,:gamw3,
+                        # :gamw1,:gamw2,:gamw3,
                         :inve,:kp,:k],
-                        parameters = :calfa => 0.18)
+                        parameters = :calfa => 0.15)
 
 MacroModelling.plot_irf!(SW07_nonlinear, 
                         shocks = :ew,
@@ -53,14 +53,15 @@ MacroModelling.plot_irf!(SW07_nonlinear,
 
 MacroModelling.plot_irf!(SW07_nonlinear, 
                         shocks = :ew,
-                        variables = [:gam1,:gam2,:gam3,
+                        variables = [#:gam1,:gam2,:gam3,
                         :gamw1,:gamw2,:gamw3,
                         :inve,:kp,:k],
-                        parameters = :cgy => .5)
+                        parameters = :cgy => .45)
 
 MacroModelling.plot_irf!(SW07_nonlinear, 
                         shocks = :ew,
-                        plots_per_page = 4,
+                        # plots_per_page = 4,
+                        # variables = [:zcap,:gam1],
                         # variables = [:dy,:robs,:y,
                         # :xi,:ygap,
                         # :wnew,:xi,:ygap,
