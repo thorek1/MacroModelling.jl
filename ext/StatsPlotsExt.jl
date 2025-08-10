@@ -1348,9 +1348,13 @@ function plot_irf!(𝓂::ℳ;
     end
     
     if haskey(diffdict, :shock_names)
-        shock_nms = reduce(vcat,diffdict[:shock_names])
-        push!(annotate_diff_input, "Shock" => shock_nms)
-        len_diff = length(shock_nms)
+        # shock_nms = reduce(vcat,diffdict[:shock_names])
+        # for shock in diffdict[:shock_names]
+        if all(length.(diffdict[:shock_names]) .== 1)
+            push!(annotate_diff_input, "Shock" => reduce(vcat,diffdict[:shock_names]))
+        end
+        # push!(annotate_diff_input, "Shock" => shock_nms)
+        len_diff = length(diffdict[:shock_names])
     end
 
     pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
@@ -1486,9 +1490,9 @@ function plot_irf!(𝓂::ℳ;
                 ppp_pars = StatsPlots.plot(annotate_diff_input_plot; attributes...)
                 
                 pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
-
+                
                 push!(annotate_ss, annotate_ss_page)
-
+                
                 if length(annotate_ss[pane]) > 1
                     annotate_ss_plot = plot_df(annotate_ss[pane])
 
@@ -1586,6 +1590,8 @@ function plot_irf!(𝓂::ℳ;
                 StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
+
+        annotate_ss = Vector{Pair{String, Any}}[]
     end
 
     return return_plots
