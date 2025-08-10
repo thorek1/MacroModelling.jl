@@ -1329,28 +1329,39 @@ function plot_irf!(𝓂::ℳ;
     
     diffdict = compare_args_and_kwargs(irf_active_plot_container)
 
-    @assert haskey(diffdict, :parameters) "New plot must be different from previous plot. Use the version without ! to plot."
+    @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) "New plot must be different from previous plot. Use the version without ! to plot."
     
-    param_nms = diffdict[:parameters] |> keys |> collect |> sort
-
     annotate_ss = Vector{Pair{String, Any}}[]
 
     annotate_ss_page = Pair{String,Any}[]
 
-    annotate_params = Pair{String,Any}[]
+    annotate_diff_input = Pair{String,Any}[]
 
-    for param in param_nms
-        push!(annotate_params, String(param) => diffdict[:parameters][param])
+    len_diff = 1
+
+    if haskey(diffdict, :parameters)
+        param_nms = diffdict[:parameters] |> keys |> collect |> sort
+        for param in param_nms
+            push!(annotate_diff_input, String(param) => diffdict[:parameters][param])
+        end
+        len_diff = length(param_nms)
+    end
+    
+    if haskey(diffdict, :shock_names)
+        shock_nms = reduce(vcat,diffdict[:shock_names])
+        push!(annotate_diff_input, "Shock" => shock_nms)
+        len_diff = length(shock_nms)
     end
 
-    pushfirst!(annotate_params, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
+    pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
 
-    annotate_params_plot = plot_df(annotate_params)
+    annotate_diff_input_plot = plot_df(annotate_diff_input)
 
     legend_plot = StatsPlots.plot(framestyle = :none, legend_columns = length(irf_active_plot_container)) 
     
     joint_shocks = OrderedSet{String}()
     joint_variables = OrderedSet{String}()
+    single_shock_per_irf = true
 
     for (i,k) in enumerate(irf_active_plot_container)
         StatsPlots.plot!(legend_plot,
@@ -1361,11 +1372,16 @@ function plot_irf!(𝓂::ℳ;
 
         push!(joint_shocks, k[:shock_names]...)
         push!(joint_variables, k[:variable_names]...)
+        single_shock_per_irf = single_shock_per_irf && length(k[:shock_names]) == 1
     end
 
     sort!(joint_shocks)
     sort!(joint_variables)
     
+    if single_shock_per_irf
+        joint_shocks = [:single_shock_per_irf]
+    end
+
     return_plots = []
 
     for shock in joint_shocks
@@ -1382,8 +1398,7 @@ function plot_irf!(𝓂::ℳ;
 
             for k in irf_active_plot_container
                 var_idx = findfirst(==(var), k[:variable_names])
-                shock_idx = findfirst(==(shock), k[:shock_names])
-                
+                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), k[:shock_names])
                 
                 if isnothing(var_idx) || isnothing(shock_idx)
                     # If the variable or shock is not present in the current irf_active_plot_container,
@@ -1418,7 +1433,7 @@ function plot_irf!(𝓂::ℳ;
 
             for k in irf_active_plot_container
                 var_idx = findfirst(==(var), k[:variable_names])
-                shock_idx = findfirst(==(shock), k[:shock_names])
+                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), k[:shock_names])
 
                 if isnothing(var_idx) || isnothing(shock_idx)
                     # If the variable or shock is not present in the current irf_active_plot_container,
@@ -1449,13 +1464,16 @@ function plot_irf!(𝓂::ℳ;
             else
                 plot_count = 1
 
-                if shocks == :simulate
+                if shock == :single_shock_per_irf
+                    shock_string = ": multiple shocks"
+                    shock_name = "multiple_shocks"
+                elseif shock == :simulate
                     shock_string = ": simulate all"
                     shock_name = "simulation"
-                elseif shocks == :none
+                elseif shock == :none
                     shock_string = ""
                     shock_name = "no_shock"
-                elseif shocks isa Union{Symbol_input,String_input}
+                elseif shock isa Union{Symbol_input,String_input}
                     shock_string = ": " * shock
                     shock_name = shock
                 else
@@ -1465,9 +1483,9 @@ function plot_irf!(𝓂::ℳ;
 
                 ppp = StatsPlots.plot(pp...; attributes...)
 
-                ppp_pars = StatsPlots.plot(annotate_params_plot; attributes...)
+                ppp_pars = StatsPlots.plot(annotate_diff_input_plot; attributes...)
                 
-                pushfirst!(annotate_ss_page, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
+                pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
 
                 push!(annotate_ss, annotate_ss_page)
 
@@ -1510,15 +1528,18 @@ function plot_irf!(𝓂::ℳ;
             end
         end
 
-        
+
         if length(pp) > 0
-            if shocks == :simulate
+            if shock == :single_shock_per_irf
+                    shock_string = ": multiple shocks"
+                    shock_name = "multiple_shocks"
+            elseif shock == :simulate
                 shock_string = ": simulate all"
                 shock_name = "simulation"
-            elseif shocks == :none
+            elseif shock == :none
                 shock_string = ""
                 shock_name = "no_shock"
-            elseif shocks isa Union{Symbol_input,String_input}
+            elseif shock isa Union{Symbol_input,String_input}
                 shock_string = ": " * shock
                 shock_name = shock
             else
@@ -1528,7 +1549,7 @@ function plot_irf!(𝓂::ℳ;
 
             ppp = StatsPlots.plot(pp...; attributes...)
 
-            ppp_pars = StatsPlots.plot(annotate_params_plot; attributes...)
+            ppp_pars = StatsPlots.plot(annotate_diff_input_plot; attributes...)
             
             pushfirst!(annotate_ss_page, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
 
