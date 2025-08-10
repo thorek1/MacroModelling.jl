@@ -9,6 +9,7 @@ const irf_active_plot_container = Dict[]
 const model_estimates_active_plot_container = Dict[]
 
 import StatsPlots
+import DataStructures: OrderedSet
 import SparseArrays: SparseMatrixCSC
 import NLopt
 using DispatchDoctor
@@ -839,7 +840,7 @@ function plot_irf(𝓂::ℳ;
                            :sylvester_algorithm => sylvester_algorithm,
                            :lyapunov_algorithm => lyapunov_algorithm,
                            :plot_data => Y,
-                           :reference_steady_state => reference_steady_state,
+                           :reference_steady_state => reference_steady_state[var_idx],
                            :variable_names => variable_names,
                            :shock_names => shock_names,
                            :shock_idx => shock_idx,
@@ -965,35 +966,42 @@ function plot_irf_subplot(irf_data::AbstractVector{S}, steady_state::S, variable
     return p
 end
 
-function plot_irf_subplot(irf_data::Vector{<:AbstractVector{S}}, steady_state::Vector{S}, variable_name::String, can_dual_axis::Bool) where S <: AbstractFloat
-    same_ss = maximum(steady_state) - minimum(steady_state) < 1e-12
-
+function plot_irf_subplot(irf_data::Vector{<:AbstractVector{S}}, steady_state::Vector{S}, variable_name::String, can_dual_axis::Bool, same_ss::Bool; pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto)) where S <: AbstractFloat
     plot_dat = []
     plot_dat_dual = []
     
-    for i in 1:length(irf_data)
-        if can_dual_axis && same_ss
-            push!(plot_dat, irf_data[i] .+ steady_state[i])
-            push!(plot_dat_dual, 100 * ((irf_data[i] .+ steady_state[i]) ./ steady_state[i] .- 1))
-        else
-            push!(plot_dat, irf_data[i])
+    pal_val = Int[]
+
+    stst = 1.0
+
+    for (i,(y, ss)) in enumerate(zip(irf_data, steady_state))
+        if !isnan(ss)
+            if can_dual_axis && same_ss
+                stst = ss
+                push!(plot_dat, y .+ ss)
+                push!(plot_dat_dual, 100 * ((y .+ ss) ./ ss .- 1))
+            else
+                push!(plot_dat, y)
+            end
+            push!(pal_val, i)
         end
     end
-
 
     p = StatsPlots.plot(plot_dat,
                         title = variable_name,
                         ylabel = same_ss ? "Level" : "abs. " * LaTeXStrings.L"\Delta",
+                        color = pal[pal_val]',
                         label = "")
 
     if can_dual_axis && same_ss
         StatsPlots.plot!(StatsPlots.twinx(), 
                          plot_dat_dual, 
                          ylabel = LaTeXStrings.L"\% \Delta", 
+                         color = pal[pal_val]',
                          label = "") 
     end
 
-    StatsPlots.hline!(can_dual_axis && same_ss ? [steady_state[1] 0] : [same_ss ? steady_state[1] : 0], 
+    StatsPlots.hline!(can_dual_axis && same_ss ? [stst 0] : [same_ss ? stst : 0], 
                       color = :black, 
                       label = "")
                       
@@ -1010,7 +1018,7 @@ function plot_irf!(𝓂::ℳ;
                     save_plots::Bool = false,
                     save_plots_format::Symbol = :pdf,
                     save_plots_path::String = ".",
-                    plots_per_page::Int = 9, 
+                    plots_per_page::Int = 6, 
                     algorithm::Symbol = :first_order,
                     shock_size::Real = 1,
                     negative_shock::Bool = false,
@@ -1311,7 +1319,7 @@ function plot_irf!(𝓂::ℳ;
                            :sylvester_algorithm => sylvester_algorithm,
                            :lyapunov_algorithm => lyapunov_algorithm,
                            :plot_data => Y,
-                           :reference_steady_state => reference_steady_state,
+                           :reference_steady_state => reference_steady_state[var_idx],
                            :variable_names => variable_names,
                            :shock_names => shock_names,
                            :shock_idx => shock_idx,
@@ -1320,10 +1328,10 @@ function plot_irf!(𝓂::ℳ;
     push!(irf_active_plot_container, args_and_kwargs)
     
     diffdict = compare_args_and_kwargs(irf_active_plot_container)
-    
+
     @assert haskey(diffdict, :parameters) "New plot must be different from previous plot. Use the version without ! to plot."
     
-    param_nms = diffdict[:parameters]|>keys|>collect|>sort
+    param_nms = diffdict[:parameters] |> keys |> collect |> sort
 
     annotate_ss = Vector{Pair{String, Any}}[]
 
@@ -1340,118 +1348,168 @@ function plot_irf!(𝓂::ℳ;
     annotate_params_plot = plot_df(annotate_params)
 
     legend_plot = StatsPlots.plot(framestyle = :none, legend_columns = length(irf_active_plot_container)) 
+    
+    joint_shocks = OrderedSet{String}()
+    joint_variables = OrderedSet{String}()
 
     for (i,k) in enumerate(irf_active_plot_container)
         StatsPlots.plot!(legend_plot,
-        fill(0,1,1), 
-        framestyle = :none, 
-        legend = :inside, 
-        label = i)
+                        fill(0,1,1), 
+                        framestyle = :none, 
+                        legend = :inside, 
+                        label = i)
+
+        push!(joint_shocks, k[:shock_names]...)
+        push!(joint_variables, k[:variable_names]...)
     end
 
+    sort!(joint_shocks)
+    sort!(joint_variables)
+    
     return_plots = []
 
-    for shock in 1:length(shock_idx)
-        n_subplots = length(var_idx)
+    for shock in joint_shocks
+        n_subplots = length(joint_variables)
         pp = []
         pane = 1
         plot_count = 1
-        for i in 1:length(var_idx)
-            if all(isapprox.(Y[i,:,shock], 0, atol = eps(Float32)))
+        joint_non_zero_variables = []
+        can_dual_axiss = Bool[]
+
+        for var in joint_variables
+            not_zero_in_any_irf = false
+            can_dual_axis = gr_back
+
+            for k in irf_active_plot_container
+                var_idx = findfirst(==(var), k[:variable_names])
+                shock_idx = findfirst(==(shock), k[:shock_names])
+                
+                
+                if isnothing(var_idx) || isnothing(shock_idx)
+                    # If the variable or shock is not present in the current irf_active_plot_container,
+                    # we skip this iteration.
+                    continue
+                else
+                    if any(.!isapprox.(k[:plot_data][var_idx,:,shock_idx], 0, atol = eps(Float32)))
+                        not_zero_in_any_irf = not_zero_in_any_irf || true
+                        # break # If any irf data is not approximately zero, we set the flag to true.
+                    end
+
+                    SS = k[:reference_steady_state][var_idx]
+
+                    if all((k[:plot_data][var_idx,:,shock_idx] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
+                        can_dual_axis = can_dual_axis && true
+                    end
+                end
+            end
+
+            if not_zero_in_any_irf 
+                push!(joint_non_zero_variables, var)
+                push!(can_dual_axiss, can_dual_axis)
+            else
+                # If all irf data for this variable and shock is approximately zero, we skip this subplot.
                 n_subplots -= 1
             end
         end
 
-        for i in 1:length(var_idx)
-            SS = reference_steady_state[var_idx[i]]
+        for (var, can_dual_axis) in zip(joint_non_zero_variables, can_dual_axiss)
+            SSs = eltype(irf_active_plot_container[1][:reference_steady_state])[]
+            Ys = AbstractVector{eltype(irf_active_plot_container[1][:plot_data])}[]
 
-            can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
+            for k in irf_active_plot_container
+                var_idx = findfirst(==(var), k[:variable_names])
+                shock_idx = findfirst(==(shock), k[:shock_names])
 
-            if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
-                variable_name = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]])
-                
-                # push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, can_dual_axis))
-                SSs = [k[:reference_steady_state][var_idx[i]] for k in irf_active_plot_container]
-
-                if maximum(SSs) - minimum(SSs) > 1e-10
-                    push!(annotate_ss_page, String(variable_name) => minimal_sigfig_strings(SSs))
-                end
-
-                push!(pp, plot_irf_subplot( [k[:plot_data][i,:,shock] for k in irf_active_plot_container], 
-                                            SSs, 
-                                            variable_name, 
-                                            can_dual_axis))
-                
-                if !(plot_count % plots_per_page == 0)
-                    plot_count += 1
+                if isnothing(var_idx) || isnothing(shock_idx)
+                    # If the variable or shock is not present in the current irf_active_plot_container,
+                    # we skip this iteration.
+                    push!(SSs, NaN)
+                    push!(Ys, zeros(0))
                 else
-                    plot_count = 1
-
-                    if shocks == :simulate
-                        shock_string = ": simulate all"
-                        shock_name = "simulation"
-                    elseif shocks == :none
-                        shock_string = ""
-                        shock_name = "no_shock"
-                    elseif shocks isa Union{Symbol_input,String_input}
-                        shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                        shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                    else
-                        shock_string = "Series of shocks"
-                        shock_name = "shock_matrix"
-                    end
-
-                    ppp = StatsPlots.plot(pp...; attributes...)
-
-                    ppp_pars = StatsPlots.plot(annotate_params_plot; attributes...)
-                    
-                    pushfirst!(annotate_ss_page, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
-
-                    push!(annotate_ss, annotate_ss_page)
-
-                    if length(annotate_ss[pane]) > 0
-                        annotate_ss_plot = plot_df(annotate_ss[pane])
-
-                        ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes...)
-    
-                        p = StatsPlots.plot(ppp,
-                                            legend_plot,
-                                            ppp_pars, 
-                                            ppp_ss, 
-                                            layout = StatsPlots.grid(4, 1, heights = [37, 1, 9, 9] ./ 56),
-                                            plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                            attributes_redux...)
-                    else
-                        p = StatsPlots.plot(ppp,
-                                            legend_plot,
-                                            ppp_pars, 
-                                            layout = StatsPlots.grid(3, 1, heights = [15, 1, 5] ./ 21),
-                                            plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                            attributes_redux...)
-                    end
-
-                    push!(return_plots,p)
-
-                    if show_plots
-                        display(p)
-                    end
-
-                    if save_plots
-                        StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
-                    end
-
-                    pane += 1
-
-                    annotate_ss_page = Pair{String,Any}[]
-
-                    pp = []
+                    push!(SSs, k[:reference_steady_state][var_idx])
+                    push!(Ys, k[:plot_data][var_idx,:,shock_idx])
                 end
-            end   
+            end
+            
+            same_ss = true
+
+            if maximum(filter(!isnan, SSs)) - minimum(filter(!isnan, SSs)) > 1e-10
+                push!(annotate_ss_page, var => minimal_sigfig_strings(SSs))
+                same_ss = false
+            end
+
+            push!(pp, plot_irf_subplot( Ys, 
+                                    SSs, 
+                                    var, 
+                                    can_dual_axis,
+                                    same_ss))
+            
+            if !(plot_count % plots_per_page == 0)
+                plot_count += 1
+            else
+                plot_count = 1
+
+                if shocks == :simulate
+                    shock_string = ": simulate all"
+                    shock_name = "simulation"
+                elseif shocks == :none
+                    shock_string = ""
+                    shock_name = "no_shock"
+                elseif shocks isa Union{Symbol_input,String_input}
+                    shock_string = ": " * shock
+                    shock_name = shock
+                else
+                    shock_string = "Series of shocks"
+                    shock_name = "shock_matrix"
+                end
+
+                ppp = StatsPlots.plot(pp...; attributes...)
+
+                ppp_pars = StatsPlots.plot(annotate_params_plot; attributes...)
+                
+                pushfirst!(annotate_ss_page, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
+
+                push!(annotate_ss, annotate_ss_page)
+
+                if length(annotate_ss[pane]) > 1
+                    annotate_ss_plot = plot_df(annotate_ss[pane])
+
+                    ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes...)
+
+                    p = StatsPlots.plot(ppp,
+                                        legend_plot,
+                                        ppp_pars, 
+                                        ppp_ss, 
+                                        layout = StatsPlots.grid(4, 1, heights = [37, 1, 9, 9] ./ 56),
+                                        plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                        attributes_redux...)
+                else
+                    p = StatsPlots.plot(ppp,
+                                        legend_plot,
+                                        ppp_pars, 
+                                        layout = StatsPlots.grid(3, 1, heights = [15, 1, 5] ./ 21),
+                                        plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                        attributes_redux...)
+                end
+
+                push!(return_plots,p)
+
+                if show_plots
+                    display(p)
+                end
+
+                if save_plots
+                    StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                end
+
+                pane += 1
+
+                annotate_ss_page = Pair{String,Any}[]
+
+                pp = []
+            end
         end
 
-        pushfirst!(annotate_ss_page, "Plot index" => 1:length(diffdict[:parameters][param_nms[1]]))
-
-        push!(annotate_ss, annotate_ss_page)
         
         if length(pp) > 0
             if shocks == :simulate
@@ -1461,8 +1519,8 @@ function plot_irf!(𝓂::ℳ;
                 shock_string = ""
                 shock_name = "no_shock"
             elseif shocks isa Union{Symbol_input,String_input}
-                shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                shock_string = ": " * shock
+                shock_name = shock
             else
                 shock_string = "Series of shocks"
                 shock_name = "shock_matrix"
@@ -1476,7 +1534,7 @@ function plot_irf!(𝓂::ℳ;
 
             push!(annotate_ss, annotate_ss_page)
 
-            if length(annotate_ss[pane]) > 0
+            if length(annotate_ss[pane]) > 1
                 annotate_ss_plot = plot_df(annotate_ss[pane])
 
                 ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes...)
@@ -1584,7 +1642,9 @@ function minimal_sigfig_strings(v::AbstractVector{<:Real};
     out = Vector{String}(undef, length(v))
     for i in eachindex(v)
         x = v[i]
-        if !(isfinite(x)) || x == 0
+        if isnan(x)
+            out[i] = ""
+        elseif !(isfinite(x)) || x == 0
             # For zero or non finite just echo (rule does not change them)
             out[i] = string(x)
         elseif haskey(req_sig, i)
