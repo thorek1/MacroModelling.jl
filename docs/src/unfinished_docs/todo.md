@@ -3,6 +3,7 @@
 ## High priority
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
+- [ ] consider making sympy an extension or try to partially replace with Symbolics
 - [ ] replace RF with LinearSolve codes (RF has too many dependencies)
 - [ ] add FRB US model
 - [ ] check again return value when NSSS not found, maybe NaN is better here
