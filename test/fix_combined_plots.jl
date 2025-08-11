@@ -32,13 +32,31 @@ MacroModelling.plot_irf!(RBC, parameters = [:std_z => 0.021, :β => 0.97, :ρ =>
 include("models/SW07_nonlinear.jl")
 
 plot_irf(SW07_nonlinear, shocks = :ew, 
-                        variables = [:gam1,:gam2,:gam3,
+                        variables = [:robs,:ygap,:pinf,
                         # :gamw1,:gamw2,:gamw3,
-                        :inve,:kp,:k],
+                        :inve,:c,:k],
+                        # variables = [:ygap],
                         parameters = [:ctrend => .35, :curvw => 10, :calfa => 0.18003])
 
+for s in setdiff(get_shocks(SW07_nonlinear),["ew"])
+    MacroModelling.plot_irf!(SW07_nonlinear, shocks = s,
+                            variables = [:robs,:ygap,:pinf,
+                            # :gamw1,:gamw2,:gamw3,
+                            :inve,:c,:k],
+                            # variables = [:ygap],
+                            parameters = [:ctrend => .35, :curvw => 10, :calfa => 0.18003])
+end
+
+# handle case where one plots had one shock, the other has multiple ones
+# when difference is along one dimension dont use tabel but legend only
 MacroModelling.plot_irf!(SW07_nonlinear, 
-                        shocks = :ew,
+                        shocks = :epinf,
+                        variables = [:gam1,:gam2,:gam3,
+                        # :gamw1,:gamw2,:gamw3,
+                        :inve,:kp,:k])
+
+MacroModelling.plot_irf!(SW07_nonlinear, 
+                        shocks = [:epinf,:ew],
                         variables = [:gam1,:gam2,:gam3,
                         # :gamw1,:gamw2,:gamw3,
                         :inve,:kp,:k],
