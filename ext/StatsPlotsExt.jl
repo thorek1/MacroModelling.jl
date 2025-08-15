@@ -1343,7 +1343,7 @@ function plot_irf!(𝓂::ℳ;
         for param in param_nms
             push!(annotate_diff_input, String(param) => diffdict[:parameters][param])
         end
-        len_diff = length(param_nms)
+        len_diff = length(diffdict[:parameters][param_nms[1]])
     end
     
     if haskey(diffdict, :shock_names)
