@@ -26,6 +26,18 @@ const default_plot_attributes = Dict(:size=>(700,500),
                                 :framestyle => :semi)
 
 
+const args_and_kwargs_names = Dict(:model_name => "Model",
+                                    :algorithm => "Algorithm",
+                                    :shock_size => "Shock size",
+                                    :negative_shock => "Negative shock",
+                                    :generalised_irf => "Generalised IRF",
+                                    :ignore_obc => "Ignore OBC",
+                                    # :tol => "Tolerance",
+                                    # :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
+                                    # :sylvester_algorithm => "Sylvester Algorithm",
+                                    # :lyapunov_algorithm => "Lyapunov Algorithm"
+                                    )
+                        
 @stable default_mode = "disable" begin
 """
     gr_backend()
@@ -1317,7 +1329,7 @@ function plot_irf!(𝓂::ℳ;
     
     diffdict = compare_args_and_kwargs(irf_active_plot_container)
 
-    @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || haskey(diffdict, :algorithm) || haskey(diffdict, :generalised_irf) "New plot must be different from previous plot. Use the version without ! to plot."
+    @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || any(haskey.(Ref(diffdict), keys(args_and_kwargs_names))) "New plot must be different from previous plot. Use the version without ! to plot."
     
     annotate_ss = Vector{Pair{String, Any}}[]
 
@@ -1339,20 +1351,19 @@ function plot_irf!(𝓂::ℳ;
             push!(annotate_diff_input, "Shock" => reduce(vcat,diffdict[:shock_names]))
         end
     end
-    
-    if haskey(diffdict, :negative_shock)
-        push!(annotate_diff_input, "Negative shock" => reduce(vcat,diffdict[:negative_shock]))
-        same_shock_direction = false
-    else
-        same_shock_direction = true
-    end
 
-    if haskey(diffdict, :algorithm)
-        push!(annotate_diff_input, "Algorithm" => reduce(vcat,diffdict[:algorithm]))
-    end
+    same_shock_direction = true
 
-    if haskey(diffdict, :generalised_irf)
-        push!(annotate_diff_input, "Generalised IRF" => reduce(vcat,diffdict[:generalised_irf]))
+    for k in setdiff(keys(args_and_kwargs), [:periods, :shocks, :variables, :parameters, :initial_state, :plot_data, :tol, :reference_steady_state, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm, :variable_names, :shock_names, :shock_idx, :var_idx])
+        if haskey(diffdict, k)
+            push!(annotate_diff_input, args_and_kwargs_names[k] => reduce(vcat,diffdict[k]))
+            
+            if k == :negative_shock
+                same_shock_direction = false
+            else
+                same_shock_direction = true
+            end
+        end
     end
 
     pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
@@ -1382,7 +1393,7 @@ function plot_irf!(𝓂::ℳ;
                         legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                         framestyle = :none, 
                         legend = :inside, 
-                        label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa Bool ? String(Symbol(annotate_diff_input[2][2][i])) : annotate_diff_input[2][2][i])
+                        label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
 
         push!(joint_shocks, k[:shock_names]...)
         push!(joint_variables, k[:variable_names]...)
