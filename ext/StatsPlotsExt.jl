@@ -19,8 +19,9 @@ import MacroModelling: plot_irfs, plot_irf, plot_irf!, plot_IRF, plot_simulation
 const default_plot_attributes = Dict(:size=>(700,500),
                                 :plot_titlefont => 10, 
                                 :titlefont => 10, 
-                                :guidefont => 8, 
-                                :legendfontsize => 8, 
+                                :guidefont => 8,
+                                :legendfontsize => 8,
+                                :legend_title_font_pointsize => 8,
                                 :tickfontsize => 8,
                                 :framestyle => :semi)
 
@@ -1336,14 +1337,13 @@ function plot_irf!(𝓂::ℳ;
 
     annotate_diff_input = Pair{String,Any}[]
 
-    len_diff = 1
+    len_diff = length(irf_active_plot_container)
 
     if haskey(diffdict, :parameters)
         param_nms = diffdict[:parameters] |> keys |> collect |> sort
         for param in param_nms
             push!(annotate_diff_input, String(param) => diffdict[:parameters][param])
         end
-        len_diff = length(diffdict[:parameters][param_nms[1]])
     end
     
     if haskey(diffdict, :shock_names)
@@ -1353,12 +1353,9 @@ function plot_irf!(𝓂::ℳ;
             push!(annotate_diff_input, "Shock" => reduce(vcat,diffdict[:shock_names]))
         end
         # push!(annotate_diff_input, "Shock" => shock_nms)
-        len_diff = length(diffdict[:shock_names])
     end
 
     pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
-
-    annotate_diff_input_plot = plot_df(annotate_diff_input)
 
     legend_plot = StatsPlots.plot(framestyle = :none, legend_columns = length(irf_active_plot_container)) 
     
@@ -1369,9 +1366,10 @@ function plot_irf!(𝓂::ℳ;
     for (i,k) in enumerate(irf_active_plot_container)
         StatsPlots.plot!(legend_plot,
                         fill(0,1,1), 
+                        legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                         framestyle = :none, 
                         legend = :inside, 
-                        label = i)
+                        label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i])
 
         push!(joint_shocks, k[:shock_names]...)
         push!(joint_variables, k[:variable_names]...)
@@ -1487,33 +1485,41 @@ function plot_irf!(𝓂::ℳ;
                 end
 
                 ppp = StatsPlots.plot(pp...; attributes...)
-
-                ppp_pars = StatsPlots.plot(annotate_diff_input_plot; attributes...)
                 
                 pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
                 
                 push!(annotate_ss, annotate_ss_page)
                 
+                plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+
+                plot_elements = [ppp, legend_plot]
+
+                layout_heights = [15,1]
+
+                if length(annotate_diff_input) > 2
+                    annotate_diff_input_plot = plot_df(annotate_diff_input)
+
+                    ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes...)
+
+                    push!(plot_elements, ppp_input_diff)
+
+                    push!(layout_heights, 5)
+                end
+
                 if length(annotate_ss[pane]) > 1
                     annotate_ss_plot = plot_df(annotate_ss[pane])
 
                     ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes...)
 
-                    p = StatsPlots.plot(ppp,
-                                        legend_plot,
-                                        ppp_pars, 
-                                        ppp_ss, 
-                                        layout = StatsPlots.grid(4, 1, heights = [37, 1, 9, 9] ./ 56),
-                                        plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                        attributes_redux...)
-                else
-                    p = StatsPlots.plot(ppp,
-                                        legend_plot,
-                                        ppp_pars, 
-                                        layout = StatsPlots.grid(3, 1, heights = [15, 1, 5] ./ 21),
-                                        plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                        attributes_redux...)
+                    push!(plot_elements, ppp_ss)
+                    
+                    push!(layout_heights, 5)
                 end
+
+                p = StatsPlots.plot(plot_elements...,
+                                    layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                                    plot_title = plot_title; 
+                                    attributes_redux...)
 
                 push!(return_plots,p)
 
@@ -1553,33 +1559,41 @@ function plot_irf!(𝓂::ℳ;
             end
 
             ppp = StatsPlots.plot(pp...; attributes...)
-
-            ppp_pars = StatsPlots.plot(annotate_diff_input_plot; attributes...)
             
             pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
-
+            
             push!(annotate_ss, annotate_ss_page)
+            
+            plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+
+            plot_elements = [ppp, legend_plot]
+
+            layout_heights = [15,1]
+
+            if length(annotate_diff_input) > 2
+                annotate_diff_input_plot = plot_df(annotate_diff_input)
+
+                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes...)
+
+                push!(plot_elements, ppp_input_diff)
+
+                push!(layout_heights, 5)
+            end
 
             if length(annotate_ss[pane]) > 1
                 annotate_ss_plot = plot_df(annotate_ss[pane])
 
                 ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes...)
 
-                p = StatsPlots.plot(ppp,
-                                    legend_plot,
-                                    ppp_pars, 
-                                    ppp_ss, 
-                                    layout = StatsPlots.grid(4, 1, heights = [37, 1, 9, 9] ./ 56),
-                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                    attributes_redux...)
-            else
-                p = StatsPlots.plot(ppp,
-                                    legend_plot,
-                                    ppp_pars, 
-                                    layout = StatsPlots.grid(3, 1, heights = [15, 1, 5] ./ 21),
-                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                    attributes_redux...)
+                push!(plot_elements, ppp_ss)
+                
+                push!(layout_heights, 5)
             end
+
+            p = StatsPlots.plot(plot_elements...,
+                                layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                                plot_title = plot_title; 
+                                attributes_redux...)
 
             push!(return_plots,p)
 
