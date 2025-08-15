@@ -1279,18 +1279,6 @@ function plot_irf!(𝓂::ℳ;
         end
     end
 
-    shock_dir = negative_shock ? "Shock⁻" : "Shock⁺"
-
-    if shocks == :none
-        shock_dir = ""
-    end
-    if shocks == :simulate
-        shock_dir = "Shocks"
-    end
-    if !(shocks isa Union{Symbol_input,String_input})
-        shock_dir = ""
-    end
-
     if shocks == :simulate
         shock_names = ["simulation"]
     elseif shocks == :none
@@ -1351,8 +1339,28 @@ function plot_irf!(𝓂::ℳ;
             push!(annotate_diff_input, "Shock" => reduce(vcat,diffdict[:shock_names]))
         end
     end
+    
+    if haskey(diffdict, :negative_shock)
+        push!(annotate_diff_input, "Negative shock" => reduce(vcat,diffdict[:negative_shock]))
+        same_shock_direction = false
+    else
+        same_shock_direction = true
+    end
 
     pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
+    
+
+    shock_dir = same_shock_direction ? negative_shock ? "Shock⁻" : "Shock⁺" : "Shock"
+
+    if shocks == :none
+        shock_dir = ""
+    end
+    if shocks == :simulate
+        shock_dir = "Shocks"
+    end
+    if !(shocks isa Union{Symbol_input,String_input})
+        shock_dir = ""
+    end
 
     legend_plot = StatsPlots.plot(framestyle = :none, legend_columns = length(irf_active_plot_container)) 
     
