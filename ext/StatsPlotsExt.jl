@@ -33,9 +33,9 @@ const args_and_kwargs_names = Dict(:model_name => "Model",
                                     :generalised_irf => "Generalised IRF",
                                     :ignore_obc => "Ignore OBC",
                                     # :tol => "Tolerance",
-                                    # :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
-                                    # :sylvester_algorithm => "Sylvester Algorithm",
-                                    # :lyapunov_algorithm => "Lyapunov Algorithm"
+                                    :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
+                                    :sylvester_algorithm => "Sylvester Algorithm",
+                                    :lyapunov_algorithm => "Lyapunov Algorithm"
                                     )
                         
 @stable default_mode = "disable" begin
@@ -1330,7 +1330,24 @@ function plot_irf!(𝓂::ℳ;
                            :var_idx => var_idx)
 
     push!(irf_active_plot_container, args_and_kwargs)
-    
+
+    # 1. Keep only certain keys from each dictionary
+    keys_to_keep = [:model_name, :periods, :shocks]  # adapt to your needs
+
+    reduced_vector = [
+        Dict(k => d[k] for k in keys(args_and_kwargs_names) if haskey(d, k))
+        for d in irf_active_plot_container
+    ]
+    # println(reduced_vector)
+    # 2. Group the original vector by :model_name
+    grouped_by_model = Dict{Any, Vector{Dict}}()
+
+    for d in irf_active_plot_container
+        model = d[:model_name]
+        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs),keys(args_and_kwargs_names)) if haskey(d, k))
+        push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
+    end
+    # println(grouped_by_model)
     diffdict = compare_args_and_kwargs(irf_active_plot_container)
 
     @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || any(haskey.(Ref(diffdict), keys(args_and_kwargs_names))) "New plot must be different from previous plot. Use the version without ! to plot."
@@ -1358,7 +1375,9 @@ function plot_irf!(𝓂::ℳ;
 
     same_shock_direction = true
 
-    for k in setdiff(keys(args_and_kwargs), [:periods, :shocks, :variables, :parameters, :initial_state, :plot_data, :tol, :reference_steady_state, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm, :variable_names, :shock_names, :shock_idx, :var_idx])
+    for k in setdiff(keys(args_and_kwargs), [:periods, :shocks, :variables, :parameters, :initial_state, :plot_data, :tol, :reference_steady_state, 
+        # :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm, 
+        :variable_names, :shock_names, :shock_idx, :var_idx])
         if haskey(diffdict, k)
             push!(annotate_diff_input, args_and_kwargs_names[k] => reduce(vcat,diffdict[k]))
             
