@@ -1347,12 +1347,9 @@ function plot_irf!(𝓂::ℳ;
     end
     
     if haskey(diffdict, :shock_names)
-        # shock_nms = reduce(vcat,diffdict[:shock_names])
-        # for shock in diffdict[:shock_names]
         if all(length.(diffdict[:shock_names]) .== 1)
             push!(annotate_diff_input, "Shock" => reduce(vcat,diffdict[:shock_names]))
         end
-        # push!(annotate_diff_input, "Shock" => shock_nms)
     end
 
     pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
@@ -1379,7 +1376,7 @@ function plot_irf!(𝓂::ℳ;
     sort!(joint_shocks)
     sort!(joint_variables)
     
-    if single_shock_per_irf
+    if single_shock_per_irf && length(joint_shocks) > 1
         joint_shocks = [:single_shock_per_irf]
     end
 
