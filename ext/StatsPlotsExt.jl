@@ -1317,7 +1317,7 @@ function plot_irf!(𝓂::ℳ;
     
     diffdict = compare_args_and_kwargs(irf_active_plot_container)
 
-    @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || haskey(diffdict, :algorithm) "New plot must be different from previous plot. Use the version without ! to plot."
+    @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || haskey(diffdict, :algorithm) || haskey(diffdict, :generalised_irf) "New plot must be different from previous plot. Use the version without ! to plot."
     
     annotate_ss = Vector{Pair{String, Any}}[]
 
@@ -1351,6 +1351,10 @@ function plot_irf!(𝓂::ℳ;
         push!(annotate_diff_input, "Algorithm" => reduce(vcat,diffdict[:algorithm]))
     end
 
+    if haskey(diffdict, :generalised_irf)
+        push!(annotate_diff_input, "Generalised IRF" => reduce(vcat,diffdict[:generalised_irf]))
+    end
+
     pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
     
 
@@ -1378,7 +1382,7 @@ function plot_irf!(𝓂::ℳ;
                         legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                         framestyle = :none, 
                         legend = :inside, 
-                        label = length(annotate_diff_input) > 2 ? i : String(annotate_diff_input[2][2][i]))
+                        label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa Bool ? String(Symbol(annotate_diff_input[2][2][i])) : annotate_diff_input[2][2][i])
 
         push!(joint_shocks, k[:shock_names]...)
         push!(joint_variables, k[:variable_names]...)
