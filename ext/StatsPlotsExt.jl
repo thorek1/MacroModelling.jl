@@ -994,7 +994,11 @@ function plot_irf_subplot(irf_data::Vector{<:AbstractVector{S}}, steady_state::V
                 push!(plot_dat, y .+ ss)
                 push!(plot_dat_dual, 100 * ((y .+ ss) ./ ss .- 1))
             else
-                push!(plot_dat, y)
+                if same_ss
+                    push!(plot_dat, y .+ ss)
+                else
+                    push!(plot_dat, y)
+                end
             end
             push!(pal_val, i)
         end
@@ -1566,8 +1570,8 @@ function plot_irf!(𝓂::ℳ;
 
         if length(pp) > 0
             if shock == :single_shock_per_irf
-                    shock_string = ": multiple shocks"
-                    shock_name = "multiple_shocks"
+                shock_string = ": multiple shocks"
+                shock_name = "multiple_shocks"
             elseif shock == :simulate
                 shock_string = ": simulate all"
                 shock_name = "simulation"
