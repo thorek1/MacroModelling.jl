@@ -28,6 +28,7 @@ const default_plot_attributes = Dict(:size=>(700,500),
 
 const args_and_kwargs_names = Dict(:model_name => "Model",
                                     :algorithm => "Algorithm",
+                                    :shock_names => "Shock",
                                     :shock_size => "Shock size",
                                     :negative_shock => "Negative shock",
                                     :generalised_irf => "Generalised IRF",
@@ -163,7 +164,8 @@ function plot_model_estimates(𝓂::ℳ,
                                 lyapunov_algorithm::Symbol = :doubling)
     # @nospecialize # reduce compile time                            
 
-    args_and_kwargs = Dict(:model_name => 𝓂.model_name,
+    args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
+                           :model_name => 𝓂.model_name,
                            :data => data,
                            :parameters => parameters,
                            :algorithm => algorithm,
@@ -837,7 +839,12 @@ function plot_irf(𝓂::ℳ;
     
     variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
 
-    args_and_kwargs = Dict(:model_name => 𝓂.model_name,
+    while length(irf_active_plot_container) > 0
+        pop!(irf_active_plot_container)
+    end
+    
+    args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
+                           :model_name => 𝓂.model_name,
                            :periods => periods,
                            :shocks => shocks,
                            :variables => variables,
@@ -858,10 +865,6 @@ function plot_irf(𝓂::ℳ;
                            :shock_names => shock_names,
                            :shock_idx => shock_idx,
                            :var_idx => var_idx)
-
-    while length(irf_active_plot_container) > 0
-        pop!(irf_active_plot_container)
-    end
     
     push!(irf_active_plot_container, args_and_kwargs)
 
@@ -1307,7 +1310,8 @@ function plot_irf!(𝓂::ℳ;
     
     variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
 
-    args_and_kwargs = Dict(:model_name => 𝓂.model_name,
+    args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
+                           :model_name => 𝓂.model_name,
                            :periods => periods,
                            :shocks => shocks,
                            :variables => variables,
@@ -1332,13 +1336,13 @@ function plot_irf!(𝓂::ℳ;
     push!(irf_active_plot_container, args_and_kwargs)
 
     # 1. Keep only certain keys from each dictionary
-    keys_to_keep = [:model_name, :periods, :shocks]  # adapt to your needs
-
     reduced_vector = [
-        Dict(k => d[k] for k in keys(args_and_kwargs_names) if haskey(d, k))
+        Dict(k => d[k] for k in vcat(:run_id,keys(args_and_kwargs_names)...) if haskey(d, k))
         for d in irf_active_plot_container
     ]
-    # println(reduced_vector)
+
+    diffdict = compare_args_and_kwargs(reduced_vector)
+
     # 2. Group the original vector by :model_name
     grouped_by_model = Dict{Any, Vector{Dict}}()
 
@@ -1347,9 +1351,23 @@ function plot_irf!(𝓂::ℳ;
         d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs),keys(args_and_kwargs_names)) if haskey(d, k))
         push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
     end
-    # println(grouped_by_model)
-    diffdict = compare_args_and_kwargs(irf_active_plot_container)
 
+    model_names = []
+
+    for d in irf_active_plot_container
+        push!(model_names, d[:model_name])
+    end
+
+    model_names = unique(model_names)
+
+    # for (i,d) in enumerate(irf_active_plot_container)
+    for model in model_names
+        if length(grouped_by_model[model]) > 1
+            diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
+            diffdict = merge_by_runid(diffdict, diffdict_grouped)
+        end
+    end
+    
     @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || any(haskey.(Ref(diffdict), keys(args_and_kwargs_names))) "New plot must be different from previous plot. Use the version without ! to plot."
     
     annotate_ss = Vector{Pair{String, Any}}[]
@@ -1363,7 +1381,8 @@ function plot_irf!(𝓂::ℳ;
     if haskey(diffdict, :parameters)
         param_nms = diffdict[:parameters] |> keys |> collect |> sort
         for param in param_nms
-            push!(annotate_diff_input, String(param) => diffdict[:parameters][param])
+            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
+            push!(annotate_diff_input, String(param) => result)
         end
     end
     
@@ -1375,7 +1394,7 @@ function plot_irf!(𝓂::ℳ;
 
     same_shock_direction = true
 
-    for k in setdiff(keys(args_and_kwargs), [:periods, :shocks, :variables, :parameters, :initial_state, :plot_data, :tol, :reference_steady_state, 
+    for k in setdiff(keys(args_and_kwargs), [:run_id, :periods, :shocks, :variables, :parameters, :initial_state, :plot_data, :tol, :reference_steady_state, 
         # :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm, 
         :variable_names, :shock_names, :shock_idx, :var_idx])
         if haskey(diffdict, k)
@@ -1383,8 +1402,6 @@ function plot_irf!(𝓂::ℳ;
             
             if k == :negative_shock
                 same_shock_direction = false
-            else
-                same_shock_direction = true
             end
         end
     end
@@ -1537,7 +1554,13 @@ function plot_irf!(𝓂::ℳ;
                 
                 push!(annotate_ss, annotate_ss_page)
                 
-                plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+                if haskey(diffdict, :model_name)
+                    model_string = "multiple models"
+                else
+                    model_string = 𝓂.model_name
+                end
+
+                plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
 
                 plot_elements = [ppp, legend_plot]
 
@@ -1610,8 +1633,14 @@ function plot_irf!(𝓂::ℳ;
             pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
             
             push!(annotate_ss, annotate_ss_page)
-            
-            plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+
+            if haskey(diffdict, :model_name)
+                model_string = "multiple models"
+            else
+                model_string = 𝓂.model_name
+            end
+
+            plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
 
             plot_elements = [ppp, legend_plot]
 
@@ -1659,11 +1688,51 @@ function plot_irf!(𝓂::ℳ;
     return return_plots
 end
 
+
+function merge_by_runid(dicts::Dict...)
+    @assert !isempty(dicts) "At least one dictionary is required"
+    @assert all(haskey.(dicts, Ref(:run_id))) "Each dictionary must contain :run_id"
+
+    # union of all run_ids, sorted
+    all_runids = sort(unique(vcat([d[:run_id] for d in dicts]...)))
+    n = length(all_runids)
+
+    merged = Dict{Symbol,Any}()
+    merged[:run_id] = all_runids
+
+    # run_id → index map for each dict
+    idx_maps = [Dict(r => i for (i, r) in enumerate(d[:run_id])) for d in dicts]
+
+    for (j, d) in enumerate(dicts)
+        idx_map = idx_maps[j]
+        for (k, v) in d
+            k === :run_id && continue
+
+            if v isa AbstractVector && length(v) == length(d[:run_id])
+                merged[k] = [haskey(idx_map, r) ? v[idx_map[r]] : nothing for r in all_runids]
+            elseif v isa Dict
+                sub = get!(merged, k, Dict{Symbol,Any}())
+                for (kk, vv) in v
+                    if vv isa AbstractVector && length(vv) == length(d[:run_id])
+                        sub[kk] = [haskey(idx_map, r) ? vv[idx_map[r]] : nothing for r in all_runids]
+                    else
+                        sub[kk] = [vv for _ in 1:n]
+                    end
+                end
+            else
+                merged[k] = [v for _ in 1:n]
+            end
+        end
+    end
+
+    return merged
+end
+
 function minimal_sigfig_strings(v::AbstractVector{<:Real};
-        min_sig::Int = 3, n::Int = 10, dup_tol::Float64 = 1e-13)
+    min_sig::Int = 3, n::Int = 10, dup_tol::Float64 = 1e-13)
 
     idx = collect(eachindex(v))
-    finite_mask = map(x -> isfinite(x) && x != 0, v)
+    finite_mask = map(x -> isfinite(x), v) # && x != 0, v)
     work_idx = filter(i -> finite_mask[i], idx)
     sorted_idx = sort(work_idx, by = i -> v[i])
     mwork = length(sorted_idx)
@@ -1716,6 +1785,9 @@ function minimal_sigfig_strings(v::AbstractVector{<:Real};
                 req_sig[i] = min_sig
             else
                 m = floor(log10(abs(x))) + 1
+
+                m = max(typemin(Int), m)  # avoid negative indices
+
                 s = max(min_sig, ceil(Int, m - log10(g)))
                 # Apply rule: if they differ only after more than n sig digits
                 if s > n
