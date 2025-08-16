@@ -40,10 +40,10 @@ hcat(SS(SW07_nonlinear, derivatives = false, parameters = [:ctrend => .35, :curv
 
 plot_irf(SW07_nonlinear, shocks = :ew, 
                         # negative_shock = true,
-                        generalised_irf = false,
-                        algorithm = :pruned_second_order,
+                        # generalised_irf = false,
+                        # algorithm = :pruned_second_order,
                         variables = [:robs,:ygap,:pinf,
-                        :gamw1,:gamw2,:gamw3,
+                        # :gamw1,:gamw2,:gamw3,
                         :inve,:c,:k],
                         # variables = [:ygap],
                         parameters = [:ctrend => .35, :curvw => 10, :calfa => 0.18003])
@@ -51,15 +51,15 @@ plot_irf(SW07_nonlinear, shocks = :ew,
 plot_irf!(SW07_nonlinear, shocks = :ew, 
                         # generalised_irf = true,
                         algorithm = :pruned_second_order,
-                        shock_size = 2,
+                        # shock_size = 2,
                         # quadratic_matrix_equation_algorithm = :doubling,
                         # tol = MacroModelling.Tolerances(NSSS_acceptance_tol = 1e-10),
                         # negative_shock = true,
                         variables = [:robs,:ygap,:pinf,
-                        :gamw1,:gamw2,:gamw3,
+                        # :gamw1,:gamw2,:gamw3,
                         :inve,:c,:k],
                         # variables = [:ygap],
-                        parameters = [:ctrend => .35, :curvw => 10, :calfa => 0.18003])
+                        parameters = [:ctrend => .365, :curvw => 10, :calfa => 0.18003])
 
 for s in setdiff(get_shocks(SW07_nonlinear),["ew"])
     MacroModelling.plot_irf!(SW07_nonlinear, shocks = s,
