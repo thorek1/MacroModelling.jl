@@ -32,6 +32,7 @@ const args_and_kwargs_names = Dict(:model_name => "Model",
                                     :shock_size => "Shock size",
                                     :negative_shock => "Negative shock",
                                     :generalised_irf => "Generalised IRF",
+                                    :periods => "Periods",
                                     :ignore_obc => "Ignore OBC",
                                     # :tol => "Tolerance",
                                     :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
@@ -1394,7 +1395,9 @@ function plot_irf!(𝓂::ℳ;
 
     same_shock_direction = true
 
-    for k in setdiff(keys(args_and_kwargs), [:run_id, :periods, :shocks, :variables, :parameters, :initial_state, :plot_data, :tol, :reference_steady_state, 
+    for k in setdiff(keys(args_and_kwargs), [:run_id, 
+        # :periods, 
+        :shocks, :variables, :parameters, :initial_state, :plot_data, :tol, :reference_steady_state, 
         # :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm, 
         :variable_names, :shock_names, :shock_idx, :var_idx])
         if haskey(diffdict, k)
