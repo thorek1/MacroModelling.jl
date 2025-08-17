@@ -8080,6 +8080,7 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
     elseif shocks isa Symbol
         if length(setdiff([shocks],T.exo)) > 0
             @warn "Following shock is not part of the model: " * join(string(setdiff([shocks],T.exo)[1]),", ")
+            # TODO: mention shocks part of the model
             shock_idx = Int64[]
         else
             shock_idx = getindex(1:T.nExo,shocks .== T.exo)
