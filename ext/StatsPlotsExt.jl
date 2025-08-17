@@ -1387,19 +1387,23 @@ function plot_irf!(𝓂::ℳ;
         end
     end
     
-    if haskey(diffdict, :shock_names)
+    if haskey(diffdict, :shocks)
         if all(length.(diffdict[:shock_names]) .== 1)
-            push!(annotate_diff_input, "Shock" => reduce(vcat,diffdict[:shock_names]))
+            push!(annotate_diff_input, "Shock" => reduce(vcat,diffdict[:shocks]))
+        else
+            push!(annotate_diff_input, "Shock" => diffdict[:shocks])
         end
     end
-
+    
     same_shock_direction = true
-
-    for k in setdiff(keys(args_and_kwargs), [:run_id, 
-        # :periods, 
-        :shocks, :variables, :parameters, :initial_state, :plot_data, :tol, :reference_steady_state, 
-        # :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm, 
-        :variable_names, :shock_names, :shock_idx, :var_idx])
+    
+    for k in setdiff(keys(args_and_kwargs), 
+        [
+            :run_id, :parameters, :initial_state, :plot_data, :tol, :reference_steady_state, 
+            :shocks, :shock_names, :shock_idx, 
+            :variables, :variable_names, :var_idx, 
+            # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm, 
+        ])
         if haskey(diffdict, k)
             push!(annotate_diff_input, args_and_kwargs_names[k] => reduce(vcat,diffdict[k]))
             
@@ -1410,7 +1414,6 @@ function plot_irf!(𝓂::ℳ;
     end
 
     pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
-    
 
     shock_dir = same_shock_direction ? negative_shock ? "Shock⁻" : "Shock⁺" : "Shock"
 
@@ -1429,7 +1432,7 @@ function plot_irf!(𝓂::ℳ;
     joint_shocks = OrderedSet{String}()
     joint_variables = OrderedSet{String}()
     single_shock_per_irf = true
-
+    
     for (i,k) in enumerate(irf_active_plot_container)
         StatsPlots.plot!(legend_plot,
                         fill(0,1,1), 
@@ -1686,6 +1689,8 @@ function plot_irf!(𝓂::ℳ;
         end
 
         annotate_ss = Vector{Pair{String, Any}}[]
+
+        annotate_ss_page = Pair{String,Any}[]
     end
 
     return return_plots
