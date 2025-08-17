@@ -636,6 +636,8 @@ function plot_irf(𝓂::ℳ;
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
+    initial_state_input = copy(initial_state)
+
     unspecified_initial_state = initial_state == [0.0]
 
     if unspecified_initial_state
@@ -854,7 +856,7 @@ function plot_irf(𝓂::ℳ;
                            :shock_size => shock_size,
                            :negative_shock => negative_shock,
                            :generalised_irf => generalised_irf,
-                           :initial_state => initial_state,
+                           :initial_state => initial_state_input,
                            :ignore_obc => ignore_obc,
                            :tol => tol,
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
@@ -1119,6 +1121,8 @@ function plot_irf!(𝓂::ℳ;
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
+    initial_state_input = copy(initial_state)
+
     unspecified_initial_state = initial_state == [0.0]
 
     if unspecified_initial_state
@@ -1321,7 +1325,7 @@ function plot_irf!(𝓂::ℳ;
                            :shock_size => shock_size,
                            :negative_shock => negative_shock,
                            :generalised_irf => generalised_irf,
-                           :initial_state => initial_state,
+                           :initial_state => initial_state_input,
                            :ignore_obc => ignore_obc,
                            :tol => tol,
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
@@ -1348,6 +1352,7 @@ function plot_irf!(𝓂::ℳ;
     grouped_by_model = Dict{Any, Vector{Dict}}()
 
     for d in irf_active_plot_container
+        # println(d[:initial_state])
         model = d[:model_name]
         d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs),keys(args_and_kwargs_names)) if haskey(d, k))
         push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
@@ -1361,7 +1366,6 @@ function plot_irf!(𝓂::ℳ;
 
     model_names = unique(model_names)
 
-    # for (i,d) in enumerate(irf_active_plot_container)
     for model in model_names
         if length(grouped_by_model[model]) > 1
             diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
@@ -1369,7 +1373,8 @@ function plot_irf!(𝓂::ℳ;
         end
     end
     
-    @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || any(haskey.(Ref(diffdict), keys(args_and_kwargs_names))) "New plot must be different from previous plot. Use the version without ! to plot."
+    @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || haskey(diffdict, :initial_state) || 
+    any(haskey.(Ref(diffdict), keys(args_and_kwargs_names))) "New plot must be different from previous plot. Use the version without ! to plot."
     
     annotate_ss = Vector{Pair{String, Any}}[]
 
@@ -1394,16 +1399,35 @@ function plot_irf!(𝓂::ℳ;
             push!(annotate_diff_input, "Shock" => diffdict[:shocks])
         end
     end
+
+    if haskey(diffdict, :initial_state)
+        unique_initial_state = unique(diffdict[:initial_state])
+
+        initial_state_idx = Int[]
+
+        for init in diffdict[:initial_state]
+            for (i,u) in enumerate(unique_initial_state)
+                if u == init
+                    push!(initial_state_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Initial state" => ["#$i" for i in initial_state_idx])
+    end
     
     same_shock_direction = true
     
     for k in setdiff(keys(args_and_kwargs), 
-        [
-            :run_id, :parameters, :initial_state, :plot_data, :tol, :reference_steady_state, 
-            :shocks, :shock_names, :shock_idx, 
-            :variables, :variable_names, :var_idx, 
-            # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm, 
-        ])
+                        [
+                            :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, 
+                            :shocks, :shock_names, :shock_idx, 
+                            :variables, :variable_names, :var_idx, 
+                            # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
+                        ]
+                    )
+
         if haskey(diffdict, k)
             push!(annotate_diff_input, args_and_kwargs_names[k] => reduce(vcat,diffdict[k]))
             
