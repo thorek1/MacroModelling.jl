@@ -1556,10 +1556,6 @@ function plot_irf!(𝓂::ℳ;
 
                 ppp = StatsPlots.plot(pp...; attributes...)
                 
-                pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
-                
-                push!(annotate_ss, annotate_ss_page)
-                
                 if haskey(diffdict, :model_name)
                     model_string = "multiple models"
                 else
@@ -1571,7 +1567,7 @@ function plot_irf!(𝓂::ℳ;
                 plot_elements = [ppp, legend_plot]
 
                 layout_heights = [15,1]
-
+                
                 if length(annotate_diff_input) > 2
                     annotate_diff_input_plot = plot_df(annotate_diff_input)
 
@@ -1580,7 +1576,13 @@ function plot_irf!(𝓂::ℳ;
                     push!(plot_elements, ppp_input_diff)
 
                     push!(layout_heights, 5)
+
+                    pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+                else
+                    pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
                 end
+
+                push!(annotate_ss, annotate_ss_page)
 
                 if length(annotate_ss[pane]) > 1
                     annotate_ss_plot = plot_df(annotate_ss[pane])
@@ -1636,10 +1638,6 @@ function plot_irf!(𝓂::ℳ;
 
             ppp = StatsPlots.plot(pp...; attributes...)
             
-            pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
-            
-            push!(annotate_ss, annotate_ss_page)
-
             if haskey(diffdict, :model_name)
                 model_string = "multiple models"
             else
@@ -1660,7 +1658,13 @@ function plot_irf!(𝓂::ℳ;
                 push!(plot_elements, ppp_input_diff)
 
                 push!(layout_heights, 5)
+                
+                pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+            else
+                pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
             end
+
+            push!(annotate_ss, annotate_ss_page)
 
             if length(annotate_ss[pane]) > 1
                 annotate_ss_plot = plot_df(annotate_ss[pane])
