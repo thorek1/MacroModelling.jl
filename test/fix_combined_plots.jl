@@ -1,6 +1,268 @@
 using Revise
 using MacroModelling, StatsPlots
 
+include("../models/GNSS_2010.jl")
+
+model = GNSS_2010
+get_shocks(model)
+
+shcks = :e_y
+vars = [:C, :K, :Y, :r_k, :w_p, :rr_e, :pie, :q_h, :l_p]
+
+plot_irf(model, shocks = shcks, variables = vars)
+
+plot_irf!(model, 
+            shock_size = 1.2,
+            shocks = shcks, variables = vars)
+
+plot_irf!(model, 
+            shock_size = 0.2,
+            shocks = shcks, variables = vars)
+
+
+vars = [:C, :K, :Y, :r_k, :w_p, :rr_e, :pie, :q_h, :l_p]
+
+plot_irf(model, algorithm = :pruned_second_order, shocks = shcks, variables = vars)
+
+plot_irf!(model, algorithm = :pruned_second_order, 
+            shock_size = 1.2,
+            shocks = shcks, variables = vars)
+
+plot_irf!(model, algorithm = :pruned_second_order, 
+            shock_size = -1,
+            shocks = shcks, variables = vars)
+
+plot_irf!(model, algorithm = :second_order, 
+            shock_size = -1,
+            shocks = shcks, variables = vars)
+
+
+vars = [:C, :K, :Y, :r_k, :w_p, :rr_e, :pie, :q_h, :l_p]
+
+plot_irf(model, shocks = shcks, variables = vars)
+
+plot_irf!(model, 
+            shock_size = -1,
+            shocks = shcks, variables = vars)
+
+plot_irf!(model, algorithm = :pruned_second_order, 
+            periods = 10,
+            shocks = shcks, variables = vars)
+
+plot_irf!(model, algorithm = :second_order, 
+            shock_size = -1,
+            shocks = shcks, variables = vars)
+
+
+vars = [:C, :K, :Y, :r_k, :w_p, :rr_e, :pie, :q_h, :l_p]
+
+get_shocks(model)
+
+plot_irf(model, shocks = shcks, variables = vars)
+
+plot_irf!(model, shocks = :e_j, variables = vars)
+
+plot_irf!(model, shocks = [:e_j, :e_me], variables = vars)
+
+plot_irf!(model, variables = vars)
+
+
+
+vars = [:C, :K, :Y, :r_k, :w_p, :rr_e, :pie, :q_h, :l_p]
+
+get_shocks(model)
+
+plot_irf(model, shocks = shcks, variables = vars)
+
+plot_irf!(model, algorithm = :pruned_second_order, 
+            shock_size = -1,
+            shocks = shcks, variables = vars)
+
+plot_irf!(model, algorithm = :second_order, 
+            shock_size = -1,
+            shocks = shcks, variables = vars)
+
+
+vars = [:C, :K, :Y, :r_k, :w_p, :rr_e, :pie, :q_h, :l_p]
+
+plot_irf(model, shocks = shcks, variables = vars)
+
+plot_irf!(model, shocks = shcks, variables = vars[2:end], shock_size = -1)
+
+
+vars = [:C, :K, :Y, :r_k, :w_p, :rr_e, :pie, :q_h, :l_p]
+
+plot_irf(model, shocks = shcks, variables = vars)
+
+for a in [:second_order, :pruned_second_order, :third_order, :pruned_third_order]
+    plot_irf!(model, shocks = shcks, variables = vars, algorithm = a)
+end
+
+
+vars = [:C, :K, :Y, :r_k, :w_p]
+
+plot_irf(model, shocks = shcks, variables = vars)
+
+for a in [:second_order, :pruned_second_order, :third_order, :pruned_third_order]
+    plot_irf!(model, shocks = shcks, variables = vars, algorithm = a)
+end
+
+
+
+vars = [:C, :K, :Y, :r_k, :w_p, :rr_e, :pie, :q_h, :l_p]
+
+plot_irf(model, shocks = shcks, variables = vars)
+
+plot_irf!(model, shocks = shcks, variables = vars, negative_shock = true)
+
+plot_irf!(model, shocks = :e_j, variables = vars, negative_shock = true)
+
+plot_irf!(model, shocks = :e_j, shock_size = 2, variables = vars, negative_shock = true)
+
+plot_irf!(model, shocks = :e_j, shock_size = -2, variables = vars, negative_shock = true, algorithm = :second_order)
+
+
+vars = [:C, :K, :Y, :r_k, :w_p, :rr_e, :pie, :q_h, :l_p]
+
+plot_irf(model, shocks = shcks, variables = vars, algorithm = :pruned_second_order)
+
+plot_irf!(model, shocks = shcks, variables = vars, generalised_irf = true, algorithm = :pruned_second_order)
+
+plot_irf!(model, shocks = shcks, variables = vars, algorithm = :pruned_third_order)
+
+plot_irf!(model, shocks = shcks, variables = vars, generalised_irf = true, algorithm = :pruned_third_order)
+
+
+
+
+include("../models/Gali_2015_chapter_3_obc.jl")
+
+model = Gali_2015_chapter_3_obc
+get_shocks(model)
+get_variables(model)[1:10]
+shcks = :eps_z
+vars = [:A, :C, :MC, :M_real, :N, :Pi, :Pi_star, :Q, :R, :S]
+
+plot_irf(model, shocks = shcks, variables = vars, periods = 10)
+
+plot_irf!(model, shocks = shcks, variables = vars, periods = 10, ignore_obc = true)
+
+plot_irf!(model, shocks = shcks, variables = vars, periods = 10, shock_size = 2, ignore_obc = false)
+
+plot_irf!(model, shocks = shcks, variables = vars, periods = 10, shock_size = 2, ignore_obc = true)
+
+plot_irf!(model, shocks = :eps_a, variables = vars, periods = 10, shock_size = 4, ignore_obc = false)
+
+plot_irf!(model, shocks = :eps_a, variables = vars, periods = 10, shock_size = 4, ignore_obc = true)
+
+
+
+plot_irf(model, shocks = shcks, variables = vars, periods = 10)
+
+plot_irf!(model, shocks = shcks, variables = vars, periods = 10, ignore_obc = true)
+
+plot_irf!(model, shocks = shcks, variables = vars, periods = 10, algorithm = :pruned_second_order, ignore_obc = true)
+
+plot_irf!(model, shocks = shcks, variables = vars, periods = 10, algorithm = :pruned_second_order, shock_size = 2, ignore_obc = false)
+
+plot_irf!(model, shocks = shcks, variables = vars, periods = 10, algorithm = :pruned_second_order, shock_size = 2, ignore_obc = true)
+
+plot_irf!(model, shocks = :eps_a, variables = vars, periods = 10, algorithm = :pruned_second_order, shock_size = 4, ignore_obc = false)
+
+plot_irf!(model, shocks = :eps_a, variables = vars, periods = 10, algorithm = :pruned_second_order, shock_size = 4, ignore_obc = true)
+
+
+plot_irf(model, shocks = shcks, variables = vars, algorithm = :pruned_second_order)
+
+plot_irf!(model, shocks = shcks, variables = vars, algorithm = :pruned_second_order, quadratic_matrix_equation_algorithm = :doubling)
+
+plot_irf!(model, shocks = shcks, variables = vars, algorithm = :pruned_second_order, sylvester_algorithm = :doubling)
+
+plot_irf(model, shocks = shcks, variables = vars, algorithm = :pruned_third_order)
+
+plot_irf!(model, shocks = shcks, variables = vars, algorithm = :pruned_third_order, quadratic_matrix_equation_algorithm = :doubling)
+
+
+get_parameters(model, values = true)
+
+plot_irf(model, shocks = shcks, variables = vars, parameters = :α => .25)
+
+plot_irf!(model, shocks = shcks, variables = vars, parameters = :α => .2)
+
+SS(model, derivatives = false, parameters = :α => .25)(:R)
+SS(model, derivatives = false, parameters = :α => .2)(:R)
+
+
+# handle initial state and tol
+
+init_state = get_irf(model, shocks = :none, variables = :all,
+       periods = 1, levels = true)
+
+init_state[1] += 1
+
+plot_irf(model, shocks = shcks, variables = vars, ignore_obc = true,
+initial_state = vec(init_state))
+
+
+plot_irf!(model, shocks = :none, variables = vars, ignore_obc = true,
+       initial_state = vec(init_state), 
+    #    algorithm = :second_order
+       )
+       
+init_state_2 = get_irf(model, shocks = :none, variables = :all, periods = 1, levels = true)
+
+init_state_2[1] += 2
+
+init_state[1] += 2
+
+plot_irf!(model, shocks = :none, variables = vars, ignore_obc = true,initial_state = vec(init_state))
+
+       
+# init_state_2 = get_irf(model, shocks = :none, variables = :all, periods = 1, levels = true)
+
+init_state[1] += .2
+
+plot_irf!(model, shocks = shcks, variables = vars, ignore_obc = true,
+       algorithm = :second_order,
+initial_state = vec(init_state)
+)
+
+
+init_state_2 = get_irf(model, shocks = :none, variables = :all, algorithm = :pruned_second_order, periods = 1, levels = false)
+
+plot_irf!(model, shocks = shcks, variables = vars, ignore_obc = true,
+       algorithm = :pruned_second_order,
+initial_state = vec(init_state_2)
+)
+
+
+plot_irf(model, shocks = shcks, variables = vars)
+
+# plot_irf!(model, shocks = shcks, variables = vars, ignore_obc = true)
+
+plot_irf!(model, shocks = shcks, variables = vars, tol = Tolerances(NSSS_acceptance_tol = 1e-8))
+
+plot_irf!(model, shocks = shcks, variables = vars, quadratic_matrix_equation_algorithm = :doubling)
+
+
+data = randn(10, 3)
+data   = randn(10, 3)              # your values
+offset = fill(10.0, size(data, 1)) # desired baseline
+
+p = StatsPlots.groupedbar([data offset], 
+    bar_position = :stack, 
+    bar_width = 0.7, 
+    alpha        = [ones(size(data, 2)); 0]',  # hide the baseline series
+    # label        = [" " ; "A" "B" "C"]'          # no legend entry for the baseline
+    )
+
+p = StatsPlots.groupedbar(data[1,:]', bar_position = :stack, bar_width = 0.7, fillrange = 1)
+
+
+original_limits = StatsPlots.ylims(p)
+lo, hi = original_limits
+StatsPlots.ylims!(p, (lo + 10, hi + 10))
+
 @model RBC begin
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
