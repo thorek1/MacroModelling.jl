@@ -1489,18 +1489,6 @@ function plot_irf!(𝓂::ℳ;
 
     pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
 
-    shock_dir = same_shock_direction ? negative_shock ? "Shock⁻" : "Shock⁺" : "Shock"
-
-    if shocks == :none
-        shock_dir = ""
-    end
-    if shocks == :simulate
-        shock_dir = "Shocks"
-    end
-    if !(shocks isa Union{Symbol_input,String_input})
-        shock_dir = ""
-    end
-
     legend_plot = StatsPlots.plot(framestyle = :none, legend_columns = length(irf_active_plot_container)) 
     
     joint_shocks = OrderedSet{String}()
@@ -1522,7 +1510,7 @@ function plot_irf!(𝓂::ℳ;
 
     sort!(joint_shocks)
     sort!(joint_variables)
-    
+
     if single_shock_per_irf && length(joint_shocks) > 1
         joint_shocks = [:single_shock_per_irf]
     end
@@ -1611,13 +1599,17 @@ function plot_irf!(𝓂::ℳ;
             else
                 plot_count = 1
 
+                shock_dir = same_shock_direction ? negative_shock ? "Shock⁻" : "Shock⁺" : "Shock"
+
                 if shock == :single_shock_per_irf
                     shock_string = ": multiple shocks"
                     shock_name = "multiple_shocks"
-                elseif shock == :simulate
+                elseif shock == "simulation"
+                    shock_dir = "Shocks"
                     shock_string = ": simulate all"
                     shock_name = "simulation"
-                elseif shock == :none
+                elseif shock == "no_shock"
+                    shock_dir = ""
                     shock_string = ""
                     shock_name = "no_shock"
                 elseif shock isa Union{Symbol_input,String_input}
@@ -1693,13 +1685,17 @@ function plot_irf!(𝓂::ℳ;
 
 
         if length(pp) > 0
+            shock_dir = same_shock_direction ? negative_shock ? "Shock⁻" : "Shock⁺" : "Shock"
+
             if shock == :single_shock_per_irf
                 shock_string = ": multiple shocks"
                 shock_name = "multiple_shocks"
-            elseif shock == :simulate
+            elseif shock == "simulation"
+                shock_dir = "Shocks"
                 shock_string = ": simulate all"
                 shock_name = "simulation"
-            elseif shock == :none
+            elseif shock == "no_shock"
+                shock_dir = ""
                 shock_string = ""
                 shock_name = "no_shock"
             elseif shock isa Union{Symbol_input,String_input}
