@@ -9,6 +9,7 @@ const irf_active_plot_container = Dict[]
 const model_estimates_active_plot_container = Dict[]
 
 import StatsPlots
+import Showoff
 import DataStructures: OrderedSet
 import SparseArrays: SparseMatrixCSC
 import NLopt
@@ -925,12 +926,10 @@ function plot_irf(𝓂::ℳ;
         for i in 1:length(var_idx)
             SS = reference_steady_state[var_idx[i]]
 
-            can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
-
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
                 variable_name = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]])
 
-                push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, can_dual_axis))
+                push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, gr_back))
 
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
@@ -1003,15 +1002,20 @@ function plot_irf(𝓂::ℳ;
 end
 
 
-function plot_irf_subplot(irf_data::AbstractVector{S}, steady_state::S, variable_name::String, can_dual_axis::Bool) where S <: AbstractFloat
+function plot_irf_subplot(irf_data::AbstractVector{S}, steady_state::S, variable_name::String, gr_back::Bool) where S <: AbstractFloat
     p = StatsPlots.plot(irf_data .+ steady_state,
                         title = variable_name,
                         ylabel = "Level",
                         label = "")
 
+    can_dual_axis = gr_back && all((irf_data .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
+
+    lo, hi = StatsPlots.ylims(p)
+
     if can_dual_axis
         StatsPlots.plot!(StatsPlots.twinx(), 
-                         100*((irf_data .+ steady_state) ./ steady_state .- 1), 
+                        #  100*((irf_data .+ steady_state) ./ steady_state .- 1), 
+                         ylims = (100 * (lo / steady_state - 1), 100 * (hi / steady_state - 1)),
                          ylabel = LaTeXStrings.L"\% \Delta", 
                          label = "") 
     end
@@ -1022,20 +1026,27 @@ function plot_irf_subplot(irf_data::AbstractVector{S}, steady_state::S, variable
     return p
 end
 
-function plot_irf_subplot(irf_data::Vector{<:AbstractVector{S}}, steady_state::Vector{S}, variable_name::String, can_dual_axis::Bool, same_ss::Bool; pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto)) where S <: AbstractFloat
+function plot_irf_subplot(::Val{:compare}, irf_data::Vector{<:AbstractVector{S}}, steady_state::Vector{S}, variable_name::String, gr_back::Bool, same_ss::Bool; pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto)) where S <: AbstractFloat
     plot_dat = []
-    plot_dat_dual = []
+    plot_ss = 0
     
     pal_val = Int[]
 
     stst = 1.0
 
+    can_dual_axis = gr_back
+    
+    for (y, ss) in zip(irf_data, steady_state)
+            can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && (ss > eps(Float32))
+    end
+
     for (i,(y, ss)) in enumerate(zip(irf_data, steady_state))
         if !isnan(ss)
             stst = ss
+            
             if can_dual_axis && same_ss
                 push!(plot_dat, y .+ ss)
-                push!(plot_dat_dual, 100 * ((y .+ ss) ./ ss .- 1))
+                plot_ss = ss
             else
                 if same_ss
                     push!(plot_dat, y .+ ss)
@@ -1053,9 +1064,12 @@ function plot_irf_subplot(irf_data::Vector{<:AbstractVector{S}}, steady_state::V
                         color = pal[pal_val]',
                         label = "")
 
+    lo, hi = StatsPlots.ylims(p)
+
     if can_dual_axis && same_ss
         StatsPlots.plot!(StatsPlots.twinx(), 
-                         plot_dat_dual, 
+                         ylims = (100 * (lo / plot_ss - 1), 100 * (hi / plot_ss - 1)),
+                        #  plot_dat_dual, 
                          ylabel = LaTeXStrings.L"\% \Delta", 
                          color = pal[pal_val]',
                          label = "") 
@@ -1067,6 +1081,85 @@ function plot_irf_subplot(irf_data::Vector{<:AbstractVector{S}}, steady_state::V
     return p
 end
 
+
+function plot_irf_subplot(::Val{:stack}, irf_data::Vector{<:AbstractVector{S}}, steady_state::Vector{S}, variable_name::String, gr_back::Bool, same_ss::Bool; pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto)) where S <: AbstractFloat
+    plot_dat = []
+    plot_ss = 0
+    plot_dat_dual = []
+    
+    pal_val = Int[]
+
+    stst = 1.0
+
+    can_dual_axis = gr_back
+    
+    for (y, ss) in zip(irf_data, steady_state)
+        if !isnan(ss)
+            can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && (ss > eps(Float32))
+        end
+    end
+
+    for (i,(y, ss)) in enumerate(zip(irf_data, steady_state))
+        if !isnan(ss)
+            stst = ss
+            
+            push!(plot_dat, y)
+
+            if can_dual_axis && same_ss
+                plot_ss = ss
+                push!(plot_dat_dual, 100 * ((y .+ ss) ./ ss .- 1))
+            else
+                if same_ss
+                    plot_ss = ss
+                end
+            end
+            push!(pal_val, i)
+        end
+    end
+
+    # find maximum length
+    maxlen = maximum(length.(plot_dat))
+
+    # pad shorter vectors with 0
+    padded = [vcat(collect(v), fill(0, maxlen - length(v))) for v in plot_dat]
+
+    # now you can hcat
+    plot_data = reduce(hcat, padded)
+
+    p = StatsPlots.groupedbar(typeof(plot_data) <: AbstractVector ? hcat(plot_data) : plot_data,
+                        title = variable_name,
+                        bar_position = :stack,
+                        linecolor = :transparent,
+                        color = pal[pal_val]',
+                        label = "")
+
+    # Get the current y limits
+    lo, hi = StatsPlots.ylims(p)
+
+    # Compute nice ticks on the shifted range
+    ticks_shifted, _ = StatsPlots.optimize_ticks(lo + plot_ss, hi + plot_ss, k_min = 4, k_max = 8)
+
+    labels = Showoff.showoff(ticks_shifted, :auto)
+    # Map tick positions back by subtracting the offset, keep shifted labels
+    yticks_positions = ticks_shifted .- plot_ss
+               
+    StatsPlots.plot!(p; yticks = (yticks_positions, labels))
+    
+    if can_dual_axis && same_ss
+        StatsPlots.plot!(
+            StatsPlots.twinx(),
+            ylims = (100 * ((lo + plot_ss) / plot_ss - 1), 100 * ((hi + plot_ss) / plot_ss - 1))
+        )
+    end
+    
+    StatsPlots.hline!(can_dual_axis && same_ss ? [0 0] : [0], 
+                      color = :black, 
+                      ylabel = same_ss ? ["Level" LaTeXStrings.L"\% \Delta"] : "abs. " * LaTeXStrings.L"\Delta" ,
+                      label = "")
+       
+                      
+    return p
+end
 
 function plot_irf!(𝓂::ℳ;
                     periods::Int = 40, 
@@ -1084,6 +1177,7 @@ function plot_irf!(𝓂::ℳ;
                     generalised_irf::Bool = false,
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
                     ignore_obc::Bool = false,
+                    plot_type::Symbol = :compare,
                     plot_attributes::Dict = Dict(),
                     verbose::Bool = false,
                     tol::Tolerances = Tolerances(),
@@ -1091,6 +1185,8 @@ function plot_irf!(𝓂::ℳ;
                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                     lyapunov_algorithm::Symbol = :doubling)
     # @nospecialize # reduce compile time                
+
+    @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1388,7 +1484,20 @@ function plot_irf!(𝓂::ℳ;
                            :shock_idx => shock_idx,
                            :var_idx => var_idx)
 
-    push!(irf_active_plot_container, args_and_kwargs)
+    no_duplicate = all(
+        !(all((
+            get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
+            get(dict, :shock_names, nothing) == args_and_kwargs[:shock_names],
+            get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
+            all(get(dict, k, nothing) == args_and_kwargs[k] for k in keys(args_and_kwargs_names))
+        )))
+        for dict in irf_active_plot_container
+    )# "New plot must be different from previous plot. Use the version without ! to plot."
+
+    if no_duplicate push!(irf_active_plot_container, args_and_kwargs)
+    else
+        @info "Plot with same parameters already exists. Using previous plot data to create plot."
+    end
 
     # 1. Keep only certain keys from each dictionary
     reduced_vector = [
@@ -1422,9 +1531,8 @@ function plot_irf!(𝓂::ℳ;
             diffdict = merge_by_runid(diffdict, diffdict_grouped)
         end
     end
-    
-    @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || haskey(diffdict, :initial_state) || 
-    any(haskey.(Ref(diffdict), keys(args_and_kwargs_names))) "New plot must be different from previous plot. Use the version without ! to plot."
+
+    # @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || haskey(diffdict, :initial_state) || any(haskey.(Ref(diffdict), keys(args_and_kwargs_names))) "New plot must be different from previous plot. Use the version without ! to plot."
     
     annotate_ss = Vector{Pair{String, Any}}[]
 
@@ -1496,12 +1604,22 @@ function plot_irf!(𝓂::ℳ;
     single_shock_per_irf = true
     
     for (i,k) in enumerate(irf_active_plot_container)
-        StatsPlots.plot!(legend_plot,
-                        fill(0,1,1), 
-                        legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                        framestyle = :none, 
-                        legend = :inside, 
-                        label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+        if plot_type == :stack
+            StatsPlots.bar!(legend_plot,
+                            fill(0,1,1), 
+                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            framestyle = :none, 
+                            legend = :inside, 
+                            linecolor = :transparent,
+                            label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+        elseif plot_type == :compare
+            StatsPlots.plot!(legend_plot,
+                            fill(0,1,1), 
+                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            framestyle = :none, 
+                            legend = :inside, 
+                            label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+        end
 
         push!(joint_shocks, k[:shock_names]...)
         push!(joint_variables, k[:variable_names]...)
@@ -1523,11 +1641,9 @@ function plot_irf!(𝓂::ℳ;
         pane = 1
         plot_count = 1
         joint_non_zero_variables = []
-        can_dual_axiss = Bool[]
 
         for var in joint_variables
             not_zero_in_any_irf = false
-            can_dual_axis = gr_back
 
             for k in irf_active_plot_container
                 var_idx = findfirst(==(var), k[:variable_names])
@@ -1542,27 +1658,18 @@ function plot_irf!(𝓂::ℳ;
                         not_zero_in_any_irf = not_zero_in_any_irf || true
                         # break # If any irf data is not approximately zero, we set the flag to true.
                     end
-
-                    SS = k[:reference_steady_state][var_idx]
-
-                    if all((k[:plot_data][var_idx,:,shock_idx] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
-                        can_dual_axis = can_dual_axis && true
-                    else
-                        can_dual_axis = can_dual_axis && false
-                    end
                 end
             end
 
             if not_zero_in_any_irf 
                 push!(joint_non_zero_variables, var)
-                push!(can_dual_axiss, can_dual_axis)
             else
                 # If all irf data for this variable and shock is approximately zero, we skip this subplot.
                 n_subplots -= 1
             end
         end
 
-        for (var, can_dual_axis) in zip(joint_non_zero_variables, can_dual_axiss)
+        for var in joint_non_zero_variables
             SSs = eltype(irf_active_plot_container[1][:reference_steady_state])[]
             Ys = AbstractVector{eltype(irf_active_plot_container[1][:plot_data])}[]
 
@@ -1588,10 +1695,11 @@ function plot_irf!(𝓂::ℳ;
                 same_ss = false
             end
 
-            push!(pp, plot_irf_subplot( Ys, 
+            push!(pp, plot_irf_subplot(Val(plot_type),
+                                    Ys, 
                                     SSs, 
                                     var, 
-                                    can_dual_axis,
+                                    gr_back,
                                     same_ss))
             
             if !(plot_count % plots_per_page == 0)
@@ -2109,9 +2217,17 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
 
     for k in vars_to_plot
         if gr_back
-            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = replace_indices_in_symbol(k), bar_position = :stack, legend = :none))
+            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
+            title = replace_indices_in_symbol(k), 
+            bar_position = :stack,
+            linecolor = :transparent,
+            legend = :none))
         else
-            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = replace_indices_in_symbol(k), bar_position = :stack, label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot))))
+            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
+            title = replace_indices_in_symbol(k), 
+            bar_position = :stack, 
+            linecolor = :transparent,
+            label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot))))
         end
 
         if !(plot_count % plots_per_page == 0)
