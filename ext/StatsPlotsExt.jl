@@ -1552,12 +1552,12 @@ function plot_irf!(𝓂::ℳ;
     
     if haskey(diffdict, :shocks)
         if all(length.(diffdict[:shock_names]) .== 1)
-            push!(annotate_diff_input, "Shock" => reduce(vcat,diffdict[:shocks]))
+            push!(annotate_diff_input, "Shock" => reduce(vcat, map(x -> typeof(x) <: AbstractArray ? "Shock Matrix" : x, diffdict[:shocks])))
         else
             push!(annotate_diff_input, "Shock" => diffdict[:shocks])
         end
     end
-
+    
     if haskey(diffdict, :initial_state)
         unique_initial_state = unique(diffdict[:initial_state])
 
