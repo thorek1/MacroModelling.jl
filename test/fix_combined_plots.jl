@@ -1,10 +1,78 @@
 using Revise
-using MacroModelling, StatsPlots
+using MacroModelling
+import StatsPlots
+
 
 # TODO:
 # fix other twinx situations (simplify it), especially bar plot in decomposition can have dual axis with the yticks trick
 # put plots back in Docs 
 # redo plots in docs
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+# c is conditioned to deviate by 0.01 in period 1 and y is conditioned to deviate by 0.02 in period 3
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,3),Variables = [:c,:y], Periods = 1:3)
+conditions[1,1] = .01
+conditions[2,3] = .02
+
+# in period 2 second shock (eps_z) is conditioned to take a value of 0.05
+shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
+shocks[1,1] = .05
+
+plot_conditional_forecast(RBC_CME, conditions, 
+                        shocks = shocks, 
+                        conditions_in_levels = false)
+
+plot_conditional_forecast!(RBC_CME, conditions, 
+                        # shocks = shocks, 
+                        # plot_type = :stack,
+                        # save_plots = true,
+                        conditions_in_levels = false)
+
+conditions2 = Matrix{Union{Nothing,Float64}}(undef,7,2)
+conditions2[4,1] = .01
+# conditions2[6,2] = .02
+
+conditions2 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,3),Variables = [:c,:y], Periods = 1:3)
+conditions2[2,1] = .01
+conditions2[1,3] = .02
+
+plot_conditional_forecast!(RBC_CME,
+                        conditions2, 
+                        # shocks = shocks, 
+                        plot_type = :stack,
+                        # save_plots = true,
+                        conditions_in_levels = false)
+
+
+plot_conditional_forecast(RBC_CME,
+                        conditions2, 
+                        shocks = shocks, 
+                        algorithm = :pruned_second_order,
+                        plot_type = :stack,
+                        # save_plots = true,
+                        conditions_in_levels = false)
+
 
 include("../models/GNSS_2010.jl")
 
@@ -18,18 +86,30 @@ plot_irf(model, shocks = shcks, variables = vars)
 
 plot_irf!(model, 
             shock_size = 1.2,
-            plot_type = :stack,
-            shocks = shcks, variables = vars)
+            # plot_type = :stack,
+            shocks = shcks, variables = vars,
+            save_plots = true)
 
 plot_irf!(model, 
+negative_shock = true,
             shock_size = 1.2,
             plot_type = :stack,
             shocks = shcks, variables = vars)
 
 plot_irf!(model, 
             shock_size = 0.2,
-            plot_type = :stack,
+            algorithm = :pruned_second_order,
+            # plot_type = :stack,
             shocks = shcks, variables = vars)
+
+include("../models/Gali_2015_chapter_3_nonlinear.jl")
+
+get_shocks(Gali_2015_chapter_3_nonlinear)
+
+plot_irf!(Gali_2015_chapter_3_nonlinear, 
+            # shock_size = 1.2,
+            plot_type = :stack,
+            shocks = :eps_a, variables = [:C,:Y])
 
 
 vars = [:C, :K, :Y, :r_k, :w_p, :rr_e, :pie, :q_h, :l_p]
