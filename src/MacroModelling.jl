@@ -132,7 +132,7 @@ include("./filter/kalman.jl")
 export @model, @parameters, solve!
 
 export plot_irfs, plot_irf, plot_irf!, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
-export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
+export plot_conditional_forecast, plot_conditional_forecast!, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
 export plotlyjs_backend, gr_backend
 
 export Normal, Beta, Cauchy, Gamma, InverseGamma
@@ -171,6 +171,7 @@ function plot_conditional_variance_decomposition    end
 function plot_forecast_error_variance_decomposition end
 function plot_fevd  end
 function plot_conditional_forecast  end
+function plot_conditional_forecast!  end
 function plot_model_estimates   end
 function plot_shock_decomposition   end
 function plotlyjs_backend   end
