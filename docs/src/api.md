@@ -1,5 +1,5 @@
 
 ```@autodocs
-Modules = [MacroModelling]
+Modules = [MacroModelling, StatsPlotsExt, TuringExt]
 Order   = [:function, :macro]
 ```

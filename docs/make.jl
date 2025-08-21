@@ -17,7 +17,7 @@ makedocs(
     # doctest = false,
     # draft = true,
     format = Documenter.HTML(size_threshold = 204800*10),
-    modules = [MacroModelling],
+    modules = [MacroModelling, StatsPlotsExt, TuringExt],
     pages = [
         "Introduction" => "index.md",
         "Tutorials" => [
