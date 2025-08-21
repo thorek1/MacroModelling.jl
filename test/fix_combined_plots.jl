@@ -3,6 +3,8 @@ using MacroModelling, StatsPlots
 
 # TODO:
 # fix other twinx situations (simplify it), especially bar plot in decomposition can have dual axis with the yticks trick
+# put plots back in Docs 
+# redo plots in docs
 
 include("../models/GNSS_2010.jl")
 
@@ -87,7 +89,7 @@ plot_irf!(model, shocks = [:e_j, :e_me],
             variables = vars)
 
 plot_irf!(model, 
-            plot_type = :stack,
+            # plot_type = :stack,
             variables = vars)
 
 
@@ -319,7 +321,22 @@ include("models/SW07_nonlinear.jl")
 hcat(SS(SW07_nonlinear, derivatives = false, parameters = [:ctrend => .35, :curvw => 10, :calfa => 0.18003])[30:end]
 ,SS(SW07_nonlinear, derivatives = false, parameters = :calfa => 0.15)[30:end])
 
+get_shocks(SW07_nonlinear)
+shock_series = KeyedArray(zeros(2,12), Shocks = [:eb, :ew], Periods = 1:12)
+shock_series[1,2] = 1
+shock_series[2,12] = -1
 plot_irf(SW07_nonlinear, shocks = :ew, 
+                        # negative_shock = true,
+                        # generalised_irf = false,
+                        # algorithm = :pruned_second_order,
+                        # variables = [:robs,:ygap,:pinf,
+                        # :gamw1,:gamw2,:gamw3,
+                        # :inve,:c,:k],
+                        # variables = [:ygap],
+                        parameters = [:ctrend => .35, :curvw => 10, :calfa => 0.18003])
+
+
+plot_irf!(SW07_nonlinear, shocks = shock_series, 
                         # negative_shock = true,
                         # generalised_irf = false,
                         # algorithm = :pruned_second_order,
