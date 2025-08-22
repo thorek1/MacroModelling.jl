@@ -3182,7 +3182,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         cond_tmp[indexin(sort(axiskeys(conditions,1)),full_SS),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
         conditions = cond_tmp
     end
-    
+
     if shocks isa SparseMatrixCSC{Float64}
         @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
 
@@ -3207,7 +3207,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
     elseif isnothing(shocks)
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
     end
-    
+
     args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
                            :conditions => conditions[:,1:periods_input],
@@ -3314,7 +3314,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         shocks_idx = Union{Int,Nothing}[]
 
         for init in diffdict[:shocks]
-            if all(isnothing, init)
+            if isnothing(init) || all(isnothing, init)
                 push!(shocks_idx, nothing)
             else
                 for (i,u) in enumerate(unique_shocks)
@@ -3336,7 +3336,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         conditions_idx = Union{Int,Nothing}[]
 
         for init in diffdict[:conditions]
-            if all(isnothing, init)
+            if isnothing(init) || all(isnothing, init)
                 push!(conditions_idx, nothing)
             else
                 for (i,u) in enumerate(unique_conditions)
@@ -3521,9 +3521,19 @@ function plot_conditional_forecast!(𝓂::ℳ,
                 if length(cond_idx) > 0
                     SS = k[:reference_steady_state][var_idx]
 
+                    vals = vcat(k[:conditions], k[:shocks])[var_idx, cond_idx]
+
+                    if k[:conditions_in_levels]
+                        vals .-= SS
+                    end
+
+                    if same_ss
+                        vals .+= SS
+                    end
+
                     StatsPlots.scatter!(p,
-                                        cond_idx, 
-                                        k[:conditions_in_levels] ? vcat(k[:conditions], k[:shocks])[var_idx,cond_idx] : vcat(k[:conditions], k[:shocks])[var_idx,cond_idx] .+ SS, 
+                                        cond_idx,
+                                        vals,
                                         label = "",
                                         marker = gr_back ? :star8 : :pentagon, 
                                         markerstrokewidth = 0,
