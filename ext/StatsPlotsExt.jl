@@ -2951,7 +2951,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                            :lyapunov_algorithm => lyapunov_algorithm,
 
                            :plot_data => Y,
-                           :reference_steady_state => reference_steady_state[var_idx],
+                           :reference_steady_state => reference_steady_state,
                            :variable_names => var_names[1:end - 𝓂.timings.nExo],
                            :shock_names => var_names[end - 𝓂.timings.nExo + 1:end]
                            )
@@ -2972,7 +2972,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     for (i,v) in enumerate(var_idx)
-        SS = reference_steady_state[v]
+        SS = reference_steady_state[i]
 
         if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[v,:] .!= nothing)) > 0
          
@@ -3237,7 +3237,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                            :lyapunov_algorithm => lyapunov_algorithm,
 
                            :plot_data => Y,
-                           :reference_steady_state => reference_steady_state[var_idx],
+                           :reference_steady_state => reference_steady_state,
                            :variable_names => var_names[1:end - 𝓂.timings.nExo],
                            :shock_names => var_names[end - 𝓂.timings.nExo + 1:end]
                            )
