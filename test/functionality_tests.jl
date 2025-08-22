@@ -586,7 +586,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 conditions_in_levels = false,
                                                 algorithm = algorithm, 
                                                 periods = periods,
-                                                levels = levels,
+                                                # levels = levels,
                                                 shocks = shocks[end])
 
                     
@@ -595,7 +595,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     plot_conditional_forecast(m, conditions_lvl[end],
                                                 algorithm = algorithm, 
                                                 periods = periods,
-                                                levels = levels,
+                                                # levels = levels,
                                                 shocks = shocks[end])
 
                 end
