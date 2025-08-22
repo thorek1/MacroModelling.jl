@@ -425,7 +425,7 @@ if test_set == "basic"
     @testset verbose = true "Code quality (Aqua.jl)" begin
         # Aqua.test_all(MacroModelling)
         @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
-        @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling)#; ignore = [:Aqua, :JET])
+        @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling; ignore = [:Showoff])
         @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
         @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
         @testset "Piracy" Aqua.test_piracies(MacroModelling)

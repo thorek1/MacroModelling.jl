@@ -4,21 +4,55 @@ using MacroModelling
 import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMATH®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
+
+const irf_active_plot_container = Dict[]
+const conditional_forecast_active_plot_container = Dict[]
+const model_estimates_active_plot_container = Dict[]
+
 import StatsPlots
+import Showoff
+import DataStructures: OrderedSet
 import SparseArrays: SparseMatrixCSC
 import NLopt
 using DispatchDoctor
 
-import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend
+import MacroModelling: plot_irfs, plot_irf, plot_irf!, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_forecast!, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs
 
 const default_plot_attributes = Dict(:size=>(700,500),
                                 :plot_titlefont => 10, 
                                 :titlefont => 10, 
-                                :guidefont => 8, 
-                                :legendfontsize => 8, 
+                                :guidefont => 8,
+                                :legendfontsize => 8,
+                                :legend_title_font_pointsize => 8,
                                 :tickfontsize => 8,
                                 :framestyle => :semi)
 
+
+const args_and_kwargs_names = Dict(:model_name => "Model",
+                                    :algorithm => "Algorithm",
+                                    :shock_names => "Shock",
+                                    :shock_size => "Shock size",
+                                    :negative_shock => "Negative shock",
+                                    :generalised_irf => "Generalised IRF",
+                                    :periods => "Periods",
+                                    :ignore_obc => "Ignore OBC",
+                                    :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
+                                    :sylvester_algorithm => "Sylvester Algorithm",
+                                    :lyapunov_algorithm => "Lyapunov Algorithm",
+                                    :NSSS_acceptance_tol => "NSSS acceptance tol",
+                                    :NSSS_xtol => "NSSS xtol",
+                                    :NSSS_ftol => "NSSS ftol",
+                                    :NSSS_rel_xtol => "NSSS rel xtol",
+                                    :qme_tol => "QME tol",
+                                    :qme_acceptance_tol => "QME acceptance tol",
+                                    :sylvester_tol => "Sylvester tol",
+                                    :sylvester_acceptance_tol => "Sylvester acceptance tol",
+                                    :lyapunov_tol => "Lyapunov tol",
+                                    :lyapunov_acceptance_tol => "Lyapunov acceptance tol",
+                                    :droptol => "Droptol",
+                                    :dependencies_tol => "Dependencies tol"
+                                    )
+                        
 @stable default_mode = "disable" begin
 """
     gr_backend()
@@ -144,6 +178,39 @@ function plot_model_estimates(𝓂::ℳ,
                                 lyapunov_algorithm::Symbol = :doubling)
     # @nospecialize # reduce compile time                            
 
+    args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
+                           :model_name => 𝓂.model_name,
+                           :data => data,
+                           :parameters => parameters,
+                           :algorithm => algorithm,
+                           :filter => filter,
+                           :warmup_iterations => warmup_iterations,
+                           :variables => variables,
+                           :shocks => shocks,
+                           :presample_periods => presample_periods,
+                           :data_in_levels => data_in_levels,
+                           :shock_decomposition => shock_decomposition,
+                           :smooth => smooth,
+                           
+                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
+                           :NSSS_xtol => tol.NSSS_xtol,
+                           :NSSS_ftol => tol.NSSS_ftol,
+                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
+                           :qme_tol => tol.qme_tol,
+                           :qme_acceptance_tol => tol.qme_acceptance_tol,
+                           :sylvester_tol => tol.sylvester_tol,
+                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
+                           :lyapunov_tol => tol.lyapunov_tol,
+                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
+                           :droptol => tol.droptol,
+                           :dependencies_tol => tol.dependencies_tol,
+
+                           :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
+                           :sylvester_algorithm => sylvester_algorithm,
+                           :lyapunov_algorithm => lyapunov_algorithm)
+
+    push!(model_estimates_active_plot_container, args_and_kwargs)
+
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
@@ -171,7 +238,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     pruning = false
 
-    @assert !(algorithm ∈ [:second_order, :third_order] && shock_decomposition) "Decomposition  implemented for first order, pruned second and third order. Second and third order solution decomposition is not yet implemented."
+    @assert !(algorithm ∈ [:second_order, :third_order] && shock_decomposition) "Decomposition implemented for first order, pruned second and third order. Second and third order solution decomposition is not yet implemented."
     
     if algorithm ∈ [:second_order, :third_order]
         filter = :inversion
@@ -257,7 +324,8 @@ function plot_model_estimates(𝓂::ℳ,
                     StatsPlots.plot!(#date_axis, 
                         shocks_to_plot[shock_idx[i - length(var_idx)],periods],
                         title = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
-                        ylabel = shock_decomposition ? "Absolute Δ" : "Level",label = "", 
+                        ylabel = "Level",
+                        label = "", 
                         xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
                         xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                         color = shock_decomposition ? estimate_color : :auto)
@@ -268,17 +336,15 @@ function plot_model_estimates(𝓂::ℳ,
         else
             SS = reference_steady_state[var_idx[i]]
 
-            if shock_decomposition SS = zero(SS) end
-
-            can_dual_axis = gr_back &&  all((variables_to_plot[var_idx[i],:] .+ SS) .> eps(Float32)) && (SS > eps(Float32)) && !shock_decomposition
+            can_dual_axis = gr_back &&  all((variables_to_plot[var_idx[i],:] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
 
             push!(pp,begin
-                    StatsPlots.plot()
+                    p = StatsPlots.plot()
 
                     if shock_decomposition
                         additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
 
-                        StatsPlots.groupedbar!(#date_axis,
+                        StatsPlots.groupedbar!(p,
                             decomposition[var_idx[i],[additional_indices..., shock_idx...],periods]', 
                             bar_position = :stack, 
                             xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
@@ -290,42 +356,52 @@ function plot_model_estimates(𝓂::ℳ,
                             # xformatter = x -> string(date_axis[Int(x)]),
                             alpha = transparency)
                     end
-
-                    StatsPlots.plot!(#date_axis,
-                        variables_to_plot[var_idx[i],periods] .+ SS,
-                        title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
-                        ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
+                    
+                    StatsPlots.plot!(p,
+                        variables_to_plot[var_idx[i],periods],
+                        title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
+                        ylabel = "Level",
                         xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
                         xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
-                        label = "", 
+                        label = "",
                         # xformatter = x -> string(date_axis[Int(x)]),
                         color = shock_decomposition ? estimate_color : :auto)
 
                     if var_idx[i] ∈ obs_idx 
-                        StatsPlots.plot!(#date_axis,
-                            data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
+                        StatsPlots.plot!(p,
+                            data_in_deviations[indexin([var_idx[i]],obs_idx),periods]',
                             title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
-                            ylabel = shock_decomposition ? "Absolute Δ" : "Level", 
-                            label = "", 
+                            ylabel = "Level",
+                            label = "",
                             xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
                             xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                             # xformatter = x -> string(date_axis[Int(x)]),
-                            color = shock_decomposition ? data_color : :auto) 
+                            color = shock_decomposition ? data_color : :auto)
                     end
 
-                    if can_dual_axis 
-                        StatsPlots.plot!(StatsPlots.twinx(),
-                            # date_axis, 
-                            100*((variables_to_plot[var_idx[i],periods] .+ SS) ./ SS .- 1), 
+                    # Get the current y limits
+                    lo, hi = StatsPlots.ylims(p)
+
+                    # Compute nice ticks on the shifted range
+                    ticks_shifted, _ = StatsPlots.optimize_ticks(lo + SS, hi + SS, k_min = 4, k_max = 8)
+
+                    labels = Showoff.showoff(ticks_shifted, :auto)
+                    # Map tick positions back by subtracting the offset, keep shifted labels
+                    yticks_positions = ticks_shifted .- SS
+                    
+                    StatsPlots.plot!(p; yticks = (yticks_positions, labels))
+
+                    if can_dual_axis
+                        StatsPlots.plot!(StatsPlots.twinx(p),
+                            ylims = (100 * ((lo + SS) / SS - 1), 100 * ((hi + SS) / SS - 1)),
                             ylabel = LaTeXStrings.L"\% \Delta", 
                             xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
                             xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
                             label = "") 
 
                         if var_idx[i] ∈ obs_idx 
-                            StatsPlots.plot!(StatsPlots.twinx(),
-                                # date_axis, 
-                                100*((data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS) ./ SS .- 1), 
+                            StatsPlots.plot!(StatsPlots.twinx(p),
+                                ylims = (100 * ((lo + SS) / SS - 1), 100 * ((hi + SS) / SS - 1)),
                                 ylabel = LaTeXStrings.L"\% \Delta", 
                                 xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
                                 xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
@@ -333,7 +409,7 @@ function plot_model_estimates(𝓂::ℳ,
                         end
                     end
                     
-                    StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS],
+                    StatsPlots.hline!(can_dual_axis ? [0 0] : [0],
                         color = :black,
                         label = "")                               
             end)
@@ -360,11 +436,11 @@ function plot_model_estimates(𝓂::ℳ,
                                                                     legend = :inside, 
                                                                     legend_columns = legend_columns)
                                         end
-                                        StatsPlots.plot!(fill(0,1,1), 
+                                        StatsPlots.plot!([NaN], 
                                         label = "Estimate", 
                                         color = shock_decomposition ? estimate_color : :auto,
                                         legend = :inside)
-                                        StatsPlots.plot!(fill(0,1,1), 
+                                        StatsPlots.plot!([NaN], 
                                         label = "Data", 
                                         color = shock_decomposition ? data_color : :auto,
                                         legend = :inside)
@@ -404,11 +480,11 @@ function plot_model_estimates(𝓂::ℳ,
                                                                 legend = :inside, 
                                                                 legend_columns = legend_columns)
                                     end
-                                    StatsPlots.plot!(fill(0,1,1), 
+                                    StatsPlots.plot!([NaN], 
                                     label = "Estimate", 
                                     color = shock_decomposition ? :black : :auto,
                                     legend = :inside)
-                                    StatsPlots.plot!(fill(0,1,1), 
+                                    StatsPlots.plot!([NaN], 
                                     label = "Data", 
                                     color = shock_decomposition ? :darkred : :auto,
                                     legend = :inside)
@@ -595,6 +671,8 @@ function plot_irf(𝓂::ℳ;
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
+    initial_state_input = copy(initial_state)
+
     unspecified_initial_state = initial_state == [0.0]
 
     if unspecified_initial_state
@@ -787,6 +865,60 @@ function plot_irf(𝓂::ℳ;
         shock_dir = ""
     end
 
+    if shocks == :simulate
+        shock_names = ["simulation"]
+    elseif shocks == :none
+        shock_names = ["no_shock"]
+    elseif shocks isa Union{Symbol_input,String_input}
+        shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx])
+    else
+        shock_names = ["shock_matrix"]
+    end
+    
+    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
+
+    while length(irf_active_plot_container) > 0
+        pop!(irf_active_plot_container)
+    end
+    
+    args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
+                           :model_name => 𝓂.model_name,
+                           :periods => periods,
+                           :shocks => shocks,
+                           :variables => variables,
+                           :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
+                           :algorithm => algorithm,
+                           :shock_size => shock_size,
+                           :negative_shock => negative_shock,
+                           :generalised_irf => generalised_irf,
+                           :initial_state => initial_state_input,
+                           :ignore_obc => ignore_obc,
+
+                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
+                           :NSSS_xtol => tol.NSSS_xtol,
+                           :NSSS_ftol => tol.NSSS_ftol,
+                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
+                           :qme_tol => tol.qme_tol,
+                           :qme_acceptance_tol => tol.qme_acceptance_tol,
+                           :sylvester_tol => tol.sylvester_tol,
+                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
+                           :lyapunov_tol => tol.lyapunov_tol,
+                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
+                           :droptol => tol.droptol,
+                           :dependencies_tol => tol.dependencies_tol,
+
+                           :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
+                           :sylvester_algorithm => sylvester_algorithm,
+                           :lyapunov_algorithm => lyapunov_algorithm,
+
+                           :plot_data => Y,
+                           :reference_steady_state => reference_steady_state[var_idx],
+                           :variable_names => variable_names,
+                           :shock_names => shock_names
+                           )
+    
+    push!(irf_active_plot_container, args_and_kwargs)
+
     return_plots = []
 
     for shock in 1:length(shock_idx)
@@ -794,35 +926,20 @@ function plot_irf(𝓂::ℳ;
         pp = []
         pane = 1
         plot_count = 1
+
         for i in 1:length(var_idx)
             if all(isapprox.(Y[i,:,shock], 0, atol = eps(Float32)))
                 n_subplots -= 1
             end
         end
 
-        for i in 1:length(var_idx)
-            SS = reference_steady_state[var_idx[i]]
-
-            can_dual_axis = gr_back && all((Y[i,:,shock] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
+        for (i,v) in enumerate(var_idx)
+            SS = reference_steady_state[v]
 
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
-                push!(pp,begin
-                                StatsPlots.plot(Y[i,:,shock] .+ SS,
-                                                title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
-                                                ylabel = "Level",
-                                                label = "")
+                variable_name = variable_names[i]
 
-                                if can_dual_axis
-                                    StatsPlots.plot!(StatsPlots.twinx(), 
-                                                        100*((Y[i,:,shock] .+ SS) ./ SS .- 1), 
-                                                        ylabel = LaTeXStrings.L"\% \Delta", 
-                                                        label = "") 
-                                end
-
-                                StatsPlots.hline!(can_dual_axis ? [SS 0] : [SS], 
-                                                    color = :black, 
-                                                    label = "")                               
-                end)
+                push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, gr_back))
 
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
@@ -895,6 +1012,1062 @@ function plot_irf(𝓂::ℳ;
 end
 
 
+function plot_irf_subplot(irf_data::AbstractVector{S}, steady_state::S, variable_name::String, gr_back::Bool) where S <: AbstractFloat
+    can_dual_axis = gr_back && all((irf_data .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
+    
+    p = StatsPlots.plot(irf_data .+ steady_state,
+                        title = variable_name,
+                        ylabel = "Level",
+                        label = "")
+                        
+    StatsPlots.hline!([steady_state], 
+                        color = :black, 
+                        label = "")
+
+    lo, hi = StatsPlots.ylims(p)
+
+    if can_dual_axis
+        StatsPlots.plot!(StatsPlots.twinx(), 
+                         ylims = (100 * (lo / steady_state - 1), 100 * (hi / steady_state - 1)),
+                         ylabel = LaTeXStrings.L"\% \Delta")                            
+    end
+
+    return p
+end
+
+function plot_irf_subplot(::Val{:compare}, 
+                            irf_data::Vector{<:AbstractVector{S}}, 
+                            steady_state::Vector{S}, 
+                            variable_name::String, 
+                            gr_back::Bool, 
+                            same_ss::Bool; 
+                            pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
+                            transparency::Float64 = .6) where S <: AbstractFloat
+    plot_dat = []
+    plot_ss = 0
+    
+    pal_val = Int[]
+
+    stst = 1.0
+
+    can_dual_axis = gr_back
+    
+    for (y, ss) in zip(irf_data, steady_state)
+            can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && (ss > eps(Float32))
+    end
+
+    for (i,(y, ss)) in enumerate(zip(irf_data, steady_state))
+        if !isnan(ss)
+            stst = ss
+            
+            if can_dual_axis && same_ss
+                push!(plot_dat, y .+ ss)
+                plot_ss = ss
+            else
+                if same_ss
+                    push!(plot_dat, y .+ ss)
+                else
+                    push!(plot_dat, y)
+                end
+            end
+            push!(pal_val, i)
+        end
+    end
+
+    p = StatsPlots.plot(plot_dat,
+                        title = variable_name,
+                        ylabel = same_ss ? "Level" : "abs. " * LaTeXStrings.L"\Delta",
+                        color = pal[pal_val]',
+                        label = "")
+
+    StatsPlots.hline!([same_ss ? stst : 0], 
+                      color = :black, 
+                      label = "")
+
+    lo, hi = StatsPlots.ylims(p)
+
+    if can_dual_axis && same_ss
+        StatsPlots.plot!(StatsPlots.twinx(), 
+                         ylims = (100 * (lo / plot_ss - 1), 100 * (hi / plot_ss - 1)),
+                         ylabel = LaTeXStrings.L"\% \Delta")
+    end
+                      
+    return p
+end
+
+
+function plot_irf_subplot(::Val{:stack}, 
+                            irf_data::Vector{<:AbstractVector{S}}, 
+                            steady_state::Vector{S}, 
+                            variable_name::String, 
+                            gr_back::Bool, 
+                            same_ss::Bool; 
+                            pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
+                            transparency::Float64 = .6) where S <: AbstractFloat
+    plot_dat = []
+    plot_ss = 0
+    
+    pal_val = Int[]
+
+    stst = 1.0
+
+    can_dual_axis = gr_back
+    
+    for (y, ss) in zip(irf_data, steady_state)
+        if !isnan(ss)
+            can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && (ss > eps(Float32))
+        end
+    end
+
+    for (i,(y, ss)) in enumerate(zip(irf_data, steady_state))
+        if !isnan(ss)
+            stst = ss
+            
+            push!(plot_dat, y)
+
+            if can_dual_axis && same_ss
+                plot_ss = ss
+            else
+                if same_ss
+                    plot_ss = ss
+                end
+            end
+            push!(pal_val, i)
+        end
+    end
+
+    # find maximum length
+    maxlen = maximum(length.(plot_dat))
+
+    # pad shorter vectors with 0
+    padded = [vcat(collect(v), fill(0, maxlen - length(v))) for v in plot_dat]
+
+    # now you can hcat
+    plot_data = reduce(hcat, padded)
+
+    p = StatsPlots.groupedbar(typeof(plot_data) <: AbstractVector ? hcat(plot_data) : plot_data,
+                        title = variable_name,
+                        bar_position = :stack,
+                        linecolor = :transparent,
+                        linewidth = 0,
+                        color = pal[pal_val]',
+                        ylabel = same_ss ? "Level" : "abs. " * LaTeXStrings.L"\Delta",
+                        label = "",
+                        alpha = transparency)
+
+    StatsPlots.hline!([0], 
+                      color = :black, 
+                      label = "")
+                      
+    StatsPlots.plot!(sum(plot_data, dims = 2), 
+                    color = :black, 
+                    label = "")
+
+    # Get the current y limits
+    lo, hi = StatsPlots.ylims(p)
+
+    # Compute nice ticks on the shifted range
+    ticks_shifted, _ = StatsPlots.optimize_ticks(lo + plot_ss, hi + plot_ss, k_min = 4, k_max = 8)
+
+    labels = Showoff.showoff(ticks_shifted, :auto)
+    # Map tick positions back by subtracting the offset, keep shifted labels
+    yticks_positions = ticks_shifted .- plot_ss
+               
+    StatsPlots.plot!(yticks = (yticks_positions, labels))
+    
+    if can_dual_axis && same_ss
+        StatsPlots.plot!(
+            StatsPlots.twinx(),
+            ylims = (100 * ((lo + plot_ss) / plot_ss - 1), 100 * ((hi + plot_ss) / plot_ss - 1)),
+            ylabel = LaTeXStrings.L"\% \Delta"
+        )
+    end
+                    
+    return p
+end
+
+function plot_irf!(𝓂::ℳ;
+                    periods::Int = 40, 
+                    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
+                    variables::Union{Symbol_input,String_input} = :all_excluding_auxiliary_and_obc,
+                    parameters::ParameterType = nothing,
+                    show_plots::Bool = true,
+                    save_plots::Bool = false,
+                    save_plots_format::Symbol = :pdf,
+                    save_plots_path::String = ".",
+                    plots_per_page::Int = 6, 
+                    algorithm::Symbol = :first_order,
+                    shock_size::Real = 1,
+                    negative_shock::Bool = false,
+                    generalised_irf::Bool = false,
+                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+                    ignore_obc::Bool = false,
+                    plot_type::Symbol = :compare,
+                    plot_attributes::Dict = Dict(),
+                    transparency::Float64 = .6,
+                    verbose::Bool = false,
+                    tol::Tolerances = Tolerances(),
+                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
+                    lyapunov_algorithm::Symbol = :doubling)
+    # @nospecialize # reduce compile time                
+
+    @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
+
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                    sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
+                    lyapunov_algorithm = lyapunov_algorithm)
+
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
+                
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
+
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+    
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+
+    stochastic_model = length(𝓂.timings.exo) > 0
+
+    obc_model = length(𝓂.obc_violation_equations) > 0
+
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        shock_idx = 1
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ"),:]) > 1e-10
+    elseif shocks isa KeyedArray{Float64}
+        shock_idx = 1
+
+        obc_shocks = 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]
+
+        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(obc_shocks, axiskeys(shocks,1)),:)) > 1e-10
+    else
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+
+        obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
+    end
+
+    if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64}  
+        periods = max(periods, size(shocks)[2])
+    end
+
+    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+
+    if ignore_obc
+        occasionally_binding_constraints = false
+    else
+        occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
+    end
+
+    solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+
+    reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
+    
+    initial_state_input = copy(initial_state)
+
+    unspecified_initial_state = initial_state == [0.0]
+
+    if unspecified_initial_state
+        if algorithm == :pruned_second_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
+        elseif algorithm == :pruned_third_order
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+        else
+            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
+        end
+    else
+        if initial_state isa Vector{Float64}
+            if algorithm == :pruned_second_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
+            elseif algorithm == :pruned_third_order
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
+            else
+                initial_state = initial_state - reference_steady_state[1:𝓂.timings.nVars]
+            end
+        else
+            if algorithm ∉ [:pruned_second_order, :pruned_third_order]
+                @assert initial_state isa Vector{Float64} "The solution algorithm has one state vector: initial_state must be a Vector{Float64}."
+            end
+        end
+    end
+    
+
+    if occasionally_binding_constraints
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
+    elseif obc_shocks_included
+        @assert algorithm ∉ [:pruned_second_order, :second_order, :pruned_third_order, :third_order] "Occasionally binding constraint shocks without enforcing the constraint is only compatible with first order perturbation solutions."
+
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
+    else
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+    end
+
+    if generalised_irf
+        Y = girf(state_update, 
+                    initial_state, 
+                    zeros(𝓂.timings.nVars), 
+                    𝓂.timings; 
+                    periods = periods, 
+                    shocks = shocks, 
+                    shock_size = shock_size,
+                    variables = variables, 
+                    negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
+    else
+        if occasionally_binding_constraints
+            function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
+                unconditional_forecast_horizon = 𝓂.max_obc_horizon
+
+                reference_ss = 𝓂.solution.non_stochastic_steady_state
+
+                obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+
+                periods_per_shock = 𝓂.max_obc_horizon + 1
+                
+                num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
+                
+                p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
+
+                constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
+
+                if constraints_violated
+                    opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
+                    # check whether auglag is more reliable and efficient here
+                    opt.min_objective = obc_objective_optim_fun
+
+                    opt.xtol_abs = eps(Float32)
+                    opt.ftol_abs = eps(Float32)
+                    opt.maxeval = 500
+                    
+                    # Adding constraints
+                    # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
+                    # upper bounds don't work because it can be that bounds can only be enforced with offsetting (previous periods negative shocks) positive shocks. also in order to enforce the bound over the length of the forecasting horizon the shocks might be in the last period. that's why an approach whereby you increase the anticipation horizon of shocks can be more costly due to repeated computations.
+                    # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
+
+                    upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
+                    
+                    NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
+
+                    (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
+                    
+                    # solved = ret ∈ Symbol.([
+                    #     NLopt.SUCCESS,
+                    #     NLopt.STOPVAL_REACHED,
+                    #     NLopt.FTOL_REACHED,
+                    #     NLopt.XTOL_REACHED,
+                    #     NLopt.ROUNDOFF_LIMITED,
+                    # ])
+                    
+                    present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
+
+                    constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
+
+                    solved = !constraints_violated
+                else
+                    solved = true
+                end
+                # if constraints_violated
+                #     obc_shock_timing = convert_superscript_to_integer.(string.(𝓂.timings.exo[obc_shock_idx]))
+                
+                #     for anticipated_shock_horizon in 1:periods_per_shock
+                #         anticipated_shock_subset = obc_shock_timing .< anticipated_shock_horizon
+                    
+                #         function obc_violation_function_wrapper(x::Vector{T}) where T
+                #             y = zeros(T, length(anticipated_shock_subset))
+                        
+                #             y[anticipated_shock_subset] = x
+                        
+                #             return 𝓂.obc_violation_function(y, p)
+                #         end
+                        
+                #         opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks * anticipated_shock_horizon)
+                        
+                #         opt.min_objective = obc_objective_optim_fun
+
+                #         opt.xtol_rel = eps()
+                        
+                #         # Adding constraints
+                #         # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock)
+                #         # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
+
+                #         upper_bounds = fill(eps(), 1 + 2*(num_shocks*periods_per_shock-1))
+                        
+                #         NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, obc_violation_function_wrapper), upper_bounds)
+
+                #         (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks * anticipated_shock_horizon))
+                        
+                #         solved = ret ∈ Symbol.([
+                #             NLopt.SUCCESS,
+                #             NLopt.STOPVAL_REACHED,
+                #             NLopt.FTOL_REACHED,
+                #             NLopt.XTOL_REACHED,
+                #             NLopt.ROUNDOFF_LIMITED,
+                #         ])
+                        
+                #         present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")][anticipated_shock_subset] .= x
+
+                #         constraints_violated = any(𝓂.obc_violation_function(present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")], p) .> eps(Float32))
+                        
+                #         solved = solved && !constraints_violated
+
+                #         if solved break end
+                #     end
+
+                #     solved = !any(𝓂.obc_violation_function(present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")], p) .> eps(Float32))
+                # else
+                #     solved = true
+                # end
+
+                present_states = state_update(present_states, present_shocks)
+
+                return present_states, present_shocks, solved
+            end
+
+            Y =  irf(state_update,
+                    obc_state_update,
+                    initial_state, 
+                    zeros(𝓂.timings.nVars),
+                    𝓂.timings;
+                    periods = periods, 
+                    shocks = shocks, 
+                    shock_size = shock_size,
+                    variables = variables, 
+                    negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        else
+            Y = irf(state_update, 
+                    initial_state, 
+                    zeros(𝓂.timings.nVars),
+                    𝓂.timings;
+                    periods = periods, 
+                    shocks = shocks, 
+                    shock_size = shock_size,
+                    variables = variables, 
+                    negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        end
+    end
+
+    if shocks == :simulate
+        shock_names = ["simulation"]
+    elseif shocks == :none
+        shock_names = ["no_shock"]
+    elseif shocks isa Union{Symbol_input,String_input}
+        shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx])
+    else
+        shock_names = ["shock_matrix"]
+    end
+    
+    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
+
+    args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
+                           :model_name => 𝓂.model_name,
+                           :periods => periods,
+                           :shocks => shocks,
+                           :variables => variables,
+                           :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
+                           :algorithm => algorithm,
+                           :shock_size => shock_size,
+                           :negative_shock => negative_shock,
+                           :generalised_irf => generalised_irf,
+                           :initial_state => initial_state_input,
+                           :ignore_obc => ignore_obc,
+
+                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
+                           :NSSS_xtol => tol.NSSS_xtol,
+                           :NSSS_ftol => tol.NSSS_ftol,
+                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
+                           :qme_tol => tol.qme_tol,
+                           :qme_acceptance_tol => tol.qme_acceptance_tol,
+                           :sylvester_tol => tol.sylvester_tol,
+                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
+                           :lyapunov_tol => tol.lyapunov_tol,
+                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
+                           :droptol => tol.droptol,
+                           :dependencies_tol => tol.dependencies_tol,
+
+                           :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
+                           :sylvester_algorithm => sylvester_algorithm,
+                           :lyapunov_algorithm => lyapunov_algorithm,
+                           :plot_data => Y,
+                           :reference_steady_state => reference_steady_state[var_idx],
+                           :variable_names => variable_names,
+                           :shock_names => shock_names
+                           )
+
+    no_duplicate = all(
+        !(all((
+            get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
+            get(dict, :shock_names, nothing) == args_and_kwargs[:shock_names],
+            get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
+            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in keys(args_and_kwargs_names))
+        )))
+        for dict in irf_active_plot_container
+    )# "New plot must be different from previous plot. Use the version without ! to plot."
+
+    if no_duplicate 
+        push!(irf_active_plot_container, args_and_kwargs)
+    else
+        @info "Plot with same parameters already exists. Using previous plot data to create plot."
+    end
+
+    # 1. Keep only certain keys from each dictionary
+    reduced_vector = [
+        Dict(k => d[k] for k in vcat(:run_id, keys(args_and_kwargs_names)...) if haskey(d, k))
+        for d in irf_active_plot_container
+    ]
+
+    diffdict = compare_args_and_kwargs(reduced_vector)
+
+    # 2. Group the original vector by :model_name
+    grouped_by_model = Dict{Any, Vector{Dict}}()
+
+    for d in irf_active_plot_container
+        model = d[:model_name]
+        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(args_and_kwargs_names)) if haskey(d, k))
+        push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
+    end
+
+    model_names = []
+
+    for d in irf_active_plot_container
+        push!(model_names, d[:model_name])
+    end
+
+    model_names = unique(model_names)
+
+    for model in model_names
+        if length(grouped_by_model[model]) > 1
+            diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
+            diffdict = merge_by_runid(diffdict, diffdict_grouped)
+        end
+    end
+
+    # @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || haskey(diffdict, :initial_state) || any(haskey.(Ref(diffdict), keys(args_and_kwargs_names))) "New plot must be different from previous plot. Use the version without ! to plot."
+    
+    annotate_ss = Vector{Pair{String, Any}}[]
+
+    annotate_ss_page = Pair{String,Any}[]
+
+    annotate_diff_input = Pair{String,Any}[]
+
+    len_diff = length(irf_active_plot_container)
+
+    if haskey(diffdict, :parameters)
+        param_nms = diffdict[:parameters] |> keys |> collect |> sort
+        for param in param_nms
+            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
+            push!(annotate_diff_input, String(param) => result)
+        end
+    end
+    
+    if haskey(diffdict, :shocks)
+        if all(length.(diffdict[:shock_names]) .== 1)
+            push!(annotate_diff_input, "Shock" => reduce(vcat, map(x -> typeof(x) <: AbstractArray ? "Shock Matrix" : x, diffdict[:shocks])))
+        else
+            push!(annotate_diff_input, "Shock" => diffdict[:shocks])
+        end
+    end
+    
+    if haskey(diffdict, :initial_state)
+        unique_initial_state = unique(diffdict[:initial_state])
+
+        initial_state_idx = Int[]
+
+        for init in diffdict[:initial_state]
+            for (i,u) in enumerate(unique_initial_state)
+                if u == init
+                    push!(initial_state_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Initial state" => ["#$i" for i in initial_state_idx])
+    end
+    
+    same_shock_direction = true
+    
+    for k in setdiff(keys(args_and_kwargs), 
+                        [
+                            :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state,
+                            :shocks, :shock_names,
+                            :variables, :variable_names,
+                            # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
+                        ]
+                    )
+
+        if haskey(diffdict, k)
+            push!(annotate_diff_input, args_and_kwargs_names[k] => reduce(vcat,diffdict[k]))
+            
+            if k == :negative_shock
+                same_shock_direction = false
+            end
+        end
+    end
+
+    pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
+
+    legend_plot = StatsPlots.plot(framestyle = :none, legend_columns = length(irf_active_plot_container)) 
+    
+    joint_shocks = OrderedSet{String}()
+    joint_variables = OrderedSet{String}()
+    single_shock_per_irf = true
+    
+    for (i,k) in enumerate(irf_active_plot_container)
+        if plot_type == :stack
+            StatsPlots.bar!(legend_plot,
+                            [NaN], 
+                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            framestyle = :none, 
+                            legend = :inside, 
+                            alpha = transparency,
+                            lw = 0,  # This removes the lines around the bars
+                            linecolor = :transparent,
+                            label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+        elseif plot_type == :compare
+            StatsPlots.plot!(legend_plot,
+                            [NaN], 
+                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            framestyle = :none, 
+                            legend = :inside, 
+                            label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+        end
+
+        push!(joint_shocks, k[:shock_names]...)
+        push!(joint_variables, k[:variable_names]...)
+        single_shock_per_irf = single_shock_per_irf && length(k[:shock_names]) == 1
+    end
+
+    sort!(joint_shocks)
+    sort!(joint_variables)
+
+    if single_shock_per_irf && length(joint_shocks) > 1
+        joint_shocks = [:single_shock_per_irf]
+    end
+
+    return_plots = []
+
+    for shock in joint_shocks
+        n_subplots = length(joint_variables)
+        pp = []
+        pane = 1
+        plot_count = 1
+        joint_non_zero_variables = []
+
+        for var in joint_variables
+            not_zero_in_any_irf = false
+
+            for k in irf_active_plot_container
+                var_idx = findfirst(==(var), k[:variable_names])
+                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), k[:shock_names])
+                
+                if isnothing(var_idx) || isnothing(shock_idx)
+                    # If the variable or shock is not present in the current irf_active_plot_container,
+                    # we skip this iteration.
+                    continue
+                else
+                    if any(.!isapprox.(k[:plot_data][var_idx,:,shock_idx], 0, atol = eps(Float32)))
+                        not_zero_in_any_irf = not_zero_in_any_irf || true
+                        # break # If any irf data is not approximately zero, we set the flag to true.
+                    end
+                end
+            end
+
+            if not_zero_in_any_irf 
+                push!(joint_non_zero_variables, var)
+            else
+                # If all irf data for this variable and shock is approximately zero, we skip this subplot.
+                n_subplots -= 1
+            end
+        end
+
+        for var in joint_non_zero_variables
+            SSs = eltype(irf_active_plot_container[1][:reference_steady_state])[]
+            Ys = AbstractVector{eltype(irf_active_plot_container[1][:plot_data])}[]
+
+            for k in irf_active_plot_container
+                var_idx = findfirst(==(var), k[:variable_names])
+                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), k[:shock_names])
+
+                if isnothing(var_idx) || isnothing(shock_idx)
+                    # If the variable or shock is not present in the current irf_active_plot_container,
+                    # we skip this iteration.
+                    push!(SSs, NaN)
+                    push!(Ys, zeros(0))
+                else
+                    push!(SSs, k[:reference_steady_state][var_idx])
+                    push!(Ys, k[:plot_data][var_idx,:,shock_idx])
+                end
+            end
+            
+            same_ss = true
+
+            if maximum(filter(!isnan, SSs)) - minimum(filter(!isnan, SSs)) > 1e-10
+                push!(annotate_ss_page, var => minimal_sigfig_strings(SSs))
+                same_ss = false
+            end
+
+            push!(pp, plot_irf_subplot(Val(plot_type),
+                                    Ys, 
+                                    SSs, 
+                                    var, 
+                                    gr_back,
+                                    same_ss,
+                                    transparency = transparency))
+            
+            if !(plot_count % plots_per_page == 0)
+                plot_count += 1
+            else
+                plot_count = 1
+
+                shock_dir = same_shock_direction ? negative_shock ? "Shock⁻" : "Shock⁺" : "Shock"
+
+                if shock == :single_shock_per_irf
+                    shock_string = ": multiple shocks"
+                    shock_name = "multiple_shocks"
+                elseif shock == "simulation"
+                    shock_dir = "Shocks"
+                    shock_string = ": simulate all"
+                    shock_name = "simulation"
+                elseif shock == "no_shock"
+                    shock_dir = ""
+                    shock_string = ""
+                    shock_name = "no_shock"
+                elseif shock isa Union{Symbol_input,String_input}
+                    shock_string = ": " * shock
+                    shock_name = shock
+                else
+                    shock_string = "Series of shocks"
+                    shock_name = "shock_matrix"
+                end
+
+                ppp = StatsPlots.plot(pp...; attributes...)
+                
+                if haskey(diffdict, :model_name)
+                    model_string = "multiple models"
+                else
+                    model_string = 𝓂.model_name
+                end
+
+                plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+
+                plot_elements = [ppp, legend_plot]
+
+                layout_heights = [15,1]
+                
+                if length(annotate_diff_input) > 2
+                    annotate_diff_input_plot = plot_df(annotate_diff_input)
+
+                    ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+
+                    push!(plot_elements, ppp_input_diff)
+
+                    push!(layout_heights, 5)
+
+                    pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+                else
+                    pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
+                end
+
+                push!(annotate_ss, annotate_ss_page)
+
+                if length(annotate_ss[pane]) > 1
+                    annotate_ss_plot = plot_df(annotate_ss[pane])
+
+                    ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
+
+                    push!(plot_elements, ppp_ss)
+                    
+                    push!(layout_heights, 5)
+                end
+
+                p = StatsPlots.plot(plot_elements...,
+                                    layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                                    plot_title = plot_title; 
+                                    attributes_redux...)
+
+                push!(return_plots,p)
+
+                if show_plots
+                    display(p)
+                end
+
+                if save_plots
+                    StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                end
+
+                pane += 1
+
+                annotate_ss_page = Pair{String,Any}[]
+
+                pp = []
+            end
+        end
+
+
+        if length(pp) > 0
+            shock_dir = same_shock_direction ? negative_shock ? "Shock⁻" : "Shock⁺" : "Shock"
+
+            if shock == :single_shock_per_irf
+                shock_string = ": multiple shocks"
+                shock_name = "multiple_shocks"
+            elseif shock == "simulation"
+                shock_dir = "Shocks"
+                shock_string = ": simulate all"
+                shock_name = "simulation"
+            elseif shock == "no_shock"
+                shock_dir = ""
+                shock_string = ""
+                shock_name = "no_shock"
+            elseif shock isa Union{Symbol_input,String_input}
+                shock_string = ": " * shock
+                shock_name = shock
+            else
+                shock_string = "Series of shocks"
+                shock_name = "shock_matrix"
+            end
+
+            ppp = StatsPlots.plot(pp...; attributes...)
+            
+            if haskey(diffdict, :model_name)
+                model_string = "multiple models"
+            else
+                model_string = 𝓂.model_name
+            end
+
+            plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+
+            plot_elements = [ppp, legend_plot]
+
+            layout_heights = [15,1]
+
+            if length(annotate_diff_input) > 2
+                annotate_diff_input_plot = plot_df(annotate_diff_input)
+
+                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+
+                push!(plot_elements, ppp_input_diff)
+
+                push!(layout_heights, 5)
+                
+                pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+            else
+                pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
+            end
+
+            push!(annotate_ss, annotate_ss_page)
+
+            if length(annotate_ss[pane]) > 1
+                annotate_ss_plot = plot_df(annotate_ss[pane])
+
+                ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
+
+                push!(plot_elements, ppp_ss)
+                
+                push!(layout_heights, 5)
+            end
+
+            p = StatsPlots.plot(plot_elements...,
+                                layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                                plot_title = plot_title; 
+                                attributes_redux...)
+
+            push!(return_plots,p)
+
+            if show_plots
+                display(p)
+            end
+
+            if save_plots
+                StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+            end
+        end
+
+        annotate_ss = Vector{Pair{String, Any}}[]
+
+        annotate_ss_page = Pair{String,Any}[]
+    end
+
+    return return_plots
+end
+
+
+function merge_by_runid(dicts::Dict...)
+    @assert !isempty(dicts) "At least one dictionary is required"
+    @assert all(haskey.(dicts, Ref(:run_id))) "Each dictionary must contain :run_id"
+
+    # union of all run_ids, sorted
+    all_runids = sort(unique(vcat([d[:run_id] for d in dicts]...)))
+    n = length(all_runids)
+
+    merged = Dict{Symbol,Any}()
+    merged[:run_id] = all_runids
+
+    # run_id → index map for each dict
+    idx_maps = [Dict(r => i for (i, r) in enumerate(d[:run_id])) for d in dicts]
+
+    for (j, d) in enumerate(dicts)
+        idx_map = idx_maps[j]
+        for (k, v) in d
+            k === :run_id && continue
+
+            if v isa AbstractVector && length(v) == length(d[:run_id])
+                merged[k] = [haskey(idx_map, r) ? v[idx_map[r]] : nothing for r in all_runids]
+            elseif v isa Dict
+                sub = get!(merged, k, Dict{Symbol,Any}())
+                for (kk, vv) in v
+                    if vv isa AbstractVector && length(vv) == length(d[:run_id])
+                        sub[kk] = [haskey(idx_map, r) ? vv[idx_map[r]] : nothing for r in all_runids]
+                    else
+                        sub[kk] = [vv for _ in 1:n]
+                    end
+                end
+            else
+                merged[k] = [v for _ in 1:n]
+            end
+        end
+    end
+
+    return merged
+end
+
+function minimal_sigfig_strings(v::AbstractVector{<:Real};
+    min_sig::Int = 3, n::Int = 10, dup_tol::Float64 = 1e-13)
+
+    idx = collect(eachindex(v))
+    finite_mask = map(x -> isfinite(x), v) # && x != 0, v)
+    work_idx = filter(i -> finite_mask[i], idx)
+    sorted_idx = sort(work_idx, by = i -> v[i])
+    mwork = length(sorted_idx)
+
+    # Gaps to nearest neighbour
+    gaps = Dict{Int,Float64}()
+    for (k, i) in pairs(sorted_idx)
+        x = float(v[i])
+        if mwork == 1
+            gaps[i] = Inf
+        elseif k == 1
+            gaps[i] = abs(v[sorted_idx[k+1]] - x)
+        elseif k == mwork
+            gaps[i] = abs(x - v[sorted_idx[k-1]])
+        else
+            g1 = abs(x - v[sorted_idx[k-1]])
+            g2 = abs(v[sorted_idx[k+1]] - x)
+            gaps[i] = min(g1, g2)
+        end
+    end
+
+    # Duplicate clusters (within dup_tol)
+    duplicate = Dict{Int,Bool}()
+    k = 1
+    while k <= mwork
+        i = sorted_idx[k]
+        cluster = [i]
+        x = v[i]
+        j = k + 1
+        while j <= mwork && abs(v[sorted_idx[j]] - x) <= dup_tol
+            push!(cluster, sorted_idx[j])
+            j += 1
+        end
+        isdup = length(cluster) > 1
+        for c in cluster
+            duplicate[c] = isdup
+        end
+        k = j
+    end
+
+    # Required significant digits for distinction
+    req_sig = Dict{Int,Int}()
+    for i in sorted_idx
+        if duplicate[i]
+            req_sig[i] = min_sig  # will apply rule anyway
+        else
+            x = float(v[i])
+            g = gaps[i]
+            if g == 0.0
+                req_sig[i] = min_sig
+            else
+                m = floor(log10(abs(x))) + 1
+
+                m = max(typemin(Int), m)  # avoid negative indices
+
+                s = max(min_sig, ceil(Int, m - log10(g)))
+                # Apply rule: if they differ only after more than n sig digits
+                if s > n
+                    req_sig[i] = min_sig
+                else
+                    req_sig[i] = s
+                end
+            end
+        end
+    end
+
+    # Format output
+    out = Vector{String}(undef, length(v))
+    for i in eachindex(v)
+        x = v[i]
+        if isnan(x)
+            out[i] = ""
+        elseif !(isfinite(x)) || x == 0
+            # For zero or non finite just echo (rule does not change them)
+            out[i] = string(x)
+        elseif haskey(req_sig, i)
+            s = req_sig[i]
+            out[i] = string(round(x, sigdigits = s))
+        else
+            # Non finite or zero already handled; fallback
+            out[i] = string(x)
+        end
+    end
+    return out
+end
+
+
+function plot_df(plot_vector::Vector{Pair{String,Any}})
+    # Determine dimensions from plot_vector
+    ncols = length(plot_vector)
+    nrows = length(plot_vector[1].second)
+        
+    bg_matrix = ones(nrows + 1, ncols)
+    bg_matrix[1, :] .= 0.35 # Header row
+    for i in 3:2:nrows+1
+        bg_matrix[i, :] .= 0.85
+    end
+ 
+    # draw the "cells"
+    df_plot = StatsPlots.heatmap(bg_matrix;
+                c = StatsPlots.cgrad([:lightgrey, :white]),      # Color gradient for background
+                yflip = true,  
+                tick = :none,
+                legend = false,
+                framestyle = :none,
+                cbar = false)
+ 
+    # overlay the header and numeric values
+    for j in 1:ncols
+        StatsPlots.annotate!(df_plot, j, 1, StatsPlots.text(plot_vector[j].first, :center, 8)) # Header
+        for i in 1:nrows
+            StatsPlots.annotate!(df_plot, j, i + 1, StatsPlots.text(string(plot_vector[j].second[i]), :center, 8))
+        end
+    end
+
+    return df_plot
+end
 
 
 # """
@@ -1072,9 +2245,17 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
 
     for k in vars_to_plot
         if gr_back
-            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = replace_indices_in_symbol(k), bar_position = :stack, legend = :none))
+            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
+            title = replace_indices_in_symbol(k), 
+            bar_position = :stack,
+            linecolor = :transparent,
+            legend = :none))
         else
-            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', title = replace_indices_in_symbol(k), bar_position = :stack, label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot))))
+            push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
+            title = replace_indices_in_symbol(k), 
+            bar_position = :stack, 
+            linecolor = :transparent,
+            label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot))))
         end
 
         if !(plot_count % plots_per_page == 0)
@@ -1087,6 +2268,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             p = StatsPlots.plot(ppp,StatsPlots.bar(fill(0,1,length(shocks_to_plot)), 
                                         label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
                                         linewidth = 0 , 
+                                        linecolor = :transparent,
                                         framestyle = :none, 
                                         legend = :inside, 
                                         legend_columns = legend_columns), 
@@ -1114,6 +2296,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         p = StatsPlots.plot(ppp,StatsPlots.bar(fill(0,1,length(shocks_to_plot)), 
                                     label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
                                     linewidth = 0 , 
+                                    linecolor = :transparent,
                                     framestyle = :none, 
                                     legend = :inside, 
                                     legend_columns = legend_columns), 
@@ -1320,14 +2503,14 @@ function plot_solution(𝓂::ℳ,
     legend_plot = StatsPlots.plot(framestyle = :none) 
 
     for a in algorithm
-        StatsPlots.plot!(fill(0,1,1), 
+        StatsPlots.plot!([NaN], 
         framestyle = :none, 
         legend = :inside, 
         label = labels[a][1])
     end
     
     for a in algorithm
-        StatsPlots.scatter!(fill(0,1,1), 
+        StatsPlots.scatter!([NaN], 
         framestyle = :none, 
         legend = :inside, 
         label = labels[a][2])
@@ -1364,16 +2547,16 @@ function plot_solution(𝓂::ℳ,
         push!(relevant_SS_dictionnary, :first_order => full_SS)
     end
 
-    StatsPlots.scatter!(fill(0,1,1), 
-    label = "", 
-    marker = :rect,
-    markerstrokecolor = :white,
-    markerstrokewidth = 0, 
-    markercolor = :white,
-    linecolor = :white, 
-    linewidth = 0, 
-    framestyle = :none, 
-    legend = :inside)
+    # StatsPlots.scatter!([NaN], 
+    #                     label = "", 
+    #                     marker = :rect,
+    #                     markerstrokecolor = :white,
+    #                     markerstrokewidth = 0, 
+    #                     markercolor = :white,
+    #                     linecolor = :white, 
+    #                     linewidth = 0, 
+    #                     framestyle = :none, 
+    #                     legend = :inside)
 
     has_impact_dict = Dict()
     variable_dict = Dict()
@@ -1525,7 +2708,6 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VARIABLES®
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
 - $ALGORITHM®
-- `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
@@ -1568,7 +2750,7 @@ end
 end
 
 # c is conditioned to deviate by 0.01 in period 1 and y is conditioned to deviate by 0.02 in period 3
-conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = [:c,:y], Periods = 1:2)
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,3),Variables = [:c,:y], Periods = 1:3)
 conditions[1,1] = .01
 conditions[2,3] = .02
 
@@ -1605,7 +2787,6 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
                                     conditions_in_levels::Bool = true,
                                     algorithm::Symbol = :first_order,
-                                    levels::Bool = false,
                                     show_plots::Bool = true,
                                     save_plots::Bool = false,
                                     save_plots_format::Symbol = :pdf,
@@ -1618,7 +2799,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
                                     lyapunov_algorithm::Symbol = :doubling)
     # @nospecialize # reduce compile time
-                                    
+    
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
@@ -1633,6 +2814,10 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     delete!(attributes_redux, :framestyle)
 
+    initial_state_input = copy(initial_state)
+
+    periods_input = max(periods, size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
+
     conditions = conditions isa KeyedArray ? axiskeys(conditions,1) isa Vector{String} ? rekey(conditions, 1 => axiskeys(conditions,1) .|> Meta.parse .|> replace_indices) : conditions : conditions
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
@@ -1646,7 +2831,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 variables = variables, 
                                 conditions_in_levels = conditions_in_levels,
                                 algorithm = algorithm,
-                                levels = levels,
+                                # levels = levels,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm = sylvester_algorithm,
                                 lyapunov_algorithm = lyapunov_algorithm,
@@ -1681,7 +2866,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
-    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0 : relevant_SS(s) for s in var_names]
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in var_names]
 
     var_length = length(full_SS) - 𝓂.timings.nExo
 
@@ -1733,6 +2918,46 @@ function plot_conditional_forecast(𝓂::ℳ,
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
     end
 
+    while length(conditional_forecast_active_plot_container) > 0
+        pop!(conditional_forecast_active_plot_container)
+    end
+    
+    args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
+                           :model_name => 𝓂.model_name,
+                           :conditions => conditions[:,1:periods_input],
+                           :conditions_in_levels => conditions_in_levels,
+                           :shocks => shocks[:,1:periods_input],
+                           :initial_state => initial_state_input,
+                           :periods => periods_input,
+                           :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
+                           :variables => variables,
+                           :algorithm => algorithm,
+
+                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
+                           :NSSS_xtol => tol.NSSS_xtol,
+                           :NSSS_ftol => tol.NSSS_ftol,
+                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
+                           :qme_tol => tol.qme_tol,
+                           :qme_acceptance_tol => tol.qme_acceptance_tol,
+                           :sylvester_tol => tol.sylvester_tol,
+                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
+                           :lyapunov_tol => tol.lyapunov_tol,
+                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
+                           :droptol => tol.droptol,
+                           :dependencies_tol => tol.dependencies_tol,
+
+                           :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
+                           :sylvester_algorithm => sylvester_algorithm,
+                           :lyapunov_algorithm => lyapunov_algorithm,
+
+                           :plot_data => Y,
+                           :reference_steady_state => reference_steady_state,
+                           :variable_names => var_names[1:end - 𝓂.timings.nExo],
+                           :shock_names => var_names[end - 𝓂.timings.nExo + 1:end]
+                           )
+    
+    push!(conditional_forecast_active_plot_container, args_and_kwargs)
+
     n_subplots = length(var_idx)
     pp = []
     pane = 1
@@ -1740,49 +2965,32 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     return_plots = []
 
-    for i in 1:length(var_idx)
-        if all(isapprox.(Y[i,:], 0, atol = eps(Float32))) && !(any(vcat(conditions,shocks)[var_idx[i],:] .!= nothing))
+    for (i,v) in enumerate(var_idx)
+        if all(isapprox.(Y[i,:], 0, atol = eps(Float32))) && !(any(vcat(conditions,shocks)[v,:] .!= nothing))
             n_subplots -= 1
         end
     end
 
-    for i in 1:length(var_idx)
+    for (i,v) in enumerate(var_idx)
         SS = reference_steady_state[i]
-        if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)) > 0
-        
-            if all((Y[i,:] .+ SS) .> eps(Float32)) & (SS > eps(Float32))
-                cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
 
-                if length(cond_idx) > 0
-                    push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), ylabel = "Level", label = "")
-                                if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")   
-                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = gr_back ? :star8 : :pentagon, markercolor = :black)                            
-                    end)
-                else
-                    push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), ylabel = "Level", label = "")
-                                if gr_back StatsPlots.plot!(StatsPlots.twinx(),1:periods, 100*((Y[i,:] .+ SS) ./ SS .- 1), ylabel = LaTeXStrings.L"\% \Delta", label = "") end
-                                StatsPlots.hline!(gr_back ? [SS 0] : [SS],color = :black,label = "")                              
-                    end)
-                end
-            else
-                cond_idx = findall(vcat(conditions,shocks)[var_idx[i],:] .!= nothing)
-                if length(cond_idx) > 0
-                    push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                StatsPlots.hline!([SS], color = :black, label = "")
-                                StatsPlots.scatter!(cond_idx, conditions_in_levels ? vcat(conditions,shocks)[var_idx[i],cond_idx] : vcat(conditions,shocks)[var_idx[i],cond_idx] .+ SS, label = "",marker = gr_back ? :star8 : :pentagon, markercolor = :black)  
-                    end)
-                else 
-                    push!(pp,begin
-                                StatsPlots.plot(1:periods, Y[i,:] .+ SS, title = replace_indices_in_symbol(full_SS[var_idx[i]]), label = "", ylabel = "Level")#, rightmargin = 17mm)#,label = reshape(String.(𝓂.timings.solution.algorithm),1,:)
-                                StatsPlots.hline!([SS], color = :black, label = "")
-                    end)
-                end
-
+        if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[v,:] .!= nothing)) > 0
+         
+            cond_idx = findall(vcat(conditions,shocks)[v,:] .!= nothing)
+                
+            p = plot_irf_subplot(Y[i,:], SS, replace_indices_in_symbol(full_SS[v]), gr_back)
+            
+            if length(cond_idx) > 0
+                StatsPlots.scatter!(p,
+                                    cond_idx, 
+                                    conditions_in_levels ? vcat(conditions,shocks)[v,cond_idx] : vcat(conditions,shocks)[v,cond_idx] .+ SS, 
+                                    label = "",
+                                    markerstrokewidth = 0,
+                                    marker = gr_back ? :star8 : :pentagon, 
+                                    markercolor = :black)
             end
+
+            push!(pp, p)
 
             if !(plot_count % plots_per_page == 0)
                 plot_count += 1
@@ -1794,25 +3002,13 @@ function plot_conditional_forecast(𝓂::ℳ,
                 ppp = StatsPlots.plot(pp...; attributes...)
 
                 p = StatsPlots.plot(ppp,begin
-                                            StatsPlots.scatter(fill(0,1,1), 
-                                            label = "Condition", 
-                                            marker = gr_back ? :star8 : :pentagon,
-                                            markercolor = :black,
-                                            linewidth = 0, 
-                                            framestyle = :none, 
-                                            legend = :inside)
-
-                                            StatsPlots.scatter!(fill(0,1,1), 
-                                            label = "", 
-                                            marker = :rect,
-                                            # markersize = 2,
-                                            markerstrokecolor = :white,
-                                            markerstrokewidth = 0, 
-                                            markercolor = :white,
-                                            linecolor = :white, 
-                                            linewidth = 0, 
-                                            framestyle = :none, 
-                                            legend = :inside)
+                                            StatsPlots.scatter([NaN], 
+                                                                label = "Condition", 
+                                                                marker = gr_back ? :star8 : :pentagon,
+                                                                markercolor = :black,
+                                                                markerstrokewidth = 0,
+                                                                framestyle = :none, 
+                                                                legend = :inside)
                                         end, 
                                             layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
                                             plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  ("*string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; 
@@ -1840,25 +3036,13 @@ function plot_conditional_forecast(𝓂::ℳ,
         ppp = StatsPlots.plot(pp...; attributes...)
 
         p = StatsPlots.plot(ppp,begin
-                                StatsPlots.scatter(fill(0,1,1), 
-                                label = "Condition", 
-                                marker = gr_back ? :star8 : :pentagon,
-                                markercolor = :black,
-                                linewidth = 0, 
-                                framestyle = :none, 
-                                legend = :inside)
-
-                                StatsPlots.scatter!(fill(0,1,1), 
-                                label = "", 
-                                marker = :rect,
-                                # markersize = 2,
-                                markerstrokecolor = :white,
-                                markerstrokewidth = 0, 
-                                markercolor = :white,
-                                linecolor = :white, 
-                                linewidth = 0, 
-                                framestyle = :none, 
-                                legend = :inside)
+                                StatsPlots.scatter([NaN], 
+                                                    label = "Condition", 
+                                                    marker = gr_back ? :star8 : :pentagon,
+                                                    markercolor = :black,
+                                                    markerstrokewidth = 0,
+                                                    framestyle = :none, 
+                                                    legend = :inside)
                                 end, 
                                     layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
                                     plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; 
@@ -1876,8 +3060,627 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     return return_plots
-
 end
+
+
+
+function plot_conditional_forecast!(𝓂::ℳ,
+                                    conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
+                                    shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
+                                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
+                                    periods::Int = 40, 
+                                    parameters::ParameterType = nothing,
+                                    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
+                                    conditions_in_levels::Bool = true,
+                                    algorithm::Symbol = :first_order,
+                                    show_plots::Bool = true,
+                                    save_plots::Bool = false,
+                                    save_plots_format::Symbol = :pdf,
+                                    save_plots_path::String = ".",
+                                    plots_per_page::Int = 6,
+                                    plot_attributes::Dict = Dict(),
+                                    transparency::Float64 = .6,
+                                    verbose::Bool = false,
+                                    plot_type::Symbol = :compare,
+                                    tol::Tolerances = Tolerances(),
+                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
+                                    lyapunov_algorithm::Symbol = :doubling)
+    # @nospecialize # reduce compile time
+                 
+    @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
+                   
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+
+    if !gr_back
+        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+    else
+        attrbts = merge(default_plot_attributes, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
+
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
+
+    initial_state_input = copy(initial_state)
+
+    periods_input = max(periods, size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
+
+    conditions = conditions isa KeyedArray ? axiskeys(conditions,1) isa Vector{String} ? rekey(conditions, 1 => axiskeys(conditions,1) .|> Meta.parse .|> replace_indices) : conditions : conditions
+
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
+
+    Y = get_conditional_forecast(𝓂,
+                                conditions,
+                                shocks = shocks, 
+                                initial_state = initial_state,
+                                periods = periods, 
+                                parameters = parameters,
+                                variables = variables, 
+                                conditions_in_levels = conditions_in_levels,
+                                algorithm = algorithm,
+                                # levels = levels,
+                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                sylvester_algorithm = sylvester_algorithm,
+                                lyapunov_algorithm = lyapunov_algorithm,
+                                tol = tol,
+                                verbose = verbose)
+
+    periods += max(size(conditions,2), isnothing(shocks) ? 1 : size(shocks,2))
+
+    full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
+
+    var_names = axiskeys(Y,1)   
+
+    var_names = var_names isa Vector{String} ? var_names .|> replace_indices : var_names
+
+    var_idx = indexin(var_names,full_SS)
+
+    if length(intersect(𝓂.aux,var_names)) > 0
+        for v in 𝓂.aux
+            idx = indexin([v],var_names)
+            if !isnothing(idx[1])
+                var_names[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+            end
+        end
+        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    end
+    
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
+                                    tol = tol,
+                                    verbose = verbose,
+                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = sylvester_algorithm)
+
+    relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
+
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in var_names]
+
+    var_length = length(full_SS) - 𝓂.timings.nExo
+
+    if conditions isa SparseMatrixCSC{Float64}
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
+
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
+        nzs = findnz(conditions)
+        for i in 1:length(nzs[1])
+            cond_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
+        end
+        conditions = cond_tmp
+    elseif conditions isa Matrix{Union{Nothing,Float64}}
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
+
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
+        cond_tmp[:,axes(conditions,2)] = conditions
+        conditions = cond_tmp
+    elseif conditions isa KeyedArray{Union{Nothing,Float64}} || conditions isa KeyedArray{Float64}
+        @assert length(setdiff(axiskeys(conditions,1),full_SS)) == 0 "The following symbols in the first axis of the conditions matrix are not part of the model: " * repr(setdiff(axiskeys(conditions,1),full_SS))
+        
+        cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
+        cond_tmp[indexin(sort(axiskeys(conditions,1)),full_SS),axes(conditions,2)] .= conditions(sort(axiskeys(conditions,1)))
+        conditions = cond_tmp
+    end
+
+    if shocks isa SparseMatrixCSC{Float64}
+        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        nzs = findnz(shocks)
+        for i in 1:length(nzs[1])
+            shocks_tmp[nzs[1][i],nzs[2][i]] = nzs[3][i]
+        end
+        shocks = shocks_tmp
+    elseif shocks isa Matrix{Union{Nothing,Float64}}
+        @assert length(𝓂.exo) == size(shocks,1) "Number of rows of shocks argument and number of model variables must match. Input to shocks has " * repr(size(shocks,1)) * " rows but the model has " * repr(length(𝓂.exo)) * " shocks: " * repr(𝓂.exo)
+
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp[:,axes(shocks,2)] = shocks
+        shocks = shocks_tmp
+    elseif shocks isa KeyedArray{Union{Nothing,Float64}} || shocks isa KeyedArray{Float64}
+        @assert length(setdiff(axiskeys(shocks,1),𝓂.exo)) == 0 "The following symbols in the first axis of the shocks matrix are not part of the model: " * repr(setdiff(axiskeys(shocks,1),𝓂.exo))
+        
+        shocks_tmp = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+        shocks_tmp[indexin(sort(axiskeys(shocks,1)),𝓂.exo),axes(shocks,2)] .= shocks(sort(axiskeys(shocks,1)))
+        shocks = shocks_tmp
+    elseif isnothing(shocks)
+        shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
+    end
+
+    args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
+                           :model_name => 𝓂.model_name,
+                           :conditions => conditions[:,1:periods_input],
+                           :conditions_in_levels => conditions_in_levels,
+                           :shocks => shocks[:,1:periods_input],
+                           :initial_state => initial_state_input,
+                           :periods => periods_input,
+                           :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
+                           :variables => variables,
+                           :algorithm => algorithm,
+
+                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
+                           :NSSS_xtol => tol.NSSS_xtol,
+                           :NSSS_ftol => tol.NSSS_ftol,
+                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
+                           :qme_tol => tol.qme_tol,
+                           :qme_acceptance_tol => tol.qme_acceptance_tol,
+                           :sylvester_tol => tol.sylvester_tol,
+                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
+                           :lyapunov_tol => tol.lyapunov_tol,
+                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
+                           :droptol => tol.droptol,
+                           :dependencies_tol => tol.dependencies_tol,
+
+                           :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
+                           :sylvester_algorithm => sylvester_algorithm,
+                           :lyapunov_algorithm => lyapunov_algorithm,
+
+                           :plot_data => Y,
+                           :reference_steady_state => reference_steady_state,
+                           :variable_names => var_names[1:end - 𝓂.timings.nExo],
+                           :shock_names => var_names[end - 𝓂.timings.nExo + 1:end]
+                           )
+                           
+    no_duplicate = all(
+        !(all((
+            get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
+            get(dict, :conditions, nothing) == args_and_kwargs[:conditions],
+            get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
+            get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
+            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in keys(args_and_kwargs_names))
+        )))
+        for dict in conditional_forecast_active_plot_container
+    ) # "New plot must be different from previous plot. Use the version without ! to plot."
+
+    if no_duplicate 
+        push!(conditional_forecast_active_plot_container, args_and_kwargs)
+    else
+        @info "Plot with same parameters already exists. Using previous plot data to create plot."
+    end
+
+    # 1. Keep only certain keys from each dictionary
+    reduced_vector = [
+        Dict(k => d[k] for k in vcat(:run_id, keys(args_and_kwargs_names)...) if haskey(d, k))
+        for d in conditional_forecast_active_plot_container
+    ]
+
+    diffdict = compare_args_and_kwargs(reduced_vector)
+
+    # 2. Group the original vector by :model_name
+    grouped_by_model = Dict{Any, Vector{Dict}}()
+
+    for d in conditional_forecast_active_plot_container
+        model = d[:model_name]
+        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(args_and_kwargs_names)) if haskey(d, k))
+        push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
+    end
+
+    model_names = []
+
+    for d in conditional_forecast_active_plot_container
+        push!(model_names, d[:model_name])
+    end
+
+    model_names = unique(model_names)
+
+    for model in model_names
+        if length(grouped_by_model[model]) > 1
+            diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
+            diffdict = merge_by_runid(diffdict, diffdict_grouped)
+        end
+    end
+    
+    annotate_ss = Vector{Pair{String, Any}}[]
+
+    annotate_ss_page = Pair{String,Any}[]
+
+    annotate_diff_input = Pair{String,Any}[]
+
+    len_diff = length(conditional_forecast_active_plot_container)
+
+    if haskey(diffdict, :parameters)
+        param_nms = diffdict[:parameters] |> keys |> collect |> sort
+        for param in param_nms
+            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
+            push!(annotate_diff_input, String(param) => result)
+        end
+    end
+    
+    if haskey(diffdict, :shocks)
+        # Collect unique shocks excluding `nothing`
+        unique_shocks = unique(diffdict[:shocks])
+
+        shocks_idx = Union{Int,Nothing}[]
+
+        for init in diffdict[:shocks]
+            if isnothing(init) || all(isnothing, init)
+                push!(shocks_idx, nothing)
+            else
+                for (i,u) in enumerate(unique_shocks)
+                    if u == init
+                        push!(shocks_idx,i)
+                        break
+                    end
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Shocks" => [isnothing(i) ? nothing : "#$i" for i in shocks_idx])
+    end
+    
+    if haskey(diffdict, :conditions)
+        # Collect unique conditions excluding `nothing`
+        unique_conditions = unique(diffdict[:conditions])
+
+        conditions_idx = Union{Int,Nothing}[]
+
+        for init in diffdict[:conditions]
+            if isnothing(init) || all(isnothing, init)
+                push!(conditions_idx, nothing)
+            else
+                for (i,u) in enumerate(unique_conditions)
+                    if u == init
+                        push!(conditions_idx,i)
+                        break
+                    end
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Conditions" => [isnothing(i) ? nothing : "#$i" for i in conditions_idx])
+    end
+
+    if haskey(diffdict, :initial_state)
+        unique_initial_state = unique(diffdict[:initial_state])
+
+        initial_state_idx = Int[]
+
+        for init in diffdict[:initial_state]
+            for (i,u) in enumerate(unique_initial_state)
+                if u == init
+                    push!(initial_state_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Initial state" => ["#$i" for i in initial_state_idx])
+    end
+    
+    same_shock_direction = true
+    
+    for k in setdiff(keys(args_and_kwargs), 
+                        [
+                            :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :conditions, :conditions_in_levels,
+                            :shocks, :shock_names,
+                            :variables, :variable_names,
+                            # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
+                        ]
+                    )
+
+        if haskey(diffdict, k)
+            push!(annotate_diff_input, args_and_kwargs_names[k] => reduce(vcat,diffdict[k]))
+            
+            if k == :negative_shock
+                same_shock_direction = false
+            end
+        end
+    end
+
+    pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
+
+    legend_plot = StatsPlots.plot(framestyle = :none, legend_columns = min(4, length(conditional_forecast_active_plot_container))) 
+    
+
+    joint_shocks = OrderedSet{String}()
+    joint_variables = OrderedSet{String}()
+    single_shock_per_irf = true
+
+    pal = StatsPlots.palette(:auto)
+
+    for (i,k) in enumerate(conditional_forecast_active_plot_container)
+        if plot_type == :stack
+            StatsPlots.bar!(legend_plot,
+                            [NaN], 
+                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            framestyle = :none, 
+                            legend = :inside, 
+                            linecolor = :transparent,
+                            alpha = transparency,
+                            linewidth = 0,
+                            label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+        elseif plot_type == :compare
+            StatsPlots.plot!(legend_plot,
+                            [NaN], 
+                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            framestyle = :none, 
+                            color = pal[i],
+                            legend = :inside, 
+                            label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+        end
+
+        push!(joint_variables, String.(k[:variable_names])...)
+        push!(joint_shocks, String.(k[:shock_names])...)
+    end
+
+    for (i,k) in enumerate(conditional_forecast_active_plot_container)
+        if plot_type == :compare
+            StatsPlots.scatter!(legend_plot,
+                                [NaN], 
+                                label = "Condition", # * (length(annotate_diff_input) > 2 ? String(Symbol(i)) : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i]))), 
+                                marker = gr_back ? :star8 : :pentagon,
+                                # markerstrokecolor = :transparent,
+                                markerstrokewidth = 0,
+                                markercolor = pal[i],
+                                # linewidth = 0, 
+                                # linecolor = :transparent,
+                                framestyle = :none,
+                                legend = :inside)
+
+        end
+    end
+
+    sort!(joint_variables)
+    sort!(joint_shocks)
+
+    n_subplots = length(joint_variables) + length(joint_shocks)
+    pp = []
+    pane = 1
+    plot_count = 1
+
+    joint_non_zero_variables = []
+
+    return_plots = []
+    
+    for var in vcat(collect(joint_variables), collect(joint_shocks))
+        not_zero_in_any_cond_fcst = false
+
+        for k in conditional_forecast_active_plot_container
+            var_idx = findfirst(==(var), String.(vcat(k[:variable_names], k[:shock_names])))
+            if isnothing(var_idx)
+                # If the variable or shock is not present in the current conditional_forecast_active_plot_container,
+                # we skip this iteration.
+                continue
+            else
+                if any(.!isapprox.(k[:plot_data][var_idx,:], 0, atol = eps(Float32))) || any(!=(nothing), vcat(k[:conditions], k[:shocks])[var_idx, :])
+                    not_zero_in_any_cond_fcst = not_zero_in_any_cond_fcst || true
+                    # break # If any cond_fcst data is not approximately zero, we set the flag to true.
+                end
+            end
+        end
+
+        if not_zero_in_any_cond_fcst 
+            push!(joint_non_zero_variables, var)
+        else
+            # If all cond_fcst data for this variable and shock is approximately zero, we skip this subplot.
+            n_subplots -= 1
+        end
+    end
+
+    for var in joint_non_zero_variables
+        SSs = eltype(conditional_forecast_active_plot_container[1][:reference_steady_state])[]
+        Ys = AbstractVector{eltype(conditional_forecast_active_plot_container[1][:plot_data])}[]
+
+        for k in conditional_forecast_active_plot_container
+            var_idx = findfirst(==(var), String.(vcat(k[:variable_names], k[:shock_names])))
+            if isnothing(var_idx)
+                # If the variable is not present in the current conditional_forecast_active_plot_container,
+                # we skip this iteration.
+                push!(SSs, NaN)
+                push!(Ys, zeros(0))
+            else
+                push!(SSs, k[:reference_steady_state][var_idx])
+                push!(Ys, k[:plot_data][var_idx,:])
+            end
+        end
+
+        same_ss = true
+
+        if maximum(filter(!isnan, SSs)) - minimum(filter(!isnan, SSs)) > 1e-10
+            push!(annotate_ss_page, var => minimal_sigfig_strings(SSs))
+            same_ss = false
+        end
+
+        p = plot_irf_subplot(Val(plot_type),
+                                        Ys, 
+                                        SSs, 
+                                        var, 
+                                        gr_back,
+                                        same_ss,
+                                        transparency = transparency)
+        
+        if plot_type == :compare
+            for (i,k) in enumerate(conditional_forecast_active_plot_container)   
+                var_idx = findfirst(==(var), String.(vcat(k[:variable_names], k[:shock_names])))
+                
+                if isnothing(var_idx) continue end
+
+                cond_idx = findall(vcat(k[:conditions], k[:shocks])[var_idx,:] .!= nothing)
+                
+                if length(cond_idx) > 0
+                    SS = k[:reference_steady_state][var_idx]
+
+                    vals = vcat(k[:conditions], k[:shocks])[var_idx, cond_idx]
+
+                    if k[:conditions_in_levels]
+                        vals .-= SS
+                    end
+
+                    if same_ss
+                        vals .+= SS
+                    end
+
+                    StatsPlots.scatter!(p,
+                                        cond_idx,
+                                        vals,
+                                        label = "",
+                                        marker = gr_back ? :star8 : :pentagon, 
+                                        markerstrokewidth = 0,
+                                        markercolor = pal[i])
+                end
+            end
+        end
+
+        push!(pp, p)
+        
+        if !(plot_count % plots_per_page == 0)
+            plot_count += 1
+        else
+            plot_count = 1
+
+            shock_string = "Conditional forecast"
+
+            if haskey(diffdict, :model_name)
+                model_string = "multiple models"
+                model_string_filename = "multiple_models"
+            else
+                model_string = 𝓂.model_name
+                model_string_filename = 𝓂.model_name
+            end
+            
+            plot_title = "Model: "*model_string*"        " *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+
+            ppp = StatsPlots.plot(pp...; attributes...)
+
+            plot_elements = [ppp, legend_plot]
+
+            layout_heights = [15,1]
+            
+            if length(annotate_diff_input) > 2
+                annotate_diff_input_plot = plot_df(annotate_diff_input)
+
+                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+
+                push!(plot_elements, ppp_input_diff)
+
+                push!(layout_heights, 5)
+
+                pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+            else
+                pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
+            end
+
+            push!(annotate_ss, annotate_ss_page)
+
+            if length(annotate_ss[pane]) > 1
+                annotate_ss_plot = plot_df(annotate_ss[pane])
+
+                ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
+
+                push!(plot_elements, ppp_ss)
+                
+                push!(layout_heights, 5)
+            end
+
+            p = StatsPlots.plot(plot_elements...,
+                                layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                                plot_title = plot_title; 
+                                attributes_redux...)
+
+            push!(return_plots,p)
+
+            if show_plots# & (length(pp) > 0)
+                display(p)
+            end
+
+            if save_plots# & (length(pp) > 0)
+                StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
+            end
+
+            pane += 1
+
+            annotate_ss_page = Pair{String,Any}[]
+
+            pp = []
+        end
+    end
+
+    if length(pp) > 0
+
+        shock_string = "Conditional forecast"
+
+        if haskey(diffdict, :model_name)
+            model_string = "multiple models"
+            model_string_filename = "multiple_models"
+        else
+            model_string = 𝓂.model_name
+            model_string_filename = 𝓂.model_name
+        end
+        
+        plot_title = "Model: "*model_string*"        " *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+
+        ppp = StatsPlots.plot(pp...; attributes...)
+
+        plot_elements = [ppp, legend_plot]
+
+        layout_heights = [15,1]
+        
+        if length(annotate_diff_input) > 2
+            annotate_diff_input_plot = plot_df(annotate_diff_input)
+
+            ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+
+            push!(plot_elements, ppp_input_diff)
+
+            push!(layout_heights, 5)
+
+            pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+        else
+            pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
+        end
+
+        push!(annotate_ss, annotate_ss_page)
+
+        if length(annotate_ss[pane]) > 1
+            annotate_ss_plot = plot_df(annotate_ss[pane])
+
+            ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
+
+            push!(plot_elements, ppp_ss)
+            
+            push!(layout_heights, 5)
+        end
+
+        p = StatsPlots.plot(plot_elements...,
+                            layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                            plot_title = plot_title; 
+                            attributes_redux...)
+                                
+        push!(return_plots,p)
+
+        if show_plots# & (length(pp) > 0)
+            display(p)
+        end
+
+        if save_plots# & (length(pp) > 0)
+            StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
+        end
+    end
+
+    return return_plots
+end
+
 
 end # dispatch_doctor
 

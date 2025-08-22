@@ -30,7 +30,7 @@ backend = 𝒟.AutoForwardDiff()
 # 𝒷 = Diffractor.DiffractorForwardBackend
 
 import LoopVectorization: @turbo
-import Polyester
+# import Polyester
 import NLopt
 import Optim, LineSearches
 # import Zygote
@@ -131,8 +131,8 @@ include("./filter/kalman.jl")
 
 export @model, @parameters, solve!
 
-export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
-export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
+export plot_irfs, plot_irf, plot_irf!, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
+export plot_conditional_forecast, plot_conditional_forecast!, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
 export plotlyjs_backend, gr_backend
 
 export Normal, Beta, Cauchy, Gamma, InverseGamma
@@ -161,6 +161,7 @@ export irf, girf
 
 function plot_irfs  end
 function plot_irf   end
+function plot_irf!   end
 function plot_IRF   end
 function plot_girf  end
 function plot_solution  end
@@ -170,6 +171,7 @@ function plot_conditional_variance_decomposition    end
 function plot_forecast_error_variance_decomposition end
 function plot_fevd  end
 function plot_conditional_forecast  end
+function plot_conditional_forecast!  end
 function plot_model_estimates   end
 function plot_shock_decomposition   end
 function plotlyjs_backend   end
@@ -289,6 +291,49 @@ check_for_dynamic_variables(ex::Float64) = false
 check_for_dynamic_variables(ex::Symbol) = occursin(r"₍₁₎|₍₀₎|₍₋₁₎",string(ex))
 
 end # dispatch_doctor
+
+function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
+    N = length(dicts)
+    @assert N ≥ 2 "Need at least two dictionaries to compare"
+
+    diffs = Dict{Symbol,Any}()
+
+    # assume all dictionaries share the same set of keys
+    for k in keys(dicts[1])
+        if k in [:plot_data, :plot_type]
+            # skip keys that are not relevant for comparison
+            continue
+        end
+
+        vals = [d[k] for d in dicts]
+
+        if all(v -> v isa Dict, vals)
+            # recurse into nested dictionaries
+            nested = compare_args_and_kwargs(vals)
+            if !isempty(nested)
+                diffs[k] = nested
+            end
+
+        elseif all(v -> v isa AbstractArray, vals)
+            # compare by length and elementwise equality
+            base = vals[1]
+            identical = all(v -> length(v) == length(base) && all(v .== base), vals[2:end])
+            if !identical
+                diffs[k] = vals
+            end
+
+        else
+            # scalar or other types
+            identical = all(v -> v == vals[1], vals[2:end])
+            if !identical
+                diffs[k] = vals
+            end
+        end
+    end
+
+    return diffs
+end
+
 
 function mul_reverse_AD!(   C::Matrix{S},
                             A::AbstractMatrix{M},
@@ -1639,66 +1684,66 @@ function compressed_kron³(a::AbstractMatrix{T};
 end
 
 
-function kron³(A::AbstractSparseMatrix{T}, M₃::third_order_auxiliary_matrices) where T <: Real
-    rows, cols, vals = findnz(A)
+# function kron³(A::AbstractSparseMatrix{T}, M₃::third_order_auxiliary_matrices) where T <: Real
+#     rows, cols, vals = findnz(A)
 
-    # Dictionary to accumulate sums of values for each coordinate
-    result_dict = Dict{Tuple{Int, Int}, T}()
+#     # Dictionary to accumulate sums of values for each coordinate
+#     result_dict = Dict{Tuple{Int, Int}, T}()
 
-    # Using a single iteration over non-zero elements
-    nvals = length(vals)
+#     # Using a single iteration over non-zero elements
+#     nvals = length(vals)
 
-    lk = ReentrantLock()
+#     lk = ReentrantLock()
 
-    Polyester.@batch for i in 1:nvals
-    # for i in 1:nvals
-        for j in 1:nvals
-            for k in 1:nvals
-                r1, c1, v1 = rows[i], cols[i], vals[i]
-                r2, c2, v2 = rows[j], cols[j], vals[j]
-                r3, c3, v3 = rows[k], cols[k], vals[k]
+#     Polyester.@batch for i in 1:nvals
+#     # for i in 1:nvals
+#         for j in 1:nvals
+#             for k in 1:nvals
+#                 r1, c1, v1 = rows[i], cols[i], vals[i]
+#                 r2, c2, v2 = rows[j], cols[j], vals[j]
+#                 r3, c3, v3 = rows[k], cols[k], vals[k]
                 
-                sorted_cols = [c1, c2, c3]
-                sorted_rows = [r1, r2, r3] # a lot of time spent here
-                sort!(sorted_rows, rev = true) # a lot of time spent here
+#                 sorted_cols = [c1, c2, c3]
+#                 sorted_rows = [r1, r2, r3] # a lot of time spent here
+#                 sort!(sorted_rows, rev = true) # a lot of time spent here
                 
-                if haskey(M₃.𝐈₃, sorted_cols) # && haskey(M₃.𝐈₃, sorted_rows) # a lot of time spent here
-                    row_idx = M₃.𝐈₃[sorted_rows]
-                    col_idx = M₃.𝐈₃[sorted_cols]
+#                 if haskey(M₃.𝐈₃, sorted_cols) # && haskey(M₃.𝐈₃, sorted_rows) # a lot of time spent here
+#                     row_idx = M₃.𝐈₃[sorted_rows]
+#                     col_idx = M₃.𝐈₃[sorted_cols]
 
-                    key = (row_idx, col_idx)
+#                     key = (row_idx, col_idx)
 
-                    # begin
-                    #     lock(lk)
-                    #     try
-                            if haskey(result_dict, key)
-                                result_dict[key] += v1 * v2 * v3
-                            else
-                                result_dict[key] = v1 * v2 * v3
-                            end
-                    #     finally
-                    #         unlock(lk)
-                    #     end
-                    # end
-                end
-            end
-        end
-    end
+#                     # begin
+#                     #     lock(lk)
+#                     #     try
+#                             if haskey(result_dict, key)
+#                                 result_dict[key] += v1 * v2 * v3
+#                             else
+#                                 result_dict[key] = v1 * v2 * v3
+#                             end
+#                     #     finally
+#                     #         unlock(lk)
+#                     #     end
+#                     # end
+#                 end
+#             end
+#         end
+#     end
 
-    # Extract indices and values from the dictionary
-    result_rows = Int[]
-    result_cols = Int[]
-    result_vals = T[]
+#     # Extract indices and values from the dictionary
+#     result_rows = Int[]
+#     result_cols = Int[]
+#     result_vals = T[]
 
-    for (ks, valu) in result_dict
-        push!(result_rows, ks[1])
-        push!(result_cols, ks[2])
-        push!(result_vals, valu)
-    end
+#     for (ks, valu) in result_dict
+#         push!(result_rows, ks[1])
+#         push!(result_cols, ks[2])
+#         push!(result_vals, valu)
+#     end
     
-    # Create the sparse matrix from the collected indices and values
-    return sparse!(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
-end
+#     # Create the sparse matrix from the collected indices and values
+#     return sparse!(result_rows, result_cols, result_vals, size(M₃.𝐂₃, 2), size(M₃.𝐔₃, 1))
+# end
 
 function A_mult_kron_power_3_B(A::AbstractSparseMatrix{R},
                                 B::Union{ℒ.Adjoint{T,Matrix{T}},DenseMatrix{T}}; 
@@ -8036,6 +8081,7 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
     elseif shocks isa Symbol
         if length(setdiff([shocks],T.exo)) > 0
             @warn "Following shock is not part of the model: " * join(string(setdiff([shocks],T.exo)[1]),", ")
+            # TODO: mention shocks part of the model
             shock_idx = Int64[]
         else
             shock_idx = getindex(1:T.nExo,shocks .== T.exo)
