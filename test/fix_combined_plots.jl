@@ -4,11 +4,60 @@ import StatsPlots
 using Random
 # TODO: 
 # - x axis should be Int not floats
-# - implement switch to not show shock values
+# - write model estimates func in get_functions
+# - write the plots! funcs for all other alias funcs
+
+# DONE:
+# - implement switch to not show shock values | use the shock argument
 # - see how palette comes in in the plots.jl codes
 # - for model estimate/shock decomp remove zero entries
-# - write model estimates func in get_functions
 
+
+
+using CSV, DataFrames
+include("../models/FS2000.jl")
+using Dates
+
+function quarter_labels(start::Date, n::Int)
+    quarters = start:Month(3):(start + Month(3*(n-1)))
+    return ["$(year(d))Q$(((month(d)-1) ÷ 3) + 1)" for d in quarters]
+end
+
+labels = quarter_labels(Date(1950, 1, 1), 192)
+
+# load data
+dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
+data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = labels)
+data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat,1))
+data = log.(data)
+
+# declare observables
+observables = sort(Symbol.("log_".*names(dat)))
+
+# subset observables in data
+data = data(observables,:)
+plot_model_estimates(FS2000, data, presample_periods = 150)
+plot_model_estimates(FS2000, data, presample_periods = 3, shock_decomposition = true, 
+# transparency = 1.0,
+plots_per_page = 4,
+save_plots = true)
+
+include("../models/GNSS_2010.jl")
+
+ECB_palette = [
+    "#003299",  # blue
+    "#ffb400",  # yellow
+    "#ff4b00",  # orange
+    "#65b800",  # green
+    "#00b1ea",  # light blue
+    "#007816",  # dark green
+    "#8139c6",  # purple
+    "#5c5c5c"   # gray
+]
+
+plot_fevd(GNSS_2010, 
+# plot_attributes = Dict(:palette => ECB_palette)
+)
 
 include("models/RBC_CME_calibration_equations.jl")
 algorithm = :first_order
@@ -71,10 +120,17 @@ import MacroModelling: clear_solution_caches!
 
         plot_shock_decomposition(m, data, 
                                     algorithm = algorithm, 
+                                # smooth = false,
                                     data_in_levels = false)
     end
 
     plot_model_estimates(m, data, 
+                                algorithm = algorithm, 
+                                data_in_levels = false)
+
+    plot_model_estimates(m, data, 
+                                # plot_attributes = Dict(:palette => :Accent),
+                                shock_decomposition = true,
                                 algorithm = algorithm, 
                                 data_in_levels = false)
 
@@ -204,8 +260,12 @@ import MacroModelling: clear_solution_caches!
     # end
 # end
 
-@testset "plot_solution" begin
+# @testset "plot_solution" begin
     
+                        plot_solution(m, states[1], 
+                                # plot_attributes = Dict(:palette => :Accent),
+                                        algorithm = algos[end])
+
 
     states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
     
@@ -290,10 +350,10 @@ import MacroModelling: clear_solution_caches!
     # plot_solution(m, states[1], algorithm = algos[end])
 
     # gr_backend()
-end
+# end
 
 
-@testset "plot_irf" begin
+# @testset "plot_irf" begin
     
 
     # plotlyjs_backend()
@@ -372,7 +432,7 @@ end
         plot_irf(m, algorithm = algorithm, shocks = shocks)
     end
 
-    for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
+    for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red), Dict(:palette => :Set1)]
         for plots_per_page in [4,6]
             plot_irf(m, algorithm = algorithm,
                         plot_attributes = plot_attributes,
@@ -400,10 +460,10 @@ end
             end
         end
     # end
-end
+# end
 
 
-@testset "plot_conditional_variance_decomposition" begin
+# @testset "plot_conditional_variance_decomposition" begin
     # plotlyjs_backend()
     
     plot_fevd(m)
@@ -464,7 +524,7 @@ end
             end
         end
     # end
-end
+# end
 
 
 # test conditional forecasting
@@ -626,6 +686,7 @@ for variables in vars
     plot_conditional_forecast!(m, conditions[end],
                                 conditions_in_levels = false,
                                 algorithm = algorithm, 
+                                plot_attributes = Dict(:palette => :Set2),
                                 variables = variables)
 end
 
