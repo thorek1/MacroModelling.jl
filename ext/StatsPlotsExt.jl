@@ -22,6 +22,7 @@ const default_plot_attributes = Dict(:size=>(700,500),
                                 :plot_titlefont => 10, 
                                 :titlefont => 10, 
                                 :guidefont => 8,
+                                :palette => :auto,
                                 :legendfontsize => 8,
                                 :legend_title_font_pointsize => 8,
                                 :tickfontsize => 8,
@@ -166,7 +167,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 save_plots::Bool = false,
                                 save_plots_format::Symbol = :pdf,
                                 save_plots_path::String = ".",
-                                plots_per_page::Int = 9,
+                                plots_per_page::Int = 6,
                                 transparency::Float64 = .6,
                                 max_elements_per_legend_row::Int = 4,
                                 extra_legend_space::Float64 = 0.0,
@@ -323,20 +324,26 @@ function plot_model_estimates(𝓂::ℳ,
         end
     end
 
+    non_zero_shock_idx = []
     for i in 1:length(shock_idx)
         if all(isapprox.(shocks_to_plot[shock_idx[i],periods], 0, atol = eps(Float32)))
             n_subplots -= 1
+        else
+            push!(non_zero_shock_idx, shock_idx[i])
         end
     end
 
-    for i in 1:length(var_idx) + length(shock_idx)
+    pal = StatsPlots.palette(attributes_redux[:palette])
+
+    for i in 1:length(var_idx) + length(non_zero_shock_idx)
         if i > length(var_idx) # Shock decomposition
-            if !(all(isapprox.(shocks_to_plot[shock_idx[i - length(var_idx)],periods], 0, atol = eps(Float32))))
+            if !(all(isapprox.(shocks_to_plot[non_zero_shock_idx[i - length(var_idx)],periods], 0, atol = eps(Float32))))
                 push!(pp,begin
-                        p = plot_irf_subplot(shocks_to_plot[shock_idx[i - length(var_idx)],periods],
+                        p = plot_irf_subplot(shocks_to_plot[non_zero_shock_idx[i - length(var_idx)],periods],
                                             0.0, 
-                                            replace_indices_in_symbol(𝓂.timings.exo[shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
-                                            gr_back)         
+                                            replace_indices_in_symbol(𝓂.timings.exo[non_zero_shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
+                                            gr_back,
+                                            xvals = date_axis)         
                 end)
             end
         else
@@ -345,88 +352,37 @@ function plot_model_estimates(𝓂::ℳ,
 
                 can_dual_axis = gr_back &&  all((variables_to_plot[var_idx[i],:] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
 
-                push!(pp,begin
-                        # p = StatsPlots.plot()
+                p = plot_irf_subplot(variables_to_plot[var_idx[i],periods], 
+                                    SS, 
+                                    replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
+                                    gr_back,
+                                    xvals = date_axis)
 
-                        p = plot_irf_subplot(variables_to_plot[var_idx[i],periods], 
-                                            SS, 
-                                            replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
-                                            gr_back)
+                if shock_decomposition
+                    additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
 
-                        if shock_decomposition
-                            additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
+                    p = plot_irf_subplot(Val(:stack),
+                                        [decomposition[var_idx[i],k,periods] for k in vcat(additional_indices, non_zero_shock_idx)], 
+                                        [SS for k in vcat(additional_indices, non_zero_shock_idx)], 
+                                        replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
+                                        gr_back,
+                                        true, # same_ss,
+                                        transparency = transparency,
+                                        xvals = date_axis,
+                                        pal = pal,
+                                        color_total = estimate_color)
+                end
 
-                            StatsPlots.groupedbar!(p,
-                                decomposition[var_idx[i],[additional_indices..., shock_idx...],periods]', 
-                                bar_position = :stack, 
-                                xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
-                                xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
-                                lc = :transparent,  # Line color set to transparent
-                                lw = 0,  # This removes the lines around the bars
-                                legend = :none, 
-                                # yformatter = y -> round(y + SS, digits = 1), # rm Absolute Δ in this case and fix SS additions
-                                # xformatter = x -> string(date_axis[Int(x)]),
-                                alpha = transparency)
-                        end
+                if var_idx[i] ∈ obs_idx 
+                    StatsPlots.plot!(p,
+                        shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
+                        title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
+                        ylabel = "Level",
+                        label = "",
+                        color = shock_decomposition ? data_color : pal[2])
+                end
                         
-                        # StatsPlots.plot!(p,
-                        #     variables_to_plot[var_idx[i],periods],
-                        #     title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
-                        #     ylabel = "Level",
-                        #     xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
-                        #     xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
-                        #     label = "",
-                        #     # xformatter = x -> string(date_axis[Int(x)]),
-                        #     color = shock_decomposition ? estimate_color : :auto)
-                        pal = StatsPlots.palette(:auto)
-
-                        if var_idx[i] ∈ obs_idx 
-                            StatsPlots.plot!(p,
-                                data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
-                                title = replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]),
-                                ylabel = "Level",
-                                label = "",
-                                xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
-                                xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
-                                # xformatter = x -> string(date_axis[Int(x)]),
-                                color = shock_decomposition ? data_color : pal[2])
-                        end
-
-                        # # Get the current y limits
-                        # lo, hi = StatsPlots.ylims(p)
-
-                        # # Compute nice ticks on the shifted range
-                        # ticks_shifted, _ = StatsPlots.optimize_ticks(lo + SS, hi + SS, k_min = 4, k_max = 8)
-
-                        # labels = Showoff.showoff(ticks_shifted, :auto)
-                        # # Map tick positions back by subtracting the offset, keep shifted labels
-                        # yticks_positions = ticks_shifted .- SS
-                        
-                        # StatsPlots.plot!(p; yticks = (yticks_positions, labels))
-
-                        # if can_dual_axis
-                        #     StatsPlots.plot!(StatsPlots.twinx(p),
-                        #         ylims = (100 * ((lo + SS) / SS - 1), 100 * ((hi + SS) / SS - 1)),
-                        #         ylabel = LaTeXStrings.L"\% \Delta", 
-                        #         xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
-                        #         xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
-                        #         label = "") 
-
-                        #     if var_idx[i] ∈ obs_idx 
-                        #         StatsPlots.plot!(StatsPlots.twinx(p),
-                        #             ylims = (100 * ((lo + SS) / SS - 1), 100 * ((hi + SS) / SS - 1)),
-                        #             ylabel = LaTeXStrings.L"\% \Delta", 
-                        #             xformatter = x -> string(date_axis[max(1,min(ceil(Int,x),length(date_axis)))]),
-                        #             xrotation = length(string(date_axis[1])) > 6 ? 30 : 0,
-                        #             label = "") 
-                        #     end
-                        # end
-                        
-                        # StatsPlots.hline!(can_dual_axis ? [0 0] : [0],
-                        #     color = :black,
-                        #     label = "")   
-                        p                            
-                end)
+                push!(pp, p)
             end
         end
 
@@ -437,35 +393,37 @@ function plot_model_estimates(𝓂::ℳ,
 
             ppp = StatsPlots.plot(pp...; attributes...)
 
+            pl = StatsPlots.plot(framestyle = :none)
+
+            StatsPlots.plot!(pl,
+                            [NaN], 
+                            label = "Estimate", 
+                            color = shock_decomposition ? estimate_color : :auto,
+                            legend = :inside)
+
+            StatsPlots.plot!(pl,
+                            [NaN], 
+                            label = "Data", 
+                            color = shock_decomposition ? data_color : :auto,
+                            legend = :inside)
+
+            if shock_decomposition
+                additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
+
+                lbls = reshape(vcat(additional_labels, string.(replace_indices_in_symbol.(𝓂.exo[non_zero_shock_idx]))), 1, length(non_zero_shock_idx) + 1 + pruning)
+
+                StatsPlots.bar!(pl,
+                                fill(NaN, 1, length(non_zero_shock_idx) + 1 + pruning), 
+                                label = lbls, 
+                                linewidth = 0,
+                                alpha = transparency,
+                                color = pal[1:length(lbls)]',
+                                legend = :inside, 
+                                legend_columns = legend_columns)
+            end
+            
             # Legend
-            p = StatsPlots.plot(ppp,begin
-                                        p = StatsPlots.plot(framestyle = :none)
-
-                                        StatsPlots.plot!(p,
-                                                        [NaN], 
-                                                        label = "Estimate", 
-                                                        color = shock_decomposition ? estimate_color : :auto,
-                                                        legend = :inside)
-
-                                        StatsPlots.plot!(p,
-                                                        [NaN], 
-                                                        label = "Data", 
-                                                        color = shock_decomposition ? data_color : :auto,
-                                                        legend = :inside)
-
-                                        if shock_decomposition
-                                            additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
-
-                                            StatsPlots.bar!(p,
-                                                            fill(NaN, 1, length(shock_idx) + 1 + pruning), 
-                                                            label = reshape(vcat(additional_labels, string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))), 1, length(shock_idx) + 1 + pruning), 
-                                                            linewidth = 0,
-                                                            alpha = transparency,
-                                                            legend = :inside, 
-                                                            legend_columns = legend_columns)
-                                        end
-                                        p
-                                    end, 
+            p = StatsPlots.plot(ppp,pl, 
                                     layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
                                     plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                     attributes_redux...)
@@ -488,38 +446,41 @@ function plot_model_estimates(𝓂::ℳ,
     if length(pp) > 0
         ppp = StatsPlots.plot(pp...; attributes...)
 
-        p = StatsPlots.plot(ppp,begin
-                                    p = StatsPlots.plot(framestyle = :none)
+        pl = StatsPlots.plot(framestyle = :none)
 
-                                    StatsPlots.plot!(p,
-                                                    [NaN], 
-                                                    label = "Estimate", 
-                                                    color = shock_decomposition ? :black : :auto,
-                                                    legend = :inside)
+        StatsPlots.plot!(pl,
+                        [NaN], 
+                        label = "Estimate", 
+                        color = shock_decomposition ? estimate_color : :auto,
+                        legend = :inside)
 
-                                    StatsPlots.plot!(p,
-                                                    [NaN], 
-                                                    label = "Data", 
-                                                    color = shock_decomposition ? :darkred : :auto,
-                                                    legend = :inside)
+        StatsPlots.plot!(pl,
+                        [NaN], 
+                        label = "Data", 
+                        color = shock_decomposition ? data_color : :auto,
+                        legend = :inside)
 
-                                    if shock_decomposition
-                                        additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
-                                        
-                                        StatsPlots.bar!(p,
-                                                        fill(NaN,1,length(shock_idx) + 1 + pruning), 
-                                                        label = reshape(vcat(additional_labels..., string.(replace_indices_in_symbol.(𝓂.exo[shock_idx]))),1,length(shock_idx) + 1 + pruning), 
-                                                        linewidth = 0,
-                                                        alpha = transparency,
-                                                        legend = :inside, 
-                                                        legend_columns = legend_columns)
-                                    end
+        if shock_decomposition
+            additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
 
-                                    p
-                                end, 
+            lbls = reshape(vcat(additional_labels, string.(replace_indices_in_symbol.(𝓂.exo[non_zero_shock_idx]))), 1, length(non_zero_shock_idx) + 1 + pruning)
+
+            StatsPlots.bar!(pl,
+                            fill(NaN, 1, length(non_zero_shock_idx) + 1 + pruning), 
+                            label = lbls, 
+                            linewidth = 0,
+                            alpha = transparency,
+                            color = pal[1:length(lbls)]',
+                            legend = :inside, 
+                            legend_columns = legend_columns)
+        end
+        
+        # Legend
+        p = StatsPlots.plot(ppp,pl, 
                                 layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
                                 plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                 attributes_redux...)
+
 
         push!(return_plots,p)
 
@@ -1040,12 +1001,19 @@ function plot_irf(𝓂::ℳ;
 end
 
 
-function plot_irf_subplot(irf_data::AbstractVector{S}, steady_state::S, variable_name::String, gr_back::Bool) where S <: AbstractFloat
+function plot_irf_subplot(irf_data::AbstractVector{S}, 
+                            steady_state::S, 
+                            variable_name::String, 
+                            gr_back::Bool;
+                            xvals = 1:length(irf_data)) where S <: AbstractFloat
     can_dual_axis = gr_back && all((irf_data .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
     
+    xrotation = length(string(xvals[1])) > 5 ? 30 : 0
+
     p = StatsPlots.plot(irf_data .+ steady_state,
                         title = variable_name,
                         ylabel = "Level",
+                        xrotation = xrotation,
                         label = "")
                         
     StatsPlots.hline!([steady_state], 
@@ -1054,9 +1022,24 @@ function plot_irf_subplot(irf_data::AbstractVector{S}, steady_state::S, variable
 
     lo, hi = StatsPlots.ylims(p)
 
+    if !(xvals == 1:length(irf_data))
+        lo = 1
+        hi = length(irf_data)
+
+        # Compute nice ticks on the shifted range
+        ticks_shifted, _ = StatsPlots.optimize_ticks(lo, hi, k_min = 4, k_max = 6)
+
+        ticks_shifted = Int.(ceil.(ticks_shifted))
+
+        labels = xvals[ticks_shifted]
+
+        StatsPlots.plot!(xticks = (ticks_shifted, labels))
+    end
+
     if can_dual_axis
         StatsPlots.plot!(StatsPlots.twinx(), 
                          ylims = (100 * (lo / steady_state - 1), 100 * (hi / steady_state - 1)),
+                         xrotation = xrotation,
                          ylabel = LaTeXStrings.L"\% \Delta")                            
     end
 
@@ -1069,6 +1052,7 @@ function plot_irf_subplot(::Val{:compare},
                             variable_name::String, 
                             gr_back::Bool, 
                             same_ss::Bool; 
+                            xvals = 1:length(irf_data[1]),
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
                             transparency::Float64 = .6) where S <: AbstractFloat
     plot_dat = []
@@ -1077,6 +1061,8 @@ function plot_irf_subplot(::Val{:compare},
     pal_val = Int[]
 
     stst = 1.0
+
+    xrotation = length(string(xvals[1])) > 5 ? 30 : 0
 
     can_dual_axis = gr_back
     
@@ -1106,6 +1092,7 @@ function plot_irf_subplot(::Val{:compare},
                         title = variable_name,
                         ylabel = same_ss ? "Level" : "abs. " * LaTeXStrings.L"\Delta",
                         color = pal[pal_val]',
+                        xrotation = xrotation,
                         label = "")
 
     StatsPlots.hline!([same_ss ? stst : 0], 
@@ -1113,6 +1100,20 @@ function plot_irf_subplot(::Val{:compare},
                       label = "")
 
     lo, hi = StatsPlots.ylims(p)
+
+    if !(xvals == 1:length(irf_data[1]))
+        lo = 1
+        hi = length(irf_data[1])
+
+        # Compute nice ticks on the shifted range
+        ticks_shifted, _ = StatsPlots.optimize_ticks(lo, hi, k_min = 4, k_max = 6)
+
+        ticks_shifted = Int.(ceil.(ticks_shifted))
+
+        labels = xvals[ticks_shifted]
+
+        StatsPlots.plot!(xticks = (ticks_shifted, labels))
+    end
 
     if can_dual_axis && same_ss
         StatsPlots.plot!(StatsPlots.twinx(), 
@@ -1130,6 +1131,8 @@ function plot_irf_subplot(::Val{:stack},
                             variable_name::String, 
                             gr_back::Bool, 
                             same_ss::Bool; 
+                            color_total::Symbol = :black,
+                            xvals = 1:length(irf_data[1]),
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
                             transparency::Float64 = .6) where S <: AbstractFloat
     plot_dat = []
@@ -1138,6 +1141,8 @@ function plot_irf_subplot(::Val{:stack},
     pal_val = Int[]
 
     stst = 1.0
+
+    xrotation = length(string(xvals[1])) > 5 ? 30 : 0
 
     can_dual_axis = gr_back
     
@@ -1176,19 +1181,22 @@ function plot_irf_subplot(::Val{:stack},
     p = StatsPlots.groupedbar(typeof(plot_data) <: AbstractVector ? hcat(plot_data) : plot_data,
                         title = variable_name,
                         bar_position = :stack,
-                        linecolor = :transparent,
                         linewidth = 0,
+                        linealpha = transparency,
+                        linecolor = pal[pal_val]',
                         color = pal[pal_val]',
+                        alpha = transparency,
                         ylabel = same_ss ? "Level" : "abs. " * LaTeXStrings.L"\Delta",
                         label = "",
-                        alpha = transparency)
+                        xrotation = xrotation
+                        )
 
     StatsPlots.hline!([0], 
                       color = :black, 
                       label = "")
                       
     StatsPlots.plot!(sum(plot_data, dims = 2), 
-                    color = :black, 
+                    color = color_total, 
                     label = "")
 
     # Get the current y limits
@@ -1203,6 +1211,20 @@ function plot_irf_subplot(::Val{:stack},
                
     StatsPlots.plot!(yticks = (yticks_positions, labels))
     
+    if !(xvals == 1:length(irf_data[1]))
+        lo = 1
+        hi = length(irf_data[1])
+
+        # Compute nice ticks on the shifted range
+        ticks_shifted, _ = StatsPlots.optimize_ticks(lo, hi, k_min = 4, k_max = 6)
+
+        ticks_shifted = Int.(ceil.(ticks_shifted))
+
+        labels = xvals[ticks_shifted]
+
+        StatsPlots.plot!(xticks = (ticks_shifted, labels))
+    end
+
     if can_dual_axis && same_ss
         StatsPlots.plot!(
             StatsPlots.twinx(),
@@ -1261,6 +1283,8 @@ function plot_irf!(𝓂::ℳ;
     attributes_redux = copy(attributes)
 
     delete!(attributes_redux, :framestyle)
+
+    pal = StatsPlots.palette(attributes_redux[:palette])
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -1756,6 +1780,7 @@ function plot_irf!(𝓂::ℳ;
                                     var, 
                                     gr_back,
                                     same_ss,
+                                    pal = pal,
                                     transparency = transparency))
             
             if !(plot_count % plots_per_page == 0)
@@ -3425,7 +3450,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
     joint_variables = OrderedSet{String}()
     single_shock_per_irf = true
 
-    pal = StatsPlots.palette(:auto)
+    pal = StatsPlots.palette(attributes_redux[:palette])
 
     for (i,k) in enumerate(conditional_forecast_active_plot_container)
         if plot_type == :stack
@@ -3536,6 +3561,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                         var, 
                                         gr_back,
                                         same_ss,
+                                        pal = pal,
                                         transparency = transparency)
         
         if plot_type == :compare
