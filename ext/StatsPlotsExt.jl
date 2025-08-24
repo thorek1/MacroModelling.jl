@@ -297,7 +297,7 @@ function plot_model_estimates(𝓂::ℳ,
     periods = presample_periods+1:size(data,2)
 
     date_axis = date_axis[periods]
-
+    
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts)
     
     if pruning
@@ -343,6 +343,7 @@ function plot_model_estimates(𝓂::ℳ,
                                             0.0, 
                                             replace_indices_in_symbol(𝓂.timings.exo[non_zero_shock_idx[i - length(var_idx)]]) * "₍ₓ₎", 
                                             gr_back,
+                                            pal = pal,
                                             xvals = date_axis)         
                 end)
             end
@@ -356,6 +357,7 @@ function plot_model_estimates(𝓂::ℳ,
                                     SS, 
                                     replace_indices_in_symbol(𝓂.timings.var[var_idx[i]]), 
                                     gr_back,
+                                    pal = pal,
                                     xvals = date_axis)
 
                 if shock_decomposition
@@ -398,13 +400,13 @@ function plot_model_estimates(𝓂::ℳ,
             StatsPlots.plot!(pl,
                             [NaN], 
                             label = "Estimate", 
-                            color = shock_decomposition ? estimate_color : :auto,
+                            color = shock_decomposition ? estimate_color : pal[1],
                             legend = :inside)
 
             StatsPlots.plot!(pl,
                             [NaN], 
                             label = "Data", 
-                            color = shock_decomposition ? data_color : :auto,
+                            color = shock_decomposition ? data_color : pal[2],
                             legend = :inside)
 
             if shock_decomposition
@@ -451,13 +453,13 @@ function plot_model_estimates(𝓂::ℳ,
         StatsPlots.plot!(pl,
                         [NaN], 
                         label = "Estimate", 
-                        color = shock_decomposition ? estimate_color : :auto,
+                        color = shock_decomposition ? estimate_color : pal[1],
                         legend = :inside)
 
         StatsPlots.plot!(pl,
                         [NaN], 
                         label = "Data", 
-                        color = shock_decomposition ? data_color : :auto,
+                        color = shock_decomposition ? data_color : pal[2],
                         legend = :inside)
 
         if shock_decomposition
@@ -908,6 +910,8 @@ function plot_irf(𝓂::ℳ;
     
     push!(irf_active_plot_container, args_and_kwargs)
 
+    pal = StatsPlots.palette(attributes_redux[:palette])
+    
     return_plots = []
 
     for shock in 1:length(shock_idx)
@@ -928,7 +932,7 @@ function plot_irf(𝓂::ℳ;
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
                 variable_name = variable_names[i]
 
-                push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, gr_back))
+                push!(pp, plot_irf_subplot(Y[i,:,shock], SS, variable_name, gr_back, pal = pal))
 
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
@@ -1005,6 +1009,7 @@ function plot_irf_subplot(irf_data::AbstractVector{S},
                             steady_state::S, 
                             variable_name::String, 
                             gr_back::Bool;
+                            pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
                             xvals = 1:length(irf_data)) where S <: AbstractFloat
     can_dual_axis = gr_back && all((irf_data .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
     
@@ -1014,6 +1019,7 @@ function plot_irf_subplot(irf_data::AbstractVector{S},
                         title = variable_name,
                         ylabel = "Level",
                         xrotation = xrotation,
+                        color = pal[1],
                         label = "")
                         
     StatsPlots.hline!([steady_state], 
@@ -1022,7 +1028,7 @@ function plot_irf_subplot(irf_data::AbstractVector{S},
 
     lo, hi = StatsPlots.ylims(p)
 
-    if !(xvals == 1:length(irf_data))
+    if !(xvals isa UnitRange)
         lo = 1
         hi = length(irf_data)
 
@@ -1101,7 +1107,7 @@ function plot_irf_subplot(::Val{:compare},
 
     lo, hi = StatsPlots.ylims(p)
 
-    if !(xvals == 1:length(irf_data[1]))
+    if !(xvals isa UnitRange)
         lo = 1
         hi = length(irf_data[1])
 
@@ -1211,7 +1217,7 @@ function plot_irf_subplot(::Val{:stack},
                
     StatsPlots.plot!(yticks = (yticks_positions, labels))
     
-    if !(xvals == 1:length(irf_data[1]))
+    if !(xvals isa UnitRange)
         lo = 1
         hi = length(irf_data[1])
 
@@ -2290,6 +2296,8 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         end
     end
 
+    pal = StatsPlots.palette(attributes_redux[:palette])
+
     n_subplots = length(var_idx)
     pp = []
     pane = 1
@@ -2301,12 +2309,14 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
             title = replace_indices_in_symbol(k), 
             bar_position = :stack,
+            color = pal[1:length(shocks_to_plot)]',
             linecolor = :transparent,
             legend = :none))
         else
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
             title = replace_indices_in_symbol(k), 
             bar_position = :stack, 
+            color = pal[1:length(shocks_to_plot)]',
             linecolor = :transparent,
             label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot))))
         end
@@ -2317,14 +2327,17 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             plot_count = 1
 
             ppp = StatsPlots.plot(pp...; attributes...)
-
-            p = StatsPlots.plot(ppp,StatsPlots.bar(fill(0,1,length(shocks_to_plot)), 
+            
+            pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
                                         label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
                                         linewidth = 0 , 
                                         linecolor = :transparent,
                                         framestyle = :none, 
+                                        color = pal[1:length(shocks_to_plot)]',
                                         legend = :inside, 
-                                        legend_columns = legend_columns), 
+                                        legend_columns = legend_columns)
+
+            p = StatsPlots.plot(ppp,pp, 
                                         layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
                                         plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
 
@@ -2346,13 +2359,16 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     if length(pp) > 0
         ppp = StatsPlots.plot(pp...; attributes...)
 
-        p = StatsPlots.plot(ppp,StatsPlots.bar(fill(0,1,length(shocks_to_plot)), 
+        pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
                                     label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
                                     linewidth = 0 , 
                                     linecolor = :transparent,
                                     framestyle = :none, 
+                                    color = pal[1:length(shocks_to_plot)]',
                                     legend = :inside, 
-                                    legend_columns = legend_columns), 
+                                    legend_columns = legend_columns)
+
+        p = StatsPlots.plot(ppp,pp, 
                                     layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
                                     plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                                     attributes_redux...)
@@ -2553,19 +2569,23 @@ function plot_solution(𝓂::ℳ,
                     :third_order            => ["3rd order perturbation",           "Stochastic Steady State (3rd order)"],
                     :pruned_third_order     => ["Pruned 3rd order perturbation",    "Stochastic Steady State (Pruned 3rd order)"])
 
+    pal = StatsPlots.palette(attributes_redux[:palette])
+
     legend_plot = StatsPlots.plot(framestyle = :none) 
 
-    for a in algorithm
+    for (i,a) in enumerate(algorithm)
         StatsPlots.plot!([NaN], 
         framestyle = :none, 
         legend = :inside, 
+        color = pal[i],
         label = labels[a][1])
     end
     
-    for a in algorithm
+    for (i,a) in enumerate(algorithm)
         StatsPlots.scatter!([NaN], 
         framestyle = :none, 
         legend = :inside, 
+        color = pal[i],
         label = labels[a][2])
     end
 
@@ -2599,17 +2619,6 @@ function plot_solution(𝓂::ℳ,
 
         push!(relevant_SS_dictionnary, :first_order => full_SS)
     end
-
-    # StatsPlots.scatter!([NaN], 
-    #                     label = "", 
-    #                     marker = :rect,
-    #                     markerstrokecolor = :white,
-    #                     markerstrokewidth = 0, 
-    #                     markercolor = :white,
-    #                     linecolor = :white, 
-    #                     linewidth = 0, 
-    #                     framestyle = :none, 
-    #                     legend = :inside)
 
     has_impact_dict = Dict()
     variable_dict = Dict()
@@ -2669,24 +2678,24 @@ function plot_solution(𝓂::ℳ,
     for k in vars_to_plot
         if !has_impact_var_dict[k] continue end
 
-        push!(pp,begin
-                    Pl = StatsPlots.plot() 
+        Pl = StatsPlots.plot() 
 
-                    for a in algorithm
-                        StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1], 
-                            variable_dict[a][k][1,:], 
-                            ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
-                            xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
-                            label = "")
-                    end
+        for (i,a) in enumerate(algorithm)
+            StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1], 
+                variable_dict[a][k][1,:], 
+                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
+                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
+                color = pal[i],
+                label = "")
+        end
 
-                    for a in algorithm
-                        StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1]], [relevant_SS_dictionnary[a][indexin([k], 𝓂.var)][1]], 
-                        label = "")
-                    end
+        for (i,a) in enumerate(algorithm)
+            StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1]], [relevant_SS_dictionnary[a][indexin([k], 𝓂.var)][1]], 
+            color = pal[i],
+            label = "")
+        end
 
-                    Pl
-        end)
+        push!(pp, Pl)
 
         if !(plot_count % plots_per_page == 0)
             plot_count += 1
@@ -3011,6 +3020,8 @@ function plot_conditional_forecast(𝓂::ℳ,
     
     push!(conditional_forecast_active_plot_container, args_and_kwargs)
 
+    pal = StatsPlots.palette(attributes_redux[:palette])
+
     n_subplots = length(var_idx)
     pp = []
     pane = 1
@@ -3031,7 +3042,7 @@ function plot_conditional_forecast(𝓂::ℳ,
          
             cond_idx = findall(vcat(conditions,shocks)[v,:] .!= nothing)
                 
-            p = plot_irf_subplot(Y[i,:], SS, replace_indices_in_symbol(full_SS[v]), gr_back)
+            p = plot_irf_subplot(Y[i,:], SS, replace_indices_in_symbol(full_SS[v]), gr_back, pal = pal)
             
             if length(cond_idx) > 0
                 StatsPlots.scatter!(p,
@@ -3054,18 +3065,18 @@ function plot_conditional_forecast(𝓂::ℳ,
 
                 ppp = StatsPlots.plot(pp...; attributes...)
 
-                p = StatsPlots.plot(ppp,begin
-                                            StatsPlots.scatter([NaN], 
-                                                                label = "Condition", 
-                                                                marker = gr_back ? :star8 : :pentagon,
-                                                                markercolor = :black,
-                                                                markerstrokewidth = 0,
-                                                                framestyle = :none, 
-                                                                legend = :inside)
-                                        end, 
-                                            layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                            plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  ("*string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                            attributes_redux...)
+                pp = StatsPlots.scatter([NaN], 
+                                        label = "Condition", 
+                                        marker = gr_back ? :star8 : :pentagon,
+                                        markercolor = :black,
+                                        markerstrokewidth = 0,
+                                        framestyle = :none, 
+                                        legend = :inside)
+                                        
+                p = StatsPlots.plot(ppp,pp, 
+                                        layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
+                                        plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  ("*string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                        attributes_redux...)
                 
                 push!(return_plots,p)
 
@@ -3088,18 +3099,18 @@ function plot_conditional_forecast(𝓂::ℳ,
 
         ppp = StatsPlots.plot(pp...; attributes...)
 
-        p = StatsPlots.plot(ppp,begin
-                                StatsPlots.scatter([NaN], 
-                                                    label = "Condition", 
-                                                    marker = gr_back ? :star8 : :pentagon,
-                                                    markercolor = :black,
-                                                    markerstrokewidth = 0,
-                                                    framestyle = :none, 
-                                                    legend = :inside)
-                                end, 
-                                    layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
-                                    plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                    attributes_redux...)
+        pp = StatsPlots.scatter([NaN], 
+                                label = "Condition", 
+                                marker = gr_back ? :star8 : :pentagon,
+                                markercolor = :black,
+                                markerstrokewidth = 0,
+                                framestyle = :none, 
+                                legend = :inside)
+                                
+        p = StatsPlots.plot(ppp,pp, 
+                                layout = StatsPlots.grid(2, 1, heights=[0.99, 0.01]),
+                                plot_title = "Model: "*𝓂.model_name*"        " * shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                                attributes_redux...)
         
         push!(return_plots,p)
 
@@ -3260,6 +3271,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
     elseif isnothing(shocks)
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
     end
+
+    pal = StatsPlots.palette(attributes_redux[:palette])
 
     args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
@@ -3449,8 +3462,6 @@ function plot_conditional_forecast!(𝓂::ℳ,
     joint_shocks = OrderedSet{String}()
     joint_variables = OrderedSet{String}()
     single_shock_per_irf = true
-
-    pal = StatsPlots.palette(attributes_redux[:palette])
 
     for (i,k) in enumerate(conditional_forecast_active_plot_container)
         if plot_type == :stack
