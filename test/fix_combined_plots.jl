@@ -57,6 +57,10 @@ ECB_palette = [
     "#5c5c5c"   # gray
 ]
 
+rgb_ECB_palette = parse.(StatsPlots.Colorant, ECB_palette)
+
+30 ÷ length(rgb_ECB_palette)
+
 plot_fevd(Smets_Wouters_2007, 
 periods = 10,
 plot_attributes = Dict(:xformatter => x -> string(Int(ceil(x))),:palette => ECB_palette)
