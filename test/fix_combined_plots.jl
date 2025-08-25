@@ -3,6 +3,8 @@ using MacroModelling
 import StatsPlots
 using Random
 # TODO: 
+# - fix color handling for many colors (check how its done wiht auto)
+# - write plot_model_estimates! and revisit plot_solution + ! version of it
 # - x axis should be Int not floats
 # - write model estimates func in get_functions
 # - write the plots! funcs for all other alias funcs
@@ -55,8 +57,9 @@ ECB_palette = [
     "#5c5c5c"   # gray
 ]
 
-plot_fevd(GNSS_2010, 
-# plot_attributes = Dict(:palette => ECB_palette)
+plot_fevd(Smets_Wouters_2007, 
+periods = 10,
+plot_attributes = Dict(:xformatter => x -> string(Int(ceil(x))),:palette => ECB_palette)
 )
 
 include("models/RBC_CME_calibration_equations.jl")
