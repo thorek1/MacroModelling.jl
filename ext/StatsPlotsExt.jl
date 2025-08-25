@@ -825,6 +825,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     legend_plot = StatsPlots.plot(framestyle = :none, 
                                     legend = :inside, 
+                                    palette = pal,
                                     legend_columns = length(model_estimates_active_plot_container)) 
     
     joint_shocks = OrderedSet{String}()
