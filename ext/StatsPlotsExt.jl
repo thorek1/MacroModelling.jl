@@ -333,7 +333,13 @@ function plot_model_estimates(𝓂::ℳ,
         end
     end
 
-    pal = StatsPlots.palette(attributes_redux[:palette])
+    orig_pal = StatsPlots.palette(attributes_redux[:palette])
+
+    total_pal_len = 100
+
+    alpha_reduction_factor = 0.7
+
+    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
 
     for i in 1:length(var_idx) + length(non_zero_shock_idx)
         if i > length(var_idx) # Shock decomposition
@@ -910,8 +916,14 @@ function plot_irf(𝓂::ℳ;
     
     push!(irf_active_plot_container, args_and_kwargs)
 
-    pal = StatsPlots.palette(attributes_redux[:palette])
-    
+    orig_pal = StatsPlots.palette(attributes_redux[:palette])
+
+    total_pal_len = 100
+
+    alpha_reduction_factor = 0.7
+
+    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+
     return_plots = []
 
     for shock in 1:length(shock_idx)
@@ -1290,7 +1302,13 @@ function plot_irf!(𝓂::ℳ;
 
     delete!(attributes_redux, :framestyle)
 
-    pal = StatsPlots.palette(attributes_redux[:palette])
+    orig_pal = StatsPlots.palette(attributes_redux[:palette])
+
+    total_pal_len = 100
+
+    alpha_reduction_factor = 0.7
+
+    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
@@ -2296,7 +2314,13 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         end
     end
 
-    pal = StatsPlots.palette(attributes_redux[:palette])
+    orig_pal = StatsPlots.palette(attributes_redux[:palette])
+
+    total_pal_len = 100
+
+    alpha_reduction_factor = 0.7
+
+    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
 
     n_subplots = length(var_idx)
     pp = []
@@ -2569,7 +2593,13 @@ function plot_solution(𝓂::ℳ,
                     :third_order            => ["3rd order perturbation",           "Stochastic Steady State (3rd order)"],
                     :pruned_third_order     => ["Pruned 3rd order perturbation",    "Stochastic Steady State (Pruned 3rd order)"])
 
-    pal = StatsPlots.palette(attributes_redux[:palette])
+    orig_pal = StatsPlots.palette(attributes_redux[:palette])
+
+    total_pal_len = 100
+
+    alpha_reduction_factor = 0.7
+
+    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
 
     legend_plot = StatsPlots.plot(framestyle = :none) 
 
@@ -3020,7 +3050,13 @@ function plot_conditional_forecast(𝓂::ℳ,
     
     push!(conditional_forecast_active_plot_container, args_and_kwargs)
 
-    pal = StatsPlots.palette(attributes_redux[:palette])
+    orig_pal = StatsPlots.palette(attributes_redux[:palette])
+
+    total_pal_len = 100
+
+    alpha_reduction_factor = 0.7
+
+    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
 
     n_subplots = length(var_idx)
     pp = []
@@ -3272,7 +3308,13 @@ function plot_conditional_forecast!(𝓂::ℳ,
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
     end
 
-    pal = StatsPlots.palette(attributes_redux[:palette])
+    orig_pal = StatsPlots.palette(attributes_redux[:palette])
+
+    total_pal_len = 100
+
+    alpha_reduction_factor = 0.7
+
+    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
 
     args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
