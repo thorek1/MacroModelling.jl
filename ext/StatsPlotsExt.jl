@@ -419,7 +419,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 label = lbls, 
                                 linewidth = 0,
                                 alpha = transparency,
-                                color = pal[1:length(lbls)]',
+                                color = pal[mod1.(1:length(lbls), length(pal))]',
                                 legend = :inside, 
                                 legend_columns = legend_columns)
             end
@@ -472,7 +472,7 @@ function plot_model_estimates(𝓂::ℳ,
                             label = lbls, 
                             linewidth = 0,
                             alpha = transparency,
-                            color = pal[1:length(lbls)]',
+                            color = pal[mod1.(1:length(lbls), length(pal))]',
                             legend = :inside, 
                             legend_columns = legend_columns)
         end
@@ -1097,7 +1097,7 @@ function plot_irf_subplot(::Val{:compare},
     p = StatsPlots.plot(plot_dat,
                         title = variable_name,
                         ylabel = same_ss ? "Level" : "abs. " * LaTeXStrings.L"\Delta",
-                        color = pal[pal_val]',
+                        color = pal[mod1(pal_val, length(pal))]',
                         xrotation = xrotation,
                         label = "")
 
@@ -1189,8 +1189,8 @@ function plot_irf_subplot(::Val{:stack},
                         bar_position = :stack,
                         linewidth = 0,
                         linealpha = transparency,
-                        linecolor = pal[pal_val]',
-                        color = pal[pal_val]',
+                        linecolor = pal[mod1(pal_val, length(pal))]',
+                        color = pal[mod1(pal_val, length(pal))]',
                         alpha = transparency,
                         ylabel = same_ss ? "Level" : "abs. " * LaTeXStrings.L"\Delta",
                         label = "",
@@ -2309,14 +2309,14 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
             title = replace_indices_in_symbol(k), 
             bar_position = :stack,
-            color = pal[1:length(shocks_to_plot)]',
+            color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
             linecolor = :transparent,
             legend = :none))
         else
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
             title = replace_indices_in_symbol(k), 
             bar_position = :stack, 
-            color = pal[1:length(shocks_to_plot)]',
+            color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
             linecolor = :transparent,
             label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot))))
         end
@@ -2333,7 +2333,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                         linewidth = 0 , 
                                         linecolor = :transparent,
                                         framestyle = :none, 
-                                        color = pal[1:length(shocks_to_plot)]',
+                                        color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
                                         legend = :inside, 
                                         legend_columns = legend_columns)
 
@@ -2364,7 +2364,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                     linewidth = 0 , 
                                     linecolor = :transparent,
                                     framestyle = :none, 
-                                    color = pal[1:length(shocks_to_plot)]',
+                                    color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
                                     legend = :inside, 
                                     legend_columns = legend_columns)
 
@@ -2577,7 +2577,7 @@ function plot_solution(𝓂::ℳ,
         StatsPlots.plot!([NaN], 
         framestyle = :none, 
         legend = :inside, 
-        color = pal[i],
+        color = pal[mod1(i, length(pal))],
         label = labels[a][1])
     end
     
@@ -2585,7 +2585,7 @@ function plot_solution(𝓂::ℳ,
         StatsPlots.scatter!([NaN], 
         framestyle = :none, 
         legend = :inside, 
-        color = pal[i],
+        color = pal[mod1(i, length(pal))],
         label = labels[a][2])
     end
 
@@ -2685,13 +2685,13 @@ function plot_solution(𝓂::ℳ,
                 variable_dict[a][k][1,:], 
                 ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
                 xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
-                color = pal[i],
+                color = pal[mod1(i, length(pal))],
                 label = "")
         end
 
         for (i,a) in enumerate(algorithm)
             StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1]], [relevant_SS_dictionnary[a][indexin([k], 𝓂.var)][1]], 
-            color = pal[i],
+            color = pal[mod1(i, length(pal))],
             label = "")
         end
 
@@ -3479,7 +3479,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                             [NaN], 
                             legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                             framestyle = :none, 
-                            color = pal[i],
+                            color = pal[mod1(i, length(pal))],
                             legend = :inside, 
                             label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
@@ -3496,7 +3496,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                 marker = gr_back ? :star8 : :pentagon,
                                 # markerstrokecolor = :transparent,
                                 markerstrokewidth = 0,
-                                markercolor = pal[i],
+                                markercolor = pal[mod1(i, length(pal))],
                                 # linewidth = 0, 
                                 # linecolor = :transparent,
                                 framestyle = :none,
@@ -3602,7 +3602,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                         label = "",
                                         marker = gr_back ? :star8 : :pentagon, 
                                         markerstrokewidth = 0,
-                                        markercolor = pal[i])
+                                        markercolor = pal[mod1(i, length(pal))])
                 end
             end
         end
