@@ -3,13 +3,14 @@ using MacroModelling
 import StatsPlots
 using Random
 # TODO: 
-# - fix color handling for many colors (check how its done wiht auto)
 # - write plot_model_estimates! and revisit plot_solution + ! version of it
+# - add label argument to ! functions
 # - x axis should be Int not floats
 # - write model estimates func in get_functions
 # - write the plots! funcs for all other alias funcs
 
 # DONE:
+# - fix color handling for many colors (check how its done wiht auto)
 # - implement switch to not show shock values | use the shock argument
 # - see how palette comes in in the plots.jl codes
 # - for model estimate/shock decomp remove zero entries
@@ -38,10 +39,20 @@ observables = sort(Symbol.("log_".*names(dat)))
 
 # subset observables in data
 data = data(observables,:)
-plot_model_estimates(FS2000, data, presample_periods = 150)
+plot_model_estimates(FS2000, data)#, presample_periods = 15)
+
+plot_model_estimates!(FS2000, data, smooth = false,
+                        plot_attributes = Dict(
+                                        # :xformatter => x -> string(Int(ceil(x))),
+                                        # :palette => ECB_palette
+                                        )
+                                        )
+
+plot_model_estimates!(FS2000, data, filter = :inversion)
+
 plot_model_estimates(FS2000, data, presample_periods = 3, shock_decomposition = true, 
 # transparency = 1.0,
-plots_per_page = 4,
+# plots_per_page = 4,
 save_plots = true)
 
 include("../models/GNSS_2010.jl")
@@ -59,11 +70,15 @@ ECB_palette = [
 
 rgb_ECB_palette = parse.(StatsPlots.Colorant, ECB_palette)
 
-30 ÷ length(rgb_ECB_palette)
+pal = StatsPlots.palette(ECB_palette)
 
-plot_fevd(Smets_Wouters_2007, 
-periods = 10,
-plot_attributes = Dict(:xformatter => x -> string(Int(ceil(x))),:palette => ECB_palette)
+
+plot_fevd(  GNSS_2010, 
+            periods = 10,
+            plot_attributes = Dict(
+                # :xformatter => x -> string(Int(ceil(x))),
+                # :palette => ECB_palette
+                )
 )
 
 include("models/RBC_CME_calibration_equations.jl")
