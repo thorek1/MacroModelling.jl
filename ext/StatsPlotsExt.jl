@@ -375,7 +375,7 @@ function plot_model_estimates(𝓂::ℳ,
                                             0.0, 
                                             non_zero_shock_names[i - length(var_idx)], 
                                             gr_back,
-                                            pal = pal,
+                                            pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
                                             xvals = x_axis)         
                 end)
             end
@@ -389,7 +389,7 @@ function plot_model_estimates(𝓂::ℳ,
                                     SS, 
                                     variable_names[i], 
                                     gr_back,
-                                    pal = pal,
+                                    pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
                                     xvals = x_axis)
 
                 if shock_decomposition
@@ -425,19 +425,19 @@ function plot_model_estimates(𝓂::ℳ,
 
             ppp = StatsPlots.plot(pp...; attributes...)
 
-            pl = StatsPlots.plot(framestyle = :none)
+            pl = StatsPlots.plot(framestyle = :none,
+                                legend = :inside, 
+                                legend_columns = 2)
 
             StatsPlots.plot!(pl,
                             [NaN], 
                             label = "Estimate", 
-                            color = shock_decomposition ? estimate_color : pal[1],
-                            legend = :inside)
+                            color = shock_decomposition ? estimate_color : pal[1])
 
             StatsPlots.plot!(pl,
                             [NaN], 
                             label = "Data", 
-                            color = shock_decomposition ? data_color : pal[2],
-                            legend = :inside)
+                            color = shock_decomposition ? data_color : pal[2])
 
             if shock_decomposition
                 additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
@@ -449,8 +449,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 label = lbls, 
                                 linewidth = 0,
                                 alpha = transparency,
-                                color = pal[mod1.(1:length(lbls), length(pal))]',
-                                legend = :inside, 
+                                color = pal[mod1.(1:length(lbls), length(pal))]', 
                                 legend_columns = legend_columns)
             end
             
@@ -478,19 +477,19 @@ function plot_model_estimates(𝓂::ℳ,
     if length(pp) > 0
         ppp = StatsPlots.plot(pp...; attributes...)
 
-        pl = StatsPlots.plot(framestyle = :none)
+        pl = StatsPlots.plot(framestyle = :none,
+                            legend = :inside, 
+                            legend_columns = 2)
 
         StatsPlots.plot!(pl,
                         [NaN], 
                         label = "Estimate", 
-                        color = shock_decomposition ? estimate_color : pal[1],
-                        legend = :inside)
+                        color = shock_decomposition ? estimate_color : pal[1])
 
         StatsPlots.plot!(pl,
                         [NaN], 
                         label = "Data", 
-                        color = shock_decomposition ? data_color : pal[2],
-                        legend = :inside)
+                        color = shock_decomposition ? data_color : pal[2])
 
         if shock_decomposition
             additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
@@ -502,9 +501,8 @@ function plot_model_estimates(𝓂::ℳ,
                             label = lbls, 
                             linewidth = 0,
                             alpha = transparency,
-                            color = pal[mod1.(1:length(lbls), length(pal))]',
-                            legend = :inside, 
-                            legend_columns = legend_columns)
+                            color = pal[mod1.(1:length(lbls), length(pal))]', 
+                                legend_columns = legend_columns)
         end
         
         # Legend
@@ -791,7 +789,7 @@ function plot_model_estimates!(𝓂::ℳ,
     end
     
     if haskey(diffdict, :data)
-        unique_data = unique(diffdict[:data])
+        unique_data = unique(collect.(diffdict[:data]))
 
         data_idx = Int[]
 
@@ -819,13 +817,15 @@ function plot_model_estimates!(𝓂::ℳ,
                     )
 
         if haskey(diffdict, k)
-            push!(annotate_diff_input, args_and_kwargs_names[k] => reduce(vcat,diffdict[k]))
+            push!(annotate_diff_input, args_and_kwargs_names[k] => reduce(vcat, diffdict[k]))
         end
     end
     
     pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
 
-    legend_plot = StatsPlots.plot(framestyle = :none, legend_columns = length(model_estimates_active_plot_container)) 
+    legend_plot = StatsPlots.plot(framestyle = :none, 
+                                    legend = :inside, 
+                                    legend_columns = length(model_estimates_active_plot_container)) 
     
     joint_shocks = OrderedSet{String}()
     joint_variables = OrderedSet{String}()
@@ -835,12 +835,24 @@ function plot_model_estimates!(𝓂::ℳ,
         StatsPlots.plot!(legend_plot,
                         [NaN], 
                         legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                        framestyle = :none, 
-                        legend = :inside, 
                         label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
 
         push!(joint_shocks, k[:shock_names]...)
         push!(joint_variables, k[:variable_names]...)
+    end
+
+    if haskey(diffdict, :data)
+        for (i,k) in enumerate(model_estimates_active_plot_container)
+            StatsPlots.plot!(legend_plot,
+                                    [NaN], 
+                                    label = "Data",
+                                    color = pal[i])
+        end
+    else
+        StatsPlots.plot!(legend_plot,
+                                [NaN], 
+                                label = "Data",
+                                color = data_color)
     end
 
     sort!(joint_shocks)
@@ -1073,38 +1085,6 @@ function plot_model_estimates!(𝓂::ℳ,
             annotate_ss_page = Pair{String,Any}[]
 
             pp = []
-
-
-            # StatsPlots.plot!(pl,
-            #                 [NaN], 
-            #                 label = "Estimate", 
-            #                 color = shock_decomposition ? estimate_color : pal[1],
-            #                 legend = :inside)
-
-            # StatsPlots.plot!(pl,
-            #                 [NaN], 
-            #                 label = "Data", 
-            #                 color = shock_decomposition ? data_color : pal[2],
-            #                 legend = :inside)
-
-            # # Legend
-            # p = StatsPlots.plot(ppp,pl, 
-            #                         layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
-            #                         plot_title = plot_title; 
-            #                         attributes_redux...)
-
-            # push!(return_plots,p)
-
-            # if show_plots
-            #     display(p)
-            # end
-
-            # if save_plots
-            #     StatsPlots.savefig(p, save_plots_path * "/estimation__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
-            # end
-
-            # pane += 1
-            # pp = []
         end
     end
 
@@ -1113,39 +1093,48 @@ function plot_model_estimates!(𝓂::ℳ,
 
         pl = StatsPlots.plot(framestyle = :none)
 
-        StatsPlots.plot!(pl,
-                        [NaN], 
-                        label = "Estimate", 
-                        color = shock_decomposition ? estimate_color : pal[1],
-                        legend = :inside)
-
-        StatsPlots.plot!(pl,
-                        [NaN], 
-                        label = "Data", 
-                        color = shock_decomposition ? data_color : pal[2],
-                        legend = :inside)
-
-        if shock_decomposition
-            additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
-
-            lbls = reshape(vcat(additional_labels, string.(replace_indices_in_symbol.(𝓂.exo[non_zero_shock_idx]))), 1, length(non_zero_shock_idx) + 1 + pruning)
-
-            StatsPlots.bar!(pl,
-                            fill(NaN, 1, length(non_zero_shock_idx) + 1 + pruning), 
-                            label = lbls, 
-                            linewidth = 0,
-                            alpha = transparency,
-                            color = pal[mod1.(1:length(lbls), length(pal))]',
-                            legend = :inside, 
-                            legend_columns = legend_columns)
+        if haskey(diffdict, :model_name)
+            model_string = "multiple models"
+        else
+            model_string = 𝓂.model_name
         end
-        
-        # Legend
-        p = StatsPlots.plot(ppp,pl, 
-                                layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
-                                plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                attributes_redux...)
 
+        plot_title = "Model: "*model_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+        
+        plot_elements = [ppp, legend_plot]
+
+        layout_heights = [15,1]
+        
+        if length(annotate_diff_input) > 2
+            annotate_diff_input_plot = plot_df(annotate_diff_input)
+
+            ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+
+            push!(plot_elements, ppp_input_diff)
+
+            push!(layout_heights, 5)
+
+            pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+        else
+            pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
+        end
+
+        push!(annotate_ss, annotate_ss_page)
+
+        if length(annotate_ss[pane]) > 1
+            annotate_ss_plot = plot_df(annotate_ss[pane])
+
+            ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
+
+            push!(plot_elements, ppp_ss)
+            
+            push!(layout_heights, 5)
+        end
+
+        p = StatsPlots.plot(plot_elements...,
+                            layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                            plot_title = plot_title; 
+                            attributes_redux...)
 
         push!(return_plots,p)
 
@@ -1154,7 +1143,7 @@ function plot_model_estimates!(𝓂::ℳ,
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/estimation__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -2342,7 +2331,9 @@ function plot_irf!(𝓂::ℳ;
 
     pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
 
-    legend_plot = StatsPlots.plot(framestyle = :none, legend_columns = length(irf_active_plot_container)) 
+    legend_plot = StatsPlots.plot(framestyle = :none, 
+                                    legend = :inside, 
+                                    legend_columns = length(irf_active_plot_container)) 
     
     joint_shocks = OrderedSet{String}()
     joint_variables = OrderedSet{String}()
@@ -2353,8 +2344,6 @@ function plot_irf!(𝓂::ℳ;
             StatsPlots.bar!(legend_plot,
                             [NaN], 
                             legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                            framestyle = :none, 
-                            legend = :inside, 
                             alpha = transparency,
                             lw = 0,  # This removes the lines around the bars
                             linecolor = :transparent,
@@ -2363,8 +2352,6 @@ function plot_irf!(𝓂::ℳ;
             StatsPlots.plot!(legend_plot,
                             [NaN], 
                             legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                            framestyle = :none, 
-                            legend = :inside, 
                             label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
 
@@ -3245,22 +3232,19 @@ function plot_solution(𝓂::ℳ,
 
     pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
 
-    legend_plot = StatsPlots.plot(framestyle = :none) 
+    legend_plot = StatsPlots.plot(framestyle = :none, 
+                                    legend = :inside) 
 
     for (i,a) in enumerate(algorithm)
         StatsPlots.plot!([NaN], 
-        framestyle = :none, 
-        legend = :inside, 
-        color = pal[mod1(i, length(pal))],
-        label = labels[a][1])
+                        color = pal[mod1(i, length(pal))],
+                        label = labels[a][1])
     end
     
     for (i,a) in enumerate(algorithm)
         StatsPlots.scatter!([NaN], 
-        framestyle = :none, 
-        legend = :inside, 
-        color = pal[mod1(i, length(pal))],
-        label = labels[a][2])
+                            color = pal[mod1(i, length(pal))],
+                            label = labels[a][2])
     end
 
     if any(x -> contains(string(x), "◖"), full_NSSS)
@@ -4143,7 +4127,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
 
-    legend_plot = StatsPlots.plot(framestyle = :none, legend_columns = min(4, length(conditional_forecast_active_plot_container))) 
+    legend_plot = StatsPlots.plot(framestyle = :none, 
+                                    legend = :inside, 
+                                    legend_columns = min(4, length(conditional_forecast_active_plot_container))) 
     
 
     joint_shocks = OrderedSet{String}()
@@ -4155,8 +4141,6 @@ function plot_conditional_forecast!(𝓂::ℳ,
             StatsPlots.bar!(legend_plot,
                             [NaN], 
                             legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                            framestyle = :none, 
-                            legend = :inside, 
                             linecolor = :transparent,
                             alpha = transparency,
                             linewidth = 0,
@@ -4165,9 +4149,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             StatsPlots.plot!(legend_plot,
                             [NaN], 
                             legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                            framestyle = :none, 
                             color = pal[mod1(i, length(pal))],
-                            legend = :inside, 
                             label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
 
@@ -4181,13 +4163,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                 [NaN], 
                                 label = "Condition", # * (length(annotate_diff_input) > 2 ? String(Symbol(i)) : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i]))), 
                                 marker = gr_back ? :star8 : :pentagon,
-                                # markerstrokecolor = :transparent,
                                 markerstrokewidth = 0,
-                                markercolor = pal[mod1(i, length(pal))],
-                                # linewidth = 0, 
-                                # linecolor = :transparent,
-                                framestyle = :none,
-                                legend = :inside)
+                                markercolor = pal[mod1(i, length(pal))])
 
         end
     end
