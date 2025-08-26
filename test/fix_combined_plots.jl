@@ -5,9 +5,10 @@ using Random
 # TODO: 
 # - write plot_model_estimates! and revisit plot_solution + ! version of it
 # - add label argument to ! functions
-# - x axis should be Int not floats
+# - x axis should be Int not floats for short x axis (e.g. 10)
 # - write model estimates func in get_functions
 # - write the plots! funcs for all other alias funcs
+# - inform user when settings have no effect (and reset them) e.g. warmup itereations is only relevant ofr inversion filter
 
 # DONE:
 # - fix color handling for many colors (check how its done wiht auto)
@@ -15,18 +16,58 @@ using Random
 # - see how palette comes in in the plots.jl codes
 # - for model estimate/shock decomp remove zero entries
 
-
-
-using CSV, DataFrames
-include("../models/FS2000.jl")
-using Dates
+ECB_palette = [
+    "#003299",  # blue
+    "#ffb400",  # yellow
+    "#ff4b00",  # orange
+    "#65b800",  # green
+    "#00b1ea",  # light blue
+    "#007816",  # dark green
+    "#8139c6",  # purple
+    "#5c5c5c"   # gray
+]
 
 function quarter_labels(start::Date, n::Int)
     quarters = start:Month(3):(start + Month(3*(n-1)))
     return ["$(year(d))Q$(((month(d)-1) ÷ 3) + 1)" for d in quarters]
 end
 
-labels = quarter_labels(Date(1950, 1, 1), 192)
+include("../models/Smets_Wouters_2003.jl")
+
+simulation = simulate(Smets_Wouters_2003)
+
+data = simulation([:K,:pi,:Y],:,:simulate)
+
+plot_model_estimates(Smets_Wouters_2003, 
+                    data)
+
+plot_model_estimates!(Smets_Wouters_2003, 
+                    data[:,10:end])
+
+labels = quarter_labels(Date(1950, 1, 1), size(data,2))
+
+data_relabel = rekey(simulation([:K,:pi,:Y],:,:simulate),:Periods => labels)
+
+plot_model_estimates(Smets_Wouters_2003, 
+                    data_relabel)
+
+plot_model_estimates!(Smets_Wouters_2003, 
+                    data_relabel[:,10:end])
+
+plot_model_estimates!(Smets_Wouters_2003, 
+                    simulation([:pi,:Y],:,:simulate))
+
+plot_model_estimates!(Smets_Wouters_2003, 
+                    data,
+                    smooth = false)
+
+plot_model_estimates!(Smets_Wouters_2003, 
+                    data,
+                    filter = :inversion)
+
+using CSV, DataFrames
+include("../models/FS2000.jl")
+using Dates
 
 # load data
 dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
@@ -41,12 +82,14 @@ observables = sort(Symbol.("log_".*names(dat)))
 data = data(observables,:)
 
 plot_model_estimates(FS2000, data, 
-                    presample_periods = 100
+                    filter = :inversion
+                    # presample_periods = 100
                     )
 
 plot_model_estimates!(FS2000, data, 
                     filter = :inversion,
-                    presample_periods = 110
+                    warmup_iterations = 150,
+                    # presample_periods = 110
                     )
 
 plot_model_estimates!(FS2000, data, smooth = false,
@@ -58,6 +101,12 @@ plot_model_estimates!(FS2000, data, smooth = false,
 
 plot_model_estimates!(FS2000, data, filter = :inversion)
 
+plot_model_estimates(FS2000, data, smooth = false)
+
+estims = get_estimated_variables(FS2000, data, smooth = false, levels = false)
+
+estim_shocks = get_estimated_shocks(FS2000, data, smooth = false)
+
 plot_model_estimates(FS2000, data, presample_periods = 3, shock_decomposition = true, 
 # transparency = 1.0,
 # plots_per_page = 4,
@@ -65,16 +114,6 @@ save_plots = true)
 
 include("../models/GNSS_2010.jl")
 
-ECB_palette = [
-    "#003299",  # blue
-    "#ffb400",  # yellow
-    "#ff4b00",  # orange
-    "#65b800",  # green
-    "#00b1ea",  # light blue
-    "#007816",  # dark green
-    "#8139c6",  # purple
-    "#5c5c5c"   # gray
-]
 
 rgb_ECB_palette = parse.(StatsPlots.Colorant, ECB_palette)
 
