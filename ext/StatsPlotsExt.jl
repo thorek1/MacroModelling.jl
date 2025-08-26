@@ -238,7 +238,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
-    shock_idx   = parse_shocks_input_to_index(shocks, 𝓂.timings)
+    shock_idx   = shocks == :none ? [] : parse_shocks_input_to_index(shocks, 𝓂.timings)
 
     variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
     
@@ -362,7 +362,7 @@ function plot_model_estimates(𝓂::ℳ,
     for (i,s) in enumerate(shock_idx)
         if all(isapprox.(shocks_to_plot[s, periods], 0, atol = eps(Float32)))
             n_subplots -= 1
-        else
+        elseif length(shock_idx) > 0
             push!(non_zero_shock_idx, s)
             push!(non_zero_shock_names, shock_names[i])
         end
@@ -863,7 +863,7 @@ function plot_model_estimates!(𝓂::ℳ,
         for (i,k) in enumerate(model_estimates_active_plot_container)
             StatsPlots.plot!(legend_plot,
                                     [NaN], 
-                                    label = "Data $i",
+                                    label = "Data #$i",
                                     # color = pal[i]
                                     )
         end
