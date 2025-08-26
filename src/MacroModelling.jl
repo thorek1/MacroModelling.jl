@@ -315,6 +315,14 @@ function compare_args_and_kwargs(dicts::Vector{S}) where S <: Dict
                 diffs[k] = nested
             end
 
+        elseif all(v -> v isa KeyedArray, vals)
+            # compare by length and elementwise equality
+            base = vals[1]
+            identical = all(v -> length(v) == length(base) && all(collect(v) .== collect(base)), vals[2:end])
+            if !identical
+                diffs[k] = vals
+            end
+
         elseif all(v -> v isa AbstractArray, vals)
             # compare by length and elementwise equality
             base = vals[1]
