@@ -168,6 +168,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 data_in_levels::Bool = true,
                                 shock_decomposition::Bool = false,
                                 smooth::Bool = true,
+                                label::Union{Real, String, Symbol} = 1,
                                 show_plots::Bool = true,
                                 save_plots::Bool = false,
                                 save_plots_format::Symbol = :pdf,
@@ -301,6 +302,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     args_and_kwargs = Dict(:run_id => length(model_estimates_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
+                           :label => label,
                            
                            :data => data,
                            :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
@@ -557,6 +559,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 data_in_levels::Bool = true,
                                 # shock_decomposition::Bool = false,
                                 smooth::Bool = true,
+                                label::Union{Real, String, Symbol} = length(model_estimates_active_plot_container) + 1,
                                 show_plots::Bool = true,
                                 save_plots::Bool = false,
                                 save_plots_format::Symbol = :pdf,
@@ -686,6 +689,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     args_and_kwargs = Dict(:run_id => length(model_estimates_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
+                           :label => label,
                            
                            :data => data,
                            :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
@@ -783,6 +787,8 @@ function plot_model_estimates!(𝓂::ℳ,
 
     annotate_diff_input = Pair{String,Any}[]
 
+    push!(annotate_diff_input, "Plot label" => reduce(vcat, diffdict[:label]))
+
     len_diff = length(model_estimates_active_plot_container)
 
     if haskey(diffdict, :parameters)
@@ -822,12 +828,12 @@ function plot_model_estimates!(𝓂::ℳ,
         combined_x_axis = model_estimates_active_plot_container[end][:x_axis]
         common_axis = combined_x_axis
     end
-    
+
     for k in setdiff(keys(args_and_kwargs), 
                         [
                             :run_id, :parameters, :data,
                             :decomposition, :variables_to_plot, :data_in_deviations,:shocks_to_plot, :reference_steady_state, :x_axis,
-                            :tol, #:presample_periods,
+                            :tol, :label, #:presample_periods,
                             :shocks, :shock_names,
                             :variables, :variable_names,
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
@@ -839,8 +845,6 @@ function plot_model_estimates!(𝓂::ℳ,
         end
     end
     
-    pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
-
     legend_plot = StatsPlots.plot(framestyle = :none, 
                                     legend = :inside, 
                                     palette = pal,
@@ -853,7 +857,7 @@ function plot_model_estimates!(𝓂::ℳ,
         StatsPlots.plot!(legend_plot,
                         [NaN], 
                         legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                        label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                        label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
 
         push!(joint_shocks, k[:shock_names]...)
         push!(joint_variables, k[:variable_names]...)
@@ -897,7 +901,7 @@ function plot_model_estimates!(𝓂::ℳ,
             periods = k[:presample_periods] + 1:size(k[:data], 2)
 
             if isnothing(var_idx) || not_zero_anywhere
-                # If the variable or shock is not present in the current irf_active_plot_container,
+                # If the variable or shock is not present in the current plot_container,
                 # we skip this iteration.
                 continue
             else
@@ -924,7 +928,7 @@ function plot_model_estimates!(𝓂::ℳ,
             periods = k[:presample_periods] + 1:size(k[:data], 2)
 
             if isnothing(shock_idx) || not_zero_anywhere
-                # If the variable or shock is not present in the current irf_active_plot_container,
+                # If the variable or shock is not present in the current plot_container,
                 # we skip this iteration.
                 continue
             else
@@ -956,7 +960,7 @@ function plot_model_estimates!(𝓂::ℳ,
             if i > length(joint_non_zero_variables)
                 shock_idx = findfirst(==(var), k[:shock_names])
                 if isnothing(shock_idx)
-                    # If the variable or shock is not present in the current irf_active_plot_container,
+                    # If the variable or shock is not present in the current plot_container,
                     # we skip this iteration.
                     push!(SSs, NaN)
                     push!(shocks_to_plot_s, zeros(0))
@@ -977,7 +981,7 @@ function plot_model_estimates!(𝓂::ℳ,
             else
                 var_idx = findfirst(==(var), k[:variable_names])
                 if isnothing(var_idx)
-                    # If the variable or shock is not present in the current irf_active_plot_container,
+                    # If the variable or shock is not present in the current plot_container,
                     # we skip this iteration.
                     push!(SSs, NaN)
                     push!(variables_to_plot_s, zeros(0))
@@ -1274,6 +1278,7 @@ function plot_irf(𝓂::ℳ;
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
                     variables::Union{Symbol_input,String_input} = :all_excluding_auxiliary_and_obc,
                     parameters::ParameterType = nothing,
+                    label::Union{Real, String, Symbol} = 1,
                     show_plots::Bool = true,
                     save_plots::Bool = false,
                     save_plots_format::Symbol = :pdf,
@@ -1571,6 +1576,8 @@ function plot_irf(𝓂::ℳ;
     
     args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
+                           :label => label,
+
                            :periods => periods,
                            :shocks => shocks,
                            :variables => variables,
@@ -1950,6 +1957,7 @@ function plot_irf!(𝓂::ℳ;
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
                     variables::Union{Symbol_input,String_input} = :all_excluding_auxiliary_and_obc,
                     parameters::ParameterType = nothing,
+                    label::Union{Real, String, Symbol} = length(irf_active_plot_container) + 1,
                     show_plots::Bool = true,
                     save_plots::Bool = false,
                     save_plots_format::Symbol = :pdf,
@@ -2243,6 +2251,8 @@ function plot_irf!(𝓂::ℳ;
 
     args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
+                           :label => label,
+
                            :periods => periods,
                            :shocks => shocks,
                            :variables => variables,
@@ -2332,6 +2342,8 @@ function plot_irf!(𝓂::ℳ;
 
     annotate_diff_input = Pair{String,Any}[]
 
+    push!(annotate_diff_input, "Plot label" => reduce(vcat, diffdict[:label]))
+
     len_diff = length(irf_active_plot_container)
 
     if haskey(diffdict, :parameters)
@@ -2371,7 +2383,7 @@ function plot_irf!(𝓂::ℳ;
     
     for k in setdiff(keys(args_and_kwargs), 
                         [
-                            :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state,
+                            :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :label,
                             :shocks, :shock_names,
                             :variables, :variable_names,
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
@@ -2386,8 +2398,6 @@ function plot_irf!(𝓂::ℳ;
             end
         end
     end
-
-    pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
 
     legend_plot = StatsPlots.plot(framestyle = :none, 
                                     legend = :inside, 
@@ -2405,12 +2415,12 @@ function plot_irf!(𝓂::ℳ;
                             alpha = transparency,
                             lw = 0,  # This removes the lines around the bars
                             linecolor = :transparent,
-                            label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         elseif plot_type == :compare
             StatsPlots.plot!(legend_plot,
                             [NaN], 
                             legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                            label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
 
         push!(joint_shocks, k[:shock_names]...)
@@ -3565,6 +3575,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
                                     conditions_in_levels::Bool = true,
                                     algorithm::Symbol = :first_order,
+                                    label::Union{Real, String, Symbol} = 1,
                                     show_plots::Bool = true,
                                     save_plots::Bool = false,
                                     save_plots_format::Symbol = :pdf,
@@ -3702,6 +3713,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     
     args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
+                           :label => label,
 
                            :conditions => conditions[:,1:periods_input],
                            :conditions_in_levels => conditions_in_levels,
@@ -3860,6 +3872,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
                                     conditions_in_levels::Bool = true,
                                     algorithm::Symbol = :first_order,
+                                    label::Union{Real, String, Symbol} = length(conditional_forecast_active_plot_container) + 1,
                                     show_plots::Bool = true,
                                     save_plots::Bool = false,
                                     save_plots_format::Symbol = :pdf,
@@ -4005,6 +4018,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
+                           :label => label,
+
                            :conditions => conditions[:,1:periods_input],
                            :conditions_in_levels => conditions_in_levels,
                            :shocks => shocks[:,1:periods_input],
@@ -4092,6 +4107,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     annotate_diff_input = Pair{String,Any}[]
 
+    push!(annotate_diff_input, "Plot label" => reduce(vcat, diffdict[:label]))
+
     len_diff = length(conditional_forecast_active_plot_container)
 
     if haskey(diffdict, :parameters)
@@ -4167,7 +4184,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
     
     for k in setdiff(keys(args_and_kwargs), 
                         [
-                            :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :conditions, :conditions_in_levels,
+                            :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :conditions, :conditions_in_levels, :label,
                             :shocks, :shock_names,
                             :variables, :variable_names,
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
@@ -4182,8 +4199,6 @@ function plot_conditional_forecast!(𝓂::ℳ,
             end
         end
     end
-
-    pushfirst!(annotate_diff_input, "Plot index" => 1:len_diff)
 
     legend_plot = StatsPlots.plot(framestyle = :none, 
                                     legend = :inside, 
@@ -4202,13 +4217,13 @@ function plot_conditional_forecast!(𝓂::ℳ,
                             linecolor = :transparent,
                             alpha = transparency,
                             linewidth = 0,
-                            label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         elseif plot_type == :compare
             StatsPlots.plot!(legend_plot,
                             [NaN], 
                             legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                             color = pal[mod1(i, length(pal))],
-                            label = length(annotate_diff_input) > 2 ? i : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
 
         push!(joint_variables, String.(k[:variable_names])...)
