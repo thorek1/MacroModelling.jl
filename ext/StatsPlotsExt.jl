@@ -16,7 +16,9 @@ import SparseArrays: SparseMatrixCSC
 import NLopt
 using DispatchDoctor
 
-import MacroModelling: plot_irfs, plot_irf, plot_irf!, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_forecast!, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_model_estimates!, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs
+import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs
+
+import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!
 
 const default_plot_attributes = Dict(:size=>(700,500),
                                 :plot_titlefont => 10, 
@@ -2683,6 +2685,33 @@ function plot_irf!(𝓂::ℳ;
 end
 
 
+"""
+See [`plot_irf!`](@ref)
+"""
+plot_IRF!(args...; kwargs...) = plot_irf!(args...; kwargs...)
+
+"""
+See [`plot_irf!`](@ref)
+"""
+plot_irfs!(args...; kwargs...) = plot_irf!(args...; kwargs...)
+
+
+"""
+Wrapper for [`plot_irf!`](@ref) with `shocks = :simulate` and `periods = 100`.
+"""
+plot_simulations!(args...; kwargs...) =  plot_irf!(args...; kwargs..., shocks = :simulate, periods = get(kwargs, :periods, 100))
+
+"""
+Wrapper for [`plot_irf!`](@ref) with `shocks = :simulate` and `periods = 100`.
+"""
+plot_simulation!(args...; kwargs...) =  plot_irf!(args...; kwargs..., shocks = :simulate, periods = get(kwargs, :periods, 100))
+
+"""
+Wrapper for [`plot_irf!`](@ref) with `generalised_irf = true`.
+"""
+plot_girf!(args...; kwargs...) =  plot_irf!(args...; kwargs..., generalised_irf = true)
+
+
 function merge_by_runid(dicts::Dict...)
     @assert !isempty(dicts) "At least one dictionary is required"
     @assert all(haskey.(dicts, Ref(:run_id))) "Each dictionary must contain :run_id"
@@ -3151,7 +3180,6 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $SAVE_PLOTS_PATH®
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
 - $PLOT_ATTRIBUTES®
-- $ALGORITHM®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®

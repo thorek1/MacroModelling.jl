@@ -6,10 +6,10 @@ using Random, Dates
 # - revisit plot_solution + ! version of it
 # - x axis should be Int not floats for short x axis (e.g. 10)
 # - write model estimates func in get_functions
-# - write the plots! funcs for all other alias funcs
 # - inform user when settings have no effect (and reset them) e.g. warmup itereations is only relevant ofr inversion filter
 
 # DONE:
+# - write the plots! funcs for all other alias funcs
 # - add label argument to ! functions
 # - write plot_model_estimates!
 # - fix color handling for many colors (check how its done with auto)
