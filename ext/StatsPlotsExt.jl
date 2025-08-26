@@ -93,7 +93,7 @@ In case `shock_decomposition = true`, the plot shows the variables, shocks, and 
 
 For higher order perturbation solutions the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks.
 
-If occasionally binding constraints are present in the model, they are not taken into account here. 
+If occasionally binding constraints are present in the model, they are not taken into account here.
 
 # Arguments
 - $MODEL®
@@ -108,12 +108,13 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks
 - $SMOOTH®
+- `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
 - $SAVE_PLOTS_PATH®
 - $PLOTS_PER_PAGE®
-- `transparency` [Default: `0.6`, Type: `Float64`]: transparency of bars
+- `transparency` [Default: `0.6`, Type: `Float64`]: transparency of stacked bars. Only relevant if `shock_decomposition` is `true`.
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
 - $PLOT_ATTRIBUTES®
@@ -548,18 +549,104 @@ Wrapper for [`plot_model_estimates`](@ref) with `shock_decomposition = true`.
 plot_shock_decomposition(args...; kwargs...) =  plot_model_estimates(args...; kwargs..., shock_decomposition = true)
 
 
+"""
+$(SIGNATURES)
+This function allows comparison of the estimated variables, shocks, and the data underlying the estimates for any combination of inputs.
 
+This function shares most of the signature and functionality of [`plot_model_estimates`](@ref). Its main purpose is to append plots based on the inputs to previous calls of this function and the last call of [`plot_model_estimates`](@ref). In the background it keeps a registry of the inputs and outputs and then plots the comparison.
+
+# Arguments
+- $MODEL®
+- $DATA®
+# Keyword Arguments
+- $PARAMETERS®
+- $ALGORITHM®
+- $FILTER®
+- $VARIABLES®
+- `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
+- `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
+- $DATA_IN_LEVELS®
+- `label` [Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots. The default is the number of previous function calls since the last call to the function veriosn with ! + 1.
+- $SMOOTH®
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
+- $PLOTS_PER_PAGE®
+- $MAX_ELEMENTS_PER_LEGENDS_ROW®
+- $EXTRA_LEGEND_SPACE®
+- $PLOT_ATTRIBUTES®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
+
+# Examples
+```julia
+using MacroModelling, StatsPlots
+
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+simulation = simulate(RBC_CME)
+
+
+plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
+
+plot_model_estimates!(RBC_CME, simulation([:k,:c],:,:simulate))
+
+
+plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
+
+plot_model_estimates!(RBC_CME, simulation([:k],:,:simulate), smooth = false)
+
+plot_model_estimates!(RBC_CME, simulation([:k],:,:simulate), filter = :inversion)
+
+
+plot_model_estimates(RBC_CME, simulation([:c],:,:simulate))
+
+plot_model_estimates!(RBC_CME, simulation([:c],:,:simulate), algorithm = :second_order)
+
+
+plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
+
+plot_model_estimates!(RBC_CME, simulation([:k],:,:simulate), parameters = :beta => .99)
+```
+"""
 function plot_model_estimates!(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
-                                algorithm::Symbol = :first_order, 
-                                filter::Symbol = :kalman, 
+                                algorithm::Symbol = :first_order,
+                                filter::Symbol = :kalman,
                                 warmup_iterations::Int = 0,
                                 variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
                                 shocks::Union{Symbol_input,String_input} = :all, 
                                 presample_periods::Int = 0,
                                 data_in_levels::Bool = true,
-                                # shock_decomposition::Bool = false,
                                 smooth::Bool = true,
                                 label::Union{Real, String, Symbol} = length(model_estimates_active_plot_container) + 1,
                                 show_plots::Bool = true,
@@ -567,7 +654,6 @@ function plot_model_estimates!(𝓂::ℳ,
                                 save_plots_format::Symbol = :pdf,
                                 save_plots_path::String = ".",
                                 plots_per_page::Int = 6,
-                                transparency::Float64 = .6,
                                 max_elements_per_legend_row::Int = 4,
                                 extra_legend_space::Float64 = 0.0,
                                 plot_attributes::Dict = Dict(),
@@ -604,8 +690,6 @@ function plot_model_estimates!(𝓂::ℳ,
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
     pruning = false
-
-    @assert !(algorithm ∈ [:second_order, :third_order] && shock_decomposition) "Decomposition implemented for first order, pruned second and third order. Second and third order solution decomposition is not yet implemented."
     
     if algorithm ∈ [:second_order, :third_order]
         filter = :inversion
@@ -869,7 +953,7 @@ function plot_model_estimates!(𝓂::ℳ,
         for (i,k) in enumerate(model_estimates_active_plot_container)
             StatsPlots.plot!(legend_plot,
                                     [NaN], 
-                                    label = "Data #$i",
+                                    label = "Data $i",
                                     # color = pal[i]
                                     )
         end
@@ -1026,7 +1110,8 @@ function plot_model_estimates!(𝓂::ℳ,
                                     same_ss,
                                     pal = pal,
                                     xvals = combined_x_axis, # TODO: check different data length or presample periods. to be fixed
-                                    transparency = transparency)
+                                    # transparency = transparency
+                                    )
                                     
         if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
             for (i,k) in enumerate(model_estimates_active_plot_container)
@@ -1238,6 +1323,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $GENERALISED_IRF®
 - $INITIAL_STATE®
 - $IGNORE_OBC®
+- `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
@@ -1954,6 +2040,94 @@ function standard_subplot(::Val{:stack},
     return p
 end
 
+
+
+"""
+$(SIGNATURES)
+This function allows comparison or stacking of impulse repsonse functions for any combination of inputs.
+
+This function shares most of the signature and functionality of [`plot_irf`](@ref). Its main purpose is to append plots based on the inputs to previous calls of this function and the last call of [`plot_irf`](@ref). In the background it keeps a registry of the inputs and outputs and then plots the comparison or stacks the output.
+
+
+# Arguments
+- $MODEL®
+# Keyword Arguments
+- $PERIODS®
+- $SHOCKS®
+- $VARIABLES®
+- $PARAMETERS®
+- $ALGORITHM®
+- $SHOCK_SIZE®
+- $NEGATIVE_SHOCK®
+- $GENERALISED_IRF®
+- $INITIAL_STATE®
+- $IGNORE_OBC®
+- `label` [Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots. The default is the number of previous function calls since the last call to the function veriosn with ! + 1.
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
+- $PLOTS_PER_PAGE®
+- $PLOT_ATTRIBUTES®
+- `plot_type` [Default: `:compare`, Type: `Symbol`]: plot type used to represent results. `:compare` means results are shown as separate lines. `:stack` means results are stacked.
+- `transparency` [Default: `0.6`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+# Returns
+- `Vector{Plot}` of individual plots
+
+# Examples
+```julia
+using MacroModelling, StatsPlots
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+
+plot_irf(RBC)
+
+plot_irf!(RBC, algorithm = :pruned_second_order)
+
+plot_irf!(RBC, algorithm = :pruned_second_order, generalised_irf = true)
+
+
+plot_irf(RBC)
+
+plot_irf!(RBC, parameters = :β => 0.955)
+
+plot_irf!(RBC, parameters = :α => 0.485)
+
+
+plot_irf(RBC)
+
+plot_irf!(RBC, negative_shock = true)
+
+
+plot_irf(RBC, algorithm = :pruned_second_order)
+
+plot_irf!(RBC, algorithm = :pruned_second_order, shock_size = 2)
+
+
+plot_irf(RBC)
+
+plot_irf!(RBC, shock_size = 2, plot_type = :stack)
+```
+"""
 function plot_irf!(𝓂::ℳ;
                     periods::Int = 40, 
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
@@ -3524,6 +3698,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $VARIABLES®
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
 - $ALGORITHM®
+- `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
@@ -3891,6 +4066,97 @@ end
 
 
 
+"""
+$(SIGNATURES)
+This function allows comparison or stacking of conditional forecasts for any combination of inputs.
+
+This function shares most of the signature and functionality of [`plot_conditional_forecast`](@ref). Its main purpose is to append plots based on the inputs to previous calls of this function and the last call of [`plot_conditional_forecast`](@ref). In the background it keeps a registry of the inputs and outputs and then plots the comparison or stacks the output.
+
+# Arguments
+- $MODEL®
+- $CONDITIONS®
+# Keyword Arguments
+- $SHOCK_CONDITIONS®
+- $INITIAL_STATE®
+- `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
+- $PARAMETERS®
+- $VARIABLES®
+- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
+- $ALGORITHM®
+- `label` [Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots. The default is the number of previous function calls since the last call to the function veriosn with ! + 1.
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_PATH®
+- $PLOTS_PER_PAGE®
+- $PLOT_ATTRIBUTES®
+- `plot_type` [Default: `:compare`, Type: `Symbol`]: plot type used to represent results. `:compare` means results are shown as separate lines. `:stack` means results are stacked.
+- `transparency` [Default: `0.6`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
+
+# Examples
+```julia
+using MacroModelling, StatsPlots
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+# c is conditioned to deviate by 0.01 in period 1 and y is conditioned to deviate by 0.02 in period 3
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,3),Variables = [:c,:y], Periods = 1:3)
+conditions[1,1] = .01
+conditions[2,3] = .02
+
+# in period 2 second shock (eps_z) is conditioned to take a value of 0.05
+shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
+shocks[1,1] = .05
+
+plot_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_levels = false)
+
+conditions = Matrix{Union{Nothing,Float64}}(undef,7,2)
+conditions[4,2] = .01
+conditions[6,1] = .03
+
+plot_conditional_forecast!(RBC_CME, conditions, shocks = shocks, conditions_in_levels = false)
+
+plot_conditional_forecast!(RBC_CME, conditions, shocks = shocks, conditions_in_levels = false, plot_type = :stack)
+
+
+plot_conditional_forecast(RBC_CME, conditions, conditions_in_levels = false)
+
+plot_conditional_forecast!(RBC_CME, conditions, conditions_in_levels = false, algorithm = :second_order)
+
+
+plot_conditional_forecast(RBC_CME, conditions, conditions_in_levels = false)
+
+plot_conditional_forecast!(RBC_CME, conditions, conditions_in_levels = false, parameters = :beta => 0.99)
+```
+"""
 function plot_conditional_forecast!(𝓂::ℳ,
                                     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
                                     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
@@ -3907,9 +4173,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     save_plots_path::String = ".",
                                     plots_per_page::Int = 6,
                                     plot_attributes::Dict = Dict(),
+                                    plot_type::Symbol = :compare,
                                     transparency::Float64 = .6,
                                     verbose::Bool = false,
-                                    plot_type::Symbol = :compare,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = :schur,
                                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
