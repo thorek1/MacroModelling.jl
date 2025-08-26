@@ -39,12 +39,20 @@ observables = sort(Symbol.("log_".*names(dat)))
 
 # subset observables in data
 data = data(observables,:)
-plot_model_estimates(FS2000, data)#, presample_periods = 15)
+
+plot_model_estimates(FS2000, data, 
+                    presample_periods = 100
+                    )
+
+plot_model_estimates!(FS2000, data, 
+                    filter = :inversion,
+                    presample_periods = 110
+                    )
 
 plot_model_estimates!(FS2000, data, smooth = false,
                         plot_attributes = Dict(
                                         # :xformatter => x -> string(Int(ceil(x))),
-                                        # :palette => ECB_palette
+                                        :palette => ECB_palette
                                         )
                                         )
 
