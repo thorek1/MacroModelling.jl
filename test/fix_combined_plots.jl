@@ -1,18 +1,19 @@
 using Revise
 using MacroModelling
 import StatsPlots
-using Random
+using Random, Dates
 # TODO: 
-# - write plot_model_estimates! and revisit plot_solution + ! version of it
-# - add label argument to ! functions
+# - revisit plot_solution + ! version of it
 # - x axis should be Int not floats for short x axis (e.g. 10)
 # - write model estimates func in get_functions
 # - write the plots! funcs for all other alias funcs
 # - inform user when settings have no effect (and reset them) e.g. warmup itereations is only relevant ofr inversion filter
 
 # DONE:
-# - fix color handling for many colors (check how its done wiht auto)
-# - implement switch to not show shock values | use the shock argument
+# - add label argument to ! functions
+# - write plot_model_estimates!
+# - fix color handling for many colors (check how its done with auto)
+# - implement switch to not show shock values | use the shoc argument
 # - see how palette comes in in the plots.jl codes
 # - for model estimate/shock decomp remove zero entries
 
@@ -57,12 +58,17 @@ plot_model_estimates!(Smets_Wouters_2003,
 plot_model_estimates!(Smets_Wouters_2003, 
                     simulation([:pi,:Y],:,:simulate))
 
+plot_model_estimates(Smets_Wouters_2003, 
+                    data)
+
 plot_model_estimates!(Smets_Wouters_2003, 
                     data,
+                    label = :smooth,
                     smooth = false)
 
 plot_model_estimates!(Smets_Wouters_2003, 
                     data,
+                    label = "inv",
                     filter = :inversion)
 
 using CSV, DataFrames
@@ -922,17 +928,25 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 
 vars = [:C, :K, :Y, :r_k, :w_p, :rr_e, :pie, :q_h, :l_p]
+model = Gali_2015_chapter_3_nonlinear
 
-plot_irf(model, algorithm = :pruned_second_order, shocks = shcks, variables = vars)
+plot_irf(model, algorithm = :pruned_second_order, 
+            # shocks = shcks, 
+            label = "nnn",
+            # variables = vars
+            )
 
 plot_irf!(model, algorithm = :pruned_second_order, 
             shock_size = 1.2,
-            shocks = shcks, variables = vars)
+            label = "yyy",
+            # shocks = shcks, variables = vars
+            )
 
 plot_irf!(model, algorithm = :pruned_second_order, 
-            shock_size = 1.2,
+            negative_shock = true,
             plot_type = :stack,
-            shocks = shcks, variables = vars)
+            # shocks = shcks, variables = vars
+            )
 
 plot_irf!(model, algorithm = :pruned_second_order, 
             shock_size = -1,
