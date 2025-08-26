@@ -36,6 +36,7 @@ const args_and_kwargs_names = Dict(:model_name => "Model",
                                     :negative_shock => "Negative shock",
                                     :generalised_irf => "Generalised IRF",
                                     :periods => "Periods",
+                                    :presample_periods => "Presample Periods",
                                     :ignore_obc => "Ignore OBC",
                                     :smooth => "Smooth",
                                     :data => "Data",
@@ -809,7 +810,7 @@ function plot_model_estimates!(𝓂::ℳ,
                         [
                             :run_id, :parameters, :data,
                             :decomposition, :variables_to_plot, :data_in_deviations,:shocks_to_plot, :x_axis, :reference_steady_state,
-                            :tol, :presample_periods,
+                            :tol, #:presample_periods,
                             :shocks, :shock_names,
                             :variables, :variable_names,
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
@@ -830,7 +831,6 @@ function plot_model_estimates!(𝓂::ℳ,
     
     joint_shocks = OrderedSet{String}()
     joint_variables = OrderedSet{String}()
-    single_shock_per_irf = true
     
     for (i,k) in enumerate(model_estimates_active_plot_container)
         StatsPlots.plot!(legend_plot,
@@ -842,12 +842,13 @@ function plot_model_estimates!(𝓂::ℳ,
         push!(joint_variables, k[:variable_names]...)
     end
 
-    if haskey(diffdict, :data)
+    if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
         for (i,k) in enumerate(model_estimates_active_plot_container)
             StatsPlots.plot!(legend_plot,
                                     [NaN], 
-                                    label = "Data",
-                                    color = pal[i])
+                                    label = "Data $i",
+                                    # color = pal[i]
+                                    )
         end
     else
         StatsPlots.plot!(legend_plot,
@@ -859,8 +860,6 @@ function plot_model_estimates!(𝓂::ℳ,
     sort!(joint_shocks)
     sort!(joint_variables)
 
-    shock_decomposition = false
-
     return_plots = []
 
     n_subplots = length(joint_shocks) + length(joint_variables)
@@ -870,6 +869,8 @@ function plot_model_estimates!(𝓂::ℳ,
 
     joint_non_zero_variables = []
     joint_non_zero_shocks = []
+
+    min_presample_periods = minimum([k[:presample_periods] for k in model_estimates_active_plot_container])
 
     for var in joint_variables
         not_zero_anywhere = false
@@ -933,7 +934,7 @@ function plot_model_estimates!(𝓂::ℳ,
         variables_to_plot_s = AbstractVector{eltype(model_estimates_active_plot_container[1][:variables_to_plot])}[]
 
         for k in model_estimates_active_plot_container
-            periods = k[:presample_periods] + 1:size(k[:data], 2)
+            periods = min_presample_periods + 1:size(k[:data], 2)
             
             if i > length(joint_non_zero_variables)
                 shock_idx = findfirst(==(var), k[:shock_names])
@@ -944,7 +945,9 @@ function plot_model_estimates!(𝓂::ℳ,
                     push!(shocks_to_plot_s, zeros(0))
                 else
                     push!(SSs, 0.0)
-                    push!(shocks_to_plot_s, k[:shocks_to_plot][shock_idx, periods])
+                    shocks_to_plot = k[:shocks_to_plot][shock_idx,:]
+                    shocks_to_plot[1:k[:presample_periods]] .= NaN
+                    push!(shocks_to_plot_s, shocks_to_plot[periods]) # k[:shocks_to_plot][shock_idx, periods])
                 end
             else
                 var_idx = findfirst(==(var), k[:variable_names])
@@ -955,7 +958,11 @@ function plot_model_estimates!(𝓂::ℳ,
                     push!(variables_to_plot_s, zeros(0))
                 else
                     push!(SSs, k[:reference_steady_state][var_idx])
-                    push!(variables_to_plot_s, k[:variables_to_plot][var_idx, periods])
+
+                    variables_to_plot = k[:variables_to_plot][var_idx,:]
+                    variables_to_plot[1:k[:presample_periods]] .= NaN
+
+                    push!(variables_to_plot_s, variables_to_plot[periods])#k[:variables_to_plot][var_idx, periods])
                 end
             end
         end
@@ -983,8 +990,10 @@ function plot_model_estimates!(𝓂::ℳ,
                                     xvals = haskey(diffdict, :x_axis) ? x_axis : x_axis, # TODO: check different data length or presample periods. to be fixed
                                     transparency = transparency)
                                     
-        if haskey(diffdict, :data)
+        if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
             for k in model_estimates_active_plot_container
+                periods = min_presample_periods + 1:size(k[:data], 2)
+
                 obs_axis = collect(axiskeys(k[:data],1))
 
                 obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
@@ -992,8 +1001,11 @@ function plot_model_estimates!(𝓂::ℳ,
                 var_idx = findfirst(==(var), k[:variable_names])
 
                 if var ∈ string.(obs_symbols)
+                    data_in_deviations = k[:data_in_deviations][indexin([var], string.(obs_symbols)),:]
+                    data_in_deviations[1:k[:presample_periods]] .= NaN
+                    
                     StatsPlots.plot!(p,
-                        k[:data_in_deviations][indexin([var], string.(obs_symbols)), periods]' .+ k[:reference_steady_state][var_idx],
+                        data_in_deviations[periods] .+ k[:reference_steady_state][var_idx],
                         label = "",
                         # color = pal[length(model_estimates_active_plot_container) + 1]
                         )
@@ -1002,18 +1014,24 @@ function plot_model_estimates!(𝓂::ℳ,
         else
             k = model_estimates_active_plot_container[1]
 
+            periods = min_presample_periods + 1:size(k[:data], 2)
+
             obs_axis = collect(axiskeys(k[:data],1))
 
             obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-            var_idx = findfirst(==(var), k[:variable_names])
+            var_idx = findfirst(==(var), k[:variable_names]) 
 
             if var ∈ string.(obs_symbols)
+                data_in_deviations = k[:data_in_deviations][indexin([var], string.(obs_symbols)),:]
+                data_in_deviations[1:k[:presample_periods]] .= NaN
+                
                 StatsPlots.plot!(p,
-                    k[:data_in_deviations][indexin([var], string.(obs_symbols)), periods]' .+ k[:reference_steady_state][var_idx],
+                    data_in_deviations[periods] .+ k[:reference_steady_state][var_idx],
                     label = "",
                     color = data_color
                     )
+
             end
         end
 
@@ -1719,7 +1737,7 @@ function standard_subplot(::Val{:compare},
     can_dual_axis = gr_back
     
     for (y, ss) in zip(irf_data, steady_state)
-            can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && (ss > eps(Float32))
+        can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && (ss > eps(Float32))
     end
 
     for (i,(y, ss)) in enumerate(zip(irf_data, steady_state))
