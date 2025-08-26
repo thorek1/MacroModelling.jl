@@ -367,7 +367,7 @@ function plot_model_estimates(𝓂::ℳ,
             push!(non_zero_shock_names, shock_names[i])
         end
     end
-
+    
     for i in 1:length(var_idx) + length(non_zero_shock_idx)
         if i > length(var_idx) # Shock decomposition
             if !(all(isapprox.(shocks_to_plot[non_zero_shock_idx[i - length(var_idx)],periods], 0, atol = eps(Float32))))
@@ -379,6 +379,8 @@ function plot_model_estimates(𝓂::ℳ,
                                             pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
                                             xvals = x_axis)         
                 end)
+            else
+                continue
             end
         else
             if !(all(isapprox.(variables_to_plot[var_idx[i],periods], 0, atol = eps(Float32))))
@@ -416,6 +418,8 @@ function plot_model_estimates(𝓂::ℳ,
                 end
                         
                 push!(pp, p)
+            else
+                continue
             end
         end
 
@@ -3003,17 +3007,17 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             ppp = StatsPlots.plot(pp...; attributes...)
             
             pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
-                                        label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
-                                        linewidth = 0 , 
-                                        linecolor = :transparent,
-                                        framestyle = :none, 
-                                        color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
-                                        legend = :inside, 
-                                        legend_columns = legend_columns)
+                                label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
+                                linewidth = 0 , 
+                                linecolor = :transparent,
+                                framestyle = :none, 
+                                color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
+                                legend = :inside, 
+                                legend_columns = legend_columns)
 
             p = StatsPlots.plot(ppp,pp, 
-                                        layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
-                                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
+                                layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
+                                plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
 
             push!(return_plots,gr_back ? p : ppp)
 
@@ -3034,18 +3038,18 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         ppp = StatsPlots.plot(pp...; attributes...)
 
         pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
-                                    label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
-                                    linewidth = 0 , 
-                                    linecolor = :transparent,
-                                    framestyle = :none, 
-                                    color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
-                                    legend = :inside, 
-                                    legend_columns = legend_columns)
+                            label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
+                            linewidth = 0 , 
+                            linecolor = :transparent,
+                            framestyle = :none, 
+                            color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
+                            legend = :inside, 
+                            legend_columns = legend_columns)
 
         p = StatsPlots.plot(ppp,pp, 
-                                    layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
-                                    plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                    attributes_redux...)
+                            layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
+                            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                            attributes_redux...)
 
         push!(return_plots,gr_back ? p : ppp)
 
@@ -3777,8 +3781,8 @@ function plot_conditional_forecast(𝓂::ℳ,
             end
         end
     end
-    if length(pp) > 0
 
+    if length(pp) > 0
         shock_string = "Conditional forecast"
 
         ppp = StatsPlots.plot(pp...; attributes...)
