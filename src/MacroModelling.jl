@@ -131,9 +131,10 @@ include("./filter/kalman.jl")
 
 export @model, @parameters, solve!
 
-export plot_irfs, plot_irf, plot_irf!, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
-export plot_conditional_forecast, plot_conditional_forecast!, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_model_estimates!, plot_shock_decomposition
+export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
+export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
 export plotlyjs_backend, gr_backend
+export plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!
 
 export Normal, Beta, Cauchy, Gamma, InverseGamma
 
@@ -147,7 +148,7 @@ export get_autocorrelation, get_correlation, get_variance_decomposition, get_cor
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution #, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
-export get_shock_decomposition, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations, get_loglikelihood
+export get_shock_decomposition, get_model_estimates, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations, get_loglikelihood
 export Tolerances
 
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
@@ -161,23 +162,28 @@ export irf, girf
 
 function plot_irfs  end
 function plot_irf   end
-function plot_irf!   end
 function plot_IRF   end
 function plot_girf  end
-function plot_solution  end
 function plot_simulations   end
 function plot_simulation    end
+function plot_conditional_forecast  end
+function plot_model_estimates   end
+function plot_shock_decomposition   end
+function plot_solution  end
 function plot_conditional_variance_decomposition    end
 function plot_forecast_error_variance_decomposition end
 function plot_fevd  end
-function plot_conditional_forecast  end
-function plot_conditional_forecast!  end
-function plot_model_estimates   end
-function plot_model_estimates!   end
-function plot_shock_decomposition   end
 function plotlyjs_backend   end
 function gr_backend end
 
+function plot_irfs!  end
+function plot_irf!   end
+function plot_IRF!   end
+function plot_girf!  end
+function plot_simulations!   end
+function plot_simulation!    end
+function plot_conditional_forecast!  end
+function plot_model_estimates!   end
 
 # TuringExt
 

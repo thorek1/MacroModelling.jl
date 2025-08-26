@@ -420,6 +420,119 @@ function get_estimated_variables(𝓂::ℳ,
 end
 
 
+"""
+$(SIGNATURES)
+Return the vertical concatenation of `get_estimated_variables` and `get_estimated_shocks`
+as a single `KeyedArray` with a common first axis named `Estimates` and the
+second axis `Periods`. Variables appear first, followed by shocks.
+
+All keyword arguments are forwarded to the respective functions. See the
+docstrings of `get_estimated_variables` and `get_estimated_shocks` for details.
+
+# Arguments
+- $MODEL®
+- $DATA®
+
+# Keyword Arguments
+- $PARAMETERS®
+- $ALGORITHM®
+- $FILTER®
+- $DATA_IN_LEVELS®
+- `levels` [Default: `true`, Type: `Bool`]: $LEVELS®
+- $SMOOTH®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `KeyedArray` (from the `AxisKeys` package) with variables followed by shocks in rows, and periods in columns.
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+simulation = simulate(RBC)
+
+get_model_estimates(RBC,simulation([:c],:,:simulate))
+# output
+2-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+↓   Variables_and_shocks ∈ 5-element Vector{Symbol}
+→   Periods ∈ 40-element UnitRange{Int64}
+And data, 5×40 Matrix{Float64}:
+               (1)          (2)           (3)           (4)          …  (37)           (38)           (39)           (40)
+  (:c)           5.94335      5.94676       5.94474       5.95135          5.93773        5.94333        5.94915        5.95473
+  (:k)          47.4603      47.4922       47.476        47.5356          47.4079        47.4567        47.514         47.5696
+  (:q)           6.89873      6.92782       6.87844       6.96043          6.85055        6.9403         6.95556        6.96064
+  (:z)           0.0014586    0.00561728   -0.00189203    0.0101896       -0.00543334     0.00798437     0.00968602     0.00981981
+  (:eps_z₍ₓ₎)    0.12649      0.532556     -0.301549      1.0568     …    -0.746981       0.907104       0.808914       0.788261
+```
+"""
+function get_model_estimates(𝓂::ℳ,
+                             data::KeyedArray{Float64};
+                             parameters::ParameterType = nothing,
+                             algorithm::Symbol = :first_order,
+                             filter::Symbol = :kalman,
+                             warmup_iterations::Int = 0,
+                             data_in_levels::Bool = true,
+                             levels::Bool = true,
+                             smooth::Bool = true,
+                             verbose::Bool = false,
+                             tol::Tolerances = Tolerances(),
+                             quadratic_matrix_equation_algorithm::Symbol = :schur,
+                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} =
+                                 sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
+                             lyapunov_algorithm::Symbol = :doubling)::KeyedArray
+
+    vars = get_estimated_variables(𝓂, data;
+                                   parameters = parameters,
+                                   algorithm = algorithm,
+                                   filter = filter,
+                                   warmup_iterations = warmup_iterations,
+                                   data_in_levels = data_in_levels,
+                                   levels = levels,
+                                   smooth = smooth,
+                                   verbose = verbose,
+                                   tol = tol,
+                                   quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                   sylvester_algorithm = sylvester_algorithm,
+                                   lyapunov_algorithm = lyapunov_algorithm)
+
+    shks = get_estimated_shocks(𝓂, data;
+                                parameters = parameters,
+                                algorithm = algorithm,
+                                filter = filter,
+                                warmup_iterations = warmup_iterations,
+                                data_in_levels = data_in_levels,
+                                smooth = smooth,
+                                verbose = verbose,
+                                tol = tol,
+                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                sylvester_algorithm = sylvester_algorithm,
+                                lyapunov_algorithm = lyapunov_algorithm)
+
+    # Build unified first axis and concatenate data
+    est_labels = vcat(collect(axiskeys(vars, 1)), collect(axiskeys(shks, 1)))
+    est_data = vcat(Matrix(vars), Matrix(shks))
+
+    return KeyedArray(est_data; Variables_and_shocks = est_labels, Periods = axiskeys(vars, 2))
+end
 
 
 
