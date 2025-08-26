@@ -991,7 +991,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                     transparency = transparency)
                                     
         if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
-            for k in model_estimates_active_plot_container
+            for (i,k) in enumerate(model_estimates_active_plot_container)
                 periods = min_presample_periods + 1:size(k[:data], 2)
 
                 obs_axis = collect(axiskeys(k[:data],1))
@@ -1007,7 +1007,7 @@ function plot_model_estimates!(𝓂::ℳ,
                     StatsPlots.plot!(p,
                         data_in_deviations[periods] .+ k[:reference_steady_state][var_idx],
                         label = "",
-                        # color = pal[length(model_estimates_active_plot_container) + 1]
+                        color = pal[length(model_estimates_active_plot_container) + i]
                         )
                 end
             end
