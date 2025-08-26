@@ -356,8 +356,8 @@ function plot_model_estimates(𝓂::ℳ,
         end
     end
 
-    non_zero_shock_names = []
-    non_zero_shock_idx = []
+    non_zero_shock_names = String[]
+    non_zero_shock_idx = Int[]
 
     for (i,s) in enumerate(shock_idx)
         if all(isapprox.(shocks_to_plot[s, periods], 0, atol = eps(Float32)))
@@ -733,7 +733,7 @@ function plot_model_estimates!(𝓂::ℳ,
             # get(dict, :filter, nothing) == args_and_kwargs[:filter],
             # get(dict, :warmup_iterations, nothing) == args_and_kwargs[:warmup_iterations],
             # get(dict, :smooth, nothing) == args_and_kwargs[:smooth],
-            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in keys(args_and_kwargs_names))
+            all(k == :data ? collect(get(dict, k, nothing)) == collect(get(args_and_kwargs, k, nothing)) : get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in keys(args_and_kwargs_names))
         )))
         for dict in model_estimates_active_plot_container
     ) # "New plot must be different from previous plot. Use the version without ! to plot."
@@ -792,7 +792,9 @@ function plot_model_estimates!(𝓂::ℳ,
             push!(annotate_diff_input, String(param) => result)
         end
     end
-    
+
+    common_axis = []
+
     if haskey(diffdict, :data)
         unique_data = unique(collect.(diffdict[:data]))
 
@@ -807,13 +809,24 @@ function plot_model_estimates!(𝓂::ℳ,
             end
         end
 
+        common_axis = mapreduce(k -> k[:x_axis], intersect, model_estimates_active_plot_container)
+
+        if length(common_axis) > 0
+            combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort
+        else
+            combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container]) # model_estimates_active_plot_container[end][:x_axis]
+        end
+        
         push!(annotate_diff_input, "Data" => ["#$i" for i in data_idx])
+    else
+        combined_x_axis = model_estimates_active_plot_container[end][:x_axis]
+        common_axis = combined_x_axis
     end
     
     for k in setdiff(keys(args_and_kwargs), 
                         [
                             :run_id, :parameters, :data,
-                            :decomposition, :variables_to_plot, :data_in_deviations,:shocks_to_plot, :x_axis, :reference_steady_state,
+                            :decomposition, :variables_to_plot, :data_in_deviations,:shocks_to_plot, :reference_steady_state, :x_axis,
                             :tol, #:presample_periods,
                             :shocks, :shock_names,
                             :variables, :variable_names,
@@ -835,7 +848,7 @@ function plot_model_estimates!(𝓂::ℳ,
     
     joint_shocks = OrderedSet{String}()
     joint_variables = OrderedSet{String}()
-    
+
     for (i,k) in enumerate(model_estimates_active_plot_container)
         StatsPlots.plot!(legend_plot,
                         [NaN], 
@@ -938,8 +951,8 @@ function plot_model_estimates!(𝓂::ℳ,
         variables_to_plot_s = AbstractVector{eltype(model_estimates_active_plot_container[1][:variables_to_plot])}[]
 
         for k in model_estimates_active_plot_container
-            periods = min_presample_periods + 1:size(k[:data], 2)
-            
+            periods = min_presample_periods + 1:length(combined_x_axis)
+
             if i > length(joint_non_zero_variables)
                 shock_idx = findfirst(==(var), k[:shock_names])
                 if isnothing(shock_idx)
@@ -949,8 +962,16 @@ function plot_model_estimates!(𝓂::ℳ,
                     push!(shocks_to_plot_s, zeros(0))
                 else
                     push!(SSs, 0.0)
-                    shocks_to_plot = k[:shocks_to_plot][shock_idx,:]
-                    shocks_to_plot[1:k[:presample_periods]] .= NaN
+                    
+                    if common_axis == []
+                        idx = 1:length(k[:x_axis])
+                    else
+                        idx = indexin(k[:x_axis], combined_x_axis)
+                    end
+                    
+                    shocks_to_plot = fill(NaN, length(combined_x_axis))
+                    shocks_to_plot[idx] = k[:shocks_to_plot][shock_idx,:]
+                    shocks_to_plot[idx][1:k[:presample_periods]] .= NaN
                     push!(shocks_to_plot_s, shocks_to_plot[periods]) # k[:shocks_to_plot][shock_idx, periods])
                 end
             else
@@ -963,8 +984,15 @@ function plot_model_estimates!(𝓂::ℳ,
                 else
                     push!(SSs, k[:reference_steady_state][var_idx])
 
-                    variables_to_plot = k[:variables_to_plot][var_idx,:]
-                    variables_to_plot[1:k[:presample_periods]] .= NaN
+                    if common_axis == []
+                        idx = 1:length(k[:x_axis])
+                    else
+                        idx = indexin(k[:x_axis], combined_x_axis)
+                    end
+
+                    variables_to_plot = fill(NaN, length(combined_x_axis))
+                    variables_to_plot[idx] = k[:variables_to_plot][var_idx,:]
+                    variables_to_plot[idx][1:k[:presample_periods]] .= NaN
 
                     push!(variables_to_plot_s, variables_to_plot[periods])#k[:variables_to_plot][var_idx, periods])
                 end
@@ -991,12 +1019,12 @@ function plot_model_estimates!(𝓂::ℳ,
                                     gr_back,
                                     same_ss,
                                     pal = pal,
-                                    xvals = haskey(diffdict, :x_axis) ? x_axis : x_axis, # TODO: check different data length or presample periods. to be fixed
+                                    xvals = combined_x_axis, # TODO: check different data length or presample periods. to be fixed
                                     transparency = transparency)
                                     
         if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
             for (i,k) in enumerate(model_estimates_active_plot_container)
-                periods = min_presample_periods + 1:size(k[:data], 2)
+                periods = min_presample_periods + 1:length(combined_x_axis)
 
                 obs_axis = collect(axiskeys(k[:data],1))
 
@@ -1005,9 +1033,16 @@ function plot_model_estimates!(𝓂::ℳ,
                 var_idx = findfirst(==(var), k[:variable_names])
 
                 if var ∈ string.(obs_symbols)
-                    data_in_deviations = k[:data_in_deviations][indexin([var], string.(obs_symbols)),:]
-                    data_in_deviations[1:k[:presample_periods]] .= NaN
-                    
+                    if common_axis == []
+                        idx = 1:length(k[:x_axis])
+                    else
+                        idx = indexin(k[:x_axis], combined_x_axis)
+                    end
+
+                    data_in_deviations = fill(NaN, length(combined_x_axis))
+                    data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols)),:]
+                    data_in_deviations[idx][1:k[:presample_periods]] .= NaN
+
                     StatsPlots.plot!(p,
                         data_in_deviations[periods] .+ k[:reference_steady_state][var_idx],
                         label = "",
