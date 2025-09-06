@@ -749,6 +749,34 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         sylvester_algorithm = sylvester_algorithm,
                                                                         verbose = verbose)
                                         @test isapprox(estim1, estim2, rtol = 1e-8)
+
+                                        
+                                        clear_solution_caches!(m, algorithm)
+                                    
+                                        estim1 = get_model_estimates(m, data, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = false, 
+                                                                        levels = levels,
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm,
+                                                                        verbose = verbose)
+
+                                        clear_solution_caches!(m, algorithm)
+                                                                    
+                                        estim2 = get_model_estimates(m, data_in_levels, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = true, 
+                                                                        levels = levels,
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm,
+                                                                        verbose = verbose)
+                                        @test isapprox(estim1, estim2, rtol = 1e-8)
                                     end
                                 end
                             end
@@ -779,6 +807,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     data_in_levels = false, 
                                     verbose = false)
                     get_estimated_shocks(m, data_in_levels, 
+                                    parameters = parameters,
+                                    algorithm = algorithm, 
+                                    tol = tol,
+                                    data_in_levels = true,
+                                    verbose = false)
+
+                    get_model_estimates(m, data, 
+                                    parameters = parameters,
+                                    algorithm = algorithm, 
+                                    tol = tol,
+                                    data_in_levels = false, 
+                                    verbose = false)
+                    get_model_estimates(m, data_in_levels, 
                                     parameters = parameters,
                                     algorithm = algorithm, 
                                     tol = tol,
