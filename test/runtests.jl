@@ -583,7 +583,12 @@ if test_set == "basic"
         get_irf(m, initial_state = init, shocks = :none)
 
         plots = plot_irf(m, initial_state = init, shocks = :none)
+
         @test plots[1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
+
+        plots! = plot_irf!(m, initial_state = init .* 1.5, shocks = :none)
+        
+        @test plots![1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
     end
     m = nothing
 
@@ -2578,7 +2583,12 @@ if test_set == "basic"
             # 0 < c < 10
         end
         plots = plot_irf(RBC_CME)
+
         @test plots[1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
+        
+        plots! = plot_irf!(RBC_CME, parameters = :rhoz => .8)
+
+        @test plots![1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
 
         RBC_CME = nothing
     end

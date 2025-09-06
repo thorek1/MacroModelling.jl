@@ -91,6 +91,14 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                     lyapunov_algorithm = lyapunov_algorithm,
                                                     sylvester_algorithm = sylvester_algorithm)
+                                                    
+                            plot_model_estimates!(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
                         end
                     end
                 end
@@ -122,6 +130,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         end
                     end
                 end
+                plot_model_estimates!(m, data, 
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
             end
 
             for parameters in params
@@ -284,11 +295,15 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             plot_irfs(m, algorithm = algorithm)
 
+            plot_girf!(m, algorithm = algorithm)
+
             plot_simulations(m, algorithm = algorithm)
 
             plot_simulation(m, algorithm = algorithm)
 
             plot_girf(m, algorithm = algorithm)
+
+            plot_simulation!(m, algorithm = algorithm)
 
             for ignore_obc in [true,false]
                 for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
@@ -332,6 +347,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         end
                     end
                 end
+                plot_irf!(m, algorithm = algorithm, 
+                            parameters = parameters[1])
             end
 
             for initial_state in init_states
@@ -339,6 +356,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             
                 plot_irf(m, algorithm = algorithm, initial_state = initial_state)
             end
+
+            plot_irf!(m, algorithm = algorithm, initial_state = init_states[1])
 
             for variables in vars
                 clear_solution_caches!(m, algorithm)
@@ -576,6 +595,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         end
                     end
                 end
+                plot_conditional_forecast!(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm, 
+                                            shocks = shocks[end])
             end
 
             for periods in [0,10]
@@ -593,6 +616,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     clear_solution_caches!(m, algorithm)
                 
                     plot_conditional_forecast(m, conditions_lvl[end],
+                                                algorithm = algorithm, 
+                                                periods = periods,
+                                                # levels = levels,
+                                                shocks = shocks[end])
+                                                
+                    plot_conditional_forecast!(m, conditions[end],
+                                                conditions_in_levels = false,
                                                 algorithm = algorithm, 
                                                 periods = periods,
                                                 # levels = levels,

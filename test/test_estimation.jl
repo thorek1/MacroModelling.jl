@@ -113,6 +113,7 @@ end
 
 
 plot_model_estimates(FS2000, data, parameters = sample_nuts)
+plot_model_estimates!(FS2000, data, parameters = sample_pigeons)
 plot_shock_decomposition(FS2000, data)
 
 FS2000 = nothing
