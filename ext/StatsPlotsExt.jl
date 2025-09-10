@@ -1856,7 +1856,7 @@ function standard_subplot(::Val{:compare},
                             variable_name::String, 
                             gr_back::Bool, 
                             same_ss::Bool; 
-                            xvals = 1:length(irf_data[1]),
+                            xvals = 1:maximum(length.(irf_data)),
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
                             transparency::Float64 = .6) where S <: AbstractFloat
     plot_dat = []
@@ -2466,6 +2466,7 @@ function plot_irf!(𝓂::ℳ;
         !(all((
             get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
             get(dict, :shock_names, nothing) == args_and_kwargs[:shock_names],
+            get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
             get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
             all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in keys(args_and_kwargs_names))
         )))
@@ -2531,11 +2532,11 @@ function plot_irf!(𝓂::ℳ;
     end
     
     if haskey(diffdict, :shocks)
-        if all(length.(diffdict[:shock_names]) .== 1)
+        # if all(length.(diffdict[:shock_names]) .== 1)
             push!(annotate_diff_input, "Shock" => reduce(vcat, map(x -> typeof(x) <: AbstractArray ? "Shock Matrix" : x, diffdict[:shocks])))
-        else
-            push!(annotate_diff_input, "Shock" => diffdict[:shocks])
-        end
+        # else
+        #     push!(annotate_diff_input, "Shock" => diffdict[:shocks])
+        # end
     end
     
     if haskey(diffdict, :initial_state)
