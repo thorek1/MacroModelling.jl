@@ -669,7 +669,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             # end
 
             
-
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for lyapunov_algorithm in lyapunov_algorithms
@@ -687,14 +686,45 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         end
                     end
                 end
-                plot_conditional_forecast!(m, conditions[end],
-                                            conditions_in_levels = false,
-                                            algorithm = algorithm, 
-                                            shocks = shocks[end])
+            end
+
+            plot_conditional_forecast(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[end])
+
+            i = 1
+
+            for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+                for quadratic_matrix_equation_algorithm in qme_algorithms
+                    for lyapunov_algorithm in lyapunov_algorithms
+                        for sylvester_algorithm in sylvester_algorithms
+                            if i % 4 == 0
+                                plot_conditional_forecast(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[end])
+                            end
+
+                            i += 1
+
+                            clear_solution_caches!(m, algorithm)
+                        
+                            plot_conditional_forecast!(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[end],
+                                                        tol = tol,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                        sylvester_algorithm = sylvester_algorithm)
+                        end
+                    end
+                end
             end
 
             for periods in [0,10]
-                for levels in [true, false]
+                # for levels in [true, false]
                     clear_solution_caches!(m, algorithm)
                 
                     plot_conditional_forecast(m, conditions[end],
@@ -712,16 +742,28 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 periods = periods,
                                                 # levels = levels,
                                                 shocks = shocks[end])
-                                                
+
+                # end
+            end
+
+
+            plot_conditional_forecast(m, conditions_lvl[end],
+                                        algorithm = algorithm,
+                                        shocks = shocks[end])
+            
+            for periods in [0,10]
+                # for levels in [true, false]
+                    clear_solution_caches!(m, algorithm)
+                
                     plot_conditional_forecast!(m, conditions[end],
                                                 conditions_in_levels = false,
                                                 algorithm = algorithm, 
                                                 periods = periods,
                                                 # levels = levels,
                                                 shocks = shocks[end])
-
-                end
+                # end
             end
+
 
             for variables in vars
                 plot_conditional_forecast(m, conditions[end],
@@ -737,8 +779,33 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             algorithm = algorithm)
             end
 
+            plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm)
+
+            for initial_state in sort(init_states, rev = true)
+                plot_conditional_forecast!(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            initial_state = initial_state,
+                                            algorithm = algorithm)
+            end
+
+
             for shcks in shocks
                 plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm, 
+                                            shocks = shcks)
+            end
+
+
+            plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm, 
+                                        shocks = shocks[end])
+
+            for shcks in shocks
+                plot_conditional_forecast!(m, conditions[end],
                                             conditions_in_levels = false,
                                             algorithm = algorithm, 
                                             shocks = shcks)
@@ -751,8 +818,32 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             algorithm = algorithm)
             end
 
+
+            plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm, 
+                                        parameters = params[2])
+
+            for parameters in params
+                plot_conditional_forecast!(m, conditions[end],
+                                            parameters = parameters,
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+            end
+
             for cndtns in conditions
                 plot_conditional_forecast(m, cndtns,
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+            end
+
+            plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+
+            for cndtns in conditions
+                plot_conditional_forecast!(m, cndtns,
                                             conditions_in_levels = false,
                                             algorithm = algorithm)
             end
