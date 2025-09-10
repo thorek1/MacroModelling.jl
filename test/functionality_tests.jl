@@ -299,7 +299,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             plot_simulations(m, algorithm = algorithm)
 
+            plot_irf!(m, algorithm = algorithm)
+
             plot_simulation(m, algorithm = algorithm)
+
+            plot_irfs!(m, algorithm = algorithm)
 
             plot_girf(m, algorithm = algorithm)
 
@@ -322,6 +326,33 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
+
+            plot_irf(m, algorithm = algorithm)
+
+            i = 1
+
+            for ignore_obc in [true,false]
+                for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
+                    for negative_shock in [true,false]
+                        for shock_size in [.1,1]
+                            for periods in [1,10]
+                                if i % 10 == 0
+                                    plot_irf(m, algorithm = algorithm)
+                                end
+
+                                i += 1
+
+                                plot_irf!(m, algorithm = algorithm, 
+                                            ignore_obc = ignore_obc,
+                                            periods = periods,
+                                            generalised_irf = generalised_irf,
+                                            negative_shock = negative_shock,
+                                            shock_size = shock_size)
+                            end
+                        end
+                    end
+                end
+            end
             
 
             shock_mat = randn(m.timings.nExo,3)
@@ -347,8 +378,53 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         end
                     end
                 end
-                plot_irf!(m, algorithm = algorithm, 
-                            parameters = parameters[1])
+            end
+    
+
+            plot_irf(m, algorithm = algorithm)
+
+            i  = 1
+
+            for parameters in params
+                for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        for lyapunov_algorithm in lyapunov_algorithms
+                            for sylvester_algorithm in sylvester_algorithms
+                                if i % 10 == 0
+                                    plot_irf(m, algorithm = algorithm)
+                                end
+                                
+                                i += 1
+
+                                clear_solution_caches!(m, algorithm)
+                                            
+                                plot_irf!(m, algorithm = algorithm, 
+                                            parameters = parameters,
+                                            tol = tol,
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                            lyapunov_algorithm = lyapunov_algorithm,
+                                            sylvester_algorithm = sylvester_algorithm)
+                            end
+                        end
+                    end
+                end
+            end
+
+
+            plot_irf(m, algorithm = algorithm)
+
+            i = 1
+
+            for initial_state in sort(init_states, rev = true)
+                if i % 10 == 0
+                    plot_irf(m, algorithm = algorithm)
+                end
+                
+                i += 1
+
+                clear_solution_caches!(m, algorithm)
+                            
+                plot_irf!(m, algorithm = algorithm, initial_state = initial_state)
             end
 
             for initial_state in init_states
@@ -357,7 +433,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 plot_irf(m, algorithm = algorithm, initial_state = initial_state)
             end
 
-            plot_irf!(m, algorithm = algorithm, initial_state = init_states[1])
 
             for variables in vars
                 clear_solution_caches!(m, algorithm)
@@ -365,12 +440,29 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 plot_irf(m, algorithm = algorithm, variables = variables)
             end
 
+            
+            plot_irf(m, algorithm = algorithm)
+            
+            i = 1
+
+            for shocks in [:none, :all, :all_excluding_obc, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                if i % 4 == 0
+                    plot_irf(m, algorithm = algorithm)
+                end
+
+                i += 1
+                
+                clear_solution_caches!(m, algorithm)
+                            
+                plot_irf!(m, algorithm = algorithm, shocks = shocks)
+            end
+
             for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                 clear_solution_caches!(m, algorithm)
                             
                 plot_irf(m, algorithm = algorithm, shocks = shocks)
             end
-
+            
             for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
                 for plots_per_page in [4,6]
                     plot_irf(m, algorithm = algorithm,
