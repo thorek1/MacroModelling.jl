@@ -4415,12 +4415,20 @@ function plot_conditional_forecast!(𝓂::ℳ,
     end
     
     if haskey(diffdict, :shocks)
+        shock_mats_no_nothing = []
+
+        for shock_mat in diffdict[:shocks]
+            lastcol = findlast(j -> any(!isnothing, shock_mat[:, j]), 1:size(shock_mat, 2))
+            lastcol = isnothing(lastcol) ? 1 : lastcol
+            push!(shock_mats_no_nothing, shock_mat[:, 1:lastcol])
+        end
+
         # Collect unique shocks excluding `nothing`
-        unique_shocks = unique(diffdict[:shocks])
+        unique_shocks = unique(shock_mats_no_nothing)
 
         shocks_idx = Union{Int,Nothing}[]
 
-        for init in diffdict[:shocks]
+        for init in shock_mats_no_nothing
             if isnothing(init) || all(isnothing, init)
                 push!(shocks_idx, nothing)
             else
@@ -4433,16 +4441,26 @@ function plot_conditional_forecast!(𝓂::ℳ,
             end
         end
 
-        push!(annotate_diff_input, "Shocks" => [isnothing(i) ? nothing : "#$i" for i in shocks_idx])
+        if length(unique_shocks) > 1
+            push!(annotate_diff_input, "Shocks" => [isnothing(i) ? nothing : "#$i" for i in shocks_idx])
+        end
     end
     
     if haskey(diffdict, :conditions)
+        condition_mats_no_nothing = []
+
+        for condition_mat in diffdict[:conditions]
+            lastcol = findlast(j -> any(!isnothing, condition_mat[:, j]), 1:size(condition_mat, 2))
+            lastcol = isnothing(lastcol) ? 1 : lastcol
+            push!(condition_mats_no_nothing, condition_mat[:, 1:lastcol])
+        end
+
         # Collect unique conditions excluding `nothing`
-        unique_conditions = unique(diffdict[:conditions])
+        unique_conditions = unique(condition_mats_no_nothing)
 
         conditions_idx = Union{Int,Nothing}[]
 
-        for init in diffdict[:conditions]
+        for init in condition_mats_no_nothing
             if isnothing(init) || all(isnothing, init)
                 push!(conditions_idx, nothing)
             else
@@ -4455,7 +4473,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
             end
         end
 
-        push!(annotate_diff_input, "Conditions" => [isnothing(i) ? nothing : "#$i" for i in conditions_idx])
+        if length(unique_conditions) > 1
+            push!(annotate_diff_input, "Conditions" => [isnothing(i) ? nothing : "#$i" for i in conditions_idx])
+        end
     end
 
     if haskey(diffdict, :initial_state)
