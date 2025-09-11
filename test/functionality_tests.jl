@@ -91,7 +91,33 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                     lyapunov_algorithm = lyapunov_algorithm,
                                                     sylvester_algorithm = sylvester_algorithm)
-                                                    
+                        end
+                    end
+                end
+            end
+
+
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+
+            i = 1
+
+            for quadratic_matrix_equation_algorithm in qme_algorithms
+                for lyapunov_algorithm in lyapunov_algorithms
+                    for sylvester_algorithm in sylvester_algorithms
+                        for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+                            if i % 4 == 0
+                                plot_model_estimates(m, 
+                                                    data_in_levels, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = true)
+                            end
+
+                            i += 1
+                            
+                            clear_solution_caches!(m, algorithm)
+
                             plot_model_estimates!(m, data, 
                                                     algorithm = algorithm, 
                                                     data_in_levels = false, 
@@ -103,6 +129,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     end
                 end
             end
+
 
             for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
                 for filter in (algorithm == :first_order ? filters : [:inversion])
@@ -130,11 +157,42 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         end
                     end
                 end
-                plot_model_estimates!(m, data, 
-                                        algorithm = algorithm, 
-                                        data_in_levels = false)
             end
 
+
+            clear_solution_caches!(m, algorithm)
+        
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+            
+            for filter in (algorithm == :first_order ? filters : [:inversion])
+                for smooth in [true, false]
+                    for presample_periods in [0, 3]
+                        clear_solution_caches!(m, algorithm)
+
+                        plot_model_estimates!(m, data, 
+                                                algorithm = algorithm, 
+                                                data_in_levels = false, 
+                                                filter = filter,
+                                                smooth = smooth,
+                                                presample_periods = presample_periods)
+                    end
+                end
+            end
+
+
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+                                    
+            for parameters in params
+                    plot_model_estimates!(m, data, 
+                                            parameters = parameters,
+                                            algorithm = algorithm, 
+                                            data_in_levels = false)
+            end
+            
             for parameters in params
                     plot_model_estimates(m, data, 
                                             parameters = parameters,
@@ -142,9 +200,34 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             data_in_levels = false)
             end
 
+
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+                                    
+            for variables in vars
+                plot_model_estimates!(m, data, 
+                                        variables = variables,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
             for variables in vars
                 plot_model_estimates(m, data, 
                                         variables = variables,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
+
+
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+                                    
+            for shocks in [:all, :all_excluding_obc, :none, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2])]
+                plot_model_estimates!(m, data, 
+                                        shocks = shocks,
                                         algorithm = algorithm, 
                                         data_in_levels = false)
             end
