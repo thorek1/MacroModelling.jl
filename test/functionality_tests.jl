@@ -227,6 +227,17 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
 
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+                                    
+            for variables in vars
+                plot_model_estimates!(m, data, 
+                                        variables = variables,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
 
             plot_model_estimates(m, data_in_levels, 
                                     algorithm = algorithm, 
