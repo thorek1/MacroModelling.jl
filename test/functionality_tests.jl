@@ -129,6 +129,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
 
+
             for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
                 for filter in (algorithm == :first_order ? filters : [:inversion])
                     for smooth in [true, false]
@@ -221,6 +222,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for variables in vars
                 plot_model_estimates(m, data, 
                                         variables = variables,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
+
+
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+                                    
+            for shocks in [:all, :all_excluding_obc, :none, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2])]
+                plot_model_estimates!(m, data, 
+                                        shocks = shocks,
                                         algorithm = algorithm, 
                                         data_in_levels = false)
             end
