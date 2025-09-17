@@ -117,6 +117,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `transparency` [Default: `0.6`, Type: `Float64`]: transparency of stacked bars. Only relevant if `shock_decomposition` is `true`.
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
+- $LABEL®
 - $PLOT_ATTRIBUTES®
 - $QME®
 - $SYLVESTER®
@@ -566,7 +567,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
 - $DATA_IN_LEVELS®
-- `label` [Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots. The default is the number of previous function calls since the last call to the function veriosn with ! + 1.
+- $LABEL®
 - $SMOOTH®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
@@ -1340,6 +1341,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $SAVE_PLOTS_PATH®
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
+- $LABEL®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -2072,7 +2074,7 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 - $GENERALISED_IRF®
 - $INITIAL_STATE®
 - $IGNORE_OBC®
-- `label` [Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots. The default is the number of previous function calls since the last call to the function veriosn with ! + 1.
+- $LABEL®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
@@ -3721,6 +3723,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SAVE_PLOTS_PATH®
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
+- $LABEL®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -4099,7 +4102,7 @@ This function shares most of the signature and functionality of [`plot_condition
 - $VARIABLES®
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
 - $ALGORITHM®
-- `label` [Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots. The default is the number of previous function calls since the last call to the function veriosn with ! + 1.
+- $LABEL®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
