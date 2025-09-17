@@ -267,8 +267,27 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     plot_attributes = plot_attributes,
                                                     max_elements_per_legend_row = max_elements_per_legend_row,
                                                     extra_legend_space = extra_legend_space,
-                                                    plots_per_page = plots_per_page,)
+                                                    plots_per_page = plots_per_page)
                         end
+                    end
+                end
+            end
+
+            for plots_per_page in [4,6]
+                for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
+                    for label in [:dil, "data in levels", 0, 0.01]
+                        plot_model_estimates(m, data, 
+                                                algorithm = algorithm,
+                                                parameters = params[1], 
+                                                data_in_levels = false)
+                                                
+                        plot_model_estimates!(m, data_in_levels, 
+                                                algorithm = algorithm, 
+                                                data_in_levels = true,
+                                                label = label,
+                                                parameters = params[2],
+                                                plot_attributes = plot_attributes,
+                                                plots_per_page = plots_per_page)
                     end
                 end
             end
@@ -290,12 +309,21 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                         save_plots = save_plots,
                                                         save_plots_path = save_plots_path,
                                                         save_plots_format = save_plots_format)
+
+                                plot_model_estimates!(m, data_in_levels, 
+                                                        algorithm = algorithm, 
+                                                        data_in_levels = true,
+                                                        show_plots = show_plots,
+                                                        save_plots = save_plots,
+                                                        save_plots_path = save_plots_path,
+                                                        save_plots_format = save_plots_format)
                             end
                         end
                     end
                 end
             # end
         end
+        
         @testset "plot_solution" begin
             
 
