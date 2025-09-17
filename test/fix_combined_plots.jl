@@ -29,6 +29,78 @@ ECB_palette = [
     "#5c5c5c"   # gray
 ]
 
+
+include("../models/Gali_2015_chapter_3_nonlinear.jl")
+include("../models/Gali_Monacelli_2005_CITR.jl")
+
+include("../models/Ireland_2004.jl")
+
+include("../models/Ascari_Sbordone_2014.jl")
+
+
+include("../models/JQ_2012_RBC.jl")
+
+
+include("../models/Backus_Kehoe_Kydland_1992.jl")
+
+include("../models/Ghironi_Melitz_2005.jl")
+
+plot_irf(Ghironi_Melitz_2005)
+
+get_variables(Gali_2015_chapter_3_nonlinear)
+
+get_variables(Ireland_2004)
+get_variables(Ascari_Sbordone_2014)
+
+get_variables(Ireland_2004)
+
+
+get_variables(JQ_2012_RBC)
+get_variables(Gali_Monacelli_2005_CITR)
+
+plot_irf(Gali_Monacelli_2005_CITR, shocks = get_shocks(Gali_Monacelli_2005_CITR)[1])
+# 
+# plot_irf!(Gali_Monacelli_2005_CITR, shocks = get_shocks(Gali_Monacelli_2005_CITR)[1])
+# plot_irf!(Gali_Monacelli_2005_CITR, negative_shock = true)
+plot_irf!(JQ_2012_RBC, shocks = get_shocks(JQ_2012_RBC)[2], shock_size = 100)
+
+# plot_irf!(JQ_2012_RBC, shock_size = 50, negative_shock = true)
+using Random
+include("../models/Gali_2015_chapter_3_obc.jl")
+
+
+Random.seed!(14)
+plot_simulation(Gali_2015_chapter_3_obc, periods = 50)
+
+Random.seed!(14)
+plot_simulation!(Gali_2015_chapter_3_obc, periods = 50, ignore_obc = true)
+
+
+include("../models/Caldara_et_al_2012.jl")
+
+plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
+
+plot_irf!(Caldara_et_al_2012, algorithm = :second_order)
+
+plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
+
+plot_irf!(Caldara_et_al_2012, algorithm = :pruned_second_order, generalised_irf = true)
+
+
+plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
+
+plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order)
+
+
+plot_irf(Caldara_et_al_2012, algorithm = :second_order)
+
+plot_irf!(Caldara_et_al_2012, algorithm = :third_order)
+
+plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order)
+
+plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, generalised_irf = true)
+
+
 function quarter_labels(start::Date, n::Int)
     quarters = start:Month(3):(start + Month(3*(n-1)))
     return ["$(year(d))Q$(((month(d)-1) ÷ 3) + 1)" for d in quarters]
