@@ -392,8 +392,6 @@ function plot_model_estimates(𝓂::ℳ,
             if !(all(isapprox.(variables_to_plot[var_idx[i],periods], 0, atol = eps(Float32))))
                 SS = reference_steady_state[var_idx[i]]
 
-                can_dual_axis = gr_back &&  all((variables_to_plot[var_idx[i],:] .+ SS) .> eps(Float32)) && (SS > eps(Float32))
-
                 p = standard_subplot(variables_to_plot[var_idx[i],periods], 
                                     SS, 
                                     variable_names[i], 
@@ -837,7 +835,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     # 1. Keep only certain keys from each dictionary
     reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, keys(args_and_kwargs_names)...) if haskey(d, k))
+        Dict(k => d[k] for k in vcat(:run_id, :label, keys(args_and_kwargs_names)...) if haskey(d, k))
         for d in model_estimates_active_plot_container
     ]
 
@@ -932,6 +930,12 @@ function plot_model_estimates!(𝓂::ℳ,
         end
     end
     
+    if haskey(diffdict, :shock_names)
+        if all(length.(diffdict[:shock_names]) .== 1)
+            push!(annotate_diff_input, "Shock name" => map(x->x[1], diffdict[:shock_names]))
+        end
+    end
+
     legend_plot = StatsPlots.plot(framestyle = :none, 
                                     legend = :inside, 
                                     palette = pal,
@@ -1883,7 +1887,7 @@ function standard_subplot(::Val{:compare},
     can_dual_axis = gr_back
     
     for (y, ss) in zip(irf_data, steady_state)
-        can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && (ss > eps(Float32))
+        can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && ((ss > eps(Float32)) || isnan(ss))
     end
 
     for (i,(y, ss)) in enumerate(zip(irf_data, steady_state))
@@ -1964,7 +1968,7 @@ function standard_subplot(::Val{:stack},
     
     for (y, ss) in zip(irf_data, steady_state)
         if !isnan(ss)
-            can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && (ss > eps(Float32))
+            can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && ((ss > eps(Float32)) || isnan(ss))
         end
     end
 
@@ -2493,7 +2497,7 @@ function plot_irf!(𝓂::ℳ;
 
     # 1. Keep only certain keys from each dictionary
     reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, keys(args_and_kwargs_names)...) if haskey(d, k))
+        Dict(k => d[k] for k in vcat(:run_id, :label, keys(args_and_kwargs_names)...) if haskey(d, k))
         for d in irf_active_plot_container
     ]
 
@@ -2585,6 +2589,12 @@ function plot_irf!(𝓂::ℳ;
             if k == :negative_shock
                 same_shock_direction = false
             end
+        end
+    end
+
+    if haskey(diffdict, :shock_names)
+        if all(length.(diffdict[:shock_names]) .== 1)
+            push!(annotate_diff_input, "Shock name" => map(x->x[1], diffdict[:shock_names]))
         end
     end
 
@@ -4384,7 +4394,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     # 1. Keep only certain keys from each dictionary
     reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, keys(args_and_kwargs_names)...) if haskey(d, k))
+        Dict(k => d[k] for k in vcat(:run_id, :label, keys(args_and_kwargs_names)...) if haskey(d, k))
         for d in conditional_forecast_active_plot_container
     ]
 
@@ -4530,6 +4540,12 @@ function plot_conditional_forecast!(𝓂::ℳ,
             if k == :negative_shock
                 same_shock_direction = false
             end
+        end
+    end
+
+    if haskey(diffdict, :shock_names)
+        if all(length.(diffdict[:shock_names]) .== 1)
+            push!(annotate_diff_input, "Shock name" => map(x->x[1], diffdict[:shock_names]))
         end
     end
 
