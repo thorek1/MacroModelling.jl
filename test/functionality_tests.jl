@@ -279,6 +279,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         plot_model_estimates(m, data, 
                                                 algorithm = algorithm,
                                                 parameters = params[1], 
+                                                label = "baseline",
                                                 data_in_levels = false)
                                                 
                         plot_model_estimates!(m, data_in_levels, 
@@ -323,7 +324,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             # end
         end
-        
+
         @testset "plot_solution" begin
             
 
@@ -484,6 +485,20 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
             
 
+            plot_irf(m, algorithm = algorithm)
+            
+            for negative_shock in [true,false]
+                for shock_size in [.1,1]
+                    for plot_type in [:compare, :stack]
+                        plot_irf!(m, algorithm = algorithm, 
+                                    plot_type = plot_type,
+                                    negative_shock = negative_shock,
+                                    shock_size = shock_size)
+                    end
+                end
+            end
+
+
             shock_mat = randn(m.timings.nExo,3)
 
             shock_mat2 = KeyedArray(randn(m.timings.nExo,10),Shocks = m.timings.exo, Periods = 1:10)
@@ -573,6 +588,29 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             plot_irf(m, algorithm = algorithm)
             
             i = 1
+            
+            for variables in vars
+                if i % 4 == 0
+                    plot_irf(m, algorithm = algorithm)
+                end
+
+                i += 1
+                
+                clear_solution_caches!(m, algorithm)
+                            
+                plot_irf!(m, algorithm = algorithm, variables = variables)
+            end
+
+
+            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                clear_solution_caches!(m, algorithm)
+                            
+                plot_irf(m, algorithm = algorithm, shocks = shocks)
+            end
+            
+            plot_irf(m, algorithm = algorithm)
+            
+            i = 1
 
             for shocks in [:none, :all, :all_excluding_obc, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                 if i % 4 == 0
@@ -586,17 +624,22 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 plot_irf!(m, algorithm = algorithm, shocks = shocks)
             end
 
-            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
-                clear_solution_caches!(m, algorithm)
-                            
-                plot_irf(m, algorithm = algorithm, shocks = shocks)
-            end
-            
+
             for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
                 for plots_per_page in [4,6]
-                    plot_irf(m, algorithm = algorithm,
-                                plot_attributes = plot_attributes,
-                                plots_per_page = plots_per_page)
+                    for label in [:dil, "data in levels", 0, 0.01]
+                        plot_irf(m, algorithm = algorithm,
+                                    label = "baseline",
+                                    parameters = params[1],
+                                    plot_attributes = plot_attributes,
+                                    plots_per_page = plots_per_page)
+
+                        plot_irf!(m, algorithm = algorithm,
+                                    parameters = params[2],
+                                    label = label,
+                                    plot_attributes = plot_attributes,
+                                    plots_per_page = plots_per_page)
+                    end
                 end
             end
 
@@ -611,6 +654,14 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                             for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 plot_irf(m, algorithm = algorithm,
+                                            parameters = params[1],
+                                            show_plots = show_plots,
+                                            save_plots = save_plots,
+                                            save_plots_path = save_plots_path,
+                                            save_plots_format = save_plots_format)
+                                            
+                                plot_irf!(m, algorithm = algorithm,
+                                            parameters = params[2],
                                             show_plots = show_plots,
                                             save_plots = save_plots,
                                             save_plots_path = save_plots_path,
@@ -789,6 +840,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     plots_per_page = plots_per_page,
                                                                     save_plots_path = save_plots_path,
                                                                     save_plots_format = save_plots_format)
+
+                                        plot_conditional_forecast!(m, conditions[end],
+                                                                    conditions_in_levels = false,
+                                                                    initial_state = [0.0],
+                                                                    algorithm = algorithm, 
+                                                                    shocks = shocks[1],
+                                                                    plot_attributes = plot_attributes,
+                                                                    show_plots = show_plots,
+                                                                    save_plots = save_plots,
+                                                                    plots_per_page = plots_per_page,
+                                                                    save_plots_path = save_plots_path,
+                                                                    save_plots_format = save_plots_format)
                                     end
                                 end
                             end
@@ -805,6 +868,15 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             clear_solution_caches!(m, algorithm)
                         
                             plot_conditional_forecast(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[end],
+                                                        tol = tol,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                        sylvester_algorithm = sylvester_algorithm)
+
+                            plot_conditional_forecast!(m, conditions[1],
                                                         conditions_in_levels = false,
                                                         algorithm = algorithm, 
                                                         shocks = shocks[end],
@@ -901,6 +973,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             variables = variables)
             end
             
+            plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm)
+
+            for variables in vars
+                plot_conditional_forecast!(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            initial_state = init_states[end], 
+                                            variables = variables,
+                                            algorithm = algorithm)
+            end
+
+
             for initial_state in init_states
                 plot_conditional_forecast(m, conditions[end],
                                             conditions_in_levels = false,
@@ -975,6 +1060,21 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 plot_conditional_forecast!(m, cndtns,
                                             conditions_in_levels = false,
                                             algorithm = algorithm)
+            end
+            
+
+            plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+
+            for cndtns in conditions
+                for plot_type in [:compare, :stack]
+                    plot_conditional_forecast!(m, cndtns,
+                                                conditions_in_levels = false,
+                                                plot_type = plot_type,
+                                                algorithm = algorithm)
+                end
             end
             
             # plotlyjs_backend()
