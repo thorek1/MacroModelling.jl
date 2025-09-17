@@ -585,20 +585,23 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             
-            plot_irf(m, algorithm = algorithm)
+            plot_irf(m, algorithm = algorithm,
+                        parameters = params[1])
             
             i = 1
             
             for variables in vars
                 if i % 4 == 0
-                    plot_irf(m, algorithm = algorithm)
+                    plot_irf(m, algorithm = algorithm,
+                                parameters = params[1])
                 end
 
                 i += 1
                 
                 clear_solution_caches!(m, algorithm)
                             
-                plot_irf!(m, algorithm = algorithm, variables = variables)
+                plot_irf!(m, algorithm = algorithm, variables = variables,
+                            parameters = params[2])
             end
 
 
@@ -841,11 +844,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     save_plots_path = save_plots_path,
                                                                     save_plots_format = save_plots_format)
 
-                                        plot_conditional_forecast!(m, conditions[end],
+                                        plot_conditional_forecast!(m, conditions[1],
                                                                     conditions_in_levels = false,
                                                                     initial_state = [0.0],
                                                                     algorithm = algorithm, 
-                                                                    shocks = shocks[1],
+                                                                    shocks = shocks[end],
                                                                     plot_attributes = plot_attributes,
                                                                     show_plots = show_plots,
                                                                     save_plots = save_plots,
@@ -876,10 +879,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                         lyapunov_algorithm = lyapunov_algorithm,
                                                         sylvester_algorithm = sylvester_algorithm)
 
-                            plot_conditional_forecast!(m, conditions[1],
+                            plot_conditional_forecast!(m, conditions[end],
                                                         conditions_in_levels = false,
                                                         algorithm = algorithm, 
-                                                        shocks = shocks[end],
+                                                        shocks = shocks[1],
                                                         tol = tol,
                                                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                         lyapunov_algorithm = lyapunov_algorithm,
@@ -892,7 +895,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             plot_conditional_forecast(m, conditions[end],
                                                         conditions_in_levels = false,
                                                         algorithm = algorithm, 
-                                                        shocks = shocks[end])
+                                                        shocks = shocks[1])
 
             i = 1
 
@@ -904,7 +907,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 plot_conditional_forecast(m, conditions[end],
                                                         conditions_in_levels = false,
                                                         algorithm = algorithm, 
-                                                        shocks = shocks[end])
+                                                        shocks = shocks[1])
                             end
 
                             i += 1
@@ -961,7 +964,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 algorithm = algorithm, 
                                                 periods = periods,
                                                 # levels = levels,
-                                                shocks = shocks[end])
+                                                shocks = shocks[1])
                 # end
             end
 
