@@ -948,12 +948,12 @@ function plot_model_estimates!(𝓂::ℳ,
         push!(joint_shocks, String.(k[:shock_names])...)
         push!(joint_variables, String.(k[:variable_names])...)
     end
-
+    
     if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
         for (i,k) in enumerate(model_estimates_active_plot_container)
             StatsPlots.plot!(legend_plot,
                                     [NaN], 
-                                    label = "Data $i",
+                                    label = "Data $(k[:label])",
                                     # color = pal[i]
                                     )
         end
@@ -1197,7 +1197,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
                 push!(layout_heights, 5)
 
-                pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+                pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
             else
                 pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
             end
@@ -1263,7 +1263,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
             push!(layout_heights, 5)
 
-            pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+            pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
         else
             pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
         end
@@ -2733,7 +2733,7 @@ function plot_irf!(𝓂::ℳ;
 
                     push!(layout_heights, 5)
 
-                    pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+                    pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
                 else
                     pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
                 end
@@ -2819,7 +2819,7 @@ function plot_irf!(𝓂::ℳ;
 
                 push!(layout_heights, 5)
                 
-                pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+                pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
             else
                 pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
             end
@@ -4694,7 +4694,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
                 push!(layout_heights, 5)
 
-                pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+                pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
             else
                 pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
             end
@@ -4763,7 +4763,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
             push!(layout_heights, 5)
 
-            pushfirst!(annotate_ss_page, "Plot index" => 1:len_diff)
+            pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
         else
             pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
         end
