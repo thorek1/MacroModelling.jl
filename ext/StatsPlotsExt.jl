@@ -887,10 +887,10 @@ function plot_model_estimates!(𝓂::ℳ,
 
     common_axis = []
 
+    data_idx = Int[]
+
     if haskey(diffdict, :data)
         unique_data = unique(collect.(diffdict[:data]))
-
-        data_idx = Int[]
 
         for init in diffdict[:data]
             for (i,u) in enumerate(unique_data)
@@ -951,9 +951,15 @@ function plot_model_estimates!(𝓂::ℳ,
     
     if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
         for (i,k) in enumerate(model_estimates_active_plot_container)
+            if length(data_idx) > 0
+                lbl = "Data $(data_idx[i])"
+            else
+                lbl = "Data $(k[:label])"
+            end
+
             StatsPlots.plot!(legend_plot,
                                     [NaN], 
-                                    label = "Data $(k[:label])",
+                                    label = lbl,
                                     # color = pal[i]
                                     )
         end
