@@ -559,7 +559,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             i = 1
 
-            for initial_state in sort(init_states, rev = true)
+            for initial_state in init_states
                 if i % 10 == 0
                     plot_irf(m, algorithm = algorithm)
                 end
@@ -1000,7 +1000,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                         conditions_in_levels = false,
                                         algorithm = algorithm)
 
-            for initial_state in sort(init_states, rev = true)
+            for initial_state in init_states
                 plot_conditional_forecast!(m, conditions[end],
                                             conditions_in_levels = false,
                                             initial_state = initial_state,
