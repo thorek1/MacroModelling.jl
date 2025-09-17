@@ -1184,8 +1184,10 @@ function plot_model_estimates!(𝓂::ℳ,
 
             if haskey(diffdict, :model_name)
                 model_string = "multiple models"
+                model_string_filename = "multiple_models"
             else
                 model_string = 𝓂.model_name
+                model_string_filename = 𝓂.model_name
             end
 
             plot_title = "Model: "*model_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
@@ -1232,7 +1234,7 @@ function plot_model_estimates!(𝓂::ℳ,
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                StatsPlots.savefig(p, save_plots_path * "/estimation__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -1250,8 +1252,10 @@ function plot_model_estimates!(𝓂::ℳ,
 
         if haskey(diffdict, :model_name)
             model_string = "multiple models"
+            model_string_filename = "multiple_models"
         else
             model_string = 𝓂.model_name
+            model_string_filename = 𝓂.model_name
         end
 
         plot_title = "Model: "*model_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
@@ -1298,7 +1302,7 @@ function plot_model_estimates!(𝓂::ℳ,
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+            StatsPlots.savefig(p, save_plots_path * "/estimation__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -2720,8 +2724,10 @@ function plot_irf!(𝓂::ℳ;
                 
                 if haskey(diffdict, :model_name)
                     model_string = "multiple models"
+                    model_string_filename = "multiple_models"
                 else
                     model_string = 𝓂.model_name
+                    model_string_filename = 𝓂.model_name
                 end
 
                 plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
@@ -2768,7 +2774,7 @@ function plot_irf!(𝓂::ℳ;
                 end
 
                 if save_plots
-                    StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                    StatsPlots.savefig(p, save_plots_path * "/irf__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
                 end
 
                 pane += 1
@@ -2806,8 +2812,10 @@ function plot_irf!(𝓂::ℳ;
             
             if haskey(diffdict, :model_name)
                 model_string = "multiple models"
+                model_string_filename = "multiple_models"
             else
                 model_string = 𝓂.model_name
+                model_string_filename = 𝓂.model_name
             end
 
             plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
@@ -2854,7 +2862,7 @@ function plot_irf!(𝓂::ℳ;
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                StatsPlots.savefig(p, save_plots_path * "/irf__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
 
