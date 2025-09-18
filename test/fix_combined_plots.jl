@@ -3,10 +3,11 @@ using MacroModelling
 import StatsPlots
 using Random, Dates
 # TODO: 
-# - write tests for the new functions
+# - write tests and docs for the new functions
 # - revisit plot_solution + ! version of it
 # - x axis should be Int not floats for short x axis (e.g. 10)
 # - inform user when settings have no effect (and reset them) e.g. warmup itereations is only relevant ofr inversion filter
+# - test across different models
 
 # DONE:
 # - write model estimates func in get_functions
