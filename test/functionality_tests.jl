@@ -1006,7 +1006,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for initial_state in init_states
                 plot_conditional_forecast!(m, conditions[end],
                                             conditions_in_levels = false,
-                                            parameters = params[1],
+                                            parameters = params[2],
                                             initial_state = initial_state,
                                             algorithm = algorithm)
             end
