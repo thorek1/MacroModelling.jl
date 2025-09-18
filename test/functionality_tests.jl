@@ -555,7 +555,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
 
-            plot_irf(m, algorithm = algorithm)
+            plot_irf(m, algorithm = algorithm,
+                        parameters = params[1])
 
             i = 1
 
@@ -568,7 +569,8 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                 clear_solution_caches!(m, algorithm)
                             
-                plot_irf!(m, algorithm = algorithm, initial_state = initial_state)
+                plot_irf!(m, algorithm = algorithm, initial_state = initial_state,
+                        parameters = params[2])
             end
 
             for initial_state in init_states
@@ -998,11 +1000,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             plot_conditional_forecast(m, conditions[end],
                                         conditions_in_levels = false,
+                                        parameters = params[1],
                                         algorithm = algorithm)
 
             for initial_state in init_states
                 plot_conditional_forecast!(m, conditions[end],
                                             conditions_in_levels = false,
+                                            parameters = params[1],
                                             initial_state = initial_state,
                                             algorithm = algorithm)
             end
