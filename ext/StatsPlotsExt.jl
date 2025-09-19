@@ -26,6 +26,7 @@ const default_plot_attributes = Dict(:size=>(700,500),
                                 :guidefont => 8,
                                 :palette => :auto,
                                 :legendfontsize => 8,
+                                :annotationfontsize => 8,
                                 :legend_title_font_pointsize => 8,
                                 :tickfontsize => 8,
                                 :framestyle => :semi)
@@ -1202,7 +1203,7 @@ function plot_model_estimates!(𝓂::ℳ,
             layout_heights = [15,1]
             
             if length(annotate_diff_input) > 2
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
+                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
@@ -1218,7 +1219,7 @@ function plot_model_estimates!(𝓂::ℳ,
             push!(annotate_ss, annotate_ss_page)
 
             if length(annotate_ss[pane]) > 1
-                annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:legendfontsize], title = "Relevant Steady State")
+                annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady State")
 
                 ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
 
@@ -1270,7 +1271,7 @@ function plot_model_estimates!(𝓂::ℳ,
         layout_heights = [15,1]
         
         if length(annotate_diff_input) > 2
-            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
+            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
             ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
@@ -1286,7 +1287,7 @@ function plot_model_estimates!(𝓂::ℳ,
         push!(annotate_ss, annotate_ss_page)
 
         if length(annotate_ss[pane]) > 1
-            annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:legendfontsize], title = "Relevant Steady States")
+            annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
 
             ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
 
@@ -2749,7 +2750,7 @@ function plot_irf!(𝓂::ℳ;
                 layout_heights = [15,1]
                 
                 if length(annotate_diff_input) > 2
-                    annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
+                    annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                     ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
@@ -2765,7 +2766,7 @@ function plot_irf!(𝓂::ℳ;
                 push!(annotate_ss, annotate_ss_page)
 
                 if length(annotate_ss[pane]) > 1
-                    annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:legendfontsize], title = "Relevant Steady States")
+                    annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
 
                     ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
 
@@ -2837,7 +2838,7 @@ function plot_irf!(𝓂::ℳ;
             layout_heights = [15,1]
 
             if length(annotate_diff_input) > 2
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
+                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
@@ -2853,7 +2854,7 @@ function plot_irf!(𝓂::ℳ;
             push!(annotate_ss, annotate_ss_page)
 
             if length(annotate_ss[pane]) > 1
-                annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:legendfontsize], title = "Relevant Steady States")
+                annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
 
                 ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
 
@@ -3065,7 +3066,7 @@ function plot_df(plot_vector::Vector{Pair{String,Any}}; fontsize::Real = 8, titl
                 framestyle = :none,
                 cbar = false)
 
-    StatsPlots.title!(df_plot, title, titlefontsizes = fontsize)
+    StatsPlots.title!(df_plot, title)
 
     # overlay the header and numeric values
     for j in 1:ncols
@@ -4725,7 +4726,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             layout_heights = [15,1]
             
             if length(annotate_diff_input) > 2
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
+                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
@@ -4741,7 +4742,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             push!(annotate_ss, annotate_ss_page)
 
             if length(annotate_ss[pane]) > 1
-                annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:legendfontsize], title = "Relevant Steady States")
+                annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
 
                 ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
 
@@ -4794,7 +4795,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         layout_heights = [15,1]
         
         if length(annotate_diff_input) > 2
-            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
+            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
             ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
@@ -4810,7 +4811,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         push!(annotate_ss, annotate_ss_page)
 
         if length(annotate_ss[pane]) > 1
-            annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:legendfontsize], title = "Relevant Steady States")
+            annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
 
             ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
 
