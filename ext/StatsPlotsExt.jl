@@ -1202,7 +1202,7 @@ function plot_model_estimates!(𝓂::ℳ,
             layout_heights = [15,1]
             
             if length(annotate_diff_input) > 2
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Input Differences")
+                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
@@ -1270,7 +1270,7 @@ function plot_model_estimates!(𝓂::ℳ,
         layout_heights = [15,1]
         
         if length(annotate_diff_input) > 2
-            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Input Differences")
+            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
 
             ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
@@ -2749,7 +2749,7 @@ function plot_irf!(𝓂::ℳ;
                 layout_heights = [15,1]
                 
                 if length(annotate_diff_input) > 2
-                    annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Input Differences")
+                    annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
 
                     ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
@@ -2837,7 +2837,7 @@ function plot_irf!(𝓂::ℳ;
             layout_heights = [15,1]
 
             if length(annotate_diff_input) > 2
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Input Differences")
+                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
@@ -4725,7 +4725,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             layout_heights = [15,1]
             
             if length(annotate_diff_input) > 2
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Input Differences")
+                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
@@ -4794,7 +4794,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         layout_heights = [15,1]
         
         if length(annotate_diff_input) > 2
-            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Input Differences")
+            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:legendfontsize], title = "Relevant Input Differences")
 
             ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
 
