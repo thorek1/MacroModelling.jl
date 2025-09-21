@@ -36,6 +36,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
     if plots
         @testset "plot_model_estimates" begin
+            println("Testing plot_model_estimates with algorithm: ", algorithm)
             sol = get_solution(m)
             
             if length(m.exo) > 3
@@ -63,6 +64,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
                 # gr_backend()
 
+                println("plot_shock_decomposition")
                 plot_shock_decomposition(m, data, 
                                             algorithm = algorithm, 
                                             data_in_levels = false)
@@ -72,6 +74,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for lyapunov_algorithm in lyapunov_algorithms
                     for sylvester_algorithm in sylvester_algorithms
                         for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                            println("plot_model_estimates: qme_alg: ", quadratic_matrix_equation_algorithm, ", lyap_alg: ", lyapunov_algorithm, ", sylv_alg: ", sylvester_algorithm, ", tol: ", tol)
                             clear_solution_caches!(m, algorithm)
 
                             plot_model_estimates(m, data, 
@@ -96,6 +99,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
+            println("plot_model_estimates with data in levels")
             plot_model_estimates(m, data_in_levels, 
                                     algorithm = algorithm, 
                                     data_in_levels = true)
@@ -106,6 +110,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for lyapunov_algorithm in lyapunov_algorithms
                     for sylvester_algorithm in sylvester_algorithms
                         for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+                            println("plot_model_estimates!: qme_alg: ", quadratic_matrix_equation_algorithm, ", lyap_alg: ", lyapunov_algorithm, ", sylv_alg: ", sylvester_algorithm, ", tol: ", tol)
                             if i % 4 == 0
                                 plot_model_estimates(m, data_in_levels, 
                                                         algorithm = algorithm, 
@@ -134,6 +139,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for filter in (algorithm == :first_order ? filters : [:inversion])
                     for smooth in [true, false]
                         for presample_periods in [0, 3]
+                            println("plot_model_estimates: shock_decomp: ", shock_decomposition, ", filter: ", filter, ", smooth: ", smooth, ", presample: ", presample_periods)
                             clear_solution_caches!(m, algorithm)
 
                             plot_model_estimates(m, data, 
@@ -158,6 +164,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
+            println("plot_model_estimates with data in levels")
             plot_model_estimates(m, data_in_levels, 
                                     algorithm = algorithm, 
                                     data_in_levels = true)
@@ -168,6 +175,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for filter in (algorithm == :first_order ? filters : [:inversion])
                     for smooth in [true, false]
                         for presample_periods in [0, 3]
+                            println("plot_model_estimates!: filter: ", filter, ", smooth: ", smooth, ", presample: ", presample_periods)
                             if i % 4 == 0
                                 plot_model_estimates(m, data_in_levels, 
                                                         algorithm = algorithm, 
@@ -198,6 +206,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
 
+            println("plot_model_estimates with data in levels")
             plot_model_estimates(m, data_in_levels, 
                                     algorithm = algorithm, 
                                     data_in_levels = true)
@@ -205,6 +214,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             i = 1
 
             for parameters in params
+                println("plot_model_estimates! with different parameters")
                 if i % 4 == 0
                     plot_model_estimates(m, data_in_levels, 
                                             algorithm = algorithm, 
@@ -220,6 +230,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             for variables in vars
+                println("plot_model_estimates with different variables")
                 plot_model_estimates(m, data, 
                                         variables = variables,
                                         algorithm = algorithm, 
@@ -227,6 +238,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
 
+            println("plot_model_estimates with data in levels")
             plot_model_estimates(m, data_in_levels, 
                                     algorithm = algorithm, 
                                     data_in_levels = true)
@@ -234,6 +246,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for variables in vars
                 plot_model_estimates!(m, data, 
                                         variables = variables,
+                                        label = string(variables),
                                         algorithm = algorithm, 
                                         data_in_levels = false)
             end
@@ -245,6 +258,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     
             for shocks in [:all, :all_excluding_obc, :none, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2])]
                 plot_model_estimates!(m, data, 
+                                        label = string(shocks),
                                         shocks = shocks,
                                         algorithm = algorithm, 
                                         data_in_levels = false)
@@ -260,6 +274,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for plots_per_page in [4,6]
                 for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
                     for max_elements_per_legend_row in [3,5]
+                        println("plot_model_estimates with different plot attributes")
                         for extra_legend_space in [0.0, 0.5]
                             plot_model_estimates(m, data, 
                                                     algorithm = algorithm, 
@@ -276,6 +291,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for plots_per_page in [4,6]
                 for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
                     for label in [:dil, "data in levels", 0, 0.01]
+                        println("plot_model_estimates! with different plot attributes")
                         plot_model_estimates(m, data, 
                                                 algorithm = algorithm,
                                                 parameters = params[1], 
@@ -302,6 +318,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            println("plot_model_estimates with different save options")
                             for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 plot_model_estimates(m, data, 
                                                         algorithm = algorithm, 
@@ -326,6 +343,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
 
         @testset "plot_solution" begin
+            println("Testing plot_solution with algorithm: ", algorithm)
             
 
             states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
@@ -342,6 +360,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
+                            println("plot_solution with different algorithms and tols")
                             for sylvester_algorithm in sylvester_algorithms
                                 clear_solution_caches!(m, algorithm)
                     
@@ -360,6 +379,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             for plots_per_page in [1,4]
                 for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
+                    println("plot_solution with different plot attributes")
                     plot_solution(m, states[1], algorithm = algos[end],
                                     plot_attributes = plot_attributes,
                                     plots_per_page = plots_per_page)
@@ -376,6 +396,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            println("plot_solution with different save options")
                             for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 plot_solution(m, states[1], algorithm = algos[end],
                                                 show_plots = show_plots,
@@ -389,6 +410,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             # end
 
             for parameters in params
+                println("plot_solution with different parameters")
                 plot_solution(m, states[1], algorithm = algos[end],
                                 parameters = parameters)
             end
@@ -397,6 +419,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for ignore_obc in [true, false]
                     for state in states[[1,end]]
                         for algo in algos
+                            println("plot_solution with different options")
                             plot_solution(m, state,
                                             σ = σ,
                                             algorithm = algo,
@@ -415,6 +438,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
         @testset "plot_irf" begin
+            println("Testing plot_irf with algorithm: ", algorithm)
             
 
             # plotlyjs_backend()
@@ -444,6 +468,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for negative_shock in [true,false]
                         for shock_size in [.1,1]
                             for periods in [1,10]
+                            println("plot_irf with different options")
                                 plot_irf(m, algorithm = algorithm, 
                                             ignore_obc = ignore_obc,
                                             periods = periods,
@@ -466,6 +491,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for negative_shock in [true,false]
                         for shock_size in [.1,1]
                             for periods in [1,10]
+                                println("plot_irf! with different options")
                                 if i % 10 == 0
                                     plot_irf(m, algorithm = algorithm)
                                 end
@@ -489,6 +515,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             
             for negative_shock in [true,false]
                 for shock_size in [.1,1]
+                    println("plot_irf! with different plot types")
                     for plot_type in [:compare, :stack]
                         plot_irf!(m, algorithm = algorithm, 
                                     plot_type = plot_type,
@@ -509,6 +536,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
+                            println("plot_irf with different algorithms and tols")
                             for sylvester_algorithm in sylvester_algorithms
                                 clear_solution_caches!(m, algorithm)
                                             
@@ -533,6 +561,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
                         for lyapunov_algorithm in lyapunov_algorithms
+                            println("plot_irf! with different algorithms and tols")
                             for sylvester_algorithm in sylvester_algorithms
                                 if i % 10 == 0
                                     plot_irf(m, algorithm = algorithm)
@@ -561,6 +590,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             i = 1
 
             for initial_state in init_states
+                println("plot_irf! with different initial states")
                 if i % 10 == 0
                     plot_irf(m, algorithm = algorithm)
                 end
@@ -574,6 +604,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             for initial_state in init_states
+                println("plot_irf with different initial states")
                 clear_solution_caches!(m, algorithm)
                             
                 plot_irf(m, algorithm = algorithm, initial_state = initial_state)
@@ -581,6 +612,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
             for variables in vars
+                println("plot_irf with different variables")
                 clear_solution_caches!(m, algorithm)
                             
                 plot_irf(m, algorithm = algorithm, variables = variables)
@@ -593,6 +625,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             i = 1
             
             for variables in vars
+                println("plot_irf! with different variables")
                 if i % 4 == 0
                     plot_irf(m, algorithm = algorithm,
                                 parameters = params[1])
@@ -608,6 +641,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
             for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                println("plot_irf with different shocks")
                 clear_solution_caches!(m, algorithm)
                             
                 plot_irf(m, algorithm = algorithm, shocks = shocks)
@@ -618,6 +652,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             i = 1
 
             for shocks in [:none, :all, :all_excluding_obc, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                println("plot_irf! with different shocks")
                 if i % 4 == 0
                     plot_irf(m, algorithm = algorithm)
                 end
@@ -632,6 +667,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
                 for plots_per_page in [4,6]
+                    println("plot_irf! with different plot attributes")
                     for label in [:dil, "data in levels", 0, 0.01]
                         plot_irf(m, algorithm = algorithm,
                                     label = "baseline",
@@ -657,6 +693,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            println("plot_irf with different save options")
                             for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 plot_irf(m, algorithm = algorithm,
                                             parameters = params[1],
@@ -680,6 +717,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
         @testset "plot_conditional_variance_decomposition" begin
+            println("Testing plot_conditional_variance_decomposition with algorithm: ", algorithm)
             # plotlyjs_backend()
             
             plot_fevd(m)
@@ -690,6 +728,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             for periods in [10,40]
                 for variables in vars
+                    println("plot_conditional_variance_decomposition with different options")
                     plot_conditional_variance_decomposition(m, periods = periods, variables = variables)
                 end
             end
@@ -699,6 +738,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for lyapunov_algorithm in lyapunov_algorithms
+                        println("plot_conditional_variance_decomposition with different algorithms and tols")
                        clear_solution_caches!(m, algorithm)
                             
                         plot_conditional_variance_decomposition(m, tol = tol,
@@ -717,6 +757,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            println("plot_conditional_variance_decomposition with different save options")
                             for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 for plots_per_page in [4,6]
                                     for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
@@ -743,6 +784,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         end
 
         @testset "plot_conditional_forecast" begin
+            println("Testing plot_conditional_forecast with algorithm: ", algorithm)
             # test conditional forecasting
             new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
             varnames = axiskeys(new_sub_irfs_all,1)
@@ -831,6 +873,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
                     for save_plots in [true, false]
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            println("plot_conditional_forecast with different save options")
                             for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 for plots_per_page in [1,4]
                                     for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
@@ -869,6 +912,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for lyapunov_algorithm in lyapunov_algorithms
+                        println("plot_conditional_forecast with different algorithms and tols")
                         for sylvester_algorithm in sylvester_algorithms
                             clear_solution_caches!(m, algorithm)
                         
@@ -904,6 +948,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
                     for lyapunov_algorithm in lyapunov_algorithms
+                        println("plot_conditional_forecast! with different algorithms and tols")
                         for sylvester_algorithm in sylvester_algorithms
                             if i % 4 == 0
                                 plot_conditional_forecast(m, conditions[end],
@@ -931,6 +976,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             for periods in [0,10]
                 # for levels in [true, false]
+                    println("plot_conditional_forecast with different periods")
                     clear_solution_caches!(m, algorithm)
                 
                     plot_conditional_forecast(m, conditions[end],
