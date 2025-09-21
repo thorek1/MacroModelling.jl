@@ -70,70 +70,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             data_in_levels = false)
             end
 
-            for quadratic_matrix_equation_algorithm in qme_algorithms
-                for lyapunov_algorithm in lyapunov_algorithms
-                    for sylvester_algorithm in sylvester_algorithms
-                        for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                            println("plot_model_estimates: qme_alg: ", quadratic_matrix_equation_algorithm, ", lyap_alg: ", lyapunov_algorithm, ", sylv_alg: ", sylvester_algorithm, ", tol: ", tol)
-                            clear_solution_caches!(m, algorithm)
-
-                            plot_model_estimates(m, data, 
-                                                    algorithm = algorithm, 
-                                                    data_in_levels = false, 
-                                                    tol = tol,
-                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                    lyapunov_algorithm = lyapunov_algorithm,
-                                                    sylvester_algorithm = sylvester_algorithm)
-
-                            clear_solution_caches!(m, algorithm)
-                        
-                            plot_model_estimates(m, data_in_levels, 
-                                                    algorithm = algorithm, 
-                                                    data_in_levels = true,
-                                                    tol = tol,
-                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                    lyapunov_algorithm = lyapunov_algorithm,
-                                                    sylvester_algorithm = sylvester_algorithm)
-                        end
-                    end
-                end
-            end
-
-            println("plot_model_estimates with data in levels")
-            plot_model_estimates(m, data_in_levels, 
-                                    algorithm = algorithm, 
-                                    data_in_levels = true)
-
-            i = 1
-            
-            for quadratic_matrix_equation_algorithm in qme_algorithms
-                for lyapunov_algorithm in lyapunov_algorithms
-                    for sylvester_algorithm in sylvester_algorithms
-                        for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
-                            println("plot_model_estimates!: qme_alg: ", quadratic_matrix_equation_algorithm, ", lyap_alg: ", lyapunov_algorithm, ", sylv_alg: ", sylvester_algorithm, ", tol: ", tol)
-                            if i % 4 == 0
-                                plot_model_estimates(m, data_in_levels, 
-                                                        algorithm = algorithm, 
-                                                        data_in_levels = true)
-                            end
-
-                            i += 1
-                            
-                            clear_solution_caches!(m, algorithm)
-
-                            plot_model_estimates!(m, data, 
-                                                    algorithm = algorithm, 
-                                                    data_in_levels = false, 
-                                                    tol = tol,
-                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                    lyapunov_algorithm = lyapunov_algorithm,
-                                                    sylvester_algorithm = sylvester_algorithm)
-                        end
-                    end
-                end
-            end
-
-
 
             for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
                 for filter in (algorithm == :first_order ? filters : [:inversion])
@@ -196,6 +132,70 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     end
                 end
             # end
+
+
+            for quadratic_matrix_equation_algorithm in qme_algorithms
+                for lyapunov_algorithm in lyapunov_algorithms
+                    for sylvester_algorithm in sylvester_algorithms
+                        for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                            println("plot_model_estimates: qme_alg: ", quadratic_matrix_equation_algorithm, ", lyap_alg: ", lyapunov_algorithm, ", sylv_alg: ", sylvester_algorithm, ", tol: ", tol)
+                            clear_solution_caches!(m, algorithm)
+
+                            plot_model_estimates(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
+
+                            clear_solution_caches!(m, algorithm)
+                        
+                            plot_model_estimates(m, data_in_levels, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = true,
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
+                        end
+                    end
+                end
+            end
+
+            println("plot_model_estimates with data in levels")
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+
+            i = 1
+            
+            for quadratic_matrix_equation_algorithm in qme_algorithms
+                for lyapunov_algorithm in lyapunov_algorithms
+                    for sylvester_algorithm in sylvester_algorithms
+                        for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+                            println("plot_model_estimates!: qme_alg: ", quadratic_matrix_equation_algorithm, ", lyap_alg: ", lyapunov_algorithm, ", sylv_alg: ", sylvester_algorithm, ", tol: ", tol)
+                            if i % 4 == 0
+                                plot_model_estimates(m, data_in_levels, 
+                                                        algorithm = algorithm, 
+                                                        data_in_levels = true)
+                            end
+
+                            i += 1
+                            
+                            clear_solution_caches!(m, algorithm)
+
+                            plot_model_estimates!(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
+                        end
+                    end
+                end
+            end
 
 
             for parameters in params
