@@ -1508,52 +1508,41 @@ function plot_irf(𝓂::ℳ;
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
     end
 
-    if generalised_irf
-        Y = girf(state_update, 
-                    initial_state, 
-                    zeros(𝓂.timings.nVars), 
-                    𝓂.timings; 
-                    periods = periods, 
-                    shocks = shocks, 
-                    shock_size = shock_size,
-                    variables = variables, 
-                    negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
-    else
-        if occasionally_binding_constraints
-            function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
-                unconditional_forecast_horizon = 𝓂.max_obc_horizon
+    if occasionally_binding_constraints
+        function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
+            unconditional_forecast_horizon = 𝓂.max_obc_horizon
 
-                reference_ss = 𝓂.solution.non_stochastic_steady_state
+            reference_ss = 𝓂.solution.non_stochastic_steady_state
 
-                obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+            obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
 
-                periods_per_shock = 𝓂.max_obc_horizon + 1
-                
-                num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
-                
-                p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
+            periods_per_shock = 𝓂.max_obc_horizon + 1
+            
+            num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
+            
+            p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
 
-                constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
+            constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
 
-                if constraints_violated
-                    opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
-                    # check whether auglag is more reliable and efficient here
-                    opt.min_objective = obc_objective_optim_fun
+            if constraints_violated
+                opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
+                # check whether auglag is more reliable and efficient here
+                opt.min_objective = obc_objective_optim_fun
 
-                    opt.xtol_abs = eps(Float32)
-                    opt.ftol_abs = eps(Float32)
-                    opt.maxeval = 500
+                opt.xtol_abs = eps(Float32)
+                opt.ftol_abs = eps(Float32)
+                opt.maxeval = 500
                     
                     # Adding constraints
                     # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
                     # upper bounds don't work because it can be that bounds can only be enforced with offsetting (previous periods negative shocks) positive shocks. also in order to enforce the bound over the length of the forecasting horizon the shocks might be in the last period. that's why an approach whereby you increase the anticipation horizon of shocks can be more costly due to repeated computations.
                     # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
+                
+                upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
+                
+                NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
 
-                    upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
-                    
-                    NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
-
-                    (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
+                (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
                     
                     # solved = ret ∈ Symbol.([
                     #     NLopt.SUCCESS,
@@ -1562,15 +1551,15 @@ function plot_irf(𝓂::ℳ;
                     #     NLopt.XTOL_REACHED,
                     #     NLopt.ROUNDOFF_LIMITED,
                     # ])
-                    
-                    present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
+                
+                present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
 
-                    constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
+                constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
 
-                    solved = !constraints_violated
-                else
-                    solved = true
-                end
+                solved = !constraints_violated
+            else
+                solved = true
+            end
                 # if constraints_violated
                 #     obc_shock_timing = convert_superscript_to_integer.(string.(𝓂.timings.exo[obc_shock_idx]))
                 
@@ -1623,21 +1612,45 @@ function plot_irf(𝓂::ℳ;
                 #     solved = true
                 # end
 
-                present_states = state_update(present_states, present_shocks)
+            present_states = state_update(present_states, present_shocks)
 
-                return present_states, present_shocks, solved
-            end
+            return present_states, present_shocks, solved
+        end
 
+        if generalised_irf
+            Y = girf(state_update, 
+                        obc_state_update,
+                        initial_state, 
+                        zeros(𝓂.timings.nVars), 
+                        𝓂.timings; 
+                        periods = periods, 
+                        shocks = shocks, 
+                        shock_size = shock_size,
+                        variables = variables, 
+                        negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        else
             Y =  irf(state_update,
-                    obc_state_update,
-                    initial_state, 
-                    zeros(𝓂.timings.nVars),
-                    𝓂.timings;
-                    periods = periods, 
-                    shocks = shocks, 
-                    shock_size = shock_size,
-                    variables = variables, 
-                    negative_shock = negative_shock) .+ SSS_delta[var_idx]
+                        obc_state_update,
+                        initial_state, 
+                        zeros(𝓂.timings.nVars),
+                        𝓂.timings;
+                        periods = periods, 
+                        shocks = shocks, 
+                        shock_size = shock_size,
+                        variables = variables, 
+                        negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        end
+    else
+        if generalised_irf
+            Y = girf(state_update, 
+                        initial_state, 
+                        zeros(𝓂.timings.nVars),
+                        𝓂.timings; 
+                        periods = periods, 
+                        shocks = shocks, 
+                        shock_size = shock_size,
+                        variables = variables, 
+                        negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
         else
             Y = irf(state_update, 
                     initial_state, 
@@ -2287,136 +2300,85 @@ function plot_irf!(𝓂::ℳ;
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
     end
 
-    if generalised_irf
-        Y = girf(state_update, 
-                    initial_state, 
-                    zeros(𝓂.timings.nVars), 
-                    𝓂.timings; 
-                    periods = periods, 
-                    shocks = shocks, 
-                    shock_size = shock_size,
-                    variables = variables, 
-                    negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
-    else
-        if occasionally_binding_constraints
-            function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
-                unconditional_forecast_horizon = 𝓂.max_obc_horizon
+    
+    if occasionally_binding_constraints
+        function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
+            unconditional_forecast_horizon = 𝓂.max_obc_horizon
 
-                reference_ss = 𝓂.solution.non_stochastic_steady_state
+            reference_ss = 𝓂.solution.non_stochastic_steady_state
 
-                obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+            obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
 
-                periods_per_shock = 𝓂.max_obc_horizon + 1
+            periods_per_shock = 𝓂.max_obc_horizon + 1
+            
+            num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
+            
+            p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
+
+            constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
+
+            if constraints_violated
+                opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
+                # check whether auglag is more reliable and efficient here
+                opt.min_objective = obc_objective_optim_fun
+
+                opt.xtol_abs = eps(Float32)
+                opt.ftol_abs = eps(Float32)
+                opt.maxeval = 500
                 
-                num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
+                upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
                 
-                p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
+                NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
 
-                constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
-
-                if constraints_violated
-                    opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
-                    # check whether auglag is more reliable and efficient here
-                    opt.min_objective = obc_objective_optim_fun
-
-                    opt.xtol_abs = eps(Float32)
-                    opt.ftol_abs = eps(Float32)
-                    opt.maxeval = 500
-                    
-                    # Adding constraints
-                    # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
-                    # upper bounds don't work because it can be that bounds can only be enforced with offsetting (previous periods negative shocks) positive shocks. also in order to enforce the bound over the length of the forecasting horizon the shocks might be in the last period. that's why an approach whereby you increase the anticipation horizon of shocks can be more costly due to repeated computations.
-                    # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
-
-                    upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
-                    
-                    NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
-
-                    (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
-                    
-                    # solved = ret ∈ Symbol.([
-                    #     NLopt.SUCCESS,
-                    #     NLopt.STOPVAL_REACHED,
-                    #     NLopt.FTOL_REACHED,
-                    #     NLopt.XTOL_REACHED,
-                    #     NLopt.ROUNDOFF_LIMITED,
-                    # ])
-                    
-                    present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
-
-                    constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
-
-                    solved = !constraints_violated
-                else
-                    solved = true
-                end
-                # if constraints_violated
-                #     obc_shock_timing = convert_superscript_to_integer.(string.(𝓂.timings.exo[obc_shock_idx]))
+                (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
                 
-                #     for anticipated_shock_horizon in 1:periods_per_shock
-                #         anticipated_shock_subset = obc_shock_timing .< anticipated_shock_horizon
-                    
-                #         function obc_violation_function_wrapper(x::Vector{T}) where T
-                #             y = zeros(T, length(anticipated_shock_subset))
-                        
-                #             y[anticipated_shock_subset] = x
-                        
-                #             return 𝓂.obc_violation_function(y, p)
-                #         end
-                        
-                #         opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks * anticipated_shock_horizon)
-                        
-                #         opt.min_objective = obc_objective_optim_fun
+                present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
 
-                #         opt.xtol_rel = eps()
-                        
-                #         # Adding constraints
-                #         # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock)
-                #         # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
+                constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
 
-                #         upper_bounds = fill(eps(), 1 + 2*(num_shocks*periods_per_shock-1))
-                        
-                #         NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, obc_violation_function_wrapper), upper_bounds)
-
-                #         (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks * anticipated_shock_horizon))
-                        
-                #         solved = ret ∈ Symbol.([
-                #             NLopt.SUCCESS,
-                #             NLopt.STOPVAL_REACHED,
-                #             NLopt.FTOL_REACHED,
-                #             NLopt.XTOL_REACHED,
-                #             NLopt.ROUNDOFF_LIMITED,
-                #         ])
-                        
-                #         present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")][anticipated_shock_subset] .= x
-
-                #         constraints_violated = any(𝓂.obc_violation_function(present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")], p) .> eps(Float32))
-                        
-                #         solved = solved && !constraints_violated
-
-                #         if solved break end
-                #     end
-
-                #     solved = !any(𝓂.obc_violation_function(present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")], p) .> eps(Float32))
-                # else
-                #     solved = true
-                # end
-
-                present_states = state_update(present_states, present_shocks)
-
-                return present_states, present_shocks, solved
+                solved = !constraints_violated
+            else
+                solved = true
             end
+            present_states = state_update(present_states, present_shocks)
 
+            return present_states, present_shocks, solved
+        end
+
+        if generalised_irf
+            Y = girf(state_update, 
+                        obc_state_update,
+                        initial_state, 
+                        zeros(𝓂.timings.nVars), 
+                        𝓂.timings; 
+                        periods = periods, 
+                        shocks = shocks, 
+                        shock_size = shock_size,
+                        variables = variables, 
+                        negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        else
             Y =  irf(state_update,
-                    obc_state_update,
-                    initial_state, 
-                    zeros(𝓂.timings.nVars),
-                    𝓂.timings;
-                    periods = periods, 
-                    shocks = shocks, 
-                    shock_size = shock_size,
-                    variables = variables, 
-                    negative_shock = negative_shock) .+ SSS_delta[var_idx]
+                        obc_state_update,
+                        initial_state, 
+                        zeros(𝓂.timings.nVars),
+                        𝓂.timings;
+                        periods = periods, 
+                        shocks = shocks, 
+                        shock_size = shock_size,
+                        variables = variables, 
+                        negative_shock = negative_shock) .+ SSS_delta[var_idx]
+        end
+    else
+        if generalised_irf
+            Y = girf(state_update, 
+                        initial_state, 
+                        zeros(𝓂.timings.nVars),
+                        𝓂.timings; 
+                        periods = periods, 
+                        shocks = shocks, 
+                        shock_size = shock_size,
+                        variables = variables, 
+                        negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
         else
             Y = irf(state_update, 
                     initial_state, 
