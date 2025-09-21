@@ -829,34 +829,34 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             push!(conditions, cndtns)
 
             cndtns = spzeros(size(new_sub_irfs_all,1),2)
-            cndtns[var_idxs[1],1] = .01
-            cndtns[var_idxs[2],2] = .02
+            cndtns[var_idxs[1],1] = .011
+            cndtns[var_idxs[2],2] = .024
 
             push!(conditions, cndtns)
 
             cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
-            cndtns[1,1] = .01
-            cndtns[2,2] = .02
+            cndtns[1,1] = .014
+            cndtns[2,2] = .0207
 
             push!(conditions, cndtns)
 
             cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-            cndtns[1,1] = .01
-            cndtns[2,2] = .02
+            cndtns[1,1] = .014
+            cndtns[2,2] = .025
 
             push!(conditions, cndtns)
 
             conditions_lvl = []
 
             cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+            cndtns_lvl[1,1] = .017 + stst[var_idxs[1]]
             cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
 
             push!(conditions_lvl, cndtns_lvl)
 
             cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
             cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
-            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+            cndtns_lvl[2,2] = .027 + stst[var_idxs[2]]
         
             push!(conditions_lvl, cndtns_lvl)
 
@@ -867,22 +867,22 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
                 shcks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
-                shcks[1,1] = .1
+                shcks[1,1] = .13
 
                 push!(shocks, shcks)
 
                 shcks = spzeros(size(new_sub_irfs_all,3),1)
-                shcks[1,1] = .1
+                shcks[1,1] = .18
                 
                 push!(shocks, shcks)
 
                 shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
-                shcks[1,1] = .1
+                shcks[1,1] = .12
 
                 push!(shocks, shcks)
 
                 shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
-                shcks[1,1] = .1
+                shcks[1,1] = .19
 
                 push!(shocks, shcks)
             end
@@ -1047,6 +1047,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             variables = variables)
             end
             
+
             plot_conditional_forecast(m, conditions[end],
                                         conditions_in_levels = false,
                                         algorithm = algorithm)
