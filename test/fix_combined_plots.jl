@@ -66,15 +66,48 @@ plot_irf(Gali_Monacelli_2005_CITR, shocks = get_shocks(Gali_Monacelli_2005_CITR)
 plot_irf!(JQ_2012_RBC, shocks = get_shocks(JQ_2012_RBC)[2], shock_size = 100)
 
 # plot_irf!(JQ_2012_RBC, shock_size = 50, negative_shock = true)
+
+# test plot_irf! functions
+
 using Random
 include("../models/Gali_2015_chapter_3_obc.jl")
 
 
 Random.seed!(14)
-plot_simulation(Gali_2015_chapter_3_obc, periods = 50)
+plot_simulation(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0, ignore_obc = true)
 
 Random.seed!(14)
-plot_simulation!(Gali_2015_chapter_3_obc, periods = 50, ignore_obc = true)
+plot_simulation!(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0)
+
+Random.seed!(14)
+plot_simulation!(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0025)
+
+
+Random.seed!(13)
+plot_simulation(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, periods = 40, parameters = :R̄ => 1.0, ignore_obc = true)
+
+
+Random.seed!(13)
+plot_simulation!(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, periods = 40, parameters = :R̄ => 1.0)
+
+Random.seed!(13)
+plot_simulation!(Gali_2015_chapter_3_obc, algorithm = :second_order, periods = 40, parameters = :R̄ => 1.0)
+
+
+Random.seed!(13)
+plot_irf(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, periods = 40, parameters = :R̄ => 1.0)
+
+Random.seed!(13)
+plot_irf!(Gali_2015_chapter_3_obc, algorithm = :second_order, periods = 40, parameters = :R̄ => 1.0)
+
+
+
+plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0)
+
+plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.5)
+
+plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 0.5)
+
 
 
 include("../models/Caldara_et_al_2012.jl")
@@ -85,7 +118,7 @@ plot_irf!(Caldara_et_al_2012, algorithm = :second_order)
 
 plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
 
-plot_irf!(Caldara_et_al_2012, algorithm = :pruned_second_order, generalised_irf = true)
+plot_irf!(Caldara_et_al_2012, algorithm = :second_order, generalised_irf = true, save_plots = true, save_plots_format = :pdf)
 
 
 plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
