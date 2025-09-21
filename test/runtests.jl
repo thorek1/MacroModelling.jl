@@ -348,7 +348,6 @@ if test_set == "plots_5"
         plot_irf!(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, parameters = :R̄ => 1.0)
 
 
-
         plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0)
 
         plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.5)
@@ -356,36 +355,72 @@ if test_set == "plots_5"
         plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 0.5)
 
 
-
         plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0)
 
         plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true)
 
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, ignore_obc = true)
+
 
         plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order)
 
-        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, algorithm = :pruned_second_order)
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, ignore_obc = true)
 
-        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, negative_shock = true, algorithm = :pruned_second_order)
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, ignore_obc = true, generalised_irf = true)
+    end
+    
+    @testset verbose = true "Caldara et al 2012 plots" begin
+        include("../models/Caldara_et_al_2012.jl")
 
-        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, negative_shock = true, algorithm = :pruned_second_order, ignore_obc = true)
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
 
-
-        plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, algorithm = :pruned_second_order)
-
-        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order)
-
-
-        plot_irf(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.97)
-
-        plot_irf!(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.97, ignore_obc = true)
-
-        plot_irf!(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.97, generalised_irf = true, plots_per_page = 2)
+        plot_irf!(Caldara_et_al_2012, algorithm = :second_order)
 
 
-        plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, ignore_obc = true)
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
 
-        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, generalised_irf = true)
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_second_order, generalised_irf = true)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :second_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :third_order)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, generalised_irf = true)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :third_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :third_order, generalised_irf = true)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, shock_size = 2)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, shock_size = 3)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = :ψ => 0.8)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = :ψ => 1.5)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = :ψ => 2.5)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.3])
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.25])
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.35])
     end
 end
 
