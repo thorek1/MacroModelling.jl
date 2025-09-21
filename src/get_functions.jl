@@ -1073,6 +1073,121 @@ get_irf(RBC, RBC.parameter_values)
  0.01        0.002       0.0004      8.0e-5         2.74878e-29  5.49756e-30
 ```
 """
+function create_obc_state_update(𝓂::ℳ, algorithm::Symbol)
+    function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
+        unconditional_forecast_horizon = 𝓂.max_obc_horizon
+
+        reference_ss = 𝓂.solution.non_stochastic_steady_state
+
+        obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+
+        periods_per_shock = 𝓂.max_obc_horizon + 1
+
+        num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
+
+        p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
+
+        constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
+
+        if constraints_violated
+            opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
+
+            opt.min_objective = obc_objective_optim_fun
+
+            opt.xtol_abs = eps(Float32)
+            opt.ftol_abs = eps(Float32)
+            opt.maxeval = 500
+
+            upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
+
+            NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
+
+            (_, x, _) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
+
+            present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
+
+            constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
+
+            solved = !constraints_violated
+        else
+            solved = true
+        end
+
+        present_states = state_update(present_states, present_shocks)
+
+        return present_states, present_shocks, solved
+    end
+
+    return obc_state_update
+end
+
+function compute_irf_data(𝓂::ℳ,
+                          state_update::Function,
+                          initial_state::Union{Vector{Vector{Float64}},Vector{Float64}},
+                          level::Vector{Float64},
+                          algorithm::Symbol;
+                          periods::Int = 40,
+                          shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all,
+                          variables::Union{Symbol_input,String_input} = :all,
+                          shock_size::Real = 1,
+                          negative_shock::Bool = false,
+                          generalised_irf::Bool = false,
+                          occasionally_binding_constraints::Bool = false,
+                          post_addition::Union{Nothing,AbstractVector{<:Real}} = nothing)
+
+    if occasionally_binding_constraints
+        obc_state_update = create_obc_state_update(𝓂, algorithm)
+
+        data = generalised_irf ?
+            girf(state_update,
+                obc_state_update,
+                initial_state,
+                level,
+                𝓂.timings;
+                periods = periods,
+                shocks = shocks,
+                variables = variables,
+                shock_size = shock_size,
+                negative_shock = negative_shock) :
+            irf(state_update,
+                obc_state_update,
+                initial_state,
+                level,
+                𝓂.timings;
+                periods = periods,
+                shocks = shocks,
+                variables = variables,
+                shock_size = shock_size,
+                negative_shock = negative_shock)
+    else
+        data = generalised_irf ?
+            girf(state_update,
+                initial_state,
+                level,
+                𝓂.timings;
+                periods = periods,
+                shocks = shocks,
+                variables = variables,
+                shock_size = shock_size,
+                negative_shock = negative_shock) :
+            irf(state_update,
+                initial_state,
+                level,
+                𝓂.timings;
+                periods = periods,
+                shocks = shocks,
+                variables = variables,
+                shock_size = shock_size,
+                negative_shock = negative_shock)
+    end
+
+    if post_addition !== nothing
+        data = data .+ reshape(post_addition, length(post_addition), 1, 1)
+    end
+
+    return data
+end
+
 function get_irf(𝓂::ℳ,
                     parameters::Vector{S}; 
                     periods::Int = 40, 
@@ -1384,116 +1499,22 @@ function get_irf(𝓂::ℳ;
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
     end
     
-    if generalised_irf
-        # @timeit_debug timer "Calculate IRFs" begin    
-        girfs =  girf(state_update,
-                        initial_state,
-                        levels ? reference_steady_state + SSS_delta : SSS_delta,
-                        𝓂.timings; 
-                        periods = periods, 
-                        shocks = shocks, 
-                        variables = variables, 
-                        shock_size = shock_size,
-                        negative_shock = negative_shock)#, warmup_periods::Int = 100, draws::Int = 50, iterations_to_steady_state::Int = 500)
-        # end # timeit_debug
+    level_vector = levels ? reference_steady_state + SSS_delta : SSS_delta
 
-        return girfs
-    else
-        if occasionally_binding_constraints
-            function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
-                unconditional_forecast_horizon = 𝓂.max_obc_horizon
+    irfs = compute_irf_data(𝓂,
+                            state_update,
+                            initial_state,
+                            level_vector,
+                            algorithm;
+                            periods = periods,
+                            shocks = shocks,
+                            variables = variables,
+                            shock_size = shock_size,
+                            negative_shock = negative_shock,
+                            generalised_irf = generalised_irf,
+                            occasionally_binding_constraints = occasionally_binding_constraints)
 
-                reference_ss = 𝓂.solution.non_stochastic_steady_state
-
-                obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
-
-                periods_per_shock = 𝓂.max_obc_horizon + 1
-                
-                num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
-                
-                p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
-
-                constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
-
-                if constraints_violated
-                    # solved = false
-
-                    # for algo ∈ [NLopt.:LD_SLSQP, NLopt.:LN_COBYLA] 
-                        # check whether auglag is more reliable here (as in gives smaller shock size)
-                        opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
-                    
-                        opt.min_objective = obc_objective_optim_fun
-
-                        opt.xtol_abs = eps(Float32)
-                        opt.ftol_abs = eps(Float32)
-                        opt.maxeval = 500
-                        
-                        # Adding constraints
-                        # opt.upper_bounds = fill(eps(), num_shocks*periods_per_shock) 
-                        # upper bounds don't work because it can be that bounds can only be enforced with offsetting (previous periods negative shocks) positive shocks. also in order to enforce the bound over the length of the forecasting horizon the shocks might be in the last period. that's why an approach whereby you increase the anticipation horizon of shocks can be more costly due to repeated computations.
-                        # opt.lower_bounds = fill(-eps(), num_shocks*periods_per_shock)
-
-                        upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
-                        
-                        NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
-
-                        (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
-                        
-                        # solved = ret ∈ Symbol.([
-                        #     NLopt.SUCCESS,
-                        #     NLopt.STOPVAL_REACHED,
-                        #     NLopt.FTOL_REACHED,
-                        #     NLopt.XTOL_REACHED,
-                        #     NLopt.ROUNDOFF_LIMITED,
-                        # ])
-                        
-                        present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
-
-                        constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
-
-                    #     if !constraints_violated
-                    #         break
-                    #     end
-                    # end
-
-                    solved = !constraints_violated
-                else
-                    solved = true
-                end
-
-                present_states = state_update(present_states, present_shocks)
-
-                return present_states, present_shocks, solved
-            end
-
-            # @timeit_debug timer "Calculate IRFs" begin
-            irfs =  irf(state_update,
-                        obc_state_update, 
-                        initial_state, 
-                        levels ? reference_steady_state + SSS_delta : SSS_delta,
-                        𝓂.timings; 
-                        periods = periods, 
-                        shocks = shocks, 
-                        variables = variables, 
-                        shock_size = shock_size,
-                        negative_shock = negative_shock)
-            # end # timeit_debug
-        else
-            # @timeit_debug timer "Calculate IRFs" begin        
-            irfs =  irf(state_update, 
-                        initial_state, 
-                        levels ? reference_steady_state + SSS_delta : SSS_delta,
-                        𝓂.timings; 
-                        periods = periods, 
-                        shocks = shocks, 
-                        variables = variables, 
-                        shock_size = shock_size,
-                        negative_shock = negative_shock)
-            # end # timeit_debug
-        end
-   
-        return irfs
-    end
+    return irfs
 
 end
 
