@@ -100,7 +100,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            println("plot_model_estimates with data in levels")
+            
             plot_model_estimates(m, data_in_levels, 
                                     algorithm = algorithm, 
                                     data_in_levels = true)
@@ -163,7 +163,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            println("plot_model_estimates with data in levels")
+            
             plot_model_estimates(m, data_in_levels, 
                                     algorithm = algorithm, 
                                     data_in_levels = true)
@@ -206,7 +206,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
 
-            println("plot_model_estimates with data in levels")
+            
             plot_model_estimates(m, data_in_levels, 
                                     algorithm = algorithm, 
                                     data_in_levels = true)
@@ -238,12 +238,23 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
 
-            println("plot_model_estimates with data in levels")
             plot_model_estimates(m, data_in_levels, 
+                                    parameters = params[1],
                                     algorithm = algorithm, 
                                     data_in_levels = true)
                                     
+            i = 1             
             for variables in vars
+                println("plot_model_estimates! with different variables")
+                if i % 4 == 0
+                    plot_model_estimates(m, data_in_levels,
+                                            parameters = params[1],
+                                            algorithm = algorithm, 
+                                            data_in_levels = true)
+                end
+
+                i += 1
+
                 plot_model_estimates!(m, data, 
                                         variables = variables,
                                         label = string(variables),
@@ -255,8 +266,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             plot_model_estimates(m, data_in_levels, 
                                     algorithm = algorithm, 
                                     data_in_levels = true)
-                                    
+                                  
+            i = 1
+
             for shocks in [:all, :all_excluding_obc, :none, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2])]
+                println("plot_model_estimates! with different shocks")
+                if i % 4 == 0
+                    plot_model_estimates(m, data_in_levels, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = true)
+                end
+
+                i += 1
+
                 plot_model_estimates!(m, data, 
                                         label = string(shocks),
                                         shocks = shocks,
@@ -265,6 +287,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             end
 
             for shocks in [:all, :all_excluding_obc, :none, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2])]
+                println("plot_model_estimates with different shocks")
                 plot_model_estimates(m, data, 
                                         shocks = shocks,
                                         algorithm = algorithm, 
@@ -1028,7 +1051,17 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                         conditions_in_levels = false,
                                         algorithm = algorithm)
 
+            i = 1
+
             for variables in vars
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+                end
+
+                i += 1
+
                 plot_conditional_forecast!(m, conditions[end],
                                             conditions_in_levels = false,
                                             initial_state = init_states[end], 
@@ -1049,7 +1082,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                         parameters = params[1],
                                         algorithm = algorithm)
 
+            i = 1
+
             for initial_state in init_states
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        parameters = params[1],
+                                        algorithm = algorithm)
+                end
+
+                i += 1
+
                 plot_conditional_forecast!(m, conditions[end],
                                             conditions_in_levels = false,
                                             parameters = params[2],
@@ -1071,7 +1115,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                         algorithm = algorithm, 
                                         shocks = shocks[end])
 
+            i = 1
+
             for shcks in shocks
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm, 
+                                        shocks = shocks[end])
+                end
+
+                i += 1
+
                 plot_conditional_forecast!(m, conditions[end],
                                             conditions_in_levels = false,
                                             algorithm = algorithm, 
@@ -1091,7 +1146,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                         algorithm = algorithm, 
                                         parameters = params[2])
 
+            i = 1
+
             for parameters in params
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm, 
+                                        parameters = params[2])
+                end
+
+                i += 1
+
                 plot_conditional_forecast!(m, conditions[end],
                                             parameters = parameters,
                                             conditions_in_levels = false,
@@ -1109,7 +1175,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     algorithm = algorithm, 
                                     shocks = shocks[end])
 
+            i = 1
+
             for cndtns in conditions
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+                end
+
+                i += 1
+
                 plot_conditional_forecast!(m, cndtns,
                                             conditions_in_levels = false,
                                             algorithm = algorithm)
@@ -1121,8 +1198,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     algorithm = algorithm, 
                                     shocks = shocks[end])
 
+            i = 1
+
             for cndtns in conditions
                 for plot_type in [:compare, :stack]
+                    if i % 4 == 0
+                        plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+                    end
+
+                    i += 1
+
                     plot_conditional_forecast!(m, cndtns,
                                                 conditions_in_levels = false,
                                                 plot_type = plot_type,
