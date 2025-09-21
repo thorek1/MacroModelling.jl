@@ -229,39 +229,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                         data_in_levels = false)
             end
 
-            for variables in vars
-                println("plot_model_estimates with different variables")
-                plot_model_estimates(m, data, 
-                                        variables = variables,
-                                        algorithm = algorithm, 
-                                        data_in_levels = false)
-            end
-
-
-            plot_model_estimates(m, data_in_levels, 
-                                    parameters = params[1],
-                                    algorithm = algorithm, 
-                                    data_in_levels = true)
-                                    
-            i = 1             
-            for variables in vars
-                println("plot_model_estimates! with different variables")
-                if i % 4 == 0
-                    plot_model_estimates(m, data_in_levels,
-                                            parameters = params[1],
-                                            algorithm = algorithm, 
-                                            data_in_levels = true)
-                end
-
-                i += 1
-
-                plot_model_estimates!(m, data, 
-                                        variables = variables,
-                                        label = string(variables),
-                                        algorithm = algorithm, 
-                                        data_in_levels = false)
-            end
-
+ 
 
             plot_model_estimates(m, data_in_levels, 
                                     algorithm = algorithm, 
@@ -363,6 +331,40 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     end
                 end
             # end
+
+            for variables in vars
+                println("plot_model_estimates with different variables")
+                plot_model_estimates(m, data, 
+                                        variables = variables,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
+
+            plot_model_estimates(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+                                    
+            i = 1             
+            for variables in vars
+                println("plot_model_estimates! with different variables")
+                if i % 4 == 0
+                    plot_model_estimates(m, data_in_levels,
+                                            parameters = params[1],
+                                            algorithm = algorithm, 
+                                            data_in_levels = true)
+                end
+
+                i += 1
+
+                plot_model_estimates!(m, data, 
+                                        variables = variables,
+                                        label = string(variables),
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
         end
 
         @testset "plot_solution" begin
