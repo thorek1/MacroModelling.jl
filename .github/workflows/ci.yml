@@ -72,6 +72,10 @@ jobs:
             arch: arm64
             test_set: "plots_4"
           - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "plots_5"
+          - version: '1'
             os: macOS-latest
             arch: x64
             test_set: "estimate_sw07"

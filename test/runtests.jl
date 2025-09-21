@@ -315,6 +315,81 @@ if test_set == "plots_4"
 end
 
 
+if test_set == "plots_5"
+	Random.seed!(1)
+
+    @testset verbose = true "Gali 2015 ELB plots" begin
+        include("../models/Gali_2015_chapter_3_obc.jl")
+
+
+        Random.seed!(14)
+        plot_simulation(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0, ignore_obc = true)
+
+        Random.seed!(14)
+        plot_simulation!(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0)
+
+        Random.seed!(14)
+        plot_simulation!(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0025)
+
+
+        Random.seed!(13)
+        plot_simulation(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, 
+        # periods = 40, 
+        parameters = :R̄ => 1.0, ignore_obc = true)
+
+        Random.seed!(13)
+        plot_simulation!(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, 
+        periods = 40, 
+        parameters = :R̄ => 1.0)
+
+
+        plot_irf(Gali_2015_chapter_3_obc, parameters = :R̄ => 1.0)
+
+        plot_irf!(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, parameters = :R̄ => 1.0)
+
+
+
+        plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.5)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 0.5)
+
+
+
+        plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true)
+
+
+        plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, algorithm = :pruned_second_order)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, negative_shock = true, algorithm = :pruned_second_order)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, negative_shock = true, algorithm = :pruned_second_order, ignore_obc = true)
+
+
+        plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, algorithm = :pruned_second_order)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order)
+
+
+        plot_irf(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.97)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.97, ignore_obc = true)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.97, generalised_irf = true, plots_per_page = 2)
+
+
+        plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, ignore_obc = true)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, generalised_irf = true)
+    end
+end
+
+
 if test_set == "higher_order_1"
     plots = true
     # test_higher_order = true
