@@ -4,6 +4,7 @@
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
 - [ ] print out th OCB shocks as auxilliary shocks
+- [ ] generalised higher order IRF is around mean not SSS. plot mean line?
 - [ ] set irrelevant arguments back to default and inform user
 - [ ] generalised IRF pruned_third_order is somewhat slow - investigate
 - [ ] consider making sympy an extension or try to partially replace with Symbolics
