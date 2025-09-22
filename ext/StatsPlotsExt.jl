@@ -911,7 +911,7 @@ function plot_model_estimates!(𝓂::ℳ,
         
         push!(annotate_diff_input, "Data" => ["#$i" for i in data_idx])
     else
-        combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container]) # model_estimates_active_plot_container[end][:x_axis]
+        combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort# model_estimates_active_plot_container[end][:x_axis]
         common_axis = combined_x_axis
     end
 
@@ -1072,7 +1072,7 @@ function plot_model_estimates!(𝓂::ℳ,
                     end
                     
                     shocks_to_plot = fill(NaN, length(combined_x_axis))
-                    shocks_to_plot[idx] = k[:shocks_to_plot][shock_idx, idx]
+                    shocks_to_plot[idx] = k[:shocks_to_plot][shock_idx, :]
                     # shocks_to_plot[idx][1:k[:presample_periods]] .= NaN
                     push!(shocks_to_plot_s, shocks_to_plot[periods]) # k[:shocks_to_plot][shock_idx, periods])
                 end
@@ -1091,9 +1091,13 @@ function plot_model_estimates!(𝓂::ℳ,
                     else
                         idx = indexin(k[:x_axis], combined_x_axis)
                     end
-                    
+                    # println(var_idx)
+                    # println(idx)
+                    # println(k[:x_axis])
+                    # println(combined_x_axis)
+                    # println(common_axis)
                     variables_to_plot = fill(NaN, length(combined_x_axis))
-                    variables_to_plot[idx] = k[:variables_to_plot][var_idx,idx]
+                    variables_to_plot[idx] = k[:variables_to_plot][var_idx,:]
                     # variables_to_plot[idx][1:k[:presample_periods]] .= NaN
 
                     push!(variables_to_plot_s, variables_to_plot[periods])#k[:variables_to_plot][var_idx, periods])
@@ -1143,7 +1147,7 @@ function plot_model_estimates!(𝓂::ℳ,
                     end
 
                     data_in_deviations = fill(NaN, length(combined_x_axis))
-                    data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols)), idx]
+                    data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols)), :]
                     # data_in_deviations[idx][1:k[:presample_periods]] .= NaN
 
                     StatsPlots.plot!(p,
