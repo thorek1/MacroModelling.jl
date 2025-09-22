@@ -13,6 +13,7 @@ import Zygote, FiniteDifferences, ForwardDiff
 import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
 import LinearAlgebra as ℒ
+using CSV, DataFrames, AxisKeys
 
 
 println("Running test set: $test_set")
@@ -317,6 +318,59 @@ end
 
 if test_set == "plots_5"
 	Random.seed!(1)
+
+    @testset verbose = true "SW07 estim" begin
+        include("../models/Smets_Wouters_2007.jl")
+
+        # load data
+        dat = CSV.read("data/usmodel.csv", DataFrame)
+
+        # load data
+        data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+
+        # declare observables as written in csv file
+        observables_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+
+        # Subsample
+        # subset observables in data
+        sample_idx = 47:230 # 1960Q1-2004Q4
+
+        data = data(observables_old, sample_idx)
+
+        # declare observables as written in model
+        observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+
+        data = rekey(data, :Variable => observables)
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 3, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 3, :calfa => 0.28])
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], filter = :inversion)
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], filter = :inversion)
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], smooth = false)
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], smooth = false)
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], smooth = false, presample_periods = 50)
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data[:,20:end], parameters = [:csadjcost => 6, :calfa => 0.24])
+    end
 
     @testset verbose = true "Gali 2015 ELB plots" begin
         include("../models/Gali_2015_chapter_3_obc.jl")
