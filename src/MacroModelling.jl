@@ -373,7 +373,6 @@ function rrule( ::typeof(mul_reverse_AD!),
     return ℒ.mul!(C,A,B), times_pullback
 end
 
-@stable default_mode = "disable" begin
 
 function check_for_dynamic_variables(ex::Expr)
     dynamic_indicator = Bool[]
@@ -463,6 +462,7 @@ function transform_expression(expr::Expr)
     return transformed_expr, reverse_transformations
 end
 
+@stable default_mode = "disable" begin
 
 function reverse_transformation(transformed_expr::Expr, reverse_dict::Dict{Symbol, Expr})
     # Function to replace the transformed symbols with their original form
