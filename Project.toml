@@ -63,6 +63,7 @@ ChainRulesCore = "1"
 Combinatorics = "1"
 DataFrames = "1"
 DataStructures = "0.18, 0.19"
+Dates = "1.11.0"
 DifferentiationInterface = "0.6,0.7"
 DispatchDoctor = "0.4"
 DocStringExtensions = "0.8, 0.9"
@@ -113,6 +114,7 @@ ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
 FiniteDifferences = "26cc04aa-876d-5657-8c51-4c34ba976000"
 JET = "c3a54625-cd67-489e-a8e7-0a5a0ff4e31b"
@@ -127,4 +129,4 @@ Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [targets]
-test = ["ADTypes", "Aqua", "JET", "CSV", "DataFrames", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Zygote", "StatsPlots", "Preferences"]
+test = ["ADTypes", "Aqua", "JET", "Dates", "CSV", "DataFrames", "DynamicPPL", "MCMCChains", "LineSearches", "Optim", "Test", "Turing", "Pigeons", "FiniteDifferences", "Zygote", "StatsPlots", "Preferences"]
