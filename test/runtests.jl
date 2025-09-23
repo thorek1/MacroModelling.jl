@@ -425,12 +425,28 @@ if test_set == "plots_5"
 
         plot_model_estimates!(FS2000, dataFS2000_rekey, parameters = :alp => 0.3)
 
+        
+        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, shock_decomposition = true)
+
 
         estims = get_estimated_variables(Smets_Wouters_2007, data)
 
         plot_irf(Smets_Wouters_2007,initial_state = collect(estims[:,end]), shocks = :none)
 
         plot_irf!(Smets_Wouters_2007, shocks = :em, plot_type = :stack)
+        # why is there shocks and shock_name
+
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
+        cndtns_lvl[1,8] = 1.4
+
+        plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, initial_state = collect(estims[:,end]))
+
+
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,4), Variables = [:pinfobs], Periods = 1:4)
+        cndtns_lvl[1,4] = 2
+
+        plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl, plot_type = :stack)
+        # why can i add the same conditions and he dosent capture it?
     end
 
     # multiple models
