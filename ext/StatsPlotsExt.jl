@@ -1770,7 +1770,7 @@ function standard_subplot(::Val{:compare},
     for (y, ss) in zip(irf_data, steady_state)
         can_dual_axis = can_dual_axis && all((filter(!isnan, y) .+ ss) .> eps(Float32)) && ((ss > eps(Float32)) || isnan(ss))
     end
-    
+
     for (i,(y, ss)) in enumerate(zip(irf_data, steady_state))
         if !isnan(ss)
             stst = ss
@@ -2365,6 +2365,7 @@ function plot_irf!(𝓂::ℳ;
     joint_variables = OrderedSet{String}()
     single_shock_per_irf = true
     
+    max_periods = 0
     for (i,k) in enumerate(irf_active_plot_container)
         if plot_type == :stack
             StatsPlots.bar!(legend_plot,
@@ -2385,6 +2386,8 @@ function plot_irf!(𝓂::ℳ;
         foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractVector ? k[:shock_names] : (k[:shock_names],))
 
         single_shock_per_irf = single_shock_per_irf && length(k[:shock_names]) == 1
+
+        max_periods = max(max_periods, size(k[:plot_data],2))
     end
 
     sort!(joint_shocks)
@@ -2442,10 +2445,12 @@ function plot_irf!(𝓂::ℳ;
                     # If the variable or shock is not present in the current irf_active_plot_container,
                     # we skip this iteration.
                     push!(SSs, NaN)
-                    push!(Ys, zeros(0))
+                    push!(Ys, zeros(max_periods))
                 else
+                    dat = fill(NaN, max_periods)
+                    dat[1:length(k[:plot_data][var_idx,:,shock_idx])] .= k[:plot_data][var_idx,:,shock_idx]
                     push!(SSs, k[:reference_steady_state][var_idx])
-                    push!(Ys, k[:plot_data][var_idx,:,shock_idx])
+                    push!(Ys, dat) # k[:plot_data][var_idx,:,shock_idx])
                 end
             end
             
@@ -4323,6 +4328,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
     joint_variables = OrderedSet{String}()
     single_shock_per_irf = true
 
+    max_periods = 0
     for (i,k) in enumerate(conditional_forecast_active_plot_container)
         if plot_type == :stack
             StatsPlots.bar!(legend_plot,
@@ -4342,8 +4348,10 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
         foreach(n -> push!(joint_variables, String(n)), k[:variable_names] isa AbstractVector ? k[:variable_names] : (k[:variable_names],))
         foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractVector ? k[:shock_names] : (k[:shock_names],))
+        
+        max_periods = max(max_periods, size(k[:plot_data],2))
     end
-
+    
     for (i,k) in enumerate(conditional_forecast_active_plot_container)
         if plot_type == :compare
             StatsPlots.scatter!(legend_plot,
@@ -4403,10 +4411,12 @@ function plot_conditional_forecast!(𝓂::ℳ,
                 # If the variable is not present in the current conditional_forecast_active_plot_container,
                 # we skip this iteration.
                 push!(SSs, NaN)
-                push!(Ys, zeros(0))
+                push!(Ys, zeros(max_periods))
             else
+                dat = fill(NaN, max_periods)
+                dat[1:length(k[:plot_data][var_idx,:])] .= k[:plot_data][var_idx,:]
                 push!(SSs, k[:reference_steady_state][var_idx])
-                push!(Ys, k[:plot_data][var_idx,:])
+                push!(Ys, dat) # k[:plot_data][var_idx,:])
             end
         end
 
@@ -4416,7 +4426,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             push!(annotate_ss_page, var => minimal_sigfig_strings(SSs))
             same_ss = false
         end
-
+        
         p = standard_subplot(Val(plot_type),
                                         Ys, 
                                         SSs, 
@@ -4425,7 +4435,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                         same_ss,
                                         pal = pal,
                                         transparency = transparency)
-        
+
         if plot_type == :compare
             for (i,k) in enumerate(conditional_forecast_active_plot_container)   
                 var_idx = findfirst(==(var), String.(vcat(k[:variable_names], k[:shock_names])))
