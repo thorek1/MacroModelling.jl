@@ -43,6 +43,7 @@ const args_and_kwargs_names = Dict(:model_name => "Model",
                                     :ignore_obc => "Ignore OBC",
                                     :smooth => "Smooth",
                                     :data => "Data",
+                                    :label => "Label",
                                     :filter => "Filter",
                                     :warmup_iterations => "Warmup Iterations",
                                     :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
@@ -837,7 +838,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     # 1. Keep only certain keys from each dictionary
     reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, :label, keys(args_and_kwargs_names)...) if haskey(d, k))
+        Dict(k => d[k] for k in vcat(:run_id, keys(args_and_kwargs_names)...) if haskey(d, k))
         for d in model_estimates_active_plot_container
     ]
 

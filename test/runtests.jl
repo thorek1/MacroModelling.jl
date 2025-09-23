@@ -352,6 +352,8 @@ if test_set == "plots_5"
 
         data = rekey(data, :Variable => observables)
 
+        data_rekey = rekey(data, :Time => quarterly_dates(Date(1960, 1, 1), size(data,2)))
+
 
         plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
 
@@ -380,9 +382,7 @@ if test_set == "plots_5"
         plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
 
         plot_model_estimates!(Smets_Wouters_2007, data[:,20:end], parameters = [:csadjcost => 6, :calfa => 0.24])
-        # different models
 
-        data_rekey = rekey(data, :Time => quarterly_dates(Date(1960, 1, 1), size(data,2)))
 
         plot_model_estimates(Smets_Wouters_2007, data_rekey, parameters = [:csadjcost => 6, :calfa => 0.24])
 
@@ -392,6 +392,39 @@ if test_set == "plots_5"
         plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
 
         plot_model_estimates!(Smets_Wouters_2007, data_rekey, parameters = [:csadjcost => 5, :calfa => 0.24])
+
+        # FS2000 model and data  
+        include("../models/FS2000.jl")
+
+        # load data
+        dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
+        dataFS2000 = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
+        dataFS2000 = log.(dataFS2000)
+
+        # declare observables
+        observables = sort(Symbol.("log_".*names(dat)))
+
+        # subset observables in data
+        dataFS2000 = dataFS2000(observables,:)
+
+        dataFS2000_rekey = rekey(dataFS2000, :Time => quarterly_dates(Date(1950, 1, 1), size(dataFS2000,2)))
+
+        plot_model_estimates(FS2000, dataFS2000)
+
+        plot_model_estimates(FS2000, dataFS2000_rekey)
+
+
+        plot_model_estimates(FS2000, dataFS2000_rekey)
+
+        plot_model_estimates!(Smets_Wouters_2007, data_rekey)
+
+
+        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356)
+
+        plot_model_estimates!(Smets_Wouters_2007, data_rekey)
+
+        plot_model_estimates!(FS2000, dataFS2000_rekey, parameters = :alp => 0.3)
+
     end
 
     # multiple models
