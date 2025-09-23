@@ -397,7 +397,7 @@ if test_set == "plots_5"
         include("../models/FS2000.jl")
 
         # load data
-        dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
+        dat = CSV.read("data/FS2000_data.csv", DataFrame)
         dataFS2000 = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
         dataFS2000 = log.(dataFS2000)
 
