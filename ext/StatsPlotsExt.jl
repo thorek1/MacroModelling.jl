@@ -417,6 +417,7 @@ function plot_model_estimates(𝓂::ℳ,
 
                 if var_idx[i] ∈ obs_idx 
                     StatsPlots.plot!(p,
+                        x_axis,
                         shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
                         label = "",
                         color = shock_decomposition ? data_color : pal[2])
@@ -901,20 +902,17 @@ function plot_model_estimates!(𝓂::ℳ,
             end
         end
 
-        common_axis = mapreduce(k -> k[:x_axis], intersect, model_estimates_active_plot_container)
-
-        if length(common_axis) > 0
-            combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort
-        else
-            combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container]) # model_estimates_active_plot_container[end][:x_axis]
-        end
-        
         push!(annotate_diff_input, "Data" => ["#$i" for i in data_idx])
-    else
-        combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort# model_estimates_active_plot_container[end][:x_axis]
-        common_axis = combined_x_axis
     end
 
+    common_axis = mapreduce(k -> k[:x_axis], intersect, model_estimates_active_plot_container)
+
+    if length(common_axis) > 0
+        combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort
+    else
+        combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container]) # model_estimates_active_plot_container[end][:x_axis]
+    end
+       
     for k in setdiff(keys(args_and_kwargs), 
                         [
                             :run_id, :parameters, :data, :data_in_levels,
@@ -1053,7 +1051,8 @@ function plot_model_estimates!(𝓂::ℳ,
         variables_to_plot_s = AbstractVector{eltype(model_estimates_active_plot_container[1][:variables_to_plot])}[]
 
         for k in model_estimates_active_plot_container
-            periods = min_presample_periods + 1:length(combined_x_axis)
+            # periods = min_presample_periods + 1:length(combined_x_axis)
+            periods = (1:length(k[:x_axis])) .+ k[:presample_periods]
 
             if i > length(joint_non_zero_variables)
                 shock_idx = findfirst(==(var), k[:shock_names])
@@ -1072,9 +1071,9 @@ function plot_model_estimates!(𝓂::ℳ,
                     end
                     
                     shocks_to_plot = fill(NaN, length(combined_x_axis))
-                    shocks_to_plot[idx] = k[:shocks_to_plot][shock_idx, :]
+                    shocks_to_plot[idx] = k[:shocks_to_plot][shock_idx, periods]
                     # shocks_to_plot[idx][1:k[:presample_periods]] .= NaN
-                    push!(shocks_to_plot_s, shocks_to_plot[periods]) # k[:shocks_to_plot][shock_idx, periods])
+                    push!(shocks_to_plot_s, shocks_to_plot) # k[:shocks_to_plot][shock_idx, periods])
                 end
             else
                 var_idx = findfirst(==(var), k[:variable_names])
@@ -1091,16 +1090,12 @@ function plot_model_estimates!(𝓂::ℳ,
                     else
                         idx = indexin(k[:x_axis], combined_x_axis)
                     end
-                    # println(var_idx)
-                    # println(idx)
-                    # println(k[:x_axis])
-                    # println(combined_x_axis)
-                    # println(common_axis)
+                    
                     variables_to_plot = fill(NaN, length(combined_x_axis))
-                    variables_to_plot[idx] = k[:variables_to_plot][var_idx,:]
+                    variables_to_plot[idx] = k[:variables_to_plot][var_idx, periods]
                     # variables_to_plot[idx][1:k[:presample_periods]] .= NaN
 
-                    push!(variables_to_plot_s, variables_to_plot[periods])#k[:variables_to_plot][var_idx, periods])
+                    push!(variables_to_plot_s, variables_to_plot)#k[:variables_to_plot][var_idx, periods])
                 end
             end
         end
@@ -1131,7 +1126,8 @@ function plot_model_estimates!(𝓂::ℳ,
                                     
         if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
             for (i,k) in enumerate(model_estimates_active_plot_container)
-                periods = min_presample_periods + 1:length(combined_x_axis)
+                # periods = min_presample_periods + 1:length(combined_x_axis)
+                periods = (1:length(k[:x_axis])) .+ k[:presample_periods]
 
                 obs_axis = collect(axiskeys(k[:data],1))
 
@@ -1147,11 +1143,12 @@ function plot_model_estimates!(𝓂::ℳ,
                     end
 
                     data_in_deviations = fill(NaN, length(combined_x_axis))
-                    data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols)), :]
+                    data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols)), periods]
                     # data_in_deviations[idx][1:k[:presample_periods]] .= NaN
 
                     StatsPlots.plot!(p,
-                        data_in_deviations[periods] .+ k[:reference_steady_state][var_idx],
+                        combined_x_axis,
+                        data_in_deviations .+ k[:reference_steady_state][var_idx],
                         label = "",
                         color = pal[length(model_estimates_active_plot_container) + i]
                         )
@@ -1173,6 +1170,7 @@ function plot_model_estimates!(𝓂::ℳ,
                 data_in_deviations[1:k[:presample_periods]] .= NaN
                 
                 StatsPlots.plot!(p,
+                    combined_x_axis,
                     data_in_deviations[periods] .+ k[:reference_steady_state][var_idx],
                     label = "",
                     color = data_color
@@ -1710,7 +1708,8 @@ function standard_subplot(irf_data::AbstractVector{S},
     
     xrotation = length(string(xvals[1])) > 5 ? 30 : 0
 
-    p = StatsPlots.plot(irf_data .+ steady_state,
+    p = StatsPlots.plot(xvals,
+                        irf_data .+ steady_state,
                         title = variable_name,
                         ylabel = "Level",
                         xrotation = xrotation,
@@ -1723,19 +1722,19 @@ function standard_subplot(irf_data::AbstractVector{S},
 
     lo, hi = StatsPlots.ylims(p)
 
-    if !(xvals isa UnitRange)
-        lo = 1
-        hi = length(irf_data)
+    # if !(xvals isa UnitRange)
+        # low = 1
+        # high = length(irf_data)
 
-        # Compute nice ticks on the shifted range
-        ticks_shifted, _ = StatsPlots.optimize_ticks(lo, hi, k_min = 4, k_max = 6)
+        # # Compute nice ticks on the shifted range
+        # ticks_shifted, _ = StatsPlots.optimize_ticks(low, high, k_min = 4, k_max = 6)
 
-        ticks_shifted = Int.(ceil.(ticks_shifted))
+        # ticks_shifted = Int.(ceil.(ticks_shifted))
 
-        labels = xvals[ticks_shifted]
+        # labels = xvals[ticks_shifted]
 
-        StatsPlots.plot!(xticks = (ticks_shifted, labels))
-    end
+        # StatsPlots.plot!(xticks = (ticks_shifted, labels))
+    # end
 
     if can_dual_axis
         StatsPlots.plot!(StatsPlots.twinx(), 
@@ -1768,9 +1767,9 @@ function standard_subplot(::Val{:compare},
     can_dual_axis = gr_back
     
     for (y, ss) in zip(irf_data, steady_state)
-        can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && ((ss > eps(Float32)) || isnan(ss))
+        can_dual_axis = can_dual_axis && all((filter(!isnan, y) .+ ss) .> eps(Float32)) && ((ss > eps(Float32)) || isnan(ss))
     end
-
+    
     for (i,(y, ss)) in enumerate(zip(irf_data, steady_state))
         if !isnan(ss)
             stst = ss
@@ -1789,7 +1788,8 @@ function standard_subplot(::Val{:compare},
         end
     end
 
-    p = StatsPlots.plot(plot_dat,
+    p = StatsPlots.plot(xvals,
+                        plot_dat,
                         title = variable_name,
                         ylabel = same_ss ? "Level" : "abs. " * LaTeXStrings.L"\Delta",
                         color = pal[mod1.(pal_val, length(pal))]',
@@ -1802,19 +1802,19 @@ function standard_subplot(::Val{:compare},
 
     lo, hi = StatsPlots.ylims(p)
 
-    if !(xvals isa UnitRange)
-        lo = 1
-        hi = length(irf_data[1])
+    # if !(xvals isa UnitRange)
+    #     low = 1
+    #     high = length(irf_data[1])
 
-        # Compute nice ticks on the shifted range
-        ticks_shifted, _ = StatsPlots.optimize_ticks(lo, hi, k_min = 4, k_max = 6)
+    #     # Compute nice ticks on the shifted range
+    #     ticks_shifted, _ = StatsPlots.optimize_ticks(low, high, k_min = 4, k_max = 6)
 
-        ticks_shifted = Int.(ceil.(ticks_shifted))
+    #     ticks_shifted = Int.(ceil.(ticks_shifted))
 
-        labels = xvals[ticks_shifted]
+    #     labels = xvals[ticks_shifted]
 
-        StatsPlots.plot!(xticks = (ticks_shifted, labels))
-    end
+    #     StatsPlots.plot!(xticks = (ticks_shifted, labels))
+    # end
 
     if can_dual_axis && same_ss
         StatsPlots.plot!(StatsPlots.twinx(), 
@@ -1849,7 +1849,7 @@ function standard_subplot(::Val{:stack},
     
     for (y, ss) in zip(irf_data, steady_state)
         if !isnan(ss)
-            can_dual_axis = can_dual_axis && all((y .+ ss) .> eps(Float32)) && ((ss > eps(Float32)) || isnan(ss))
+            can_dual_axis = can_dual_axis && all((filter(!isnan, y) .+ ss) .> eps(Float32)) && ((ss > eps(Float32)) || isnan(ss))
         end
     end
 
@@ -1879,7 +1879,8 @@ function standard_subplot(::Val{:stack},
     # now you can hcat
     plot_data = reduce(hcat, padded)
 
-    p = StatsPlots.groupedbar(typeof(plot_data) <: AbstractVector ? hcat(plot_data) : plot_data,
+    p = StatsPlots.groupedbar(xvals,
+                        typeof(plot_data) <: AbstractVector ? hcat(plot_data) : plot_data,
                         title = variable_name,
                         bar_position = :stack,
                         linewidth = 0,
@@ -1912,19 +1913,19 @@ function standard_subplot(::Val{:stack},
                
     StatsPlots.plot!(yticks = (yticks_positions, labels))
     
-    if !(xvals isa UnitRange)
-        lo = 1
-        hi = length(irf_data[1])
+    # if !(xvals isa UnitRange)
+    #     low = 1
+    #     high = length(irf_data[1])
 
-        # Compute nice ticks on the shifted range
-        ticks_shifted, _ = StatsPlots.optimize_ticks(lo, hi, k_min = 4, k_max = 6)
+    #     # Compute nice ticks on the shifted range
+    #     ticks_shifted, _ = StatsPlots.optimize_ticks(low, high, k_min = 4, k_max = 6)
 
-        ticks_shifted = Int.(ceil.(ticks_shifted))
+    #     ticks_shifted = Int.(ceil.(ticks_shifted))
 
-        labels = xvals[ticks_shifted]
+    #     labels = xvals[ticks_shifted]
 
-        StatsPlots.plot!(xticks = (ticks_shifted, labels))
-    end
+    #     StatsPlots.plot!(xticks = (ticks_shifted, labels))
+    # end
 
     if can_dual_axis && same_ss
         StatsPlots.plot!(
