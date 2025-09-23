@@ -425,6 +425,12 @@ if test_set == "plots_5"
 
         plot_model_estimates!(FS2000, dataFS2000_rekey, parameters = :alp => 0.3)
 
+
+        estims = get_estimated_variables(Smets_Wouters_2007, data)
+
+        plot_irf(Smets_Wouters_2007,initial_state = collect(estims[:,end]), shocks = :none)
+
+        plot_irf!(Smets_Wouters_2007, shocks = :em, plot_type = :stack)
     end
 
     # multiple models
