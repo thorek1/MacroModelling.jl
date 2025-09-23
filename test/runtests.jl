@@ -13,8 +13,18 @@ import Zygote, FiniteDifferences, ForwardDiff
 import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
 import LinearAlgebra as ℒ
-using CSV, DataFrames, AxisKeys
+using CSV, DataFrames
+using Dates
 
+function quarterly_dates(start_date::Date, len::Int)
+    dates = Vector{Date}(undef, len)
+    current_date = start_date
+    for i in 1:len
+        dates[i] = current_date
+        current_date = current_date + Dates.Month(3)
+    end
+    return dates
+end
 
 println("Running test set: $test_set")
 println("Threads used: ", Threads.nthreads())
@@ -370,8 +380,21 @@ if test_set == "plots_5"
         plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
 
         plot_model_estimates!(Smets_Wouters_2007, data[:,20:end], parameters = [:csadjcost => 6, :calfa => 0.24])
+        # different models
+
+        data_rekey = rekey(data, :Time => quarterly_dates(Date(1960, 1, 1), size(data,2)))
+
+        plot_model_estimates(Smets_Wouters_2007, data_rekey, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data_rekey, parameters = [:csadjcost => 5, :calfa => 0.24])
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data_rekey, parameters = [:csadjcost => 5, :calfa => 0.24])
     end
 
+    # multiple models
     @testset verbose = true "Gali 2015 ELB plots" begin
         include("../models/Gali_2015_chapter_3_obc.jl")
 
