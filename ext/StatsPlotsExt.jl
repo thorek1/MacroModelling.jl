@@ -825,7 +825,7 @@ function plot_model_estimates!(𝓂::ℳ,
             # get(dict, :filter, nothing) == args_and_kwargs[:filter],
             # get(dict, :warmup_iterations, nothing) == args_and_kwargs[:warmup_iterations],
             # get(dict, :smooth, nothing) == args_and_kwargs[:smooth],
-            all(k == :data ? collect(get(dict, k, nothing)) == collect(get(args_and_kwargs, k, nothing)) : get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in keys(args_and_kwargs_names))
+            all(k == :data ? collect(get(dict, k, nothing)) == collect(get(args_and_kwargs, k, nothing)) : get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(args_and_kwargs_names), [:label]))
         )))
         for dict in model_estimates_active_plot_container
     ) # "New plot must be different from previous plot. Use the version without ! to plot."
@@ -2243,7 +2243,7 @@ function plot_irf!(𝓂::ℳ;
             get(dict, :shock_names, nothing) == args_and_kwargs[:shock_names],
             get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
             get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
-            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in keys(args_and_kwargs_names))
+            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(args_and_kwargs_names), [:label]))
         )))
         for dict in irf_active_plot_container
     )# "New plot must be different from previous plot. Use the version without ! to plot."
@@ -2307,11 +2307,11 @@ function plot_irf!(𝓂::ℳ;
     end
     
     if haskey(diffdict, :shocks)
-        # if all(length.(diffdict[:shock_names]) .== 1)
+        if !all(length.(diffdict[:shock_names]) .== 1)
             push!(annotate_diff_input, "Shock" => reduce(vcat, map(x -> typeof(x) <: AbstractArray ? "Shock Matrix" : x, diffdict[:shocks])))
         # else
         #     push!(annotate_diff_input, "Shock" => diffdict[:shocks])
-        # end
+        end
     end
     
     if haskey(diffdict, :initial_state)
@@ -4151,11 +4151,11 @@ function plot_conditional_forecast!(𝓂::ℳ,
             get(dict, :conditions, nothing) == args_and_kwargs[:conditions],
             get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
             get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
-            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in keys(args_and_kwargs_names))
+            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(args_and_kwargs_names), [:label]))
         )))
         for dict in conditional_forecast_active_plot_container
     ) # "New plot must be different from previous plot. Use the version without ! to plot."
-
+    
     if no_duplicate 
         push!(conditional_forecast_active_plot_container, args_and_kwargs)
     else
