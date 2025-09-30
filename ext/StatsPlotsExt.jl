@@ -2343,7 +2343,7 @@ function plot_irf!(𝓂::ℳ;
         labels = String[]
         for v in vals
             if v == [0.0]
-                push!(labels, "")                  # put nothing
+                push!(labels, "nothing")                  # put nothing
             else
                 if !haskey(seen, v)
                     next_idx += 1                  # running index does not count [0.0]
@@ -4239,17 +4239,22 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     if haskey(diffdict, :shocks)
         shocks = diffdict[:shocks]
-
+        
         labels = String[]                      # "" for trivial, "#k" otherwise
         seen   = Vector{Matrix{Float64}}()
         next_idx = 0
 
         for shock_mat in shocks
+            if isnothing(shock_mat)
+                push!(labels, "nothing")
+                continue
+            end
+
             # Catch the all-nothing case here
             lastcol = findlast(j -> any(x -> x !== nothing, shock_mat[:, j]), axes(shock_mat, 2))
             
             if isnothing(lastcol)
-                push!(labels, "")
+                push!(labels, "nothing")
                 continue
             end
 
@@ -4261,7 +4266,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             # Ignore leading all-zero rows for indexing
             firstrow = findfirst(i -> any(!=(0.0), mat[i, :]), axes(mat, 1))
             if firstrow === nothing
-                push!(labels, "")
+                push!(labels, "nothing")
                 continue
             end
 
@@ -4324,7 +4329,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         labels = String[]
         for v in vals
             if v == [0.0]
-                push!(labels, "")                  # put nothing
+                push!(labels, "nothing")                  # put nothing
             else
                 if !haskey(seen, v)
                     next_idx += 1                  # running index does not count [0.0]
