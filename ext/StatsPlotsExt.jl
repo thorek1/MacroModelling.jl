@@ -2713,28 +2713,93 @@ function merge_by_runid(dicts::Dict...)
 
     merged = Dict{Symbol,Any}()
     merged[:run_id] = all_runids
+    
+    # Initialize all vector-based keys in merged with appropriate length and type
+    # This ensures subsequent passes can UPDATE the array instead of OVERWRITING it.
+    for d in dicts
+        for (k, v) in d
+            k === :run_id && continue
+            
+            if v isa AbstractVector && length(v) == length(d[:run_id])
+                # Initialize an array of appropriate type and length n, filled with nothing
+                # This assumes we want Nothing to be the default for missing run_ids
+                if !haskey(merged, k)
+                    # Use Union{Nothing, eltype(v)} for the merged array's type
+                    # For a vector of matrices, eltype(v) is Matrix{...}
+                    T = Union{Nothing, eltype(v)} 
+                    merged[k] = Vector{T}(nothing, n) 
+                end
+            elseif v isa Dict
+                get!(merged, k, Dict{Symbol,Any}())
+                for (kk, vv) in v
+                    if vv isa AbstractVector && length(vv) == length(d[:run_id])
+                         if !haskey(merged[k], kk)
+                            T = Union{Nothing, eltype(vv)}
+                            merged[k][kk] = Vector{T}(nothing, n)
+                         end
+                    else
+                        # For non-vector/non-run_id-indexed values inside a Dict, overwrite or ignore on subsequent passes
+                        # For this fix, we'll keep the current behavior of using a vector of the value
+                        if !haskey(merged[k], kk)
+                            merged[k][kk] = [vv for _ in 1:n]
+                        end
+                    end
+                end
+            else
+                # For non-vector/non-dictionary values, if the key doesn't exist, initialize
+                # Otherwise, the subsequent dicts will OVERWRITE the value.
+                if !haskey(merged, k)
+                    merged[k] = [v for _ in 1:n]
+                end
+            end
+        end
+    end
 
     # run_id → index map for each dict
     idx_maps = [Dict(r => i for (i, r) in enumerate(d[:run_id])) for d in dicts]
 
+    # Fill in the initialized merged structure
     for (j, d) in enumerate(dicts)
         idx_map = idx_maps[j]
+        
+        # Mapping from all_runids index to d[:run_id] index
+        current_runid_to_all_idx = Dict(r => i for (i, r) in enumerate(d[:run_id]))
+        
         for (k, v) in d
             k === :run_id && continue
 
             if v isa AbstractVector && length(v) == length(d[:run_id])
-                merged[k] = [haskey(idx_map, r) ? v[idx_map[r]] : nothing for r in all_runids]
+                # UPDATE the existing merged[k] array
+                for (i, r) in enumerate(d[:run_id])
+                    # idx_map[r] is the index of run_id r in d[:run_id] (i)
+                    # findfirst(==(r), all_runids) is the index of run_id r in all_runids
+                    merged_idx = findfirst(==(r), all_runids)
+                    merged[k][merged_idx] = v[i]
+                end
             elseif v isa Dict
-                sub = get!(merged, k, Dict{Symbol,Any}())
+                sub = merged[k] # Already initialized by the pre-pass
                 for (kk, vv) in v
                     if vv isa AbstractVector && length(vv) == length(d[:run_id])
-                        sub[kk] = [haskey(idx_map, r) ? vv[idx_map[r]] : nothing for r in all_runids]
-                    else
+                         # UPDATE the existing merged[k][kk] array
+                         for (i, r) in enumerate(d[:run_id])
+                            merged_idx = findfirst(==(r), all_runids)
+                            sub[kk][merged_idx] = vv[i]
+                         end
+                    # Keep the original logic for non-vector values inside sub-dicts
+                    # This overwrites the whole column for non-indexed values
+                    elseif !haskey(sub, kk)
                         sub[kk] = [vv for _ in 1:n]
                     end
                 end
-            else
-                merged[k] = [v for _ in 1:n]
+            # Keep the original logic for non-vector/non-dictionary values
+            # These are already initialized, no need to do anything here if we want the value from the *first* dict to win
+            # If we want the value from the *last* dict to win, we would overwrite here.
+            # Given the original code's structure (where it overwrites), let's stick to 'first' or 'last' value for simplicity:
+            # The current setup will prioritize the FIRST dictionary's non-run_id-indexed scalar value.
+            # If you want the LAST one to win, you'd add:
+            # else 
+            #   merged[k] = [v for _ in 1:n]
+            # end
             end
         end
     end
