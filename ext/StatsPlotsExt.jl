@@ -414,14 +414,22 @@ function plot_model_estimates(𝓂::ℳ,
                                         xvals = x_axis,
                                         pal = pal,
                                         color_total = estimate_color)
-                end
-
-                if var_idx[i] ∈ obs_idx 
-                    StatsPlots.plot!(p,
-                        x_axis,
-                        shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
-                        label = "",
-                        color = shock_decomposition ? data_color : pal[2])
+                                        
+                    if var_idx[i] ∈ obs_idx 
+                        StatsPlots.plot!(p,
+                            # x_axis,
+                            shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
+                            label = "",
+                            color = shock_decomposition ? data_color : pal[2])
+                    end
+                else
+                    if var_idx[i] ∈ obs_idx 
+                        StatsPlots.plot!(p,
+                            x_axis,
+                            shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
+                            label = "",
+                            color = shock_decomposition ? data_color : pal[2])
+                    end
                 end
                         
                 push!(pp, p)
@@ -1124,7 +1132,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                     xvals = combined_x_axis, # TODO: check different data length or presample periods. to be fixed
                                     # transparency = transparency
                                     )
-                                    
+
         if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
             for (i,k) in enumerate(model_estimates_active_plot_container)
                 # periods = min_presample_periods + 1:length(combined_x_axis)
@@ -1880,8 +1888,15 @@ function standard_subplot(::Val{:stack},
     # now you can hcat
     plot_data = reduce(hcat, padded)
 
-    p = StatsPlots.groupedbar(xvals,
-                        typeof(plot_data) <: AbstractVector ? hcat(plot_data) : plot_data,
+    p = StatsPlots.plot(xvals,
+                    sum(plot_data, dims = 2), 
+                    color = color_total, 
+                    label = "",
+                        xrotation = xrotation)
+
+    chosen_xticks = StatsPlots.xticks(p)
+
+    p = StatsPlots.groupedbar(typeof(plot_data) <: AbstractVector ? hcat(plot_data) : plot_data,
                         title = variable_name,
                         bar_position = :stack,
                         linewidth = 0,
@@ -1893,11 +1908,15 @@ function standard_subplot(::Val{:stack},
                         label = "",
                         xrotation = xrotation
                         )
+        
+    chosen_xticks_bar = StatsPlots.xticks(p)
+
+    StatsPlots.xticks!(p, chosen_xticks_bar[1][1], chosen_xticks[1][2])
 
     StatsPlots.hline!([0], 
-                      color = :black, 
-                      label = "")
-                      
+                        color = :black, 
+                        label = "")
+    
     StatsPlots.plot!(sum(plot_data, dims = 2), 
                     color = color_total, 
                     label = "")
