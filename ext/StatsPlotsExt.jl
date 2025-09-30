@@ -4236,36 +4236,49 @@ function plot_conditional_forecast!(𝓂::ℳ,
             push!(annotate_diff_input, String(param) => result)
         end
     end
-    
+
     if haskey(diffdict, :shocks)
-        shock_mats_no_nothing = []
+        shocks = diffdict[:shocks]
 
-        for shock_mat in diffdict[:shocks]
-            lastcol = findlast(j -> any(!isnothing, shock_mat[:, j]), 1:size(shock_mat, 2))
-            lastcol = isnothing(lastcol) ? 1 : lastcol
-            push!(shock_mats_no_nothing, shock_mat[:, 1:lastcol])
-        end
+        labels = String[]                      # "" for trivial, "#k" otherwise
+        seen   = Vector{Matrix{Float64}}()
+        next_idx = 0
 
-        # Collect unique shocks excluding `nothing`
-        unique_shocks = unique(shock_mats_no_nothing)
-
-        shocks_idx = Union{Int,Nothing}[]
-
-        for init in shock_mats_no_nothing
-            if isnothing(init) || all(isnothing, init)
-                push!(shocks_idx, nothing)
-            else
-                for (i,u) in enumerate(unique_shocks)
-                    if u == init
-                        push!(shocks_idx,i)
-                        break
-                    end
-                end
+        for shock_mat in shocks
+            # Catch the all-nothing case here
+            lastcol = findlast(j -> any(x -> x !== nothing, shock_mat[:, j]), axes(shock_mat, 2))
+            
+            if isnothing(lastcol)
+                push!(labels, "")
+                continue
             end
+
+            view_mat = shock_mat[:, 1:lastcol]
+
+            # Normalise: replace `nothing` with 0.0
+            mat = map(x -> x === nothing ? 0.0 : float(x), view_mat)
+
+            # Ignore leading all-zero rows for indexing
+            firstrow = findfirst(i -> any(!=(0.0), mat[i, :]), axes(mat, 1))
+            if firstrow === nothing
+                push!(labels, "")
+                continue
+            end
+
+            norm_mat = mat[firstrow:end, :]
+
+            # Assign running index by first appearance
+            idx = findfirst(M -> M == norm_mat, seen)
+            if idx === nothing
+                push!(seen, copy(norm_mat))
+                next_idx += 1
+                idx = next_idx
+            end
+            push!(labels, "#$(idx)")
         end
 
-        if length(unique_shocks) > 1
-            push!(annotate_diff_input, "Shocks" => [isnothing(i) ? nothing : "#$i" for i in shocks_idx])
+        if length(labels) > 1
+            push!(annotate_diff_input, "Shocks" => labels)
         end
     end
     
