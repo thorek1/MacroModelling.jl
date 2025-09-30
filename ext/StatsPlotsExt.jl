@@ -4353,60 +4353,78 @@ function plot_conditional_forecast!(𝓂::ℳ,
     end
 
     if haskey(diffdict, :conditions)
-        condition_mats_no_nothing = []
+        conds = diffdict[:conditions]
 
-        for condition_mat in diffdict[:conditions]
-            lastcol = findlast(j -> any(!isnothing, condition_mat[:, j]), 1:size(condition_mat, 2))
-            lastcol = isnothing(lastcol) ? 1 : lastcol
-            push!(condition_mats_no_nothing, condition_mat[:, 1:lastcol])
-        end
+        labels = Vector{String}()
+        seen   = Vector{Matrix{Float64}}()
+        next_idx = 0
 
-        # Collect unique conditions excluding `nothing`
-        unique_conditions = unique(condition_mats_no_nothing)
-
-        conditions_idx = Union{Int,Nothing}[]
-
-        for init in condition_mats_no_nothing
-            if isnothing(init) || all(isnothing, init)
-                push!(conditions_idx, nothing)
-            else
-                for (i,u) in enumerate(unique_conditions)
-                    if u == init
-                        push!(conditions_idx,i)
-                        break
-                    end
-                end
+        for cond_mat in conds
+            if cond_mat === nothing
+                push!(labels, "nothing")
+                continue
             end
+
+            # Catch the all-nothing case by column scan
+            lastcol = findlast(j -> any(x -> x !== nothing, cond_mat[:, j]), axes(cond_mat, 2))
+            if lastcol === nothing
+                push!(labels, "nothing")
+                continue
+            end
+
+            view_mat = cond_mat[:, 1:lastcol]
+
+            # Replace `nothing` with 0.0 and work in Float64
+            mat = map(x -> x === nothing ? 0.0 : float(x), view_mat)
+
+            # Drop leading rows that are all zero
+            firstrow = findfirst(i -> any(!=(0.0), mat[i, :]), axes(mat, 1))
+            if firstrow === nothing
+                push!(labels, "nothing")
+                continue
+            end
+
+            norm_mat = mat[firstrow:end, :]
+
+            # Assign running index by first appearance
+            idx = findfirst(M -> M == norm_mat, seen)
+            if idx === nothing
+                push!(seen, copy(norm_mat))
+                next_idx += 1
+                idx = next_idx
+            end
+            push!(labels, "#$(idx)")
         end
 
-        if length(unique_conditions) > 1
-            push!(annotate_diff_input, "Conditions" => [isnothing(i) ? nothing : "#$i" for i in conditions_idx])
+        if length(seen) > 1
+            push!(annotate_diff_input, "Conditions" => labels)
         end
     end
 
     if haskey(diffdict, :initial_state)
         vals = diffdict[:initial_state]
 
-        # Map each distinct non-[0.0] value to its running index
-        seen = Dict{typeof(first(vals)), Int}()
+        labels = String[]                                # "" for [0.0], "#k" otherwise
+        seen   = Vector{typeof(first(vals))}()           # store distinct non-[0.0] values by content
         next_idx = 0
 
-        labels = String[]
         for v in vals
-            if v == [0.0]
-                push!(labels, "nothing")                  # put nothing
+            if v === nothing || v == [0.0]
+                push!(labels, "nothing")
             else
-                if !haskey(seen, v)
-                    next_idx += 1                  # running index does not count [0.0]
-                    seen[v] = next_idx
+                idx = findfirst(==(v), seen)             # content based lookup
+                if idx === nothing
+                    push!(seen, copy(v))                 # store by value
+                    next_idx += 1
+                    idx = next_idx
                 end
-                push!(labels, "#$(seen[v])")
+                push!(labels, "#$(idx)")
             end
         end
 
         push!(annotate_diff_input, "Initial state" => labels)
     end
-    
+
     same_shock_direction = true
     
     for k in setdiff(keys(args_and_kwargs), 
