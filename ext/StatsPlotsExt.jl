@@ -1889,7 +1889,7 @@ function standard_subplot(::Val{:stack},
     plot_data = reduce(hcat, padded)
 
     p = StatsPlots.plot(xvals,
-                    sum(plot_data, dims = 2), 
+                    sum(x -> isfinite(x) ? x : 0.0, plot_data, dims = 2), 
                     color = color_total, 
                     label = "",
                         xrotation = xrotation)
@@ -1916,8 +1916,8 @@ function standard_subplot(::Val{:stack},
     StatsPlots.hline!([0], 
                         color = :black, 
                         label = "")
-    
-    StatsPlots.plot!(sum(plot_data, dims = 2), 
+                        
+    StatsPlots.plot!(sum(x -> isfinite(x) ? x : 0.0, plot_data, dims = 2), 
                     color = color_total, 
                     label = "")
 
@@ -4281,7 +4281,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             push!(annotate_diff_input, "Shocks" => labels)
         end
     end
-    
+
     if haskey(diffdict, :conditions)
         condition_mats_no_nothing = []
 
