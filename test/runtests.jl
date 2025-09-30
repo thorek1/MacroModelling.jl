@@ -425,16 +425,34 @@ if test_set == "plots_5"
 
         plot_model_estimates!(FS2000, dataFS2000_rekey, parameters = :alp => 0.3)
 
-        
-        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, shock_decomposition = true)
+
+        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, shock_decomposition = false)
 
 
         estims = get_estimated_variables(Smets_Wouters_2007, data)
 
-        plot_irf(Smets_Wouters_2007,initial_state = collect(estims[:,end]), shocks = :none)
+        plot_irf(Smets_Wouters_2007, shocks = :em)
 
-        plot_irf!(Smets_Wouters_2007, shocks = :em, plot_type = :stack)
-        # why is there shocks and shock_name
+        plot_irf!(Smets_Wouters_2007,initial_state = collect(estims[:,end]), shocks = :none, plot_type = :stack)
+
+        plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea], negative_shock = true, plot_type = :stack)
+        
+        shock_mat = randn(Smets_Wouters_2007.timings.nExo,3)
+
+        plot_irf!(Smets_Wouters_2007, shocks = shock_mat, plot_type = :stack)
+
+        plot_irf!(Smets_Wouters_2007, shocks = shock_mat, plot_type = :stack)
+
+
+        plot_irf(Smets_Wouters_2007, shocks = :em)
+        
+        plot_irf!(FS2000, shocks = :e_m)
+
+        plot_irf!(FS2000, shocks = [:e_m, :e_a])
+
+        plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea])
+        
+        
 
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
         cndtns_lvl[1,8] = 1.4
@@ -446,7 +464,41 @@ if test_set == "plots_5"
         cndtns_lvl[1,4] = 2
 
         plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl, plot_type = :stack)
-        # why can i add the same conditions and he dosent capture it?
+        
+
+        
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
+        cndtns_lvl[1,8] = 1.45
+
+        plot_conditional_forecast!(FS2000, cndtns_lvl)
+
+
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,4), Variables = [:y], Periods = 1:4)
+        cndtns_lvl[1,4] = 2.01
+
+        plot_conditional_forecast!(FS2000, cndtns_lvl, plot_type = :stack)
+        # conditons on #3 is nothing which makes sense since it is not showing
+
+        shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
+
+        plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, plot_type = :stack)
+        
+        
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
+        cndtns_lvl[1,8] = 1.4
+        
+        shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
+
+        plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat)
+
+        plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl)
+
+        plot_conditional_forecast!(FS2000, cndtns_lvl)
+        
+        shock_mat = sprandn(FS2000.timings.nExo, 10, .1)
+
+        plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat)
+        
     end
 
     # multiple models
