@@ -2327,27 +2327,33 @@ function plot_irf!(𝓂::ℳ;
     
     if haskey(diffdict, :shocks)
         # if all(length.(diffdict[:shock_names]) .== 1)
-            push!(annotate_diff_input, "Shock" => reduce(vcat, map(x -> typeof(x) <: AbstractArray ? "Shock Matrix" : x, diffdict[:shocks])))
+            # push!(annotate_diff_input, "Shock" => reduce(vcat, map(x -> typeof(x) <: AbstractVector ? "Multiple shocks" : typeof(x) <: AbstractMatrix ? "Shock Matrix" : x, diffdict[:shocks])))
         # else
-        #     push!(annotate_diff_input, "Shock" => diffdict[:shocks])
+            push!(annotate_diff_input, "Shock" => [typeof(x) <: AbstractMatrix ? "Shock Matrix" : x for x in diffdict[:shocks]])
         # end
     end
     
     if haskey(diffdict, :initial_state)
-        unique_initial_state = unique(diffdict[:initial_state])
+        vals = diffdict[:initial_state]
 
-        initial_state_idx = Int[]
+        # Map each distinct non-[0.0] value to its running index
+        seen = Dict{typeof(first(vals)), Int}()
+        next_idx = 0
 
-        for init in diffdict[:initial_state]
-            for (i,u) in enumerate(unique_initial_state)
-                if u == init
-                    push!(initial_state_idx,i)
-                    continue
+        labels = String[]
+        for v in vals
+            if v == [0.0]
+                push!(labels, "")                  # put nothing
+            else
+                if !haskey(seen, v)
+                    next_idx += 1                  # running index does not count [0.0]
+                    seen[v] = next_idx
                 end
+                push!(labels, "#$(seen[v])")
             end
         end
 
-        push!(annotate_diff_input, "Initial state" => ["#$i" for i in initial_state_idx])
+        push!(annotate_diff_input, "Initial state" => labels)
     end
     
     same_shock_direction = true
@@ -2370,11 +2376,11 @@ function plot_irf!(𝓂::ℳ;
         end
     end
 
-    if haskey(diffdict, :shock_names)
-        if all(length.(diffdict[:shock_names]) .== 1)
-            push!(annotate_diff_input, "Shock name" => map(x->x[1], diffdict[:shock_names]))
-        end
-    end
+    # if haskey(diffdict, :shock_names)
+    #     if !all(length.(diffdict[:shock_names]) .== 1)
+    #         push!(annotate_diff_input, "Shock name" => map(x->x[1], diffdict[:shock_names]))
+    #     end
+    # end
 
     legend_plot = StatsPlots.plot(framestyle = :none, 
                                     legend = :inside, 
