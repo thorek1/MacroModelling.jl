@@ -2326,11 +2326,14 @@ function plot_irf!(𝓂::ℳ;
     end
     
     if haskey(diffdict, :shocks)
-        # if all(length.(diffdict[:shock_names]) .== 1)
-            # push!(annotate_diff_input, "Shock" => reduce(vcat, map(x -> typeof(x) <: AbstractVector ? "Multiple shocks" : typeof(x) <: AbstractMatrix ? "Shock Matrix" : x, diffdict[:shocks])))
-        # else
-            push!(annotate_diff_input, "Shock" => [typeof(x) <: AbstractMatrix ? "Shock Matrix" : x for x in diffdict[:shocks]])
-        # end
+        if haskey(diffdict, :shock_names)
+            if !all(length.(diffdict[:shock_names]) .== 1)
+                push!(annotate_diff_input, "Shock" => reduce(vcat, map(x -> typeof(x) <: AbstractArray ? "Shock Matrix" : x, diffdict[:shocks])))
+            end
+        else
+            push!(annotate_diff_input, "Shock" => reduce(vcat, map(x -> typeof(x) <: AbstractArray ? "Shock Matrix" : x, diffdict[:shocks])))
+        #     push!(annotate_diff_input, "Shock" => diffdict[:shocks])
+        end
     end
     
     if haskey(diffdict, :initial_state)
@@ -4245,7 +4248,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         )))
         for dict in conditional_forecast_active_plot_container
     ) # "New plot must be different from previous plot. Use the version without ! to plot."
-
+    
     if no_duplicate 
         push!(conditional_forecast_active_plot_container, args_and_kwargs)
     else
