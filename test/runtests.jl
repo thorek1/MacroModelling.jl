@@ -426,7 +426,9 @@ if test_set == "plots_5"
         plot_model_estimates!(FS2000, dataFS2000_rekey, parameters = :alp => 0.3)
 
 
-        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, shock_decomposition = false)
+        plot_model_estimates!(Smets_Wouters_2007, data_rekey, parameters = :csigma => 0.3)
+
+        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, shock_decomposition = true)
 
 
         estims = get_estimated_variables(Smets_Wouters_2007, data)
