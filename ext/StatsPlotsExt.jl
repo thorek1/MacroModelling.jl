@@ -1911,7 +1911,16 @@ function standard_subplot(::Val{:stack},
         
     chosen_xticks_bar = StatsPlots.xticks(p)
 
-    StatsPlots.xticks!(p, chosen_xticks_bar[1][1], chosen_xticks[1][2])
+    if chosen_xticks_bar[1][1] == chosen_xticks[1][1]
+        StatsPlots.xticks!(p, chosen_xticks_bar[1][1], chosen_xticks[1][2])
+    else
+        idxs = indexin(chosen_xticks[1][2], string.(xvals))
+
+        replace!(idxs, nothing => 0)
+
+        StatsPlots.xticks!(p, Int.(idxs), chosen_xticks[1][2])
+        # StatsPlots.xticks!(p, chosen_xticks_bar[1][1], chosen_xticks_bar[1][2])
+    end
 
     StatsPlots.hline!([0], 
                         color = :black, 
