@@ -2339,20 +2339,23 @@ function plot_irf!(𝓂::ℳ;
     if haskey(diffdict, :initial_state)
         vals = diffdict[:initial_state]
 
-        # Map each distinct non-[0.0] value to its running index
-        seen = Dict{Any, Int}()
+        labels = String[]                                # "" for [0.0], "#k" otherwise
+        seen   = []           # store distinct non-[0.0] values by content
         next_idx = 0
 
-        labels = String[]
         for v in vals
-            if v == [0.0]
-                push!(labels, "nothing")                  # put nothing
+            if v === nothing
+                push!(labels, "")
+            elseif v == [0.0]
+                push!(labels, "nothing")
             else
-                if !haskey(seen, v)
-                    next_idx += 1                  # running index does not count [0.0]
-                    seen[v] = next_idx
+                idx = findfirst(==(v), seen)             # content based lookup
+                if idx === nothing
+                    push!(seen, copy(v))                 # store by value
+                    next_idx += 1
+                    idx = next_idx
                 end
-                push!(labels, "#$(seen[v])")
+                push!(labels, "#$(idx)")
             end
         end
 
@@ -4314,7 +4317,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
         for shock_mat in shocks
             if isnothing(shock_mat)
-                push!(labels, "nothing")
+                push!(labels, "")
                 continue
             end
 
@@ -4364,7 +4367,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
         for cond_mat in conds
             if cond_mat === nothing
-                push!(labels, "nothing")
+                push!(labels, "")
                 continue
             end
 
@@ -4399,7 +4402,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             push!(labels, "#$(idx)")
         end
 
-        if length(seen) > 1
+        if length(labels) > 1
             push!(annotate_diff_input, "Conditions" => labels)
         end
     end
@@ -4412,7 +4415,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
         next_idx = 0
 
         for v in vals
-            if v === nothing || v == [0.0]
+            if v === nothing
+                push!(labels, "")
+            elseif v == [0.0]
                 push!(labels, "nothing")
             else
                 idx = findfirst(==(v), seen)             # content based lookup
