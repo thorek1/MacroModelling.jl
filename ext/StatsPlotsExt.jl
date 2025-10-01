@@ -2340,7 +2340,7 @@ function plot_irf!(𝓂::ℳ;
         vals = diffdict[:initial_state]
 
         # Map each distinct non-[0.0] value to its running index
-        seen = Dict{typeof(first(vals)), Int}()
+        seen = Dict{Any, Int}()
         next_idx = 0
 
         labels = String[]
@@ -4309,7 +4309,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         shocks = diffdict[:shocks]
         
         labels = String[]                      # "" for trivial, "#k" otherwise
-        seen   = Vector{Matrix{Float64}}()
+        seen   = []
         next_idx = 0
 
         for shock_mat in shocks
@@ -4359,7 +4359,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         conds = diffdict[:conditions]
 
         labels = Vector{String}()
-        seen   = Vector{Matrix{Float64}}()
+        seen   = []
         next_idx = 0
 
         for cond_mat in conds
@@ -4408,7 +4408,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         vals = diffdict[:initial_state]
 
         labels = String[]                                # "" for [0.0], "#k" otherwise
-        seen   = Vector{typeof(first(vals))}()           # store distinct non-[0.0] values by content
+        seen   = []           # store distinct non-[0.0] values by content
         next_idx = 0
 
         for v in vals
