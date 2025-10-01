@@ -411,7 +411,18 @@ if test_set == "plots_5"
 
         plot_model_estimates(FS2000, dataFS2000)
 
-        plot_model_estimates(FS2000, dataFS2000_rekey)
+        plot_model_estimates(FS2000, dataFS2000_rekey[:,1:10])
+
+        plot_shock_decomposition(FS2000, dataFS2000_rekey[:,1:10])
+
+        plot_shock_decomposition(FS2000, dataFS2000_rekey)
+
+
+        dataFS2000_rekey2 = rekey(dataFS2000, :Time => 1:1:size(dataFS2000,2))
+
+        plot_shock_decomposition(FS2000, dataFS2000)
+
+        plot_shock_decomposition(FS2000, dataFS2000_rekey2)
 
 
         plot_model_estimates(FS2000, dataFS2000_rekey)
@@ -446,9 +457,9 @@ if test_set == "plots_5"
         plot_irf!(Smets_Wouters_2007, shocks = shock_mat, plot_type = :stack)
 
 
-        plot_irf(Smets_Wouters_2007, shocks = :em)
+        plot_irf(Smets_Wouters_2007, shocks = :em, periods = 5)
         
-        plot_irf!(FS2000, shocks = :e_m)
+        plot_irf!(FS2000, shocks = :e_m, periods = 5, plot_type = :stack)
 
         plot_irf!(FS2000, shocks = [:e_m, :e_a])
 
@@ -483,15 +494,19 @@ if test_set == "plots_5"
 
         shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
 
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,4), Variables = [:pinfobs], Periods = 1:4)
+        cndtns_lvl[1,4] = 2
+
         plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, plot_type = :stack)
         
         
+
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
         cndtns_lvl[1,8] = 1.4
         
         shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
 
-        plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat)
+        plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, label = "SW07 w shocks")
 
         plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl)
 
@@ -499,7 +514,7 @@ if test_set == "plots_5"
         
         shock_mat = sprandn(FS2000.timings.nExo, 10, .1)
 
-        plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat)
+        plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat, label = :rand_shocks)
         
     end
 
