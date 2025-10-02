@@ -2333,18 +2333,49 @@ function plot_irf!(𝓂::ℳ;
             push!(annotate_diff_input, String(param) => result)
         end
     end
-    
+
     if haskey(diffdict, :shocks)
+        # Build labels where matrices receive stable indices by content
+        shocks = diffdict[:shocks]
+
+        labels   = String[]                  # "" for trivial matrices, names pass through, "#k" for indexed matrices
+        seen     = [] # distinct non-trivial normalised matrices
+        next_idx = 0
+
+        for x in shocks
+            if x === nothing
+                push!(labels, "")
+            elseif typeof(x) <: AbstractMatrix
+                # Assign running index by first appearance
+                idx = findfirst(M -> M == x, seen)
+                if idx === nothing
+                    push!(seen, copy(x))
+                    next_idx += 1
+                    idx = next_idx
+                end
+                println(idx)
+                push!(labels, "Shock Matrix #$(idx)")
+
+            elseif x isa AbstractVector
+                # Pass through vector entries, flatten into labels
+                push!(labels, "[" * join(string.(x), ", ") * "]")
+            else
+                # Pass through scalar names
+                push!(labels, string(x))
+            end
+        end
+        
+        # Respect existing shock_names logic: only add when no simple one-to-one names are present
         if haskey(diffdict, :shock_names)
             if !all(length.(diffdict[:shock_names]) .== 1)
-                push!(annotate_diff_input, "Shock" => reduce(vcat, map(x -> typeof(x) <: AbstractArray ? "Shock Matrix" : x, diffdict[:shocks])))
+                push!(annotate_diff_input, "Shock" => labels)
             end
         else
-            push!(annotate_diff_input, "Shock" => reduce(vcat, map(x -> typeof(x) <: AbstractArray ? "Shock Matrix" : x, diffdict[:shocks])))
-        #     push!(annotate_diff_input, "Shock" => diffdict[:shocks])
+            push!(annotate_diff_input, "Shock" => labels)
         end
     end
-    
+
+    println(annotate_diff_input)
     if haskey(diffdict, :initial_state)
         vals = diffdict[:initial_state]
 
