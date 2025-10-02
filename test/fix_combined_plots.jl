@@ -5,11 +5,11 @@ using Random, Dates
 # TODO: 
 # - write tests and docs for the new functions
 # - revisit plot_solution + ! version of it
-# - x axis should be Int not floats for short x axis (e.g. 10)
 # - inform user when settings have no effect (and reset them) e.g. warmup itereations is only relevant ofr inversion filter
 # - test across different models
 
 # DONE:
+# - x axis should be Int not floats for short x axis (e.g. 10)
 # - write model estimates func in get_functions
 # - write the plots! funcs for all other alias funcs
 # - add label argument to ! functions
@@ -84,21 +84,19 @@ plot_simulation!(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0
 
 
 Random.seed!(13)
-plot_simulation(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, periods = 40, parameters = :R̄ => 1.0, ignore_obc = true)
-
-
-Random.seed!(13)
-plot_simulation!(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, periods = 40, parameters = :R̄ => 1.0)
+plot_simulation(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, 
+# periods = 40, 
+parameters = :R̄ => 1.0, ignore_obc = true)
 
 Random.seed!(13)
-plot_simulation!(Gali_2015_chapter_3_obc, algorithm = :second_order, periods = 40, parameters = :R̄ => 1.0)
+plot_simulation!(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, 
+periods = 40, 
+parameters = :R̄ => 1.0)
 
 
-Random.seed!(13)
-plot_irf(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, periods = 40, parameters = :R̄ => 1.0)
+plot_irf(Gali_2015_chapter_3_obc, parameters = :R̄ => 1.0)
 
-Random.seed!(13)
-plot_irf!(Gali_2015_chapter_3_obc, algorithm = :second_order, periods = 40, parameters = :R̄ => 1.0)
+plot_irf!(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, parameters = :R̄ => 1.0)
 
 
 
@@ -110,15 +108,59 @@ plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 0.5)
 
 
 
+plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0)
+
+plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true)
+
+plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, ignore_obc = true)
+
+
+plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order)
+
+plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, ignore_obc = true)
+
+plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, ignore_obc = true, generalised_irf = true)
+
+# plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, algorithm = :pruned_second_order)
+
+# plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, negative_shock = true, algorithm = :pruned_second_order)
+
+# plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, algorithm = :pruned_second_order, ignore_obc = true)
+
+
+# plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, algorithm = :pruned_second_order)
+
+# plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order)
+
+
+# plot_irf(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.97)
+
+# plot_irf!(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.97, ignore_obc = true)
+
+# plot_irf!(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.97, generalised_irf = true, plots_per_page = 2)
+
+
+plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, ignore_obc = true)
+
+# plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, generalised_irf = true)
+
+
+plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0)
+
+
+plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true, algorithm = :pruned_second_order, ignore_obc = true)
+
+
 include("../models/Caldara_et_al_2012.jl")
 
 plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
 
 plot_irf!(Caldara_et_al_2012, algorithm = :second_order)
 
+
 plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
 
-plot_irf!(Caldara_et_al_2012, algorithm = :second_order, generalised_irf = true, save_plots = true, save_plots_format = :pdf)
+plot_irf!(Caldara_et_al_2012, algorithm = :pruned_second_order, generalised_irf = true)
 
 
 plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
@@ -130,10 +172,91 @@ plot_irf(Caldara_et_al_2012, algorithm = :second_order)
 
 plot_irf!(Caldara_et_al_2012, algorithm = :third_order)
 
+
 plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order)
 
 plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, generalised_irf = true)
 
+
+plot_irf(Caldara_et_al_2012, algorithm = :third_order)
+
+plot_irf!(Caldara_et_al_2012, algorithm = :third_order, generalised_irf = true)
+
+
+plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order)
+
+plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, shock_size = 2)
+
+plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, shock_size = 3)
+
+
+plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = :ψ => 0.8)
+
+plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = :ψ => 1.5)
+
+plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = :ψ => 2.5)
+
+
+plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.3])
+
+plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.25])
+
+plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.35])
+
+
+
+using CSV, DataFrames, AxisKeys
+
+include("../models/Smets_Wouters_2007.jl")
+
+# load data
+dat = CSV.read("test/data/usmodel.csv", DataFrame)
+
+# load data
+data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+
+# declare observables as written in csv file
+observables_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+
+# Subsample
+# subset observables in data
+sample_idx = 47:230 # 1960Q1-2004Q4
+
+data = data(observables_old, sample_idx)
+
+# declare observables as written in model
+observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+
+data = rekey(data, :Variable => observables)
+
+
+plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 3, :calfa => 0.24])
+
+plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 3, :calfa => 0.28])
+
+
+plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], filter = :inversion)
+
+
+plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], filter = :inversion)
+
+plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], smooth = false)
+
+
+plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], smooth = false)
+
+plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], smooth = false, presample_periods = 50)
+
+
+plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+plot_model_estimates!(Smets_Wouters_2007, data[:,20:end], parameters = [:csadjcost => 6, :calfa => 0.24])
 
 function quarter_labels(start::Date, n::Int)
     quarters = start:Month(3):(start + Month(3*(n-1)))
@@ -241,7 +364,14 @@ plot_fevd(  GNSS_2010,
                 )
 )
 
+
+
 include("models/RBC_CME_calibration_equations.jl")
+
+
+include("../models/Gali_2015_chapter_3_obc.jl")
+m = Gali_2015_chapter_3_obc
+
 algorithm = :first_order
 
 vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
@@ -270,7 +400,574 @@ params = [old_params,
             old_params]
 
 import MacroModelling: clear_solution_caches!
+println("Testing plot_model_estimates with algorithm: ", algorithm)
+            sol = get_solution(m)
+            
+            if length(m.exo) > 3
+                n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+            else
+                var_idxs = [1]
+            end
 
+            Random.seed!(41823)
+
+            simulation = simulate(m, algorithm = algorithm)
+
+            data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+            data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
+
+            
+            
+            if !(algorithm in [:second_order, :third_order])
+                # plotlyjs_backend()
+
+                # plot_shock_decomposition(m, data, 
+                #                             algorithm = algorithm, 
+                #                             data_in_levels = false)
+
+                # gr_backend()
+
+                println("plot_shock_decomposition")
+                plot_shock_decomposition(m, data, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = false)
+            end
+
+
+            for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
+                for filter in (algorithm == :first_order ? filters : [:inversion])
+                    for smooth in [true, false]
+                        for presample_periods in [0, 3]
+                            println("plot_model_estimates: shock_decomp: ", shock_decomposition, ", filter: ", filter, ", smooth: ", smooth, ", presample: ", presample_periods)
+                            clear_solution_caches!(m, algorithm)
+
+                            plot_model_estimates(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    filter = filter,
+                                                    smooth = smooth,
+                                                    presample_periods = presample_periods,
+                                                    shock_decomposition = shock_decomposition)
+
+                            clear_solution_caches!(m, algorithm)
+                        
+                            plot_model_estimates(m, data_in_levels, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = true,
+                                                    filter = filter,
+                                                    smooth = smooth,
+                                                    presample_periods = presample_periods,
+                                                    shock_decomposition = shock_decomposition)
+                        end
+                    end
+                end
+            end
+
+            
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+
+            i = 1
+
+            # for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
+                for filter in (algorithm == :first_order ? filters : [:inversion])
+                    for smooth in [true, false]
+                        for presample_periods in [0, 3]
+                            println("plot_model_estimates!: filter: ", filter, ", smooth: ", smooth, ", presample: ", presample_periods)
+                            if i % 4 == 0
+                                plot_model_estimates(m, data_in_levels, 
+                                                        algorithm = algorithm, 
+                                                        data_in_levels = true)
+                            end
+
+                            i += 1
+                            
+                            clear_solution_caches!(m, algorithm)
+
+                            plot_model_estimates!(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    filter = filter,
+                                                    smooth = smooth,
+                                                    presample_periods = presample_periods)
+                        end
+                    end
+                end
+            # end
+
+
+
+println("Testing plot_model_estimates with algorithm: ", algorithm)
+            sol = get_solution(m)
+            
+            if length(m.exo) > 3
+                n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+            else
+                var_idxs = [1]
+            end
+
+            Random.seed!(4183)
+
+            simulation = simulate(m, algorithm = algorithm)
+
+            data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+            data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
+
+
+            plot_model_estimates(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+                                    
+                plot_model_estimates!(m, data, 
+                                        variables = vars[1],
+                                        label = string(vars[1]),
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            i = 1             
+            for variables in vars
+                println("plot_model_estimates! with different variables")
+                if i % 4 == 0
+                    plot_model_estimates(m, data_in_levels,
+                                            parameters = params[1],
+                                            algorithm = algorithm, 
+                                            data_in_levels = true)
+                end
+
+                i += 1
+
+                plot_model_estimates!(m, data, 
+                                        variables = variables,
+                                        label = string(variables),
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
+
+println("Testing plot_conditional_forecast with algorithm: ", algorithm)
+            # test conditional forecasting
+            new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
+            varnames = axiskeys(new_sub_irfs_all,1)
+            shocknames = axiskeys(new_sub_irfs_all,3)
+            sol = get_solution(m)
+            # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+
+
+            stst  = get_irf(m, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
+
+            conditions = []
+
+            cndtns = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .01
+            cndtns[var_idxs[2],2] = .02
+
+            push!(conditions, cndtns)
+
+            cndtns = spzeros(size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .01
+            cndtns[var_idxs[2],2] = .02
+
+            push!(conditions, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns[1,1] = .01
+            cndtns[2,2] = .02
+
+            push!(conditions, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns[1,1] = .01
+            cndtns[2,2] = .02
+
+            push!(conditions, cndtns)
+
+            conditions_lvl = []
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+
+            push!(conditions_lvl, cndtns_lvl)
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+        
+            push!(conditions_lvl, cndtns_lvl)
+
+
+            shocks = []
+
+            push!(shocks, nothing)
+
+            if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
+                shcks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
+                shcks[1,1] = .1
+
+                push!(shocks, shcks)
+
+                shcks = spzeros(size(new_sub_irfs_all,3),1)
+                shcks[1,1] = .1
+                
+                push!(shocks, shcks)
+
+                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
+                shcks[1,1] = .1
+
+                push!(shocks, shcks)
+
+                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
+                shcks[1,1] = .1
+
+                push!(shocks, shcks)
+            end
+            
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+                    for save_plots in [true, false]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            println("plot_conditional_forecast with different save options")
+                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                                for plots_per_page in [1,4]
+                                    for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
+                                        plot_conditional_forecast(m, conditions[1],
+                                                                    conditions_in_levels = false,
+                                                                    initial_state = [0.0],
+                                                                    algorithm = algorithm, 
+                                                                    shocks = shocks[1],
+                                                                    plot_attributes = plot_attributes,
+                                                                    show_plots = show_plots,
+                                                                    save_plots = save_plots,
+                                                                    plots_per_page = plots_per_page,
+                                                                    save_plots_path = save_plots_path,
+                                                                    save_plots_format = save_plots_format)
+
+                                        plot_conditional_forecast!(m, conditions[1],
+                                                                    conditions_in_levels = false,
+                                                                    initial_state = [0.0],
+                                                                    algorithm = algorithm, 
+                                                                    shocks = shocks[end],
+                                                                    plot_attributes = plot_attributes,
+                                                                    show_plots = show_plots,
+                                                                    save_plots = save_plots,
+                                                                    plots_per_page = plots_per_page,
+                                                                    save_plots_path = save_plots_path,
+                                                                    save_plots_format = save_plots_format)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            # end
+
+            
+            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                for quadratic_matrix_equation_algorithm in qme_algorithms
+                    for lyapunov_algorithm in lyapunov_algorithms
+                        println("plot_conditional_forecast with different algorithms and tols")
+                        for sylvester_algorithm in sylvester_algorithms
+                            clear_solution_caches!(m, algorithm)
+                        
+                            plot_conditional_forecast(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[end],
+                                                        tol = tol,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                        sylvester_algorithm = sylvester_algorithm)
+
+                            plot_conditional_forecast!(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[1],
+                                                        tol = tol,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                        sylvester_algorithm = sylvester_algorithm)
+                        end
+                    end
+                end
+            end
+
+            plot_conditional_forecast(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[1])
+
+            i = 1
+
+            for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+                for quadratic_matrix_equation_algorithm in qme_algorithms
+                    for lyapunov_algorithm in lyapunov_algorithms
+                        println("plot_conditional_forecast! with different algorithms and tols")
+                        for sylvester_algorithm in sylvester_algorithms
+                            if i % 4 == 0
+                                plot_conditional_forecast(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[1])
+                            end
+
+                            i += 1
+
+                            clear_solution_caches!(m, algorithm)
+                        
+                            plot_conditional_forecast!(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[end],
+                                                        tol = tol,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                        sylvester_algorithm = sylvester_algorithm)
+                        end
+                    end
+                end
+            end
+
+            for periods in [0,10]
+                # for levels in [true, false]
+                    println("plot_conditional_forecast with different periods")
+                    clear_solution_caches!(m, algorithm)
+                
+                    plot_conditional_forecast(m, conditions[end],
+                                                conditions_in_levels = false,
+                                                algorithm = algorithm, 
+                                                periods = periods,
+                                                # levels = levels,
+                                                shocks = shocks[end])
+
+                    
+                    clear_solution_caches!(m, algorithm)
+                
+                    plot_conditional_forecast(m, conditions_lvl[end],
+                                                algorithm = algorithm, 
+                                                periods = periods,
+                                                # levels = levels,
+                                                shocks = shocks[end])
+
+                # end
+            end
+
+
+            plot_conditional_forecast(m, conditions_lvl[end],
+                                        algorithm = algorithm,
+                                        shocks = shocks[end])
+            
+            for periods in [0,10]
+                # for levels in [true, false]
+                    clear_solution_caches!(m, algorithm)
+                
+                    plot_conditional_forecast!(m, conditions[end],
+                                                conditions_in_levels = false,
+                                                algorithm = algorithm, 
+                                                periods = periods,
+                                                # levels = levels,
+                                                shocks = shocks[1])
+                # end
+            end
+
+
+            for variables in vars
+                plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm, 
+                                            variables = variables)
+            end
+            
+            
+            plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm)
+
+            i = 1
+
+            for variables in vars
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+                end
+
+                i += 1
+
+                plot_conditional_forecast!(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            initial_state = init_states[end], 
+                                            variables = variables,
+                                            algorithm = algorithm)
+            end
+
+
+            for initial_state in init_states
+                plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            initial_state = initial_state,
+                                            algorithm = algorithm)
+            end
+
+            plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        parameters = params[1],
+                                        algorithm = algorithm)
+
+            i = 1
+
+            for initial_state in init_states
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        parameters = params[1],
+                                        algorithm = algorithm)
+                end
+
+                i += 1
+
+                plot_conditional_forecast!(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            parameters = params[2],
+                                            initial_state = initial_state,
+                                            algorithm = algorithm)
+            end
+
+
+            for shcks in shocks
+                plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm, 
+                                            shocks = shcks)
+            end
+
+
+            plot_conditional_forecast(m, conditions[1],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm, 
+                                        shocks = shocks[end])
+
+            # i = 1
+
+            for shcks in shocks
+                # if i % 4 == 0
+                #     plot_conditional_forecast(m, conditions[1],
+                #                         conditions_in_levels = false,
+                #                         algorithm = algorithm, 
+                #                         shocks = shocks[end])
+                # end
+
+                # i += 1
+
+                plot_conditional_forecast!(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm, 
+                                            shocks = shcks)
+            end
+
+            for parameters in params
+                plot_conditional_forecast(m, conditions[end],
+                                            parameters = parameters,
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+            end
+
+
+            plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm, 
+                                        parameters = params[2])
+
+            i = 1
+
+            for parameters in params
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm, 
+                                        parameters = params[2])
+                end
+
+                i += 1
+
+                plot_conditional_forecast!(m, conditions[end],
+                                            parameters = parameters,
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+            end
+
+            for cndtns in conditions
+                plot_conditional_forecast(m, cndtns,
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+            end
+
+
+            plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+
+            i = 1
+
+            for cndtns in conditions
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+                end
+
+                i += 1
+
+                plot_conditional_forecast!(m, cndtns,
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+            end
+            
+
+            plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+
+            i = 1
+
+            for cndtns in conditions
+                for plot_type in [:compare, :stack]
+                    if i % 4 == 0
+                        plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+                    end
+
+                    i += 1
+
+                    plot_conditional_forecast!(m, cndtns,
+                                                conditions_in_levels = false,
+                                                plot_type = plot_type,
+                                                algorithm = algorithm)
+                end
+            end
+            
+            # plotlyjs_backend()
+
+            # plot_conditional_forecast(m, conditions[end],
+            #                                 conditions_in_levels = false,
+            #                                 algorithm = algorithm)
+
+            # gr_backend()
+        # end
 
 # @testset "plot_model_estimates" begin
     sol = get_solution(m)
