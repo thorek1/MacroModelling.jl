@@ -130,15 +130,25 @@ jobs:
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}  
+          arch: ${{ matrix.arch }}
       # On the Julia “pre” matrix entries, drop the unsupported test-only package
-      # - name: Strip JET references on pre Julia
-      #   if: matrix.version == 'pre' && matrix.test_set != 'jet'
-      #   run: |
-      #     sed -i -e '/^[[:space:]]*JET[[:space:]]*=/d' \
-      #            -e '/^\[targets\]/,$s/,[[:space:]]*"JET"//g' \
-      #            -e '/^\[targets\]/,$s/"JET",[[:space:]]*//g' \
-      #            Project.toml
+      - name: Enforce JET compat 0.10
+        if: matrix.version == 'pre'
+        run: |
+          # Remove JET references if present
+          sed -i -e '/^[[:space:]]*JET[[:space:]]*=/d' \
+                -e '/^\[targets\]/,$s/,[[:space:]]*"JET"//g' \
+                -e '/^\[targets\]/,$s/"JET",[[:space:]]*//g' \
+                Project.toml
+
+          # Ensure [compat] section exists
+          if ! grep -q '^\[compat\]' Project.toml; then
+            echo -e "\n[compat]" >> Project.toml
+          fi
+
+          # Add JET compat line (overwrite if already there)
+          sed -i '/^\[compat\]/,/^\[/{/JET[[:space:]]*=/d}' Project.toml
+          sed -i '/^\[compat\]/a JET = "0.10"' Project.toml
       - name: Set Custom Test Environment Variable (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
