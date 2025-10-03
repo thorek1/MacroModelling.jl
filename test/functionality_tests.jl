@@ -38,8 +38,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         include("models/Caldara_et_al_2012_estim.jl")
 
         m2 = Caldara_et_al_2012_estim
+
+        get_irf(m2)
         @testset "plot_model_estimates" begin
-            sol2 = get_solution(m2)
+            sol2 = get_solution(m2) # TODO: investigate why this creates world age problems in tests
             
             if length(m2.exo) > 3
                 n_shocks_influence_var = vec(sum(abs.(sol2[end-length(m2.exo)+1:end,:]) .> eps(),dims = 1))
