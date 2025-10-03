@@ -31,7 +31,7 @@ const DEFAULT_PLOT_TITLE = ""
 
 # Time horizon defaults
 const DEFAULT_PERIODS = 40
-const DEFAULT_CONDITIONAL_VARIANCE_PERIODS = () -> [1:20..., Inf]
+const DEFAULT_CONDITIONAL_VARIANCE_PERIODS = [1:20..., Inf]
 const DEFAULT_AUTOCORRELATION_PERIODS = 1:5
 
 # Shock and variable selections
@@ -47,7 +47,7 @@ const DEFAULT_NEGATIVE_SHOCK = false
 const DEFAULT_GENERALISED_IRF = false
 const DEFAULT_GENERALISED_IRF_WARMUP = 100
 const DEFAULT_GENERALISED_IRF_DRAWS = 50
-const DEFAULT_INITIAL_STATE = () -> [0.0]
+const DEFAULT_INITIAL_STATE = [0.0]
 
 # Moment and statistics defaults
 const DEFAULT_SIGMA_RANGE = 2
@@ -67,9 +67,10 @@ const DEFAULT_VERBOSE = false
 const DEFAULT_QME_ALGORITHM = :schur
 const DEFAULT_LYAPUNOV_ALGORITHM = :doubling
 const DEFAULT_SYLVESTER_ALGORITHM = :doubling
-const DEFAULT_SYLVESTER_SELECTOR = 𝓂 -> sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : DEFAULT_SYLVESTER_ALGORITHM
+const DEFAULT_SYLVESTER_THRESHOLD = 1000
+const DEFAULT_LARGE_SYLVESTER_ALGORITHM = :bicgstab
+const DEFAULT_SYLVESTER_SELECTOR = 𝓂 -> sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM
 const DEFAULT_QME_ALGORITHM_CORRELATION = :doubling
-const DEFAULT_TOLERANCES = Tolerances
 const DEFAULT_EMPTY_DICT = Dict
 
 # StatsPlots specific constants
@@ -122,6 +123,3 @@ const DEFAULT_ARGS_AND_KWARGS_NAMES = Dict(
 
 # Turing distribution wrapper defaults
 const DEFAULT_TURING_USE_MEAN_STD = false
-
-# Statistics and steady state selection defaults
-const DEFAULT_STATISTICS_SELECTION_EMPTY = Symbol[]

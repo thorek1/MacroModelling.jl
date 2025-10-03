@@ -3,7 +3,7 @@ module StatsPlotsExt
 using MacroModelling
 
 import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMATH®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, normalize_filtering_options
-import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_EMPTY_DICT, DEFAULT_VERBOSE, DEFAULT_TOLERANCES, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_PLOT_TITLE
+import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_EMPTY_DICT, DEFAULT_VERBOSE, DEFAULT_TOLERANCES, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_PLOT_TITLE
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
 
@@ -143,7 +143,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
                                 plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
                                 verbose::Bool = DEFAULT_VERBOSE,
-                                tol::Tolerances = DEFAULT_TOLERANCES(),
+                                tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
@@ -152,7 +152,7 @@ function plot_model_estimates(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -613,7 +613,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
                                 plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
                                 verbose::Bool = DEFAULT_VERBOSE,
-                                tol::Tolerances = DEFAULT_TOLERANCES(),
+                                tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
@@ -622,7 +622,7 @@ function plot_model_estimates!(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -1342,11 +1342,11 @@ function plot_irf(𝓂::ℳ;
                     generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
                     generalised_irf_warmup_iterations::Int = DEFAULT_GENERALISED_IRF_WARMUP,
                     generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
-                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE(),
+                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                     plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
                     verbose::Bool = DEFAULT_VERBOSE,
-                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                    tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                     lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
@@ -1355,7 +1355,7 @@ function plot_irf(𝓂::ℳ;
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                     lyapunov_algorithm = lyapunov_algorithm)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -2004,13 +2004,13 @@ function plot_irf!(𝓂::ℳ;
                     generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
                     generalised_irf_warmup_iterations::Int = DEFAULT_GENERALISED_IRF_WARMUP,
                     generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
-                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE(),
+                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                     plot_type::Symbol = DEFAULT_PLOT_TYPE,
                     plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
                     transparency::Float64 = DEFAULT_TRANSPARENCY,
                     verbose::Bool = DEFAULT_VERBOSE,
-                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                    tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                     lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
@@ -2021,7 +2021,7 @@ function plot_irf!(𝓂::ℳ;
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                     lyapunov_algorithm = lyapunov_algorithm)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -3017,7 +3017,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
                                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
                                                 verbose::Bool = DEFAULT_VERBOSE,
-                                                tol::Tolerances = DEFAULT_TOLERANCES(),
+                                                tol::Tolerances = Tolerances(),
                                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                                 lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                                            
@@ -3264,7 +3264,7 @@ function plot_solution(𝓂::ℳ,
                         plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                         plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
                         verbose::Bool = DEFAULT_VERBOSE,
-                        tol::Tolerances = DEFAULT_TOLERANCES(),
+                        tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                         lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
@@ -3273,7 +3273,7 @@ function plot_solution(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                         sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
+                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -3627,7 +3627,7 @@ plot_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_le
 function plot_conditional_forecast(𝓂::ℳ,
                                     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
                                     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-                                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE(),
+                                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                                     periods::Int = DEFAULT_PERIODS, 
                                     parameters::ParameterType = nothing,
                                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
@@ -3641,7 +3641,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE,
                                     plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
                                     verbose::Bool = DEFAULT_VERBOSE,
-                                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                                    tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                     lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
@@ -4015,7 +4015,7 @@ plot_conditional_forecast!(RBC_CME, conditions, conditions_in_levels = false, pa
 function plot_conditional_forecast!(𝓂::ℳ,
                                     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
                                     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-                                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE(),
+                                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                                     periods::Int = DEFAULT_PERIODS, 
                                     parameters::ParameterType = nothing,
                                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
@@ -4031,7 +4031,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     plot_type::Symbol = DEFAULT_PLOT_TYPE,
                                     transparency::Float64 = DEFAULT_TRANSPARENCY,
                                     verbose::Bool = DEFAULT_VERBOSE,
-                                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                                    tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                     sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                                     lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
