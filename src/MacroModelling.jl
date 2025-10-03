@@ -503,14 +503,16 @@ function normalize_filtering_options(filter::Symbol,
 end
 
 
-
-function adjust_generalised_irf_flag(algorithm::Symbol, 
-                                    generalised_irf::Bool,
-                                    shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}}; 
+function adjust_generalised_irf_flag(generalised_irf::Bool,
+                                    generalised_irf_warmup_iterations::Int,
+                                    generalised_irf_draws::Int,
+                                    algorithm::Symbol,
+                                    occasionally_binding_constraints::Bool,
+                                    shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}};
                                     maxlog::Int = 3)
     if generalised_irf
-        if algorithm == :first_order
-            @info "Generalised IRFs coincide with normal IRFs for first-order solutions. Use a higher-order algorithm (e.g. `algorithm = :pruned_second_order`) to compute generalised IRFs that differ from normal IRFs. Setting `generalised_irf = false`." maxlog = maxlog
+        if algorithm == :first_order && !occasionally_binding_constraints
+            @info "Generalised IRFs coincide with normal IRFs for first-order solutions of models without/inactive occasionally binding constraints (OBC). Use `ignore_obc = false` for models with OBCs or a higher-order algorithm (e.g. `algorithm = :pruned_second_order`) to compute generalised IRFs that differ from normal IRFs. Setting `generalised_irf = false`." maxlog = maxlog
             generalised_irf = false
         elseif shocks == :none
             @info "Cannot compute generalised IRFs for model without shocks. Setting `generalised_irf = false`." maxlog = maxlog
@@ -518,9 +520,16 @@ function adjust_generalised_irf_flag(algorithm::Symbol,
         end
     end
 
+    if !generalised_irf
+        if generalised_irf_warmup_iterations != 100
+        @info "`generalised_irf_warmup_iterations` is ignored because `generalised_irf = false`." maxlog = maxlog
+        elseif generalised_irf_draws != 50
+            @info "`generalised_irf_draws` is ignored because `generalised_irf = false`." maxlog = maxlog
+        end
+    end
+
     return generalised_irf
 end
-
 
 
 function process_ignore_obc_flag(shocks,
@@ -7758,6 +7767,8 @@ function compute_irf_responses(𝓂::ℳ,
                                 shock_size::Real,
                                 negative_shock::Bool,
                                 generalised_irf::Bool,
+                                generalised_irf_warmup_iterations::Int,
+                                generalised_irf_draws::Int,
                                 enforce_obc::Bool,
                                 algorithm::Symbol)
 
@@ -7816,7 +7827,9 @@ function compute_irf_responses(𝓂::ℳ,
                         shocks = shocks,
                         shock_size = shock_size,
                         variables = variables,
-                        negative_shock = negative_shock)
+                        negative_shock = negative_shock,
+                        warmup_periods = generalised_irf_warmup_iterations,
+                        draws = generalised_irf_draws)
         else
             return irf(state_update,
                         obc_state_update,
@@ -7839,7 +7852,9 @@ function compute_irf_responses(𝓂::ℳ,
                         shocks = shocks,
                         shock_size = shock_size,
                         variables = variables,
-                        negative_shock = negative_shock)
+                        negative_shock = negative_shock,
+                        warmup_periods = generalised_irf_warmup_iterations,
+                        draws = generalised_irf_draws)
         else
             return irf(state_update,
                         initial_state,

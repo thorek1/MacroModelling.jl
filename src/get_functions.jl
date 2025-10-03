@@ -1188,6 +1188,8 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $SHOCKS®
 - $NEGATIVE_SHOCK®
 - $GENERALISED_IRF®
+- $GENERALISED_IRF_WARMUP_ITERATIONS®
+- $GENERALISED_IRF_DRAWS®
 - $INITIAL_STATE®
 - `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
 - $SHOCK_SIZE®
@@ -1243,6 +1245,8 @@ function get_irf(𝓂::ℳ;
                 shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
                 negative_shock::Bool = false, 
                 generalised_irf::Bool = false,
+                generalised_irf_warmup_iterations::Int = 100,
+                generalised_irf_draws::Int = 50,
                 initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
                 levels::Bool = false,
                 shock_size::Real = 1,
@@ -1268,8 +1272,6 @@ function get_irf(𝓂::ℳ;
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
-
-    generalised_irf = adjust_generalised_irf_flag(algorithm, generalised_irf, shocks)
 
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
@@ -1299,6 +1301,8 @@ function get_irf(𝓂::ℳ;
     end
 
     ignore_obc, occasionally_binding_constraints, obc_shocks_included = process_ignore_obc_flag(shocks, ignore_obc, 𝓂)
+
+    generalised_irf = adjust_generalised_irf_flag(generalised_irf, generalised_irf_warmup_iterations, generalised_irf_draws, algorithm, occasionally_binding_constraints, shocks)
 
     # end # timeit_debug
     
@@ -1368,6 +1372,8 @@ function get_irf(𝓂::ℳ;
                                         shock_size = shock_size,
                                         negative_shock = negative_shock,
                                         generalised_irf = generalised_irf,
+                                        generalised_irf_warmup_iterations = generalised_irf_warmup_iterations,
+                                        generalised_irf_draws = generalised_irf_draws,
                                         enforce_obc = occasionally_binding_constraints,
                                         algorithm = algorithm)
 

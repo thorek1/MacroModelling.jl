@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMATH®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, normalize_filtering_options
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMATH®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, normalize_filtering_options
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
 
@@ -39,6 +39,8 @@ const args_and_kwargs_names = Dict(:model_name => "Model",
                                     :shock_size => "Shock size",
                                     :negative_shock => "Negative shock",
                                     :generalised_irf => "Generalised IRF",
+                                    :generalised_irf_warmup_iterations => "Generalised IRF warmup iterations",
+                                    :generalised_irf_draws => "Generalised IRF draws",
                                     :periods => "Periods",
                                     :presample_periods => "Presample Periods",
                                     :ignore_obc => "Ignore OBC",
@@ -1324,6 +1326,8 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $SHOCK_SIZE®
 - $NEGATIVE_SHOCK®
 - $GENERALISED_IRF®
+- $GENERALISED_IRF_WARMUP_ITERATIONS®
+- $GENERALISED_IRF_DRAWS®
 - $INITIAL_STATE®
 - $IGNORE_OBC®
 - `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
@@ -1380,6 +1384,8 @@ function plot_irf(𝓂::ℳ;
                     shock_size::Real = 1,
                     negative_shock::Bool = false,
                     generalised_irf::Bool = false,
+                    generalised_irf_warmup_iterations::Int = 100,
+                    generalised_irf_draws::Int = 50,
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
                     ignore_obc::Bool = false,
                     plot_attributes::Dict = Dict(),
@@ -1416,8 +1422,6 @@ function plot_irf(𝓂::ℳ;
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
-    generalised_irf = adjust_generalised_irf_flag(algorithm, generalised_irf, shocks)
-
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
@@ -1439,6 +1443,8 @@ function plot_irf(𝓂::ℳ;
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     ignore_obc, occasionally_binding_constraints, obc_shocks_included = process_ignore_obc_flag(shocks, ignore_obc, 𝓂)
+
+    generalised_irf = adjust_generalised_irf_flag(generalised_irf, generalised_irf_warmup_iterations, generalised_irf_draws, algorithm, occasionally_binding_constraints, shocks)
 
     solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
 
@@ -1495,6 +1501,8 @@ function plot_irf(𝓂::ℳ;
                                 shock_size = shock_size,
                                 negative_shock = negative_shock,
                                 generalised_irf = generalised_irf,
+                                generalised_irf_warmup_iterations = generalised_irf_warmup_iterations,
+                                generalised_irf_draws = generalised_irf_draws,
                                 enforce_obc = occasionally_binding_constraints,
                                 algorithm = algorithm)
 
@@ -1542,6 +1550,8 @@ function plot_irf(𝓂::ℳ;
                            :shock_size => shock_size,
                            :negative_shock => negative_shock,
                            :generalised_irf => generalised_irf,
+                           :generalised_irf_warmup_iterations => generalised_irf_warmup_iterations,
+                           :generalised_irf_draws => generalised_irf_draws,
                            :initial_state => initial_state_input,
                            :ignore_obc => ignore_obc,
 
@@ -1951,6 +1961,8 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 - $SHOCK_SIZE®
 - $NEGATIVE_SHOCK®
 - $GENERALISED_IRF®
+- $GENERALISED_IRF_WARMUP_ITERATIONS®
+- $GENERALISED_IRF_DRAWS®
 - $INITIAL_STATE®
 - $IGNORE_OBC®
 - $LABEL®
@@ -2034,6 +2046,8 @@ function plot_irf!(𝓂::ℳ;
                     shock_size::Real = 1,
                     negative_shock::Bool = false,
                     generalised_irf::Bool = false,
+                    generalised_irf_warmup_iterations::Int = 100,
+                    generalised_irf_draws::Int = 50,
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
                     ignore_obc::Bool = false,
                     plot_type::Symbol = :compare,
@@ -2082,8 +2096,6 @@ function plot_irf!(𝓂::ℳ;
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
-    generalised_irf = adjust_generalised_irf_flag(algorithm, generalised_irf, shocks)
-
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
@@ -2104,6 +2116,8 @@ function plot_irf!(𝓂::ℳ;
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     ignore_obc, occasionally_binding_constraints, obc_shocks_included = process_ignore_obc_flag(shocks, ignore_obc, 𝓂)
+
+    generalised_irf = adjust_generalised_irf_flag(generalised_irf, generalised_irf_warmup_iterations, generalised_irf_draws, algorithm, occasionally_binding_constraints, shocks)
 
     solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
 
@@ -2160,6 +2174,8 @@ function plot_irf!(𝓂::ℳ;
                                 shock_size = shock_size,
                                 negative_shock = negative_shock,
                                 generalised_irf = generalised_irf,
+                                generalised_irf_warmup_iterations = generalised_irf_warmup_iterations,
+                                generalised_irf_draws = generalised_irf_draws,
                                 enforce_obc = occasionally_binding_constraints,
                                 algorithm = algorithm)
 
@@ -2191,6 +2207,8 @@ function plot_irf!(𝓂::ℳ;
                            :shock_size => shock_size,
                            :negative_shock => negative_shock,
                            :generalised_irf => generalised_irf,
+                           :generalised_irf_warmup_iterations => generalised_irf_warmup_iterations,
+                           :generalised_irf_draws => generalised_irf_draws,
                            :initial_state => initial_state_input,
                            :ignore_obc => ignore_obc,
 
