@@ -525,7 +525,8 @@ end
 
 function process_ignore_obc_flag(shocks,
                                  ignore_obc::Bool,
-                                 𝓂::ℳ)
+                                 𝓂::ℳ; 
+                                 maxlog::Int = 3)
     stochastic_model = length(𝓂.timings.exo) > 0
     obc_model = length(𝓂.obc_violation_equations) > 0
 
@@ -564,12 +565,12 @@ function process_ignore_obc_flag(shocks,
     ignore_obc_flag = ignore_obc
 
     if ignore_obc_flag && !obc_model
-        @info "`ignore_obc = true` has no effect because $(𝓂.model_name) has no occasionally binding constraints. Setting `ignore_obc = false`."
+        @info "`ignore_obc = true` has no effect because $(𝓂.model_name) has no occasionally binding constraints. Setting `ignore_obc = false`." maxlog = maxlog
         ignore_obc_flag = false
     end
 
     if ignore_obc_flag && obc_shocks_included
-        @warn "`ignore_obc = true` cannot be applied because shocks affecting occasionally binding constraints are included. Enforcing the constraints instead and setting `ignore_obc = false`."
+        @warn "`ignore_obc = true` cannot be applied because shocks affecting occasionally binding constraints are included. Enforcing the constraints instead and setting `ignore_obc = false`." maxlog = maxlog
         ignore_obc_flag = false
     end
 
