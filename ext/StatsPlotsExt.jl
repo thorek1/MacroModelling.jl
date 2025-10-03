@@ -1422,8 +1422,6 @@ function plot_irf(𝓂::ℳ;
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
-    generalised_irf = adjust_generalised_irf_flag(algorithm, generalised_irf, shocks, generalised_irf_warmup_iterations, generalised_irf_draws)
-
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
@@ -1445,6 +1443,8 @@ function plot_irf(𝓂::ℳ;
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     ignore_obc, occasionally_binding_constraints, obc_shocks_included = process_ignore_obc_flag(shocks, ignore_obc, 𝓂)
+
+    generalised_irf = adjust_generalised_irf_flag(generalised_irf, generalised_irf_warmup_iterations, generalised_irf_draws, algorithm, occasionally_binding_constraints, shocks)
 
     solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
 
@@ -2096,8 +2096,6 @@ function plot_irf!(𝓂::ℳ;
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
-    generalised_irf = adjust_generalised_irf_flag(algorithm, generalised_irf, shocks, generalised_irf_warmup_iterations, generalised_irf_draws)
-
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
@@ -2118,6 +2116,8 @@ function plot_irf!(𝓂::ℳ;
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     ignore_obc, occasionally_binding_constraints, obc_shocks_included = process_ignore_obc_flag(shocks, ignore_obc, 𝓂)
+
+    generalised_irf = adjust_generalised_irf_flag(generalised_irf, generalised_irf_warmup_iterations, generalised_irf_draws, algorithm, occasionally_binding_constraints, shocks)
 
     solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
 
