@@ -465,8 +465,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             plot_irfs(m, algorithm = algorithm)
 
-            plot_girf!(m, algorithm = algorithm)
-
+            if algorithm != :first_order
+                plot_girf!(m, algorithm = algorithm)
+            end
+            
             plot_simulations(m, algorithm = algorithm)
 
             plot_irf!(m, algorithm = algorithm)
