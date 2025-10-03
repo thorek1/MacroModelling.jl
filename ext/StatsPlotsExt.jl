@@ -2352,7 +2352,7 @@ function plot_irf!(𝓂::ℳ;
                     next_idx += 1
                     idx = next_idx
                 end
-                println(idx)
+                
                 push!(labels, "Shock Matrix #$(idx)")
 
             elseif x isa AbstractVector
@@ -2374,7 +2374,6 @@ function plot_irf!(𝓂::ℳ;
         end
     end
 
-    println(annotate_diff_input)
     if haskey(diffdict, :initial_state)
         vals = diffdict[:initial_state]
 
