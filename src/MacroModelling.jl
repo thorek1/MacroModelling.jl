@@ -502,6 +502,26 @@ function normalize_filtering_options(filter::Symbol,
     return filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations
 end
 
+
+
+function adjust_generalised_irf_flag(algorithm::Symbol, 
+                                    generalised_irf::Bool,
+                                    shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}}; 
+                                    maxlog::Int = 3)
+    if generalised_irf
+        if algorithm == :first_order
+            @info "Generalised IRFs coincide with normal IRFs for first-order solutions. Use a higher-order algorithm (e.g. :pruned_second_order) to compute generalised IRFs that differ from normal IRFs. Setting `generalised_irf = false`." maxlog = maxlog
+            generalised_irf = false
+        elseif shocks == :none
+            @info "Cannot compute generalised IRFs for model without shocks. Setting `generalised_irf = false`." maxlog = maxlog
+            generalised_irf = false
+        end
+    end
+
+    return generalised_irf
+end
+
+
 function reverse_transformation(transformed_expr::Expr, reverse_dict::Dict{Symbol, Expr})
     # Function to replace the transformed symbols with their original form
     function revert_symbol(expr)
@@ -7668,16 +7688,6 @@ function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Du
     return vvals, ps
 end
 
-
-function adjust_generalised_irf_flag(algorithm::Symbol, generalised_irf::Bool)
-    if algorithm == :first_order && generalised_irf
-        @info "Generalised IRFs coincide with standard IRFs for first-order solutions. Setting `generalised_irf = false`. " *
-              "Use a higher-order algorithm (e.g. :pruned_second_order) to compute generalised IRFs that differ from standard IRFs."
-        return false
-    end
-
-    return generalised_irf
-end
 
 function compute_irf_responses(𝓂::ℳ,
                                 state_update::Function,

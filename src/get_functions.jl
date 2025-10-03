@@ -1269,9 +1269,7 @@ function get_irf(𝓂::ℳ;
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
-    generalised_irf = adjust_generalised_irf_flag(algorithm, generalised_irf)
-
-    @assert !(shocks == :none && generalised_irf) "Cannot compute generalised IRFs for model without shocks."
+    generalised_irf = adjust_generalised_irf_flag(algorithm, generalised_irf, shocks)
 
     stochastic_model = length(𝓂.timings.exo) > 0
 
