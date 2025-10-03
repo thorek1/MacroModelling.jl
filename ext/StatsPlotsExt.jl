@@ -213,7 +213,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    filter, smooth, algorithm, shock_decomposition, pruning = normalize_filtering_options(filter, smooth, algorithm, shock_decomposition)
+    filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, shock_decomposition, warmup_iterations)
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
 
@@ -683,7 +683,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    filter, smooth, algorithm, _, pruning = normalize_filtering_options(filter, smooth, algorithm, false)
+    filter, smooth, algorithm, _, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
 

@@ -467,7 +467,8 @@ end
 function normalize_filtering_options(filter::Symbol,
                                       smooth::Bool,
                                       algorithm::Symbol,
-                                      shock_decomposition::Bool;
+                                      shock_decomposition::Bool,
+                                      warmup_iterations::Int;
                                       maxlog::Int = 3)
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
@@ -479,7 +480,7 @@ function normalize_filtering_options(filter::Symbol,
     end
 
     if algorithm != :first_order && filter != :inversion
-        @info "Higher order solution algorithms only support the inversion filter. Setting `filter =:inversion` because the Kalman filter only works for first order solutions." maxlog = maxlog
+        @info "Higher order solution algorithms only support the inversion filter. Setting `filter = :inversion` because the Kalman filter only works for first order solutions." maxlog = maxlog
         filter = :inversion
     end
 
@@ -488,7 +489,17 @@ function normalize_filtering_options(filter::Symbol,
         smooth = false
     end
 
-    return filter, smooth, algorithm, shock_decomposition, pruning
+    if warmup_iterations > 0
+        if filter == :kalman
+            @info "Warmup iterations is not a valid argument for the Kalman filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
+            warmup_iterations = 0
+        elseif algorithm != :first_order
+            @info "Warmup iterations is currently only available for first order solutions in combination with the inversion filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
+            warmup_iterations = 0
+        end
+    end
+
+    return filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations
 end
 
 function reverse_transformation(transformed_expr::Expr, reverse_dict::Dict{Symbol, Expr})

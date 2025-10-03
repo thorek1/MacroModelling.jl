@@ -96,7 +96,7 @@ function get_shock_decomposition(𝓂::ℳ,
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
-    filter, smooth, algorithm, _, pruning = normalize_filtering_options(filter, smooth, algorithm, false)
+    filter, smooth, algorithm, _, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -237,7 +237,7 @@ function get_estimated_shocks(𝓂::ℳ,
                             sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
-    filter, smooth, algorithm, _, _ = normalize_filtering_options(filter, smooth, algorithm, false)
+    filter, smooth, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -365,7 +365,7 @@ function get_estimated_variables(𝓂::ℳ,
                                 sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
                                 lyapunov_algorithm = lyapunov_algorithm)
 
-    filter, smooth, algorithm, _, _ = normalize_filtering_options(filter, smooth, algorithm, false)
+    filter, smooth, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -3501,7 +3501,7 @@ function get_loglikelihood(𝓂::ℳ,
     # checks to avoid errors further down the line and inform the user
     @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."
 
-    filter, _, algorithm, _, _ = normalize_filtering_options(filter, false, algorithm, false)
+    filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
 
     observables = @ignore_derivatives get_and_check_observables(𝓂, data)
 
