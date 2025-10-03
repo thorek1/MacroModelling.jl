@@ -39,23 +39,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
         m2 = Caldara_et_al_2012_estim
         @testset "plot_model_estimates" begin
-            sol = get_solution(m)
-            
-            if length(m.exo) > 3
-                n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
-                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
-            else
-                var_idxs = [1]
-            end
-
-            Random.seed!(41823)
-
-            simulation = simulate(m, algorithm = algorithm)
-
-            data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
-            data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
-
-            
             sol2 = get_solution(m2)
             
             if length(m2.exo) > 3
@@ -72,7 +55,23 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             data_in_levels2 = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m2.var[var_idxs]) : m2.var[var_idxs],:,:simulate)
             data2 = data_in_levels2 .- m2.solution.non_stochastic_steady_state[var_idxs]
 
+
+
+            sol = get_solution(m)
             
+            if length(m.exo) > 3
+                n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+            else
+                var_idxs = [1]
+            end
+
+            Random.seed!(41823)
+
+            simulation = simulate(m, algorithm = algorithm)
+
+            data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+            data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
             
             if !(algorithm in [:second_order, :third_order])
