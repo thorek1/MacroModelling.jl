@@ -108,6 +108,7 @@ using DispatchDoctor
 # Imports
 include("common_docstrings.jl")
 include("options_and_caches.jl")
+include("Default_Options.jl")
 include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")

@@ -3,6 +3,7 @@ module StatsPlotsExt
 using MacroModelling
 
 import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMATH®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, normalize_filtering_options
+import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_EMPTY_DICT, DEFAULT_VERBOSE, DEFAULT_TOLERANCES, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_PLOT_TITLE
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
 
@@ -21,51 +22,6 @@ import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_sim
 
 import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!
 
-const default_plot_attributes = Dict(:size=>(700,500),
-                                :plot_titlefont => 10, 
-                                :titlefont => 8, 
-                                :guidefont => 8,
-                                :palette => :auto,
-                                :legendfontsize => 8,
-                                :annotationfontsize => 8,
-                                :legend_title_font_pointsize => 8,
-                                :tickfontsize => 8,
-                                :framestyle => :semi)
-
-# Elements whose difference between function calls should be highlighted across models.
-const args_and_kwargs_names = Dict(:model_name => "Model",
-                                    :algorithm => "Algorithm",
-                                    :shock_names => "Shock",
-                                    :shock_size => "Shock size",
-                                    :negative_shock => "Negative shock",
-                                    :generalised_irf => "Generalised IRF",
-                                    :generalised_irf_warmup_iterations => "Generalised IRF warmup iterations",
-                                    :generalised_irf_draws => "Generalised IRF draws",
-                                    :periods => "Periods",
-                                    :presample_periods => "Presample Periods",
-                                    :ignore_obc => "Ignore OBC",
-                                    :smooth => "Smooth",
-                                    :data => "Data",
-                                    :label => "Label",
-                                    :filter => "Filter",
-                                    :warmup_iterations => "Warmup Iterations",
-                                    :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
-                                    :sylvester_algorithm => "Sylvester Algorithm",
-                                    :lyapunov_algorithm => "Lyapunov Algorithm",
-                                    :NSSS_acceptance_tol => "NSSS acceptance tol",
-                                    :NSSS_xtol => "NSSS xtol",
-                                    :NSSS_ftol => "NSSS ftol",
-                                    :NSSS_rel_xtol => "NSSS rel xtol",
-                                    :qme_tol => "QME tol",
-                                    :qme_acceptance_tol => "QME acceptance tol",
-                                    :sylvester_tol => "Sylvester tol",
-                                    :sylvester_acceptance_tol => "Sylvester acceptance tol",
-                                    :lyapunov_tol => "Lyapunov tol",
-                                    :lyapunov_acceptance_tol => "Lyapunov acceptance tol",
-                                    :droptol => "Droptol",
-                                    :dependencies_tol => "Dependencies tol"
-                                    )
-                        
 @stable default_mode = "disable" begin
 """
     gr_backend()
@@ -167,30 +123,30 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 function plot_model_estimates(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
-                                algorithm::Symbol = :first_order, 
-                                filter::Symbol = algorithm == :first_order ? :kalman : :inversion, 
-                                warmup_iterations::Int = 0,
-                                variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-                                shocks::Union{Symbol_input,String_input} = :all, 
-                                presample_periods::Int = 0,
-                                data_in_levels::Bool = true,
-                                shock_decomposition::Bool = algorithm ∉ (:second_order, :third_order),
-                                smooth::Bool = filter == :kalman,
-                                label::Union{Real, String, Symbol} = 1,
-                                show_plots::Bool = true,
-                                save_plots::Bool = false,
-                                save_plots_format::Symbol = :pdf,
-                                save_plots_path::String = ".",
-                                plots_per_page::Int = 6,
-                                transparency::Float64 = .6,
-                                max_elements_per_legend_row::Int = 4,
-                                extra_legend_space::Float64 = 0.0,
-                                plot_attributes::Dict = Dict(),
-                                verbose::Bool = false,
-                                tol::Tolerances = Tolerances(),
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                                lyapunov_algorithm::Symbol = :doubling)
+                                algorithm::Symbol = DEFAULT_ALGORITHM, 
+                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
+                                warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                                variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
+                                shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
+                                presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
+                                data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
+                                shock_decomposition::Bool = DEFAULT_SHOCK_DECOMPOSITION_SELECTOR(algorithm),
+                                smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
+                                label::Union{Real, String, Symbol} = DEFAULT_LABEL,
+                                show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                                save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                                save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                                plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
+                                transparency::Float64 = DEFAULT_TRANSPARENCY,
+                                max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
+                                extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
+                                plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
+                                verbose::Bool = DEFAULT_VERBOSE,
+                                tol::Tolerances = DEFAULT_TOLERANCES(),
+                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -202,9 +158,9 @@ function plot_model_estimates(𝓂::ℳ,
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
-        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
     else
-        attrbts = merge(default_plot_attributes, Dict())
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
     end
 
     attributes = merge(attrbts, plot_attributes)
@@ -639,28 +595,28 @@ plot_model_estimates!(RBC_CME, simulation([:k],:,:simulate), parameters = :beta 
 function plot_model_estimates!(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
-                                algorithm::Symbol = :first_order,
-                                filter::Symbol = algorithm == :first_order ? :kalman : :inversion,
-                                warmup_iterations::Int = 0,
-                                variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-                                shocks::Union{Symbol_input,String_input} = :all, 
-                                presample_periods::Int = 0,
-                                data_in_levels::Bool = true,
-                                smooth::Bool = filter == :kalman,
+                                algorithm::Symbol = DEFAULT_ALGORITHM,
+                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                                variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
+                                shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
+                                presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
+                                data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
+                                smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
                                 label::Union{Real, String, Symbol} = length(model_estimates_active_plot_container) + 1,
-                                show_plots::Bool = true,
-                                save_plots::Bool = false,
-                                save_plots_format::Symbol = :pdf,
-                                save_plots_path::String = ".",
-                                plots_per_page::Int = 6,
-                                max_elements_per_legend_row::Int = 4,
-                                extra_legend_space::Float64 = 0.0,
-                                plot_attributes::Dict = Dict(),
-                                verbose::Bool = false,
-                                tol::Tolerances = Tolerances(),
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                                lyapunov_algorithm::Symbol = :doubling)
+                                show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                                save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                                save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                                plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
+                                max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
+                                extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
+                                plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
+                                verbose::Bool = DEFAULT_VERBOSE,
+                                tol::Tolerances = DEFAULT_TOLERANCES(),
+                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -672,9 +628,9 @@ function plot_model_estimates!(𝓂::ℳ,
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
-        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
     else
-        attrbts = merge(default_plot_attributes, Dict())
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
     end
 
     attributes = merge(attrbts, plot_attributes)
@@ -811,7 +767,7 @@ function plot_model_estimates!(𝓂::ℳ,
             # get(dict, :filter, nothing) == args_and_kwargs[:filter],
             # get(dict, :warmup_iterations, nothing) == args_and_kwargs[:warmup_iterations],
             # get(dict, :smooth, nothing) == args_and_kwargs[:smooth],
-            all(k == :data ? collect(get(dict, k, nothing)) == collect(get(args_and_kwargs, k, nothing)) : get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(args_and_kwargs_names),[:label]))
+            all(k == :data ? collect(get(dict, k, nothing)) == collect(get(args_and_kwargs, k, nothing)) : get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
         )))
         for dict in model_estimates_active_plot_container
     ) # "New plot must be different from previous plot. Use the version without ! to plot."
@@ -824,7 +780,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     # 1. Keep only certain keys from each dictionary
     reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, keys(args_and_kwargs_names)...) if haskey(d, k))
+        Dict(k => d[k] for k in vcat(:run_id, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
         for d in model_estimates_active_plot_container
     ]
 
@@ -835,7 +791,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     for d in model_estimates_active_plot_container
         model = d[:model_name]
-        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(args_and_kwargs_names)) if haskey(d, k))
+        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
         push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
     end
 
@@ -912,7 +868,7 @@ function plot_model_estimates!(𝓂::ℳ,
                     )
 
         if haskey(diffdict, k)
-            push!(annotate_diff_input, args_and_kwargs_names[k] => reduce(vcat, diffdict[k]))
+            push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat, diffdict[k]))
         end
     end
     
@@ -1370,30 +1326,30 @@ plot_irf(RBC)
 ```
 """
 function plot_irf(𝓂::ℳ;
-                    periods::Int = 40, 
-                    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
-                    variables::Union{Symbol_input,String_input} = :all_excluding_auxiliary_and_obc,
+                    periods::Int = DEFAULT_PERIODS, 
+                    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCKS_EXCLUDING_OBC, 
+                    variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC,
                     parameters::ParameterType = nothing,
-                    label::Union{Real, String, Symbol} = 1,
-                    show_plots::Bool = true,
-                    save_plots::Bool = false,
-                    save_plots_format::Symbol = :pdf,
-                    save_plots_path::String = ".",
-                    plots_per_page::Int = 9, 
-                    algorithm::Symbol = :first_order,
-                    shock_size::Real = 1,
-                    negative_shock::Bool = false,
-                    generalised_irf::Bool = false,
-                    generalised_irf_warmup_iterations::Int = 100,
-                    generalised_irf_draws::Int = 50,
-                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-                    ignore_obc::Bool = false,
-                    plot_attributes::Dict = Dict(),
-                    verbose::Bool = false,
-                    tol::Tolerances = Tolerances(),
-                    quadratic_matrix_equation_algorithm::Symbol = :schur,
-                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                    lyapunov_algorithm::Symbol = :doubling)
+                    label::Union{Real, String, Symbol} = DEFAULT_LABEL,
+                    show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                    save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                    save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                    save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                    plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE, 
+                    algorithm::Symbol = DEFAULT_ALGORITHM,
+                    shock_size::Real = DEFAULT_SHOCK_SIZE,
+                    negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK,
+                    generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
+                    generalised_irf_warmup_iterations::Int = DEFAULT_GENERALISED_IRF_WARMUP,
+                    generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
+                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE(),
+                    ignore_obc::Bool = DEFAULT_IGNORE_OBC,
+                    plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
+                    verbose::Bool = DEFAULT_VERBOSE,
+                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                    quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -1405,9 +1361,9 @@ function plot_irf(𝓂::ℳ;
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
-        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
     else
-        attrbts = merge(default_plot_attributes, Dict())
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
     end
 
     attributes = merge(attrbts, plot_attributes)
@@ -1737,7 +1693,7 @@ function standard_subplot(::Val{:compare},
                             same_ss::Bool; 
                             xvals = 1:maximum(length.(irf_data)),
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
-                            transparency::Float64 = .6) where S <: AbstractFloat
+                            transparency::Float64 = DEFAULT_TRANSPARENCY) where S <: AbstractFloat
     plot_dat = []
     plot_ss = 0
     
@@ -1818,7 +1774,7 @@ function standard_subplot(::Val{:stack},
                             color_total::Symbol = :black,
                             xvals = 1:length(irf_data[1]),
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
-                            transparency::Float64 = .6) where S <: AbstractFloat
+                            transparency::Float64 = DEFAULT_TRANSPARENCY) where S <: AbstractFloat
     plot_dat = []
     plot_ss = 0
     
@@ -2032,32 +1988,32 @@ plot_irf!(RBC, shock_size = 2, plot_type = :stack)
 ```
 """
 function plot_irf!(𝓂::ℳ;
-                    periods::Int = 40, 
-                    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
-                    variables::Union{Symbol_input,String_input} = :all_excluding_auxiliary_and_obc,
+                    periods::Int = DEFAULT_PERIODS, 
+                    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCKS_EXCLUDING_OBC, 
+                    variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC,
                     parameters::ParameterType = nothing,
                     label::Union{Real, String, Symbol} = length(irf_active_plot_container) + 1,
-                    show_plots::Bool = true,
-                    save_plots::Bool = false,
-                    save_plots_format::Symbol = :pdf,
-                    save_plots_path::String = ".",
-                    plots_per_page::Int = 6, 
-                    algorithm::Symbol = :first_order,
-                    shock_size::Real = 1,
-                    negative_shock::Bool = false,
-                    generalised_irf::Bool = false,
-                    generalised_irf_warmup_iterations::Int = 100,
-                    generalised_irf_draws::Int = 50,
-                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-                    ignore_obc::Bool = false,
-                    plot_type::Symbol = :compare,
-                    plot_attributes::Dict = Dict(),
-                    transparency::Float64 = .6,
-                    verbose::Bool = false,
-                    tol::Tolerances = Tolerances(),
-                    quadratic_matrix_equation_algorithm::Symbol = :schur,
-                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                    lyapunov_algorithm::Symbol = :doubling)
+                    show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                    save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                    save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                    save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                    plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL, 
+                    algorithm::Symbol = DEFAULT_ALGORITHM,
+                    shock_size::Real = DEFAULT_SHOCK_SIZE,
+                    negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK,
+                    generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
+                    generalised_irf_warmup_iterations::Int = DEFAULT_GENERALISED_IRF_WARMUP,
+                    generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
+                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE(),
+                    ignore_obc::Bool = DEFAULT_IGNORE_OBC,
+                    plot_type::Symbol = DEFAULT_PLOT_TYPE,
+                    plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
+                    transparency::Float64 = DEFAULT_TRANSPARENCY,
+                    verbose::Bool = DEFAULT_VERBOSE,
+                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                    quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                
 
     @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
@@ -2071,9 +2027,9 @@ function plot_irf!(𝓂::ℳ;
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
-        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
     else
-        attrbts = merge(default_plot_attributes, Dict())
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
     end
 
     attributes = merge(attrbts, plot_attributes)
@@ -2240,7 +2196,7 @@ function plot_irf!(𝓂::ℳ;
             get(dict, :shock_names, nothing) == args_and_kwargs[:shock_names],
             get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
             get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
-            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(args_and_kwargs_names),[:label]))
+            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
         )))
         for dict in irf_active_plot_container
     )# "New plot must be different from previous plot. Use the version without ! to plot."
@@ -2253,7 +2209,7 @@ function plot_irf!(𝓂::ℳ;
 
     # 1. Keep only certain keys from each dictionary
     reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, :label, keys(args_and_kwargs_names)...) if haskey(d, k))
+        Dict(k => d[k] for k in vcat(:run_id, :label, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
         for d in irf_active_plot_container
     ]
 
@@ -2264,7 +2220,7 @@ function plot_irf!(𝓂::ℳ;
 
     for d in irf_active_plot_container
         model = d[:model_name]
-        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(args_and_kwargs_names)) if haskey(d, k))
+        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
         push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
     end
 
@@ -2283,7 +2239,7 @@ function plot_irf!(𝓂::ℳ;
         end
     end
 
-    # @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || haskey(diffdict, :initial_state) || any(haskey.(Ref(diffdict), keys(args_and_kwargs_names))) "New plot must be different from previous plot. Use the version without ! to plot."
+    # @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || haskey(diffdict, :initial_state) || any(haskey.(Ref(diffdict), keys(DEFAULT_ARGS_AND_KWARGS_NAMES))) "New plot must be different from previous plot. Use the version without ! to plot."
     
     annotate_ss = Vector{Pair{String, Any}}[]
 
@@ -2382,7 +2338,7 @@ function plot_irf!(𝓂::ℳ;
                     )
 
         if haskey(diffdict, k)
-            push!(annotate_diff_input, args_and_kwargs_names[k] => reduce(vcat,diffdict[k]))
+            push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat,diffdict[k]))
             
             if k == :negative_shock
                 same_shock_direction = false
@@ -2913,7 +2869,7 @@ function minimal_sigfig_strings(v::AbstractVector{<:Real};
 end
 
 
-function plot_df(plot_vector::Vector{Pair{String,Any}}; fontsize::Real = 8, title::String = "")
+function plot_df(plot_vector::Vector{Pair{String,Any}}; fontsize::Real = DEFAULT_FONT_SIZE, title::String = DEFAULT_PLOT_TITLE)
     # Determine dimensions from plot_vector
     ncols = length(plot_vector)
     nrows = length(plot_vector[1].second)
@@ -3049,21 +3005,21 @@ plot_conditional_variance_decomposition(RBC_CME)
 ```
 """
 function plot_conditional_variance_decomposition(𝓂::ℳ;
-                                                periods::Int = 40, 
+                                                periods::Int = DEFAULT_PERIODS, 
                                                 variables::Union{Symbol_input,String_input} = :all,
                                                 parameters::ParameterType = nothing,
-                                                show_plots::Bool = true,
-                                                save_plots::Bool = false,
-                                                save_plots_format::Symbol = :pdf,
-                                                save_plots_path::String = ".",
-                                                plots_per_page::Int = 9, 
-                                                plot_attributes::Dict = Dict(),
-                                                max_elements_per_legend_row::Int = 4,
-                                                extra_legend_space::Float64 = 0.0,
-                                                verbose::Bool = false,
-                                                tol::Tolerances = Tolerances(),
-                                                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                                lyapunov_algorithm::Symbol = :doubling)
+                                                show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                                                save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                                                save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                                save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                                                plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE, 
+                                                plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
+                                                max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
+                                                extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
+                                                verbose::Bool = DEFAULT_VERBOSE,
+                                                tol::Tolerances = DEFAULT_TOLERANCES(),
+                                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                                            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -3073,9 +3029,9 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
-        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
     else
-        attrbts = merge(default_plot_attributes, Dict())
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
     end
 
     attributes = merge(attrbts, plot_attributes)
@@ -3298,20 +3254,20 @@ function plot_solution(𝓂::ℳ,
                         state::Union{Symbol,String};
                         variables::Union{Symbol_input,String_input} = :all,
                         algorithm::Union{Symbol,Vector{Symbol}} = :first_order,
-                        σ::Union{Int64,Float64} = 2,
+                        σ::Union{Int64,Float64} = DEFAULT_SIGMA_RANGE,
                         parameters::ParameterType = nothing,
-                        ignore_obc::Bool = false,
-                        show_plots::Bool = true,
-                        save_plots::Bool = false,
-                        save_plots_format::Symbol = :pdf,
-                        save_plots_path::String = ".",
-                        plots_per_page::Int = 6,
-                        plot_attributes::Dict = Dict(),
-                        verbose::Bool = false,
-                        tol::Tolerances = Tolerances(),
-                        quadratic_matrix_equation_algorithm::Symbol = :schur,
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                        lyapunov_algorithm::Symbol = :doubling)
+                        ignore_obc::Bool = DEFAULT_IGNORE_OBC,
+                        show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                        save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                        save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                        save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                        plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
+                        plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
+                        verbose::Bool = DEFAULT_VERBOSE,
+                        tol::Tolerances = DEFAULT_TOLERANCES(),
+                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                    
     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -3323,9 +3279,9 @@ function plot_solution(𝓂::ℳ,
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
-        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
     else
-        attrbts = merge(default_plot_attributes, Dict())
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
     end
 
     attributes = merge(attrbts, plot_attributes)
@@ -3671,32 +3627,32 @@ plot_conditional_forecast(RBC_CME, conditions, shocks = shocks, conditions_in_le
 function plot_conditional_forecast(𝓂::ℳ,
                                     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
                                     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-                                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-                                    periods::Int = 40, 
+                                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE(),
+                                    periods::Int = DEFAULT_PERIODS, 
                                     parameters::ParameterType = nothing,
-                                    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-                                    conditions_in_levels::Bool = true,
-                                    algorithm::Symbol = :first_order,
-                                    label::Union{Real, String, Symbol} = 1,
-                                    show_plots::Bool = true,
-                                    save_plots::Bool = false,
-                                    save_plots_format::Symbol = :pdf,
-                                    save_plots_path::String = ".",
-                                    plots_per_page::Int = 9,
-                                    plot_attributes::Dict = Dict(),
-                                    verbose::Bool = false,
-                                    tol::Tolerances = Tolerances(),
-                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                                    lyapunov_algorithm::Symbol = :doubling)
+                                    variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
+                                    conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
+                                    algorithm::Symbol = DEFAULT_ALGORITHM,
+                                    label::Union{Real, String, Symbol} = DEFAULT_LABEL,
+                                    show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                                    save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                                    save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                    save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                                    plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE,
+                                    plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
+                                    verbose::Bool = DEFAULT_VERBOSE,
+                                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                                    quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time
     
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
-        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
     else
-        attrbts = merge(default_plot_attributes, Dict())
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
     end
 
     attributes = merge(attrbts, plot_attributes)
@@ -4059,26 +4015,26 @@ plot_conditional_forecast!(RBC_CME, conditions, conditions_in_levels = false, pa
 function plot_conditional_forecast!(𝓂::ℳ,
                                     conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
                                     shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-                                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-                                    periods::Int = 40, 
+                                    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE(),
+                                    periods::Int = DEFAULT_PERIODS, 
                                     parameters::ParameterType = nothing,
-                                    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-                                    conditions_in_levels::Bool = true,
-                                    algorithm::Symbol = :first_order,
+                                    variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
+                                    conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
+                                    algorithm::Symbol = DEFAULT_ALGORITHM,
                                     label::Union{Real, String, Symbol} = length(conditional_forecast_active_plot_container) + 1,
-                                    show_plots::Bool = true,
-                                    save_plots::Bool = false,
-                                    save_plots_format::Symbol = :pdf,
-                                    save_plots_path::String = ".",
-                                    plots_per_page::Int = 6,
-                                    plot_attributes::Dict = Dict(),
-                                    plot_type::Symbol = :compare,
-                                    transparency::Float64 = .6,
-                                    verbose::Bool = false,
-                                    tol::Tolerances = Tolerances(),
-                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                                    lyapunov_algorithm::Symbol = :doubling)
+                                    show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                                    save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                                    save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                    save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                                    plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
+                                    plot_attributes::Dict = DEFAULT_EMPTY_DICT(),
+                                    plot_type::Symbol = DEFAULT_PLOT_TYPE,
+                                    transparency::Float64 = DEFAULT_TRANSPARENCY,
+                                    verbose::Bool = DEFAULT_VERBOSE,
+                                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                                    quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time
                  
     @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
@@ -4086,9 +4042,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
     if !gr_back
-        attrbts = merge(default_plot_attributes, Dict(:framestyle => :box))
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
     else
-        attrbts = merge(default_plot_attributes, Dict())
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
     end
 
     attributes = merge(attrbts, plot_attributes)
@@ -4251,7 +4207,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             get(dict, :conditions, nothing) == args_and_kwargs[:conditions],
             get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
             get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
-            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(args_and_kwargs_names),[:label]))
+            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
         )))
         for dict in conditional_forecast_active_plot_container
     ) # "New plot must be different from previous plot. Use the version without ! to plot."
@@ -4264,7 +4220,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     # 1. Keep only certain keys from each dictionary
     reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, :label, keys(args_and_kwargs_names)...) if haskey(d, k))
+        Dict(k => d[k] for k in vcat(:run_id, :label, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
         for d in conditional_forecast_active_plot_container
     ]
 
@@ -4275,7 +4231,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     for d in conditional_forecast_active_plot_container
         model = d[:model_name]
-        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(args_and_kwargs_names)) if haskey(d, k))
+        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
         push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
     end
 
@@ -4449,7 +4405,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                     )
 
         if haskey(diffdict, k)
-            push!(annotate_diff_input, args_and_kwargs_names[k] => reduce(vcat,diffdict[k]))
+            push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat,diffdict[k]))
             
             if k == :negative_shock
                 same_shock_direction = false

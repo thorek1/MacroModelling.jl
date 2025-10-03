@@ -78,16 +78,16 @@ And data, 4×2×40 Array{Float64, 3}:
 function get_shock_decomposition(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
-                                filter::Symbol = algorithm == :first_order ? :kalman : :inversion,
-                                algorithm::Symbol = :first_order,
-                                data_in_levels::Bool = true,
-                                warmup_iterations::Int = 0,
-                                smooth::Bool = filter == :kalman,
-                                verbose::Bool = false,
-                                tol::Tolerances = Tolerances(),
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                                lyapunov_algorithm::Symbol = :doubling)::KeyedArray
+                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                                algorithm::Symbol = DEFAULT_ALGORITHM,
+                                data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
+                                warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                                smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
+                                verbose::Bool = DEFAULT_VERBOSE,
+                                tol::Tolerances = DEFAULT_TOLERANCES(),
+                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
     # @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -219,16 +219,16 @@ And data, 1×40 Matrix{Float64}:
 function get_estimated_shocks(𝓂::ℳ,
                             data::KeyedArray{Float64};
                             parameters::ParameterType = nothing,
-                            algorithm::Symbol = :first_order, 
-                            filter::Symbol = algorithm == :first_order ? :kalman : :inversion, 
-                            warmup_iterations::Int = 0,
-                            data_in_levels::Bool = true,
-                            smooth::Bool = filter == :kalman,
-                            verbose::Bool = false,
-                            tol::Tolerances = Tolerances(),
-                            quadratic_matrix_equation_algorithm::Symbol = :schur,
-                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                            lyapunov_algorithm::Symbol = :doubling)::KeyedArray
+                            algorithm::Symbol = DEFAULT_ALGORITHM, 
+                            filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
+                            warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                            data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
+                            smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
+                            verbose::Bool = DEFAULT_VERBOSE,
+                            tol::Tolerances = DEFAULT_TOLERANCES(),
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
     # @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -346,17 +346,17 @@ And data, 4×40 Matrix{Float64}:
 function get_estimated_variables(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
-                                algorithm::Symbol = :first_order, 
-                                filter::Symbol = algorithm == :first_order ? :kalman : :inversion, 
-                                warmup_iterations::Int = 0,
-                                data_in_levels::Bool = true,
-                                levels::Bool = true,
-                                smooth::Bool = filter == :kalman,
-                                verbose::Bool = false,
-                                tol::Tolerances = Tolerances(),
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                                lyapunov_algorithm::Symbol = :doubling)::KeyedArray
+                                algorithm::Symbol = DEFAULT_ALGORITHM, 
+                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
+                                warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                                data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
+                                levels::Bool = DEFAULT_LEVELS,
+                                smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
+                                verbose::Bool = DEFAULT_VERBOSE,
+                                tol::Tolerances = DEFAULT_TOLERANCES(),
+                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
     # @nospecialize # reduce compile time                         
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -472,18 +472,18 @@ And data, 5×40 Matrix{Float64}:
 function get_model_estimates(𝓂::ℳ,
                              data::KeyedArray{Float64};
                              parameters::ParameterType = nothing,
-                             algorithm::Symbol = :first_order,
-                             filter::Symbol = algorithm == :first_order ? :kalman : :inversion,
-                             warmup_iterations::Int = 0,
-                             data_in_levels::Bool = true,
-                             levels::Bool = true,
-                             smooth::Bool = filter == :kalman,
-                             verbose::Bool = false,
-                             tol::Tolerances = Tolerances(),
-                             quadratic_matrix_equation_algorithm::Symbol = :schur,
+                             algorithm::Symbol = DEFAULT_ALGORITHM,
+                             filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
+                             warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
+                             data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
+                             levels::Bool = DEFAULT_LEVELS,
+                             smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
+                             verbose::Bool = DEFAULT_VERBOSE,
+                             tol::Tolerances = DEFAULT_TOLERANCES(),
+                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                              sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} =
                                  sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                             lyapunov_algorithm::Symbol = :doubling)::KeyedArray
+                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
 
     vars = get_estimated_variables(𝓂, data;
                                    parameters = parameters,
@@ -579,12 +579,12 @@ And data, 4×40 Matrix{Float64}:
 function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                     data::KeyedArray{Float64};
                                                     parameters::ParameterType = nothing,
-                                                    data_in_levels::Bool = true,
-                                                    smooth::Bool = true,
-                                                    verbose::Bool = false,
-                                                    tol::Tolerances = Tolerances(),
-                                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                                    lyapunov_algorithm::Symbol = :doubling)
+                                                    data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
+                                                    smooth::Bool = DEFAULT_SMOOTH_FLAG,
+                                                    verbose::Bool = DEFAULT_VERBOSE,
+                                                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                                                    quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                                               
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -733,18 +733,18 @@ And data, 9×42 Matrix{Float64}:
 function get_conditional_forecast(𝓂::ℳ,
                                 conditions::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}};
                                 shocks::Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing} = nothing, 
-                                initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-                                periods::Int = 40, 
+                                initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE(),
+                                periods::Int = DEFAULT_PERIODS, 
                                 parameters::ParameterType = nothing,
-                                variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-                                conditions_in_levels::Bool = true,
-                                algorithm::Symbol = :first_order,
-                                levels::Bool = false,
-                                verbose::Bool = false,
-                                tol::Tolerances = Tolerances(),
-                                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                                lyapunov_algorithm::Symbol = :doubling)
+                                variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
+                                conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
+                                algorithm::Symbol = DEFAULT_ALGORITHM,
+                                levels::Bool = DEFAULT_LEVELS_FALSE,
+                                verbose::Bool = DEFAULT_VERBOSE,
+                                tol::Tolerances = DEFAULT_TOLERANCES(),
+                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                        
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -1060,15 +1060,15 @@ get_irf(RBC, RBC.parameter_values)
 """
 function get_irf(𝓂::ℳ,
                     parameters::Vector{S};
-                    periods::Int = 40,
-                    variables::Union{Symbol_input,String_input} = :all_excluding_obc,
-                    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
-                    negative_shock::Bool = false, 
-                    initial_state::Vector{Float64} = [0.0],
-                    levels::Bool = false,
-                    verbose::Bool = false,
-                    tol::Tolerances = Tolerances(),
-                    quadratic_matrix_equation_algorithm::Symbol = :schur) where S <: Real
+                    periods::Int = DEFAULT_PERIODS,
+                    variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC,
+                    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCK_SELECTION,
+                    negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK, 
+                    initial_state::Vector{Float64} = DEFAULT_INITIAL_STATE(),
+                    levels::Bool = DEFAULT_LEVELS_FALSE,
+                    verbose::Bool = DEFAULT_VERBOSE,
+                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                    quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM) where S <: Real
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
@@ -1238,25 +1238,25 @@ And data, 4×40×1 Array{Float64, 3}:
 ```
 """
 function get_irf(𝓂::ℳ; 
-                periods::Int = 40, 
-                algorithm::Symbol = :first_order, 
+                periods::Int = DEFAULT_PERIODS, 
+                algorithm::Symbol = DEFAULT_ALGORITHM, 
                 parameters::ParameterType = nothing,
-                variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-                shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all_excluding_obc, 
-                negative_shock::Bool = false, 
-                generalised_irf::Bool = false,
-                generalised_irf_warmup_iterations::Int = 100,
-                generalised_irf_draws::Int = 50,
-                initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = [0.0],
-                levels::Bool = false,
-                shock_size::Real = 1,
-                ignore_obc::Bool = false,
+                variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
+                shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCKS_EXCLUDING_OBC,
+                negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK, 
+                generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
+                generalised_irf_warmup_iterations::Int = DEFAULT_GENERALISED_IRF_WARMUP,
+                generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
+                initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE(),
+                levels::Bool = DEFAULT_LEVELS_FALSE,
+                shock_size::Real = DEFAULT_SHOCK_SIZE,
+                ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                 # timer::TimerOutput = TimerOutput(),
-                verbose::Bool = false,
-                tol::Tolerances = Tolerances(),
-                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                lyapunov_algorithm::Symbol = :doubling)::KeyedArray
+                verbose::Bool = DEFAULT_VERBOSE,
+                tol::Tolerances = DEFAULT_TOLERANCES(),
+                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
     # @nospecialize # reduce compile time            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -1491,16 +1491,16 @@ And data, 4×6 Matrix{Float64}:
 """
 function get_steady_state(𝓂::ℳ; 
                             parameters::ParameterType = nothing, 
-                            derivatives::Bool = true, 
-                            stochastic::Bool = false,
-                            algorithm::Symbol = :first_order,
-                            parameter_derivatives::Union{Symbol_input,String_input} = :all,
-                            return_variables_only::Bool = false,
-                            verbose::Bool = false,
-                            silent::Bool = false,
-                            tol::Tolerances = Tolerances(),
-                            quadratic_matrix_equation_algorithm::Symbol = :schur,
-                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling)::KeyedArray
+                            derivatives::Bool = DEFAULT_DERIVATIVES_FLAG, 
+                            stochastic::Bool = DEFAULT_STOCHASTIC_FLAG,
+                            algorithm::Symbol = DEFAULT_ALGORITHM,
+                            parameter_derivatives::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
+                            return_variables_only::Bool = DEFAULT_RETURN_VARIABLES_ONLY,
+                            verbose::Bool = DEFAULT_VERBOSE,
+                            silent::Bool = DEFAULT_SILENT_FLAG,
+                            tol::Tolerances = DEFAULT_TOLERANCES(),
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_ALGORITHM)::KeyedArray
     # @nospecialize # reduce compile time
                             
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -1773,12 +1773,12 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 """
 function get_solution(𝓂::ℳ; 
                         parameters::ParameterType = nothing,
-                        algorithm::Symbol = :first_order, 
-                        silent::Bool = false,
-                        verbose::Bool = false,
-                        tol::Tolerances = Tolerances(),
-                        quadratic_matrix_equation_algorithm::Symbol = :schur,
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling)::KeyedArray
+                        algorithm::Symbol = DEFAULT_ALGORITHM, 
+                        silent::Bool = DEFAULT_SILENT_FLAG,
+                        verbose::Bool = DEFAULT_VERBOSE,
+                        tol::Tolerances = DEFAULT_TOLERANCES(),
+                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_ALGORITHM)::KeyedArray
     # @nospecialize # reduce compile time      
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -1945,11 +1945,11 @@ get_solution(RBC, RBC.parameter_values)
 """
 function get_solution(𝓂::ℳ, 
                         parameters::Vector{S}; 
-                        algorithm::Symbol = :first_order, 
-                        verbose::Bool = false, 
-                        tol::Tolerances = Tolerances(),
-                        quadratic_matrix_equation_algorithm::Symbol = :schur,
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = :doubling) where S <: Real
+                        algorithm::Symbol = DEFAULT_ALGORITHM, 
+                        verbose::Bool = DEFAULT_VERBOSE, 
+                        tol::Tolerances = DEFAULT_TOLERANCES(),
+                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_ALGORITHM) where S <: Real
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -2147,12 +2147,12 @@ And data, 7×2×21 Array{Float64, 3}:
 ```
 """
 function get_conditional_variance_decomposition(𝓂::ℳ; 
-                                                periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = [1:20...,Inf],
+                                                periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = DEFAULT_CONDITIONAL_VARIANCE_PERIODS(),
                                                 parameters::ParameterType = nothing,  
-                                                verbose::Bool = false,
-                                                tol::Tolerances = Tolerances(),
-                                                quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                                lyapunov_algorithm::Symbol = :doubling)
+                                                verbose::Bool = DEFAULT_VERBOSE,
+                                                tol::Tolerances = DEFAULT_TOLERANCES(),
+                                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                                            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -2309,10 +2309,10 @@ And data, 7×2 Matrix{Float64}:
 """
 function get_variance_decomposition(𝓂::ℳ; 
                                     parameters::ParameterType = nothing,
-                                    verbose::Bool = false,
-                                    tol::Tolerances = Tolerances(),
-                                    quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                    lyapunov_algorithm::Symbol = :doubling)
+                                    verbose::Bool = DEFAULT_VERBOSE,
+                                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                                    quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time
                                     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -2437,12 +2437,12 @@ And data, 4×4 Matrix{Float64}:
 """
 function get_correlation(𝓂::ℳ; 
                         parameters::ParameterType = nothing,  
-                        algorithm::Symbol = :first_order,
-                        quadratic_matrix_equation_algorithm::Symbol = :doubling,
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                        lyapunov_algorithm::Symbol = :doubling, 
-                        verbose::Bool = false,
-                        tol::Tolerances = Tolerances())
+                        algorithm::Symbol = DEFAULT_ALGORITHM,
+                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM_CORRELATION,
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
+                        verbose::Bool = DEFAULT_VERBOSE,
+                        tol::Tolerances = DEFAULT_TOLERANCES())
     # @nospecialize # reduce compile time                    
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -2552,14 +2552,14 @@ And data, 4×5 Matrix{Float64}:
 ```
 """
 function get_autocorrelation(𝓂::ℳ; 
-                            autocorrelation_periods::UnitRange{Int} = 1:5,
+                            autocorrelation_periods::UnitRange{Int} = DEFAULT_AUTOCORRELATION_PERIODS,
                             parameters::ParameterType = nothing,  
-                            algorithm::Symbol = :first_order,
-                            quadratic_matrix_equation_algorithm::Symbol = :schur,
-                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                            lyapunov_algorithm::Symbol = :doubling, 
-                            verbose::Bool = false,
-                            tol::Tolerances = Tolerances())
+                            algorithm::Symbol = DEFAULT_ALGORITHM,
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
+                            verbose::Bool = DEFAULT_VERBOSE,
+                            tol::Tolerances = DEFAULT_TOLERANCES())
     # @nospecialize # reduce compile time
     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -2712,21 +2712,21 @@ And data, 4×6 Matrix{Float64}:
 """
 function get_moments(𝓂::ℳ; 
                     parameters::ParameterType = nothing,  
-                    non_stochastic_steady_state::Bool = true, 
-                    mean::Bool = false,
-                    standard_deviation::Bool = true, 
-                    variance::Bool = false, 
-                    covariance::Bool = false, 
-                    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
-                    derivatives::Bool = true,
-                    parameter_derivatives::Union{Symbol_input,String_input} = :all,
-                    algorithm::Symbol = :first_order,
-                    silent::Bool = false,
-                    quadratic_matrix_equation_algorithm::Symbol = :schur,
-                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                    lyapunov_algorithm::Symbol = :doubling, 
-                    verbose::Bool = false,
-                    tol::Tolerances = Tolerances())#limit output by selecting pars and vars like for plots and irfs!?
+                    non_stochastic_steady_state::Bool = DEFAULT_NON_STOCHASTIC_STEADY_STATE_FLAG, 
+                    mean::Bool = DEFAULT_MEAN_FLAG,
+                    standard_deviation::Bool = DEFAULT_STANDARD_DEVIATION_FLAG, 
+                    variance::Bool = DEFAULT_VARIANCE_FLAG, 
+                    covariance::Bool = DEFAULT_VARIANCE_FLAG, 
+                    variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
+                    derivatives::Bool = DEFAULT_DERIVATIVES_FLAG,
+                    parameter_derivatives::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
+                    algorithm::Symbol = DEFAULT_ALGORITHM,
+                    silent::Bool = DEFAULT_SILENT_FLAG,
+                    quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
+                    verbose::Bool = DEFAULT_VERBOSE,
+                    tol::Tolerances = DEFAULT_TOLERANCES())#limit output by selecting pars and vars like for plots and irfs!?
     # @nospecialize # reduce compile time          
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -3238,19 +3238,19 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
 function get_statistics(𝓂,
                         parameter_values::Vector{T};
                         parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.parameters,
-                        non_stochastic_steady_state::Union{Symbol_input,String_input} = Symbol[],
-                        mean::Union{Symbol_input,String_input} = Symbol[],
-                        standard_deviation::Union{Symbol_input,String_input} = Symbol[],
-                        variance::Union{Symbol_input,String_input} = Symbol[],
-                        covariance::Union{Symbol_input,String_input} = Symbol[],
-                        autocorrelation::Union{Symbol_input,String_input} = Symbol[],
-                        autocorrelation_periods::UnitRange{Int} = 1:5,
-                        algorithm::Symbol = :first_order,
-                        quadratic_matrix_equation_algorithm::Symbol = :schur,
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                        lyapunov_algorithm::Symbol = :doubling,
-                        verbose::Bool = false,
-                        tol::Tolerances = Tolerances()) where T
+                        non_stochastic_steady_state::Union{Symbol_input,String_input} = DEFAULT_STATISTICS_SELECTION_EMPTY,
+                        mean::Union{Symbol_input,String_input} = DEFAULT_STATISTICS_SELECTION_EMPTY,
+                        standard_deviation::Union{Symbol_input,String_input} = DEFAULT_STATISTICS_SELECTION_EMPTY,
+                        variance::Union{Symbol_input,String_input} = DEFAULT_STATISTICS_SELECTION_EMPTY,
+                        covariance::Union{Symbol_input,String_input} = DEFAULT_STATISTICS_SELECTION_EMPTY,
+                        autocorrelation::Union{Symbol_input,String_input} = DEFAULT_STATISTICS_SELECTION_EMPTY,
+                        autocorrelation_periods::UnitRange{Int} = DEFAULT_AUTOCORRELATION_PERIODS,
+                        algorithm::Symbol = DEFAULT_ALGORITHM,
+                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                        verbose::Bool = DEFAULT_VERBOSE,
+                        tol::Tolerances = DEFAULT_TOLERANCES()) where T
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -3260,9 +3260,9 @@ function get_statistics(𝓂,
 
     @assert length(parameter_values) == length(parameters) "Vector of `parameters` must correspond to `parameter_values` in length and order. Define the parameter names in the `parameters` keyword argument."
     
-    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] || !(!(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])) "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
+    @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] || !(!(standard_deviation == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(mean == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(variance == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(covariance == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(autocorrelation == DEFAULT_STATISTICS_SELECTION_EMPTY)) "Statistics can only be provided for first order perturbation or second and third order pruned perturbation solutions."
 
-    @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
+    @assert !(non_stochastic_steady_state == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(standard_deviation == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(mean == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(variance == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(covariance == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(autocorrelation == DEFAULT_STATISTICS_SELECTION_EMPTY) "Provide variables for at least one output."
 
     SS_var_idx = @ignore_derivatives parse_variables_input_to_index(non_stochastic_steady_state, 𝓂.timings)
 
@@ -3285,11 +3285,11 @@ function get_statistics(𝓂,
 
     solved = true
 
-    if algorithm == :pruned_third_order && !(!(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]))
+    if algorithm == :pruned_third_order && !(!(standard_deviation == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(variance == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(covariance == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(autocorrelation == DEFAULT_STATISTICS_SELECTION_EMPTY))
         algorithm = :pruned_second_order
     end
 
-    if !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
+    if !(non_stochastic_steady_state == DEFAULT_STATISTICS_SELECTION_EMPTY) && (standard_deviation == DEFAULT_STATISTICS_SELECTION_EMPTY) && (variance == DEFAULT_STATISTICS_SELECTION_EMPTY) && (covariance == DEFAULT_STATISTICS_SELECTION_EMPTY) && (autocorrelation == DEFAULT_STATISTICS_SELECTION_EMPTY)
         SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, all_parameters, opts = opts) # timer = timer, 
         
         SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
@@ -3305,12 +3305,12 @@ function get_statistics(𝓂,
 
     if algorithm == :pruned_third_order
 
-        if !(autocorrelation == Symbol[])
+        if !(autocorrelation == DEFAULT_STATISTICS_SELECTION_EMPTY)
             second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx, covar_var_idx)
 
             covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments_with_autocorrelation(all_parameters, 𝓂.var[second_mom_third_order], 𝓂, opts = opts, autocorrelation_periods = autocorrelation_periods)
 
-        elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
+        elseif !(standard_deviation == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(variance == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(covariance == DEFAULT_STATISTICS_SELECTION_EMPTY)
 
             covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, 𝓂.var[union(std_var_idx, var_var_idx, covar_var_idx)], 𝓂, opts = opts)
 
@@ -3318,7 +3318,7 @@ function get_statistics(𝓂,
 
     elseif algorithm == :pruned_second_order
 
-        if !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[])
+        if !(standard_deviation == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(variance == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(covariance == DEFAULT_STATISTICS_SELECTION_EMPTY) || !(autocorrelation == DEFAULT_STATISTICS_SELECTION_EMPTY)
             covar_dcmp, Σᶻ₂, state_μ, Δμˢ₂, autocorr_tmp, ŝ_to_ŝ₂, ŝ_to_y₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments_with_covariance(all_parameters, 𝓂, opts = opts)
         else
             state_μ, Δμˢ₂, Σʸ₁, Σᶻ₁, SS_and_pars, 𝐒₁, ∇₁, 𝐒₂, ∇₂, solved = calculate_second_order_moments(all_parameters, 𝓂, opts = opts)
@@ -3332,14 +3332,14 @@ function get_statistics(𝓂,
 
     SS = SS_and_pars[1:end - length(𝓂.calibration_equations)]
 
-    if !(variance == Symbol[])
+    if !(variance == DEFAULT_STATISTICS_SELECTION_EMPTY)
         varrs = convert(Vector{T},max.(ℒ.diag(covar_dcmp),eps(Float64)))
-        if !(standard_deviation == Symbol[])
+        if !(standard_deviation == DEFAULT_STATISTICS_SELECTION_EMPTY)
             st_dev = sqrt.(varrs)
         end
     end
 
-    if !(autocorrelation == Symbol[])
+    if !(autocorrelation == DEFAULT_STATISTICS_SELECTION_EMPTY)
         if algorithm == :pruned_second_order
             ŝ_to_ŝ₂ⁱ = zero(ŝ_to_ŝ₂)
             ŝ_to_ŝ₂ⁱ += ℒ.diagm(ones(size(ŝ_to_ŝ₂,1)))
@@ -3361,7 +3361,7 @@ function get_statistics(𝓂,
         end
     end
 
-    if !(standard_deviation == Symbol[])
+    if !(standard_deviation == DEFAULT_STATISTICS_SELECTION_EMPTY)
         st_dev = sqrt.(abs.(convert(Vector{T}, max.(ℒ.diag(covar_dcmp),eps(Float64)))))
     end
         
@@ -3369,11 +3369,11 @@ function get_statistics(𝓂,
     # ret = AbstractArray{T}[]
     ret = Dict{Symbol,AbstractArray{T}}()
 
-    if !(non_stochastic_steady_state == Symbol[])
+    if !(non_stochastic_steady_state == DEFAULT_STATISTICS_SELECTION_EMPTY)
         # push!(ret,SS[SS_var_idx])
         ret[:non_stochastic_steady_state] = solved ? SS[SS_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(SS_var_idx) ? 0 : length(SS_var_idx))
     end
-    if !(mean == Symbol[])
+    if !(mean == DEFAULT_STATISTICS_SELECTION_EMPTY)
         if algorithm ∉ [:pruned_second_order,:pruned_third_order]
             # push!(ret,SS[mean_var_idx])
             ret[:mean] = solved ? SS[mean_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(mean_var_idx) ? 0 : length(mean_var_idx))
@@ -3382,15 +3382,15 @@ function get_statistics(𝓂,
             ret[:mean] = solved ? state_μ[mean_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(mean_var_idx) ? 0 : length(mean_var_idx))
         end
     end
-    if !(standard_deviation == Symbol[])
+    if !(standard_deviation == DEFAULT_STATISTICS_SELECTION_EMPTY)
         # push!(ret,st_dev[std_var_idx])
         ret[:standard_deviation] = solved ? st_dev[std_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(std_var_idx) ? 0 : length(std_var_idx))
     end
-    if !(variance == Symbol[])
+    if !(variance == DEFAULT_STATISTICS_SELECTION_EMPTY)
         # push!(ret,varrs[var_var_idx])
         ret[:variance] = solved ? varrs[var_var_idx] : fill(Inf * sum(abs2,parameter_values), isnothing(var_var_idx) ? 0 : length(var_var_idx))
     end
-    if !(covariance == Symbol[])
+    if !(covariance == DEFAULT_STATISTICS_SELECTION_EMPTY)
         covar_dcmp_sp = (ℒ.triu(covar_dcmp))
 
         # droptol!(covar_dcmp_sp,eps(Float64))
@@ -3398,7 +3398,7 @@ function get_statistics(𝓂,
         # push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
         ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
     end
-    if !(autocorrelation == Symbol[]) 
+    if !(autocorrelation == DEFAULT_STATISTICS_SELECTION_EMPTY) 
         # push!(ret,autocorr[autocorr_var_idx,:] )
         ret[:autocorrelation] = solved ? autocorr[autocorr_var_idx,:] : fill(Inf * sum(abs2,parameter_values), isnothing(autocorr_var_idx) ? 0 : length(autocorr_var_idx), isnothing(autocorrelation_periods) ? 0 : length(autocorrelation_periods))
     end
@@ -3465,18 +3465,18 @@ get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 function get_loglikelihood(𝓂::ℳ, 
                             data::KeyedArray{Float64}, 
                             parameter_values::Vector{S}; 
-                            algorithm::Symbol = :first_order, 
-                            filter::Symbol = algorithm == :first_order ? :kalman : :inversion, 
+                            algorithm::Symbol = DEFAULT_ALGORITHM, 
+                            filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
                             on_failure_loglikelihood::U = -Inf,
-                            warmup_iterations::Int = 0, 
+                            warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS, 
                             presample_periods::Int = 0,
                             initial_covariance::Symbol = :theoretical,
                             filter_algorithm::Symbol = :LagrangeNewton,
-                            tol::Tolerances = Tolerances(), 
-                            quadratic_matrix_equation_algorithm::Symbol = :schur, 
-                            lyapunov_algorithm::Symbol = :doubling, 
-                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling,
-                            verbose::Bool = false)::S where {S <: Real, U <: AbstractFloat}
+                            tol::Tolerances = DEFAULT_TOLERANCES(), 
+                            quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM, 
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                            verbose::Bool = DEFAULT_VERBOSE)::S where {S <: Real, U <: AbstractFloat}
                             # timer::TimerOutput = TimerOutput(),
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -3609,8 +3609,8 @@ And data, 5-element Vector{Float64}:
 function get_non_stochastic_steady_state_residuals(𝓂::ℳ, 
                                                     values::Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}; 
                                                     parameters::ParameterType = nothing,
-                                                    tol::Tolerances = Tolerances(),
-                                                    verbose::Bool = false)
+                                                    tol::Tolerances = DEFAULT_TOLERANCES(),
+                                                    verbose::Bool = DEFAULT_VERBOSE)
     # @nospecialize # reduce compile time                                             
 
     opts = merge_calculation_options(tol = tol, verbose = verbose)
