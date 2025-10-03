@@ -125,7 +125,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             i = 1
 
-            for model in [m, m2]
+            for (model, dat) in zip([m, m2], [data, data2])
                 for filter in (algorithm == :first_order ? filters : [:inversion])
                     for smooth in [true, false]
                         for presample_periods in [0, 3]
@@ -139,7 +139,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             
                             clear_solution_caches!(model, algorithm)
 
-                            plot_model_estimates!(model, data, 
+                            plot_model_estimates!(model, dat, 
                                                     algorithm = algorithm, 
                                                     data_in_levels = false, 
                                                     filter = filter,
@@ -533,7 +533,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             i = 1
 
-            for model in [m,m2]
+            for model in [m, m2]
                 for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
                     for negative_shock in [true,false]
                         for shock_size in [.1,1]
