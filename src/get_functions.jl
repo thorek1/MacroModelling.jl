@@ -1491,8 +1491,8 @@ And data, 4×6 Matrix{Float64}:
 function get_steady_state(𝓂::ℳ; 
                             parameters::ParameterType = nothing, 
                             derivatives::Bool = DEFAULT_DERIVATIVES_FLAG, 
-                            stochastic::Bool = DEFAULT_STOCHASTIC_FLAG,
                             algorithm::Symbol = DEFAULT_ALGORITHM,
+                            stochastic::Bool = DEFAULT_STOCHASTIC_SELECTOR(algorithm),
                             parameter_derivatives::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
                             return_variables_only::Bool = DEFAULT_RETURN_VARIABLES_ONLY,
                             verbose::Bool = DEFAULT_VERBOSE,
