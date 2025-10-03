@@ -26,7 +26,6 @@ const DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW = 4
 const DEFAULT_EXTRA_LEGEND_SPACE = 0.0
 const DEFAULT_PLOT_TYPE = :compare
 const DEFAULT_FONT_SIZE = 8
-const DEFAULT_PLOT_TITLE = ""
 
 # Time horizon defaults
 const DEFAULT_PERIODS = 40
@@ -73,14 +72,14 @@ const DEFAULT_SYLVESTER_SELECTOR = 𝓂 -> sum(1:𝓂.timings.nPast_not_future_a
 # StatsPlots specific constants
 const DEFAULT_PLOT_ATTRIBUTES = Dict(
     :size => (700, 500),
-    :plot_titlefont => 10,
-    :titlefont => 8,
-    :guidefont => 8,
+    :plot_titlefont => DEFAULT_FONT_SIZE + 2,
+    :titlefont => DEFAULT_FONT_SIZE,
+    :guidefont => DEFAULT_FONT_SIZE,
     :palette => :auto,
-    :legendfontsize => 8,
-    :annotationfontsize => 8,
-    :legend_title_font_pointsize => 8,
-    :tickfontsize => 8,
+    :legendfontsize => DEFAULT_FONT_SIZE,
+    :annotationfontsize => DEFAULT_FONT_SIZE,
+    :legend_title_font_pointsize => DEFAULT_FONT_SIZE,
+    :tickfontsize => DEFAULT_FONT_SIZE,
     :framestyle => :semi,
 )
 
