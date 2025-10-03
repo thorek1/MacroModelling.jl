@@ -504,9 +504,11 @@ end
 
 
 
-function adjust_generalised_irf_flag(algorithm::Symbol, 
+function adjust_generalised_irf_flag(algorithm::Symbol,
                                     generalised_irf::Bool,
-                                    shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}}; 
+                                    shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
+                                    generalised_irf_warmup_iterations::Int,
+                                    generalised_irf_draws::Int;
                                     maxlog::Int = 3)
     if generalised_irf
         if algorithm == :first_order
@@ -516,6 +518,10 @@ function adjust_generalised_irf_flag(algorithm::Symbol,
             @info "Cannot compute generalised IRFs for model without shocks. Setting `generalised_irf = false`." maxlog = maxlog
             generalised_irf = false
         end
+    end
+
+    if !generalised_irf && (generalised_irf_warmup_iterations != 100 || generalised_irf_draws != 50)
+        @info "`generalised_irf_warmup_iterations` and `generalised_irf_draws` are ignored because `generalised_irf = false`." maxlog = maxlog
     end
 
     return generalised_irf
@@ -7699,6 +7705,8 @@ function compute_irf_responses(𝓂::ℳ,
                                 shock_size::Real,
                                 negative_shock::Bool,
                                 generalised_irf::Bool,
+                                generalised_irf_warmup_iterations::Int,
+                                generalised_irf_draws::Int,
                                 enforce_obc::Bool,
                                 algorithm::Symbol)
 
@@ -7757,7 +7765,9 @@ function compute_irf_responses(𝓂::ℳ,
                         shocks = shocks,
                         shock_size = shock_size,
                         variables = variables,
-                        negative_shock = negative_shock)
+                        negative_shock = negative_shock,
+                        warmup_periods = generalised_irf_warmup_iterations,
+                        draws = generalised_irf_draws)
         else
             return irf(state_update,
                         obc_state_update,
@@ -7780,7 +7790,9 @@ function compute_irf_responses(𝓂::ℳ,
                         shocks = shocks,
                         shock_size = shock_size,
                         variables = variables,
-                        negative_shock = negative_shock)
+                        negative_shock = negative_shock,
+                        warmup_periods = generalised_irf_warmup_iterations,
+                        draws = generalised_irf_draws)
         else
             return irf(state_update,
                         initial_state,
