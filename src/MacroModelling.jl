@@ -7631,6 +7631,16 @@ function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Du
 end
 
 
+function adjust_generalised_irf_flag(algorithm::Symbol, generalised_irf::Bool)
+    if algorithm == :first_order && generalised_irf
+        @info "Generalised IRFs coincide with standard IRFs for first-order solutions. Setting `generalised_irf = false`. " *
+              "Use a higher-order algorithm (e.g. :pruned_second_order) to compute generalised IRFs that differ from standard IRFs."
+        return false
+    end
+
+    return generalised_irf
+end
+
 function compute_irf_responses(𝓂::ℳ,
                                 state_update::Function,
                                 initial_state::Union{Vector{Vector{Float64}},Vector{Float64}},
