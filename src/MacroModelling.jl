@@ -480,7 +480,7 @@ function normalize_filtering_options(filter::Symbol,
     end
 
     if algorithm != :first_order && filter != :inversion
-        @info "Higher order solution algorithms only support the inversion filter. Setting `filter = :inversion` because the Kalman filter only works for first order solutions." maxlog = maxlog
+        @info "Higher order solution algorithms only support the inversion filter. Setting `filter = :inversion`." maxlog = maxlog
         filter = :inversion
     end
 
@@ -491,10 +491,10 @@ function normalize_filtering_options(filter::Symbol,
 
     if warmup_iterations > 0
         if filter == :kalman
-            @info "Warmup iterations is not a valid argument for the Kalman filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
+            @info "`warmup_iterations` is not a valid argument for the Kalman filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
             warmup_iterations = 0
         elseif algorithm != :first_order
-            @info "Warmup iterations is currently only available for first order solutions in combination with the inversion filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
+            @info "Warmup iterations are currently only available for first order solutions in combination with the inversion filter. Ignoring input for `warmup_iterations`." maxlog = maxlog
             warmup_iterations = 0
         end
     end
@@ -510,7 +510,7 @@ function adjust_generalised_irf_flag(algorithm::Symbol,
                                     maxlog::Int = 3)
     if generalised_irf
         if algorithm == :first_order
-            @info "Generalised IRFs coincide with normal IRFs for first-order solutions. Use a higher-order algorithm (e.g. :pruned_second_order) to compute generalised IRFs that differ from normal IRFs. Setting `generalised_irf = false`." maxlog = maxlog
+            @info "Generalised IRFs coincide with normal IRFs for first-order solutions. Use a higher-order algorithm (e.g. `algorithm = :pruned_second_order`) to compute generalised IRFs that differ from normal IRFs. Setting `generalised_irf = false`." maxlog = maxlog
             generalised_irf = false
         elseif shocks == :none
             @info "Cannot compute generalised IRFs for model without shocks. Setting `generalised_irf = false`." maxlog = maxlog
@@ -8081,7 +8081,7 @@ function girf(state_update::Function,
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks isa Matrix{Float64}
-        @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+        @assert size(shocks)[1] == T.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model (model has $(T.nExo) shocks)."
 
         # periods += size(shocks)[2]
 
@@ -8100,6 +8100,10 @@ function girf(state_update::Function,
         shock_history = zeros(T.nExo, periods + 1)
 
         shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    elseif shocks == :simulate
+        shock_history = randn(T.nExo,periods) * shock_size
 
         shock_idx = 1
     else
@@ -8224,6 +8228,12 @@ function girf(state_update::Function,
         shock_history = zeros(T.nExo, periods + 1)
 
         shock_history[indexin(shock_input,T.exo),1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+    elseif shocks == :simulate
+        shock_history = randn(T.nExo,periods) * shock_size
+        
+        shock_history[contains.(string.(T.exo),"ᵒᵇᶜ"),:] .= 0
 
         shock_idx = 1
     else
