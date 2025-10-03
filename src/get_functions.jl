@@ -2447,7 +2447,7 @@ And data, 4×4 Matrix{Float64}:
 function get_correlation(𝓂::ℳ; 
                         parameters::ParameterType = nothing,  
                         algorithm::Symbol = DEFAULT_ALGORITHM,
-                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM_CORRELATION,
+                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                         lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
                         verbose::Bool = DEFAULT_VERBOSE,
@@ -2725,7 +2725,7 @@ function get_moments(𝓂::ℳ;
                     mean::Bool = DEFAULT_MEAN_FLAG,
                     standard_deviation::Bool = DEFAULT_STANDARD_DEVIATION_FLAG, 
                     variance::Bool = DEFAULT_VARIANCE_FLAG, 
-                    covariance::Bool = DEFAULT_VARIANCE_FLAG, 
+                    covariance::Bool = DEFAULT_COVARIANCE_FLAG, 
                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                     derivatives::Bool = DEFAULT_DERIVATIVES_FLAG,
                     parameter_derivatives::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
