@@ -78,11 +78,11 @@ And data, 4×2×40 Array{Float64, 3}:
 function get_shock_decomposition(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
-                                filter::Symbol = :kalman,
+                                filter::Symbol = algorithm == :first_order ? :kalman : :inversion,
                                 algorithm::Symbol = :first_order,
                                 data_in_levels::Bool = true,
                                 warmup_iterations::Int = 0,
-                                smooth::Bool = true,
+                                smooth::Bool = filter == :kalman,
                                 verbose::Bool = false,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
@@ -96,14 +96,7 @@ function get_shock_decomposition(𝓂::ℳ,
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
-    pruning = false
-
-    @assert !(algorithm ∈ [:second_order, :third_order]) "Decomposition implemented for first order, pruned second order and pruned third order. Second and third order solution decomposition is not yet implemented."
-    
-    if algorithm ∈ [:pruned_second_order, :pruned_third_order]
-        filter = :inversion
-        pruning = true
-    end
+    filter, smooth, algorithm, _, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -227,10 +220,10 @@ function get_estimated_shocks(𝓂::ℳ,
                             data::KeyedArray{Float64};
                             parameters::ParameterType = nothing,
                             algorithm::Symbol = :first_order, 
-                            filter::Symbol = :kalman, 
+                            filter::Symbol = algorithm == :first_order ? :kalman : :inversion, 
                             warmup_iterations::Int = 0,
                             data_in_levels::Bool = true,
-                            smooth::Bool = true,
+                            smooth::Bool = filter == :kalman,
                             verbose::Bool = false,
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = :schur,
@@ -244,11 +237,7 @@ function get_estimated_shocks(𝓂::ℳ,
                             sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
-        filter = :inversion
-    end
+    filter, smooth, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -358,11 +347,11 @@ function get_estimated_variables(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
                                 algorithm::Symbol = :first_order, 
-                                filter::Symbol = :kalman, 
+                                filter::Symbol = algorithm == :first_order ? :kalman : :inversion, 
                                 warmup_iterations::Int = 0,
                                 data_in_levels::Bool = true,
                                 levels::Bool = true,
-                                smooth::Bool = true,
+                                smooth::Bool = filter == :kalman,
                                 verbose::Bool = false,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = :schur,
@@ -376,11 +365,7 @@ function get_estimated_variables(𝓂::ℳ,
                                 sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
                                 lyapunov_algorithm = lyapunov_algorithm)
 
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
-        filter = :inversion
-    end
+    filter, smooth, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -488,11 +473,11 @@ function get_model_estimates(𝓂::ℳ,
                              data::KeyedArray{Float64};
                              parameters::ParameterType = nothing,
                              algorithm::Symbol = :first_order,
-                             filter::Symbol = :kalman,
+                             filter::Symbol = algorithm == :first_order ? :kalman : :inversion,
                              warmup_iterations::Int = 0,
                              data_in_levels::Bool = true,
                              levels::Bool = true,
-                             smooth::Bool = true,
+                             smooth::Bool = filter == :kalman,
                              verbose::Bool = false,
                              tol::Tolerances = Tolerances(),
                              quadratic_matrix_equation_algorithm::Symbol = :schur,
@@ -1340,7 +1325,7 @@ function get_irf(𝓂::ℳ;
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
-    @assert !(shocks == :none && generalised_irf) "Cannot compute generalised IRFs for model without shocks."
+    generalised_irf = adjust_generalised_irf_flag(algorithm, generalised_irf, shocks)
 
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
@@ -2806,20 +2791,10 @@ function get_moments(𝓂::ℳ;
             opts = opts, 
             silent = silent)
 
-    if mean
-        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Mean only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
-    end
-
-    if standard_deviation
-        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Standard deviation only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
-    end
-    
-    if variance
-        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Variance only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
-    end
-
-    if covariance
-        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Covariance only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
+    for (moment_name, condition) in [("Mean", mean), ("Standard deviation", standard_deviation), ("Variance", variance), ("Covariance", covariance)]
+        if condition
+            @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] moment_name * " only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
+        end
     end
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
@@ -3541,7 +3516,7 @@ function get_loglikelihood(𝓂::ℳ,
                             data::KeyedArray{Float64}, 
                             parameter_values::Vector{S}; 
                             algorithm::Symbol = :first_order, 
-                            filter::Symbol = :kalman, 
+                            filter::Symbol = algorithm == :first_order ? :kalman : :inversion, 
                             on_failure_loglikelihood::U = -Inf,
                             warmup_iterations::Int = 0, 
                             presample_periods::Int = 0,
@@ -3567,14 +3542,9 @@ function get_loglikelihood(𝓂::ℳ,
     @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, you need to combine the estimated parameters with the other model parameters in one `Vector`. Make sure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
 
     # checks to avoid errors further down the line and inform the user
-    @assert filter ∈ [:kalman, :inversion] "Currently only the Kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    # checks to avoid errors further down the line and inform the user
     @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."
 
-    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
-        filter = :inversion
-    end
+    filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
 
     observables = @ignore_derivatives get_and_check_observables(𝓂, data)
 

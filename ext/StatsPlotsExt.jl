@@ -1,7 +1,8 @@
 module StatsPlotsExt
 
 using MacroModelling
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMATH®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag
+
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMATH®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, normalize_filtering_options
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
 
@@ -165,14 +166,14 @@ function plot_model_estimates(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
                                 algorithm::Symbol = :first_order, 
-                                filter::Symbol = :kalman, 
+                                filter::Symbol = algorithm == :first_order ? :kalman : :inversion, 
                                 warmup_iterations::Int = 0,
                                 variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
                                 shocks::Union{Symbol_input,String_input} = :all, 
                                 presample_periods::Int = 0,
                                 data_in_levels::Bool = true,
-                                shock_decomposition::Bool = false,
-                                smooth::Bool = true,
+                                shock_decomposition::Bool = algorithm ∉ (:second_order, :third_order),
+                                smooth::Bool = filter == :kalman,
                                 label::Union{Real, String, Symbol} = 1,
                                 show_plots::Bool = true,
                                 save_plots::Bool = false,
@@ -213,20 +214,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    pruning = false
-
-    @assert !(algorithm ∈ [:second_order, :third_order] && shock_decomposition) "Decomposition implemented for first order, pruned second and third order. Second and third order solution decomposition is not yet implemented."
-    
-    if algorithm ∈ [:second_order, :third_order]
-        filter = :inversion
-    end
-
-    if algorithm ∈ [:pruned_second_order, :pruned_third_order]
-        filter = :inversion
-        pruning = true
-    end
+    filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, shock_decomposition, warmup_iterations)
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
 
@@ -650,13 +638,13 @@ function plot_model_estimates!(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
                                 algorithm::Symbol = :first_order,
-                                filter::Symbol = :kalman,
+                                filter::Symbol = algorithm == :first_order ? :kalman : :inversion,
                                 warmup_iterations::Int = 0,
                                 variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
                                 shocks::Union{Symbol_input,String_input} = :all, 
                                 presample_periods::Int = 0,
                                 data_in_levels::Bool = true,
-                                smooth::Bool = true,
+                                smooth::Bool = filter == :kalman,
                                 label::Union{Real, String, Symbol} = length(model_estimates_active_plot_container) + 1,
                                 show_plots::Bool = true,
                                 save_plots::Bool = false,
@@ -696,18 +684,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    pruning = false
-    
-    if algorithm ∈ [:second_order, :third_order]
-        filter = :inversion
-    end
-
-    if algorithm ∈ [:pruned_second_order, :pruned_third_order]
-        filter = :inversion
-        pruning = true
-    end
+    filter, smooth, algorithm, _, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
 
@@ -1439,6 +1416,8 @@ function plot_irf(𝓂::ℳ;
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
+    generalised_irf = adjust_generalised_irf_flag(algorithm, generalised_irf, shocks)
+
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
@@ -2102,6 +2081,8 @@ function plot_irf!(𝓂::ℳ;
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
     
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+
+    generalised_irf = adjust_generalised_irf_flag(algorithm, generalised_irf, shocks)
 
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
