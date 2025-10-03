@@ -110,7 +110,6 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks
 - $SMOOTH®
-- `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
@@ -2324,7 +2323,7 @@ function plot_irf!(𝓂::ℳ;
                     next_idx += 1
                     idx = next_idx
                 end
-                println(idx)
+                
                 push!(labels, "Shock Matrix #$(idx)")
 
             elseif x isa AbstractVector
@@ -2346,7 +2345,6 @@ function plot_irf!(𝓂::ℳ;
         end
     end
 
-    println(annotate_diff_input)
     if haskey(diffdict, :initial_state)
         vals = diffdict[:initial_state]
 
