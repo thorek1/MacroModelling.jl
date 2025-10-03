@@ -1,29 +1,3 @@
-function normalize_filtering_options(filter::Symbol,
-                                      smooth::Bool,
-                                      algorithm::Symbol,
-                                      shock_decomposition::Bool)
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    pruning = algorithm ∈ (:pruned_second_order, :pruned_third_order)
-
-    if shock_decomposition && algorithm ∈ (:second_order, :third_order)
-        @info "Shock decomposition is not available for $(algorithm) solutions. Disabling `shock_decomposition`." maxlog = 1
-        shock_decomposition = false
-    end
-
-    if algorithm != :first_order && filter != :inversion
-        @info "Higher order algorithms only support the inversion filter. Switching `filter` to :inversion because the Kalman filter only works for first order solutions." maxlog = 1
-        filter = :inversion
-    end
-
-    if filter != :kalman && smooth
-        @info "Only the Kalman filter supports smoothing. Setting `smooth = false`." maxlog = 1
-        smooth = false
-    end
-
-    return filter, smooth, algorithm, shock_decomposition, pruning
-end
-
 """
 $(SIGNATURES)
 Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`. 
