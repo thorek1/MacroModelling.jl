@@ -543,7 +543,6 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                 i += 1
 
                                 plot_irf!(model, algorithm = algorithm, 
-                                            ignore_obc = ignore_obc,
                                             periods = periods,
                                             generalised_irf = generalised_irf,
                                             negative_shock = negative_shock,
