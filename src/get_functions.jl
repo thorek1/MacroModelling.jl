@@ -1058,62 +1058,6 @@ get_irf(RBC, RBC.parameter_values)
  0.01        0.002       0.0004      8.0e-5         2.74878e-29  5.49756e-30
 ```
 """
-function process_ignore_obc_flag(shocks,
-                                 ignore_obc::Bool,
-                                 𝓂::ℳ)
-    stochastic_model = length(𝓂.timings.exo) > 0
-    obc_model = length(𝓂.obc_violation_equations) > 0
-
-    obc_shocks_included = false
-
-    if stochastic_model && obc_model
-        if shocks isa Matrix{Float64}
-            obc_indices = contains.(string.(𝓂.timings.exo), "ᵒᵇᶜ")
-            if any(obc_indices)
-                obc_shocks_included = sum(abs2, shocks[obc_indices, :]) > 1e-10
-            end
-        elseif shocks isa KeyedArray{Float64}
-            shock_axis = collect(axiskeys(shocks, 1))
-            shock_axis = shock_axis isa Vector{String} ? shock_axis .|> Meta.parse .|> replace_indices : shock_axis
-
-            obc_shocks = 𝓂.timings.exo[contains.(string.(𝓂.timings.exo), "ᵒᵇᶜ")]
-            relevant_shocks = intersect(obc_shocks, shock_axis)
-
-            if !isempty(relevant_shocks)
-                obc_shocks_included = sum(abs2, shocks(relevant_shocks, :)) > 1e-10
-            end
-        else
-            shock_idx = parse_shocks_input_to_index(shocks, 𝓂.timings)
-
-            selected_shocks = if (shock_idx isa Vector) || (shock_idx isa UnitRange)
-                length(shock_idx) > 0 ? 𝓂.timings.exo[shock_idx] : Symbol[]
-            else
-                [𝓂.timings.exo[shock_idx]]
-            end
-
-            obc_shocks = 𝓂.timings.exo[contains.(string.(𝓂.timings.exo), "ᵒᵇᶜ")]
-            obc_shocks_included = !isempty(intersect(selected_shocks, obc_shocks))
-        end
-    end
-
-    ignore_obc_flag = ignore_obc
-
-    if ignore_obc_flag && !obc_model
-        @info "`ignore_obc = true` has no effect because $(𝓂.model_name) has no occasionally binding constraints."
-        ignore_obc_flag = false
-    end
-
-    if ignore_obc_flag && obc_shocks_included
-        @warn "`ignore_obc = true` cannot be applied because shocks affecting occasionally binding constraints are included. Enforcing the constraints instead."
-        ignore_obc_flag = false
-    end
-
-    occasionally_binding_constraints = obc_model && !ignore_obc_flag
-
-    return ignore_obc_flag, occasionally_binding_constraints, obc_shocks_included
-end
-
-
 function get_irf(𝓂::ℳ,
                     parameters::Vector{S};
                     periods::Int = 40,

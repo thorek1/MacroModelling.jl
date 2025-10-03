@@ -3326,12 +3326,8 @@ function plot_solution(𝓂::ℳ,
         algorithm = [algorithm]
     end
 
-    if ignore_obc
-        occasionally_binding_constraints = false
-    else
-        occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
-    end
-
+    ignore_obc, occasionally_binding_constraints, _ = process_ignore_obc_flag(:all_excluding_obc, ignore_obc, 𝓂)
+    
     for a in algorithm
         solve!(𝓂, opts = opts, algorithm = a, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
     end
