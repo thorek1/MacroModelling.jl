@@ -481,8 +481,7 @@ function get_model_estimates(𝓂::ℳ,
                              verbose::Bool = DEFAULT_VERBOSE,
                              tol::Tolerances = Tolerances(),
                              quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} =
-                                 sum(1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM,
+                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                              lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
 
     vars = get_estimated_variables(𝓂, data;
@@ -739,7 +738,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
-                                levels::Bool = DEFAULT_LEVELS_FALSE,
+                                levels::Bool = false,
                                 verbose::Bool = DEFAULT_VERBOSE,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
@@ -1065,7 +1064,7 @@ function get_irf(𝓂::ℳ,
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCK_SELECTION,
                     negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK, 
                     initial_state::Vector{Float64} = DEFAULT_INITIAL_STATE,
-                    levels::Bool = DEFAULT_LEVELS_FALSE,
+                    levels::Bool = false,
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM) where S <: Real
@@ -1248,7 +1247,7 @@ function get_irf(𝓂::ℳ;
                 generalised_irf_warmup_iterations::Int = DEFAULT_GENERALISED_IRF_WARMUP,
                 generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
                 initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
-                levels::Bool = DEFAULT_LEVELS_FALSE,
+                levels::Bool = false,
                 shock_size::Real = DEFAULT_SHOCK_SIZE,
                 ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                 # timer::TimerOutput = TimerOutput(),
@@ -1500,7 +1499,7 @@ function get_steady_state(𝓂::ℳ;
                             silent::Bool = DEFAULT_SILENT_FLAG,
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_ALGORITHM)::KeyedArray
+                            sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))::KeyedArray
     # @nospecialize # reduce compile time
                             
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -1788,7 +1787,7 @@ function get_solution(𝓂::ℳ;
                         verbose::Bool = DEFAULT_VERBOSE,
                         tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_ALGORITHM)::KeyedArray
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))::KeyedArray
     # @nospecialize # reduce compile time      
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -1959,7 +1958,7 @@ function get_solution(𝓂::ℳ,
                         verbose::Bool = DEFAULT_VERBOSE, 
                         tol::Tolerances = Tolerances(),
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_ALGORITHM) where S <: Real
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂)) where S <: Real
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
