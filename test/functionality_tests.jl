@@ -1,4 +1,4 @@
-function functionality_test(m; algorithm = :first_order, plots = true)
+function functionality_test(m, m2; algorithm = :first_order, plots = true)
     old_params = copy(m.parameter_values)
     
     # options to itereate over
@@ -35,11 +35,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     init_states = [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
 
     if plots
-        include("models/Caldara_et_al_2012_estim.jl")
-
-        m2 = Caldara_et_al_2012_estim
-
-        get_irf(m2)
         @testset "plot_model_estimates" begin
             sol2 = get_solution(m2) # TODO: investigate why this creates world age problems in tests
             
@@ -470,8 +465,10 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             plot_irfs(m, algorithm = algorithm)
 
-            plot_girf!(m, algorithm = algorithm)
-
+            if algorithm != :first_order
+                plot_girf!(m, algorithm = algorithm)
+            end
+            
             plot_simulations(m, algorithm = algorithm)
 
             plot_irf!(m, algorithm = algorithm)
@@ -546,7 +543,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                 i += 1
 
                                 plot_irf!(model, algorithm = algorithm, 
-                                            ignore_obc = ignore_obc,
                                             periods = periods,
                                             generalised_irf = generalised_irf,
                                             negative_shock = negative_shock,

@@ -78,8 +78,8 @@ And data, 4×2×40 Array{Float64, 3}:
 function get_shock_decomposition(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
-                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
+                                filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
@@ -1507,9 +1507,19 @@ function get_steady_state(𝓂::ℳ;
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
-
-    if !(algorithm == :first_order) stochastic = true end
     
+    if stochastic
+        if algorithm == :first_order
+            @info "Stochastic steady state requested but algorithm is $algorithm. Setting `algorithm = :second_order`."
+            algorithm = :second_order
+        end
+    else
+        if algorithm != :first_order
+            @info "Non-stochastic steady state requested but algorithm is $algorithm. Setting `algorithm = :first_order`."
+            algorithm = :first_order
+        end
+    end
+
     solve!(𝓂, parameters = parameters, opts = opts)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
@@ -1542,7 +1552,7 @@ function get_steady_state(𝓂::ℳ;
         solve!(𝓂, 
                 opts = opts, 
                 dynamics = true, 
-                algorithm = algorithm == :first_order ? :second_order : algorithm, 
+                algorithm = algorithm, 
                 silent = silent, 
                 obc = length(𝓂.obc_violation_equations) > 0)
 
@@ -2743,7 +2753,7 @@ function get_moments(𝓂::ℳ;
 
     for (moment_name, condition) in [("Mean", mean), ("Standard deviation", standard_deviation), ("Variance", variance), ("Covariance", covariance)]
         if condition
-            @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] moment_name * " only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
+            @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] moment_name * " only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`."
         end
     end
 
