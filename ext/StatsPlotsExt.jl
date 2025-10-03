@@ -1,7 +1,7 @@
 module StatsPlotsExt
 
 using MacroModelling
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMATH®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMATH®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, normalize_filtering_options
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
 
@@ -213,20 +213,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    pruning = false
-
-    @assert !(algorithm ∈ [:second_order, :third_order] && shock_decomposition) "Decomposition implemented for first order, pruned second and third order. Second and third order solution decomposition is not yet implemented."
-    
-    if algorithm ∈ [:second_order, :third_order]
-        filter = :inversion
-    end
-
-    if algorithm ∈ [:pruned_second_order, :pruned_third_order]
-        filter = :inversion
-        pruning = true
-    end
+    filter, smooth, algorithm, shock_decomposition, pruning = normalize_filtering_options(filter, smooth, algorithm, shock_decomposition)
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
 
@@ -696,18 +683,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     # write_parameters_input!(𝓂, parameters, verbose = verbose)
 
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    pruning = false
-    
-    if algorithm ∈ [:second_order, :third_order]
-        filter = :inversion
-    end
-
-    if algorithm ∈ [:pruned_second_order, :pruned_third_order]
-        filter = :inversion
-        pruning = true
-    end
+    filter, smooth, algorithm, _, pruning = normalize_filtering_options(filter, smooth, algorithm, false)
 
     solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
 

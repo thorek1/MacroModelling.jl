@@ -1,3 +1,29 @@
+function normalize_filtering_options(filter::Symbol,
+                                      smooth::Bool,
+                                      algorithm::Symbol,
+                                      shock_decomposition::Bool)
+    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
+
+    pruning = algorithm ∈ (:pruned_second_order, :pruned_third_order)
+
+    if shock_decomposition && algorithm ∈ (:second_order, :third_order)
+        @info "Shock decomposition is not available for $(algorithm) solutions. Disabling `shock_decomposition`." maxlog = 1
+        shock_decomposition = false
+    end
+
+    if algorithm != :first_order && filter != :inversion
+        @info "Higher order algorithms only support the inversion filter. Switching `filter` to :inversion because the Kalman filter only works for first order solutions." maxlog = 1
+        filter = :inversion
+    end
+
+    if filter != :kalman && smooth
+        @info "Only the Kalman filter supports smoothing. Setting `smooth = false`." maxlog = 1
+        smooth = false
+    end
+
+    return filter, smooth, algorithm, shock_decomposition, pruning
+end
+
 """
 $(SIGNATURES)
 Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`. 
@@ -96,14 +122,9 @@ function get_shock_decomposition(𝓂::ℳ,
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
-    pruning = false
+    filter, smooth, algorithm, _, pruning = normalize_filtering_options(filter, smooth, algorithm, false)
 
     @assert !(algorithm ∈ [:second_order, :third_order]) "Decomposition implemented for first order, pruned second order and pruned third order. Second and third order solution decomposition is not yet implemented."
-    
-    if algorithm ∈ [:pruned_second_order, :pruned_third_order]
-        filter = :inversion
-        pruning = true
-    end
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -244,11 +265,7 @@ function get_estimated_shocks(𝓂::ℳ,
                             sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
-        filter = :inversion
-    end
+    filter, smooth, algorithm, _, _ = normalize_filtering_options(filter, smooth, algorithm, false)
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -376,11 +393,7 @@ function get_estimated_variables(𝓂::ℳ,
                                 sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > 1000 ? :bicgstab : :doubling : sylvester_algorithm[2],
                                 lyapunov_algorithm = lyapunov_algorithm)
 
-    @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
-        filter = :inversion
-    end
+    filter, smooth, algorithm, _, _ = normalize_filtering_options(filter, smooth, algorithm, false)
 
     solve!(𝓂, 
             parameters = parameters, 
@@ -3524,14 +3537,9 @@ function get_loglikelihood(𝓂::ℳ,
     @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, you need to combine the estimated parameters with the other model parameters in one `Vector`. Make sure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
 
     # checks to avoid errors further down the line and inform the user
-    @assert filter ∈ [:kalman, :inversion] "Currently only the Kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
-
-    # checks to avoid errors further down the line and inform the user
     @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."
 
-    if algorithm ∈ [:second_order,:pruned_second_order,:third_order,:pruned_third_order]
-        filter = :inversion
-    end
+    filter, _, algorithm, _, _ = normalize_filtering_options(filter, false, algorithm, false)
 
     observables = @ignore_derivatives get_and_check_observables(𝓂, data)
 
