@@ -98,8 +98,6 @@ function get_shock_decomposition(𝓂::ℳ,
 
     filter, smooth, algorithm, _, pruning = normalize_filtering_options(filter, smooth, algorithm, false)
 
-    @assert !(algorithm ∈ [:second_order, :third_order]) "Decomposition implemented for first order, pruned second order and pruned third order. Second and third order solution decomposition is not yet implemented."
-
     solve!(𝓂, 
             parameters = parameters, 
             opts = opts, 
@@ -2750,20 +2748,10 @@ function get_moments(𝓂::ℳ;
             opts = opts, 
             silent = silent)
 
-    if mean
-        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Mean only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
-    end
-
-    if standard_deviation
-        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Standard deviation only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
-    end
-    
-    if variance
-        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Variance only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
-    end
-
-    if covariance
-        @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Covariance only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
+    for (moment_name, condition) in [("Mean", mean), ("Standard deviation", standard_deviation), ("Variance", variance), ("Covariance", covariance)]
+        if condition
+            @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] moment_name * " only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
+        end
     end
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
