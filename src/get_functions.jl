@@ -1059,9 +1059,9 @@ get_irf(RBC, RBC.parameter_values)
 ```
 """
 function get_irf(𝓂::ℳ,
-                    parameters::Vector{S}; 
-                    periods::Int = 40, 
-                    variables::Union{Symbol_input,String_input} = :all_excluding_obc, 
+                    parameters::Vector{S};
+                    periods::Int = 40,
+                    variables::Union{Symbol_input,String_input} = :all_excluding_obc,
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
                     negative_shock::Bool = false, 
                     initial_state::Vector{Float64} = [0.0],
@@ -1275,10 +1275,6 @@ function get_irf(𝓂::ℳ;
 
     generalised_irf = adjust_generalised_irf_flag(algorithm, generalised_irf, shocks, generalised_irf_warmup_iterations, generalised_irf_draws)
 
-    stochastic_model = length(𝓂.timings.exo) > 0
-
-    obc_model = length(𝓂.obc_violation_equations) > 0
-
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
@@ -1290,7 +1286,6 @@ function get_irf(𝓂::ℳ;
 
         shock_idx = 1
 
-        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ"),:]) > 1e-10
     elseif shocks isa KeyedArray{Float64}
         shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
 
@@ -1303,19 +1298,11 @@ function get_irf(𝓂::ℳ;
         shock_history[indexin(shock_input, 𝓂.timings.exo),1:size(shocks)[2]] = shocks
 
         shock_idx = 1
-
-        obc_shocks_included = stochastic_model && obc_model && sum(abs2,shocks(intersect(𝓂.timings.exo,axiskeys(shocks,1)),:)) > 1e-10
     else
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
-
-        obc_shocks_included = stochastic_model && obc_model && (intersect((((shock_idx isa Vector) || (shock_idx isa UnitRange)) && (length(shock_idx) > 0)) ? 𝓂.timings.exo[shock_idx] : [𝓂.timings.exo[shock_idx]], 𝓂.timings.exo[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")]) != [])
     end
 
-    if ignore_obc
-        occasionally_binding_constraints = false
-    else
-        occasionally_binding_constraints = length(𝓂.obc_violation_equations) > 0
-    end
+    ignore_obc, occasionally_binding_constraints, obc_shocks_included = process_ignore_obc_flag(shocks, ignore_obc, 𝓂)
 
     # end # timeit_debug
     
