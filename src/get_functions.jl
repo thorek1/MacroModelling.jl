@@ -78,8 +78,8 @@ And data, 4×2×40 Array{Float64, 3}:
 function get_shock_decomposition(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
-                                filter::Symbol = algorithm == :first_order ? :kalman : :inversion,
                                 algorithm::Symbol = :first_order,
+                                filter::Symbol = algorithm == :first_order ? :kalman : :inversion,
                                 data_in_levels::Bool = true,
                                 warmup_iterations::Int = 0,
                                 smooth::Bool = filter == :kalman,
@@ -1492,8 +1492,8 @@ And data, 4×6 Matrix{Float64}:
 function get_steady_state(𝓂::ℳ; 
                             parameters::ParameterType = nothing, 
                             derivatives::Bool = true, 
-                            stochastic::Bool = false,
                             algorithm::Symbol = :first_order,
+                            stochastic::Bool = algorithm != :first_order,
                             parameter_derivatives::Union{Symbol_input,String_input} = :all,
                             return_variables_only::Bool = false,
                             verbose::Bool = false,
@@ -1507,9 +1507,19 @@ function get_steady_state(𝓂::ℳ;
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
-
-    if !(algorithm == :first_order) stochastic = true end
     
+    if stochastic
+        if algorithm == :first_order
+            @info "Stochastic steady state requested but algorithm is $algorithm. Setting `algorithm = :second_order`."
+            algorithm = :second_order
+        end
+    else
+        if algorithm != :first_order
+            @info "Non-stochastic steady state requested but algorithm is $algorithm. Setting `algorithm = :first_order`."
+            algorithm = :first_order
+        end
+    end
+
     solve!(𝓂, parameters = parameters, opts = opts)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
@@ -1542,7 +1552,7 @@ function get_steady_state(𝓂::ℳ;
         solve!(𝓂, 
                 opts = opts, 
                 dynamics = true, 
-                algorithm = algorithm == :first_order ? :second_order : algorithm, 
+                algorithm = algorithm, 
                 silent = silent, 
                 obc = length(𝓂.obc_violation_equations) > 0)
 
@@ -2743,7 +2753,7 @@ function get_moments(𝓂::ℳ;
 
     for (moment_name, condition) in [("Mean", mean), ("Standard deviation", standard_deviation), ("Variance", variance), ("Covariance", covariance)]
         if condition
-            @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] moment_name * " only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`"
+            @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] moment_name * " only available for algorithms: `first_order`, `pruned_second_order`, and `pruned_third_order`."
         end
     end
 
