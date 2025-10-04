@@ -3503,7 +3503,7 @@ function get_loglikelihood(𝓂::ℳ,
     # checks to avoid errors further down the line and inform the user
     @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."
 
-    filter, _, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
+    filter, _, algorithm, _, _, warmup_iterations = @ignore_derivatives normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
 
     observables = @ignore_derivatives get_and_check_observables(𝓂, data)
 
