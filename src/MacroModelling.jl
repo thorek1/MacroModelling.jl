@@ -8462,30 +8462,30 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
         return 1:length(union(T.var,T.aux,T.exo_present))
     elseif variables isa Matrix{Symbol}
         if length(setdiff(variables,T.var)) > 0
-            @warn "Following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ")
+            @warn "The following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
             return Int[]
         end
         return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(variables .== T.var,dims= 2))))
     elseif variables isa Vector{Symbol}
         if length(setdiff(variables,T.var)) > 0
-            @warn "Following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ")
+            @warn "The following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
             return Int[]
         end
         return Int.(indexin(variables, T.var))
     elseif variables isa Tuple{Symbol,Vararg{Symbol}}
         if length(setdiff(variables,T.var)) > 0
-            @warn "Following variables are not part of the model: " * join(string.(setdiff(Symbol.(collect(variables)),T.var)), ", ")
+            @warn "The following variables are not part of the model: " * join(string.(setdiff(Symbol.(collect(variables)),T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
             return Int[]
         end
         return Int.(indexin(variables, T.var))
     elseif variables isa Symbol
         if length(setdiff([variables],T.var)) > 0
-            @warn "Following variable is not part of the model: " * join(string(setdiff([variables],T.var)[1]),", ")
+            @warn "The following variable is not part of the model: " * join(string(setdiff([variables],T.var)[1]),", ") * ". Use `get_variables(𝓂)` to list valid names."
             return Int[]
         end
         return Int.(indexin([variables], T.var))
     else
-        @warn "Invalid argument in variables"
+        @warn "Invalid `variables` argument. Provide a Symbol, Tuple, Vector, Matrix, or one of the documented selectors such as `:all`."
         return Int[]
     end
 end
@@ -8504,35 +8504,35 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T
         shock_idx = 1
     elseif shocks isa Matrix{Symbol}
         if length(setdiff(shocks,T.exo)) > 0
-            @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
+            @warn "The following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ") * ". Use `get_shocks(𝓂)` to list valid shock names."
             shock_idx = Int64[]
         else
             shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(shocks .== T.exo,dims= 2))))
         end
     elseif shocks isa Vector{Symbol}
         if length(setdiff(shocks,T.exo)) > 0
-            @warn "Following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ")
+            @warn "The following shocks are not part of the model: " * join(string.(setdiff(shocks,T.exo)),", ") * ". Use `get_shocks(𝓂)` to list valid shock names."
             shock_idx = Int64[]
         else
             shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(shocks,1,length(shocks)) .== T.exo, dims= 2))))
         end
     elseif shocks isa Tuple{Symbol, Vararg{Symbol}}
         if length(setdiff(shocks,T.exo)) > 0
-            @warn "Following shocks are not part of the model: " * join(string.(setdiff(Symbol.(collect(shocks)),T.exo)),", ")
+            @warn "The following shocks are not part of the model: " * join(string.(setdiff(Symbol.(collect(shocks)),T.exo)),", ") * ". Use `get_shocks(𝓂)` to list valid shock names."
             shock_idx = Int64[]
         else
             shock_idx = getindex(1:T.nExo,convert(Vector{Bool},vec(sum(reshape(collect(shocks),1,length(shocks)) .== T.exo,dims= 2))))
         end
     elseif shocks isa Symbol
         if length(setdiff([shocks],T.exo)) > 0
-            @warn "Following shock is not part of the model: " * join(string(setdiff([shocks],T.exo)[1]),", ")
+            @warn "The following shock is not part of the model: " * join(string(setdiff([shocks],T.exo)[1]),", ") * ". Use `get_shocks(𝓂)` to list valid shock names."
             # TODO: mention shocks part of the model
             shock_idx = Int64[]
         else
             shock_idx = getindex(1:T.nExo,shocks .== T.exo)
         end
     else
-        @warn "Invalid argument in shocks"
+        @warn "Invalid `shocks` argument. Provide a Symbol, Tuple, Vector, Matrix, or one of the documented selectors such as `:all`."
         shock_idx = Int64[]
     end
     return shock_idx
