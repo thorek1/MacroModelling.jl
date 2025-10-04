@@ -1101,7 +1101,7 @@ function get_irf(𝓂::ℳ,
 
         periods += size(shocks)[2]
 
-        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks which are not part of the model."
+        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks are not part of the model. Use `get_shocks(𝓂)` to list valid shock names."
 
         shock_history = zeros(𝓂.timings.nExo, periods)
 
@@ -1288,7 +1288,7 @@ function get_irf(𝓂::ℳ;
 
         periods += size(shocks)[2]
 
-        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks which are not part of the model."
+        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks are not part of the model. Use `get_shocks(𝓂)` to list valid shock names."
 
         shock_history = zeros(𝓂.timings.nExo, periods + 1)
 
