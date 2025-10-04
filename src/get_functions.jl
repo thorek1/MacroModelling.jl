@@ -1509,12 +1509,12 @@ function get_steady_state(𝓂::ℳ;
     
     if stochastic
         if algorithm == :first_order
-            @info "Stochastic steady state requested but algorithm is $algorithm. Setting `algorithm = :second_order`."
+            @info "Stochastic steady state requested but algorithm is $algorithm. Setting `algorithm = :second_order`." maxlog = DEFAULT_MAXLOG
             algorithm = :second_order
         end
     else
         if algorithm != :first_order
-            @info "Non-stochastic steady state requested but algorithm is $algorithm. Setting `stochastic = true`."
+            @info "Non-stochastic steady state requested but algorithm is $algorithm. Setting `stochastic = true`." maxlog = DEFAULT_MAXLOG
             stochastic = true
         end
     end
