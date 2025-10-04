@@ -2292,9 +2292,9 @@ function plot_irf!(𝓂::ℳ;
         
         # Respect existing shock_names logic: only add when no simple one-to-one names are present
         if haskey(diffdict, :shock_names)
-            if !all(length.(diffdict[:shock_names]) .== 1)
+            # if !all(length.(diffdict[:shock_names]) .== 1)
                 push!(annotate_diff_input, "Shock" => labels)
-            end
+            # end
         else
             push!(annotate_diff_input, "Shock" => labels)
         end
