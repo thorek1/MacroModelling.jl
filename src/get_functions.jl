@@ -1492,7 +1492,7 @@ function get_steady_state(𝓂::ℳ;
                             parameters::ParameterType = nothing, 
                             derivatives::Bool = DEFAULT_DERIVATIVES_FLAG, 
                             algorithm::Symbol = DEFAULT_ALGORITHM,
-                            stochastic::Bool = DEFAULT_STOCHASTIC_SELECTOR(algorithm),
+                            stochastic::Bool = DEFAULT_STOCHASTIC_FLAG,
                             parameter_derivatives::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
                             return_variables_only::Bool = DEFAULT_RETURN_VARIABLES_ONLY,
                             verbose::Bool = DEFAULT_VERBOSE,
@@ -1514,8 +1514,8 @@ function get_steady_state(𝓂::ℳ;
         end
     else
         if algorithm != :first_order
-            @info "Non-stochastic steady state requested but algorithm is $algorithm. Setting `algorithm = :first_order`."
-            algorithm = :first_order
+            @info "Non-stochastic steady state requested but algorithm is $algorithm. Setting `stochastic = true`."
+            stochastic = true
         end
     end
 
@@ -1571,7 +1571,7 @@ function get_steady_state(𝓂::ℳ;
     calib_idx = return_variables_only ? [] : indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
     if length_par * length(var_idx) > 200 && derivatives
-        @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = 3
+        @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
     #     derivatives = false
     end
 
@@ -2783,7 +2783,7 @@ function get_moments(𝓂::ℳ;
     @assert solution_error < tol.NSSS_acceptance_tol "Could not find non-stochastic steady state."
 
     if length_par * length(NSSS) > 200 && derivatives
-        @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = 3
+        @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
     end 
 
     if (!variance && !standard_deviation && !non_stochastic_steady_state && !mean)

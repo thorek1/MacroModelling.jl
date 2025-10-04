@@ -56,7 +56,7 @@ const DEFAULT_VARIANCE_FLAG = false
 const DEFAULT_COVARIANCE_FLAG = false
 const DEFAULT_AUTOCORRELATION_FLAG = false
 const DEFAULT_DERIVATIVES_FLAG = true
-const DEFAULT_STOCHASTIC_SELECTOR = algorithm -> algorithm != :first_order
+const DEFAULT_STOCHASTIC_FLAG = false
 const DEFAULT_RETURN_VARIABLES_ONLY = false
 const DEFAULT_SILENT_FLAG = false
 
@@ -119,3 +119,5 @@ const DEFAULT_ARGS_AND_KWARGS_NAMES = Dict(
 
 # Turing distribution wrapper defaults
 const DEFAULT_TURING_USE_MEAN_STD = false
+
+const DEFAULT_MAXLOG = 3

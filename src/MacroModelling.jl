@@ -470,7 +470,7 @@ function normalize_filtering_options(filter::Symbol,
                                       algorithm::Symbol,
                                       shock_decomposition::Bool,
                                       warmup_iterations::Int;
-                                      maxlog::Int = 3)
+                                      maxlog::Int = DEFAULT_MAXLOG)
     @assert filter ∈ [:kalman, :inversion] "Currently only the kalman filter (:kalman) for linear models and the inversion filter (:inversion) for linear and nonlinear models are supported."
 
     pruning = algorithm ∈ (:pruned_second_order, :pruned_third_order)
@@ -510,7 +510,7 @@ function adjust_generalised_irf_flag(generalised_irf::Bool,
                                     algorithm::Symbol,
                                     occasionally_binding_constraints::Bool,
                                     shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}};
-                                    maxlog::Int = 3)
+                                    maxlog::Int = DEFAULT_MAXLOG)
     if generalised_irf
         if algorithm == :first_order && !occasionally_binding_constraints
             @info "Generalised IRFs coincide with normal IRFs for first-order solutions of models without/inactive occasionally binding constraints (OBC). Use `ignore_obc = false` for models with OBCs or a higher-order algorithm (e.g. `algorithm = :pruned_second_order`) to compute generalised IRFs that differ from normal IRFs. Setting `generalised_irf = false`." maxlog = maxlog
@@ -536,7 +536,7 @@ end
 function process_ignore_obc_flag(shocks,
                                  ignore_obc::Bool,
                                  𝓂::ℳ; 
-                                 maxlog::Int = 3)
+                                 maxlog::Int = DEFAULT_MAXLOG)
     stochastic_model = length(𝓂.timings.exo) > 0
     obc_model = length(𝓂.obc_violation_equations) > 0
 
