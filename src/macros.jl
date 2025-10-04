@@ -70,7 +70,7 @@ macro model(𝓂,ex...)
                     x.args[1] == :max_obc_horizon && x.args[2] isa Int ?
                         max_obc_horizon = x.args[2] :
                     begin
-                        @warn "Invalid options." 
+                        @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@model` for valid options."
                         x
                     end :
                 x :
@@ -1098,7 +1098,7 @@ macro parameters(𝓂,ex...)
                     x.args[1] == :simplify && x.args[2] isa Bool ?
                         simplify = x.args[2] :
                     begin
-                        @warn "Invalid options. See docs: `?@parameters` for valid options." 
+                        @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@parameters` for valid options."
                         x
                     end :
                 x :
