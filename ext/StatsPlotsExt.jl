@@ -2261,13 +2261,13 @@ function plot_irf!(𝓂::ℳ;
 
     if haskey(diffdict, :shocks)
         # Build labels where matrices receive stable indices by content
-        shocks = diffdict[:shocks]
+        shcks = diffdict[:shocks]
 
         labels   = String[]                  # "" for trivial matrices, names pass through, "#k" for indexed matrices
         seen     = [] # distinct non-trivial normalised matrices
         next_idx = 0
 
-        for x in shocks
+        for x in shcks
             if x === nothing
                 push!(labels, "")
             elseif typeof(x) <: AbstractMatrix
@@ -2483,12 +2483,13 @@ function plot_irf!(𝓂::ℳ;
                     shock_dir = ""
                     shock_string = ""
                     shock_name = "no_shock"
+                elseif shock == "shock_matrix"
+                    shock_string = "Series of shocks"
+                    shock_name = "shock_matrix"
+                    shock_dir = ""
                 elseif shock isa Union{Symbol_input,String_input}
                     shock_string = ": " * shock
                     shock_name = shock
-                else
-                    shock_string = "Series of shocks"
-                    shock_name = "shock_matrix"
                 end
 
                 ppp = StatsPlots.plot(pp...; attributes...)
@@ -2571,12 +2572,13 @@ function plot_irf!(𝓂::ℳ;
                 shock_dir = ""
                 shock_string = ""
                 shock_name = "no_shock"
+            elseif shock == "shock_matrix"
+                shock_string = "Series of shocks"
+                shock_name = "shock_matrix"
+                shock_dir = ""
             elseif shock isa Union{Symbol_input,String_input}
                 shock_string = ": " * shock
                 shock_name = shock
-            else
-                shock_string = "Series of shocks"
-                shock_name = "shock_matrix"
             end
 
             ppp = StatsPlots.plot(pp...; attributes...)
