@@ -1,6 +1,6 @@
 """
 $(SIGNATURES)
-Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`. 
+Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. When the defaults are used, the filter is selected automatically—Kalman for first order solutions and inversion otherwise—and smoothing is only enabled when the Kalman filter is active. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 In case of pruned second and pruned third order perturbation algorithms the decomposition additionally contains a term `Nonlinearities`. This term represents the nonlinear interaction between the states in the periods after the shocks arrived and in the case of pruned third order, the interaction between (pruned second order) states and contemporaneous shocks.
 
@@ -163,7 +163,7 @@ end
 
 """
 $(SIGNATURES)
-Return the estimated shocks based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+Return the estimated shocks based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. By default MacroModelling chooses the Kalman filter for first order solutions and the inversion filter for higher order ones, and only enables smoothing when the Kalman filter is used. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -286,7 +286,7 @@ end
 
 """
 $(SIGNATURES)
-Return the estimated variables (in levels by default, see `levels` keyword argument) based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+Return the estimated variables (in levels by default, see `levels` keyword argument) based on the inversion filter (depending on the `filter` keyword argument), or Kalman filter or smoother (depending on the `smooth` keyword argument) using the provided data and (non-)linear solution of the model. With the default options the Kalman filter is applied to first order solutions, while the inversion filter is used for higher order methods; smoothing is activated automatically only when the Kalman filter is available. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -522,7 +522,7 @@ end
 
 """
 $(SIGNATURES)
-Return the standard deviations of the Kalman smoother or filter (depending on the `smooth` keyword argument) estimates of the model variables based on the provided data and first order solution of the model. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
+Return the standard deviations of the Kalman smoother or filter (depending on the `smooth` keyword argument) estimates of the model variables based on the provided data and first order solution of the model. For the default settings this function relies on the Kalman filter and therefore keeps smoothing enabled. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
 If occasionally binding constraints are present in the model, they are not taken into account here. 
 
@@ -3420,7 +3420,7 @@ end
 
 """
 $(SIGNATURES)
-Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). In case of a nonlinear solution algorithm the inversion filter will be used. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
+Return the loglikelihood of the model given the data and parameters provided. The loglikelihood is either calculated based on the inversion or the Kalman filter (depending on the `filter` keyword argument). By default the package selects the Kalman filter for first order solutions and the inversion filter for nonlinear (higher order) solution algorithms. The data must be provided as a `KeyedArray{Float64}` with the names of the variables to be matched in rows and the periods in columns. The `KeyedArray` type is provided by the `AxisKeys` package.
 
 This function is differentiable (so far for the Kalman filter only) and can be used in gradient based sampling or optimisation.
 
