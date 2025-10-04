@@ -1381,14 +1381,16 @@ function plot_irf(𝓂::ℳ;
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
-        periods += size(shocks)[2]
+        periods_extended = periods + size(shocks)[2]
 
         shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
-        periods += size(shocks)[2]
+        periods_extended = periods + size(shocks)[2]
 
         shock_idx = 1
     else
+        periods_extended = periods
+        
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
 
@@ -1449,7 +1451,7 @@ function plot_irf(𝓂::ℳ;
                                 state_update,
                                 initial_state,
                                 level;
-                                periods = periods,
+                                periods = periods_extended,
                                 shocks = shocks,
                                 variables = variables,
                                 shock_size = shock_size,
@@ -2053,14 +2055,16 @@ function plot_irf!(𝓂::ℳ;
     if shocks isa Matrix{Float64}
         @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
 
-        periods += size(shocks)[2]
+        periods_extended = periods + size(shocks)[2]
 
         shock_idx = 1
     elseif shocks isa KeyedArray{Float64}
-        periods += size(shocks)[2]
+        periods_extended = periods + size(shocks)[2]
 
         shock_idx = 1
     else
+        periods_extended = periods
+        
         shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
 
@@ -2121,7 +2125,7 @@ function plot_irf!(𝓂::ℳ;
                                 state_update,
                                 initial_state,
                                 level;
-                                periods = periods,
+                                periods = periods_extended,
                                 shocks = shocks,
                                 variables = variables,
                                 shock_size = shock_size,
