@@ -2319,7 +2319,10 @@ function get_relevant_steady_states(𝓂::ℳ,
         full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
     end
 
-    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false, 
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, 
+                                    stochastic = algorithm != :first_order,
+                                    return_variables_only = true, 
+                                    derivatives = false, 
                                     verbose = opts.verbose,
                                     tol = opts.tol,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
@@ -2327,7 +2330,10 @@ function get_relevant_steady_states(𝓂::ℳ,
 
     reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
 
-    relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false, 
+    relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, 
+                                    stochastic = false, 
+                                    return_variables_only = true, 
+                                    derivatives = false, 
                                     verbose = opts.verbose,
                                     tol = opts.tol,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
