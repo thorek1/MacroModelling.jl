@@ -3820,16 +3820,11 @@ function filter_data_with_model(𝓂::ℳ,
     
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true, opts = opts)
 
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
-        @error "No solution for these parameters."
-        return variables, shocks, zeros(0,0), decomposition
+    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+        @error "Could not find pruned 2nd order stochastic steady state"
+        return variables, shocks, zeros(0,0), zeros(0,0)
     end
-
-    if !converged
-        @error "No solution for these parameters."
-        return variables, shocks, zeros(0,0), decomposition
-    end
-
+    
     𝐒 = [𝐒₁, 𝐒₂]
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
