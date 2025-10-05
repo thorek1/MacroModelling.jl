@@ -1078,39 +1078,7 @@ function get_irf(𝓂::ℳ,
 
     @assert shocks != :simulate "Use parameters as a known argument to simulate the model."
 
-    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
-
-    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
-
-    if shocks isa Matrix{Float64}
-        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
-
-        periods += size(shocks)[2]
-
-        shock_history = zeros(𝓂.timings.nExo, periods)
-
-        shock_history[:,1:size(shocks)[2]] = shocks
-
-        shock_idx = 1
-    elseif shocks isa KeyedArray{Float64}
-        shocks_axis = collect(axiskeys(shocks,1))
-
-        shocks_symbols = shocks_axis isa String_input ? shocks_axis .|> Meta.parse .|> replace_indices : shocks_axis
-
-        shock_input = map(x->Symbol(replace(string(x), "₍ₓ₎" => "")), shocks_symbols)
-
-        periods += size(shocks)[2]
-
-        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks are not part of the model. Use `get_shocks(𝓂)` to list valid shock names."
-
-        shock_history = zeros(𝓂.timings.nExo, periods)
-
-        shock_history[indexin(shock_input,𝓂.timings.exo),1:size(shocks)[2]] = shocks
-
-        shock_idx = 1
-    else
-        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
-    end
+    shocks, negative_shock, _, periods, shock_idx, shock_history = process_shocks_input(shocks, negative_shock, 1.0, periods, 𝓂)
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
@@ -1268,37 +1236,8 @@ function get_irf(𝓂::ℳ;
 
     shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
 
-    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
-
-    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
-
-    if shocks isa Matrix{Float64}
-        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
-
-        periods += size(shocks)[2]
-
-        shock_history = zeros(𝓂.timings.nExo, periods)
-
-        shock_history[:,1:size(shocks)[2]] = shocks
-
-        shock_idx = 1
-
-    elseif shocks isa KeyedArray{Float64}
-        shock_input = map(x->Symbol(replace(string(x),"₍ₓ₎" => "")),axiskeys(shocks)[1])
-
-        periods += size(shocks)[2]
-
-        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks are not part of the model. Use `get_shocks(𝓂)` to list valid shock names."
-
-        shock_history = zeros(𝓂.timings.nExo, periods + 1)
-
-        shock_history[indexin(shock_input, 𝓂.timings.exo),1:size(shocks)[2]] = shocks
-
-        shock_idx = 1
-    else
-        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
-    end
-
+    shocks, negative_shock, shock_size, periods, _, _ = process_shocks_input(shocks, negative_shock, shock_size, periods, 𝓂)
+    
     ignore_obc, occasionally_binding_constraints, obc_shocks_included = process_ignore_obc_flag(shocks, ignore_obc, 𝓂)
 
     generalised_irf = adjust_generalised_irf_flag(generalised_irf, generalised_irf_warmup_iterations, generalised_irf_draws, algorithm, occasionally_binding_constraints, shocks)

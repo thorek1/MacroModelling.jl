@@ -532,6 +532,79 @@ function adjust_generalised_irf_flag(generalised_irf::Bool,
     return generalised_irf
 end
 
+function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
+                                negative_shock::Bool,
+                                shock_size::Real,
+                                periods::Int,
+                                𝓂::ℳ; 
+                                maxlog::Int = DEFAULT_MAXLOG)
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
+
+    shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+    
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
+
+    if shocks isa Matrix{Float64}
+        @assert size(shocks)[1] == 𝓂.timings.nExo "Number of rows of provided shock matrix does not correspond to number of shocks. Please provide matrix with as many rows as there are shocks in the model."
+
+        periods_extended = periods + size(shocks)[2]
+        
+        shock_history = zeros(𝓂.timings.nExo, periods_extended)
+
+        shock_history[:,1:size(shocks)[2]] = shocks
+        
+        shock_idx = 1
+
+        if negative_shock != DEFAULT_NEGATIVE_SHOCK
+            @info "`negative_shock = $negative_shock` has no effect when providing a custom shock matrix. Setting `negative_shock = $DEFAULT_NEGATIVE_SHOCK`." maxlog = maxlog
+
+            negative_shock = DEFAULT_NEGATIVE_SHOCK
+        end
+
+        if shock_size != DEFAULT_SHOCK_SIZE
+            @info "`shock_size` has no effect when providing a custom shock matrix. Setting `shock_size = $DEFAULT_SHOCK_SIZE`." maxlog = maxlog
+
+            shock_size = DEFAULT_SHOCK_SIZE
+        end
+    elseif shocks isa KeyedArray{Float64}
+        shocks_axis = collect(axiskeys(shocks,1))
+
+        shocks_symbols = shocks_axis isa String_input ? shocks_axis .|> Meta.parse .|> replace_indices : shocks_axis
+
+        shock_input = map(x->Symbol(replace(string(x), "₍ₓ₎" => "")), shocks_symbols)
+
+        @assert length(setdiff(shock_input, 𝓂.timings.exo)) == 0 "Provided shocks are not part of the model. Use `get_shocks(𝓂)` to list valid shock names."
+
+        periods_extended = periods + size(shocks)[2]
+        
+        shock_history = zeros(𝓂.timings.nExo, periods_extended)
+        
+        shock_history[indexin(shock_input,𝓂.timings.exo),1:size(shocks)[2]] = shocks
+
+        shock_idx = 1
+
+        if negative_shock != DEFAULT_NEGATIVE_SHOCK
+            @info "`negative_shock = $negative_shock` has no effect when providing a custom shock matrix. Setting `negative_shock = $DEFAULT_NEGATIVE_SHOCK`." maxlog = maxlog
+
+            negative_shock = DEFAULT_NEGATIVE_SHOCK
+        end
+
+        if shock_size != DEFAULT_SHOCK_SIZE
+            @info "`shock_size` has no effect when providing a custom shock matrix. Setting `shock_size = $DEFAULT_SHOCK_SIZE`." maxlog = maxlog
+
+            shock_size = DEFAULT_SHOCK_SIZE
+        end
+    else
+        shock_history = shocks
+        
+        periods_extended = periods
+        
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    end
+
+    return shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history
+end
+
 
 function process_ignore_obc_flag(shocks,
                                  ignore_obc::Bool,
