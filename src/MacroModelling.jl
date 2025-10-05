@@ -8264,12 +8264,23 @@ function girf(state_update::Function,
     for (i,ii) in enumerate(shock_idx)
         initial_state_copy = deepcopy(initial_state)
 
+        accepted_draws = 0
+
         for draw in 1:draws
+            ok = true
+
             initial_state_copy² = deepcopy(initial_state_copy)
 
             for i in 1:warmup_periods
                 initial_state_copy² = state_update(initial_state_copy², randn(T.nExo))
+                if any(!isfinite, [x for v in initial_state_copy² for x in v])
+                    # @warn "No solution in warmup period: $i"
+                    ok = false
+                    break
+                end
             end
+            
+            if !ok continue end
 
             Y₁ = zeros(T.nVars, periods + 1)
             Y₂ = zeros(T.nVars, periods + 1)
@@ -8283,6 +8294,8 @@ function girf(state_update::Function,
 
             if pruning
                 initial_state_copy² = state_update(initial_state_copy², baseline_noise)
+                
+                if any(!isfinite, [x for v in initial_state_copy² for x in v]) continue end
 
                 initial_state₁ = deepcopy(initial_state_copy²)
                 initial_state₂ = deepcopy(initial_state_copy²)
@@ -8291,7 +8304,12 @@ function girf(state_update::Function,
                 Y₂[:,1] = initial_state_copy² |> sum
             else
                 Y₁[:,1] = state_update(initial_state_copy², baseline_noise)
+                
+                if any(!isfinite, Y₁[:,1]) continue end
+
                 Y₂[:,1] = state_update(initial_state_copy², baseline_noise)
+                
+                if any(!isfinite, Y₂[:,1]) continue end
             end
 
             for t in 1:periods
@@ -8299,19 +8317,54 @@ function girf(state_update::Function,
 
                 if pruning
                     initial_state₁ = state_update(initial_state₁, baseline_noise)
+                
+                    if any(!isfinite, [x for v in initial_state₁ for x in v])
+                        ok = false
+                        break
+                    end
+
                     initial_state₂ = state_update(initial_state₂, baseline_noise + shock_history[:,t])
+                
+                    if any(!isfinite, [x for v in initial_state₂ for x in v])
+                        ok = false
+                        break
+                    end
 
                     Y₁[:,t+1] = initial_state₁ |> sum
                     Y₂[:,t+1] = initial_state₂ |> sum
                 else
                     Y₁[:,t+1] = state_update(Y₁[:,t],baseline_noise)
+
+                    if any(!isfinite, Y₁[:,t+1])
+                        ok = false
+                        break
+                    end
+
                     Y₂[:,t+1] = state_update(Y₂[:,t],baseline_noise + shock_history[:,t])
+
+                    if any(!isfinite, Y₂[:,t+1])
+                        ok = false
+                        break
+                    end
                 end
             end
 
+            if !ok continue end
+
             Y[:,:,i] += Y₂ - Y₁
+
+            accepted_draws += 1
         end
-        Y[:,:,i] /= draws
+        
+        if accepted_draws == 0
+            @warn "No draws accepted. Results are empty."
+        elseif accepted_draws < draws
+            # average over accepted draws, if desired
+            @info "$accepted_draws of $draws draws accepted for shock: $(shocks ∉ [:simulate, :none] && shocks isa Union{Symbol_input, String_input} ? T.exo[ii] : :Shock_matrix)"
+            Y[:, :, i] ./= accepted_draws
+        else
+            Y[:, :, i] ./= accepted_draws
+        end
     end
     
     axis1 = T.var[var_idx]
@@ -8493,9 +8546,11 @@ function girf(state_update::Function,
 
         if accepted_draws == 0
             @warn "No draws accepted. Results are empty."
-        else
+        elseif accepted_draws < draws
             # average over accepted draws, if desired
             @info "$accepted_draws of $draws draws accepted for shock: $(shocks ∉ [:simulate, :none] && shocks isa Union{Symbol_input, String_input} ? T.exo[ii] : :Shock_matrix)"
+            Y[:, :, i] ./= accepted_draws
+        else
             Y[:, :, i] ./= accepted_draws
         end
     end
