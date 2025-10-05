@@ -532,7 +532,9 @@ function adjust_generalised_irf_flag(generalised_irf::Bool,
     return generalised_irf
 end
 
-function process_shocks_input(shocks, #::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
+end # dispatch_doctor
+
+function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}},
                                 negative_shock::Bool,
                                 shock_size::Real,
                                 periods::Int,
@@ -595,6 +597,7 @@ function process_shocks_input(shocks, #::Union{Symbol_input, String_input, Matri
     return shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history
 end
 
+@stable default_mode = "disable" begin
 
 function process_ignore_obc_flag(shocks,
                                  ignore_obc::Bool,
@@ -8549,7 +8552,7 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
         return Int.(indexin(variables, T.var))
     elseif variables isa Symbol
         if length(setdiff([variables],T.var)) > 0
-            @warn "The following variable is not part of the model: " * join(string(setdiff([variables],T.var)[1]),", ") * ". Use `get_variables(𝓂)` to list valid names."
+            @warn "The following variable is not part of the model: $(setdiff([variables],T.var)[1]). Use `get_variables(𝓂)` to list valid names."
             return Int[]
         end
         return Int.(indexin([variables], T.var))
