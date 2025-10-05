@@ -554,18 +554,6 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
         shock_history[:,1:size(shocks)[2]] = shocks
         
         shock_idx = 1
-
-        if negative_shock != DEFAULT_NEGATIVE_SHOCK
-            @info "`negative_shock = $negative_shock` has no effect when providing a custom shock matrix. Setting `negative_shock = $DEFAULT_NEGATIVE_SHOCK`." maxlog = maxlog
-
-            negative_shock = DEFAULT_NEGATIVE_SHOCK
-        end
-
-        if shock_size != DEFAULT_SHOCK_SIZE
-            @info "`shock_size = $shock_size` has no effect when providing a custom shock matrix. Setting `shock_size = $DEFAULT_SHOCK_SIZE`." maxlog = maxlog
-
-            shock_size = DEFAULT_SHOCK_SIZE
-        end
     elseif shocks isa KeyedArray{Float64}
         shocks_axis = collect(axiskeys(shocks,1))
 
@@ -582,7 +570,15 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
         shock_history[indexin(shock_input,𝓂.timings.exo),1:size(shocks)[2]] = shocks
 
         shock_idx = 1
+    else
+        shock_history = shocks
 
+        periods_extended = periods
+        
+        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+    end
+
+    if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64} || shocks == :none
         if negative_shock != DEFAULT_NEGATIVE_SHOCK
             @info "`negative_shock = $negative_shock` has no effect when providing a custom shock matrix. Setting `negative_shock = $DEFAULT_NEGATIVE_SHOCK`." maxlog = maxlog
 
@@ -594,12 +590,6 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
 
             shock_size = DEFAULT_SHOCK_SIZE
         end
-    else
-        shock_history = shocks
-
-        periods_extended = periods
-        
-        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
     end
 
     return shocks, negative_shock, shock_size, periods_extended, shock_idx, shock_history
