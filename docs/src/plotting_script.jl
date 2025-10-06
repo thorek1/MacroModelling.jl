@@ -5,7 +5,11 @@
 # ## Setup
 
 # Load the packages once per session:
+# import Pkg
+# Pkg.offline(true)
+# Pkg.add(["Revise", "StatsPlots"])
 
+using Revise
 using MacroModelling
 import StatsPlots
 
@@ -505,7 +509,6 @@ plot_irf(Gali_2015_chapter_3_obc, variables = :all, save_plots = true, save_plot
 # The effective lower bound is enforced using shocks to the equation containing the max statement. For details of the construction of the occasionally binding constraint see the documentation. For this specific model you can also look at the equations the parser wrote in order to enforce the obc:
 get_equations(Gali_2015_chapter_3_obc)
 
-plot_irf(Gali_2015_chapter_3_obc, variables = :alll, save_plots = true, save_plots_format = :png)
 
 
 # ### parameters
@@ -612,16 +615,99 @@ plot_irf(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.99, :τ => 0.0), 
 plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.95, :τ => 0.5), shocks = :eps_a, label = 0.95, save_plots = true, save_plots_format = :svg)
 
 
-plot_attributes
-plots_per_page
-show_plots
-save_plots
-save_plots_format
-save_plots_path
+# ### plot_attributes
+# [Default: Dict()]: dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.
 
-verbose
-tol
-quadratic_matrix_equation_algorithm
-sylvester_algorithm
-lyapunov_algorithm
-# ### changing more than one input and using ! function
+# You can also change the color palette using the plot_attributes argument. Here we define a custom color palette (inspired by the color scheme used in the European Commissions economic reports) and use it to plot the IRF of all shocks defined in the Gali_2015_chapter_3_nonlinear model and stack them on top of each other:
+# First we define the custom color palette using hex color codes:
+ec_color_palette = 
+[
+	"#FFD724", 	# "Sunflower Yellow"
+	"#353B73", 	# "Navy Blue"
+	"#2F9AFB", 	# "Sky Blue"
+	"#B8AAA2", 	# "Taupe Grey"
+	"#E75118", 	# "Vermilion" 
+	"#6DC7A9", 	# "Mint Green"
+	"#F09874", 	# "Coral" 
+	"#907800"  	# "Olive" 
+]
+
+
+# Then we get all shocks defined in the model:
+shocks = get_shocks(Gali_2015_chapter_3_nonlinear)
+
+# and then we plot the IRF for the first shock:
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shocks[1], save_plots = true, save_plots_format = :png)
+
+# and then we overlay the IRF for the remaining shocks using the custom color palette by passing on a dictionnary:
+for s in shocks[2:end]
+    plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = s, plot_attributes = Dict(:palette => ec_color_palette), plot_type = :stack, save_plots = true, save_plots_format = :png)
+end
+# ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__multiple_shocks__2_ec_colors.png)
+# The colors of the shocks now follow the custom color palette.
+
+# We can also change other attributes such as the font family (see [here](https://github.com/JuliaPlots/Plots.jl/blob/v1.41.1/src/backends/gr.jl#L61) for options):
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, plot_attributes = Dict(:fontfamily => "computer modern"), save_plots = true, save_plots_format = :png)
+# ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_cm_font.png)
+# All text in the plot is now in the computer modern font. Do note that the rendering of the fonts inherits the constraints of the plotting backend (GR in this case) - e.g. the superscript + is not rendered properly for this font.
+
+
+# ### plots_per_page
+# [Default: 6, Type: Int]: number of subplots per page. If the number of variables to plot exceeds this number, multiple pages will be created.
+# Lets select 9 variables to plot and set plots_per_page to 4:
+plot_irf(Gali_2015_chapter_3_nonlinear, variables = [:Y, :Pi, :R, :C, :N, :W_real, :MC, :i_ann, :A], shocks = :eps_a, plots_per_page = 2, save_plots = true, save_plots_format = :png)
+# ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_9_vars_2_per_page.png)
+# The first page shows the first two variables (sorted alphabetically) in a plot with two subplots for each shock. The title indicates that this is page 1 of 5.
+
+# ### show_plots
+# [Default: true, Type: Bool]: if true, shows the plots otherwise they are just returned as an object. 
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, show_plots = false)
+
+# ### save_plots, save_plots_format, save_plots_path, save_pots_name
+# [Default: false, Type: Bool]: if true, saves the plots to disk otherwise they are just shown and returned as an object. The plots are saved in the format specified by the save_plots_format argument and in the path specified by the save_plots_path argument (the fodlers will be created if they dont exist already). Each plot is saved as a separate file with a name that indicates the model name, shocks, and a running number if there are multiple plots. The default path is the current working directory (pwd()) and the default format is :pdf. Acceptable formats are those supported by the Plots.jl package ([input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats)).
+
+# Here we save the IRFs for all variables and all shocks of the Gali_2015_chapter_3_nonlinear model as a svg file in a directory one level up in the folder hierarchy in a new folder called `plots` with the filename prefix: `:impulse_response`:
+plot_irf(Gali_2015_chapter_3_nonlinear, save_plots = true, save_plots_format = :png, save_plots_path = "./../plots", save_plots_name = :impulse_response)
+
+# The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file. The naming reflects the model used, the shock shown and the running index per shocks if the number of variables exceeds the number of plots per page.
+
+
+# ### verbose
+# [Default: false, Type: Bool]: if true, enables verbose output related to the solution of the model
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, verbose = true)
+
+# The code outputs information about the solution of the steady state blocks.
+# If we change the parameters the first order solution is also recomputed, otherwise he would rely on the previously computed solution which is cached:
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, parameters = :β => 0.955, verbose = true)
+
+
+
+# ### tol
+# [Default: Tolerances(), Type: Tolerances]: define various tolerances for the algorithm used to solve the model. See documentation of Tolerances for more details: ?Tolerances
+# You can adjust the tolerances used in the numerical solvers. The Tolerances object allows you to set tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (qme). For example, to set tighter tolerances (here we also change parameters to force a recomputation of the solution):
+custom_tol = Tolerances(qme_acceptance_tol = 1e-12, sylvester_acceptance_tol = 1e-12)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, tol = custom_tol, algorithm = :second_order, parameters = :β => 0.9555,verbose = true, save_plots = true, save_plots_format = :png)
+
+# This can be useful when you need higher precision in the solution or when the default tolerances are not sufficient for convergence. Use this argument if you have specific needs or encounter issues with the default solver.
+
+
+
+# ### quadratic_matrix_equation_algorithm
+# [Default: :schur, Type: Symbol]: algorithm to solve quadratic matrix equation (A * X ^ 2 + B * X + C = 0). Available algorithms: :schur, :doubling
+# The quadratic matrix equation solver is used internally when solving the model up to first order. You can choose between different algorithms. The :schur algorithm is generally faster and more reliable, while :doubling can be more precise in some cases (here we also change parameters to force a recomputation of the solution):
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, quadratic_matrix_equation_algorithm = :doubling, parameters = :β => 0.95555, verbose = true, save_plots = true, save_plots_format = :png)
+
+# For most use cases, the default :schur algorithm is recommended. Use this argument if you have specific needs or encounter issues with the default solver.
+
+
+# ### sylvester_algorithm
+# [Default: selector that uses :doubling for smaller problems and switches to :bicgstab for larger problems, Type: Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}}]: algorithm to solve the Sylvester equation (A * X * B + C = X). Available algorithms: :doubling, :bartels_stewart, :bicgstab, :dqgmres, :gmres. Input argument can contain up to two elements in a Vector or Tuple. The first (second) element corresponds to the second (third) order perturbation solutions' Sylvester equation. If only one element is provided it corresponds to the second order perturbation solutions' Sylvester equation.
+# You can specify which algorithm to use for solving Sylvester equations, relevant for higher order solutions. For example you can seect the :bartels_stewart algorithm for solving the second order perturbation problem:
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :second_order, sylvester_algorithm = :bartels_stewart, verbose = true, save_plots = true, save_plots_format = :png)
+
+# For third-order solutions, you can specify different algorithms for the second and third order Sylvester equations using a Tuple:
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :third_order, sylvester_algorithm = (:doubling, :bicgstab), verbose = true, save_plots = true, save_plots_format = :png)
+
+# The choice of algorithm can affect both speed and precision, with :doubling and :bartels_stewart generally being faster but :bicgstab, :dqgmres, and :gmres being better for large sparse problems. Use this argument if you have specific needs or encounter issues with the default solver.
+
+

@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMATH®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
 import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -71,10 +71,11 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SMOOTH®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
-- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"estimation"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
-- `transparency` [Default: `0.6`, Type: `Float64`]: transparency of stacked bars. Only relevant if `shock_decomposition` is `true`.
+- `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `shock_decomposition` is `true`.
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
 - $LABEL®
@@ -136,6 +137,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                 save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                save_plots_name::Union{String, Symbol} = "estimation",
                                 save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                                 transparency::Float64 = DEFAULT_TRANSPARENCY,
@@ -431,7 +433,9 @@ function plot_model_estimates(𝓂::ℳ,
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/estimation__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -484,7 +488,9 @@ function plot_model_estimates(𝓂::ℳ,
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/estimation__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -525,8 +531,9 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $SMOOTH®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
-- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"estimation"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
@@ -607,6 +614,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                 save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                save_plots_name::Union{String, Symbol} = "estimation",
                                 save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
@@ -888,7 +896,8 @@ function plot_model_estimates!(𝓂::ℳ,
 
     for (i,k) in enumerate(model_estimates_active_plot_container)
         StatsPlots.plot!(legend_plot,
-                        [NaN], 
+                        [NaN],
+                        color = pal[mod1.(i, length(pal))]',
                         legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                         label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
 
@@ -907,6 +916,7 @@ function plot_model_estimates!(𝓂::ℳ,
             StatsPlots.plot!(legend_plot,
                                     [NaN], 
                                     label = lbl,
+                                    color = pal[mod1.(length(model_estimates_active_plot_container) + i, length(pal))]',
                                     # color = pal[i]
                                     )
         end
@@ -1185,7 +1195,9 @@ function plot_model_estimates!(𝓂::ℳ,
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/estimation__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
+                if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -1253,7 +1265,9 @@ function plot_model_estimates!(𝓂::ℳ,
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/estimation__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
+            if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -1289,14 +1303,14 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
-- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"irf"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - $LABEL®
 - $QME®
 - $SYLVESTER®
-- $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 
@@ -1334,6 +1348,7 @@ function plot_irf(𝓂::ℳ;
                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                    save_plots_name::Union{String, Symbol} = "irf",
                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE, 
                     algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -1348,15 +1363,13 @@ function plot_irf(𝓂::ℳ;
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
     # @nospecialize # reduce compile time                
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
-                    lyapunov_algorithm = lyapunov_algorithm)
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
@@ -1499,14 +1512,11 @@ function plot_irf(𝓂::ℳ;
                            :qme_acceptance_tol => tol.qme_acceptance_tol,
                            :sylvester_tol => tol.sylvester_tol,
                            :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :lyapunov_tol => tol.lyapunov_tol,
-                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
                            :droptol => tol.droptol,
                            :dependencies_tol => tol.dependencies_tol,
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
-                           :lyapunov_algorithm => lyapunov_algorithm,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state[var_idx],
@@ -1574,7 +1584,9 @@ function plot_irf(𝓂::ℳ;
                     end
 
                     if save_plots
-                        StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                        if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+                        StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
                     end
 
                     pane += 1
@@ -1608,7 +1620,9 @@ function plot_irf(𝓂::ℳ;
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
     end
@@ -1904,15 +1918,15 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 - $LABEL®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
-- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"irf"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - `plot_type` [Default: `:compare`, Type: `Symbol`]: plot type used to represent results. `:compare` means results are shown as separate lines. `:stack` means results are stacked.
-- `transparency` [Default: `0.6`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
+- `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
 - $QME®
 - $SYLVESTER®
-- $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 # Returns
@@ -1976,6 +1990,7 @@ function plot_irf!(𝓂::ℳ;
                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                    save_plots_name::Union{String, Symbol} = "irf",
                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL, 
                     algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -1992,8 +2007,7 @@ function plot_irf!(𝓂::ℳ;
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
     # @nospecialize # reduce compile time                
 
     @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
@@ -2001,8 +2015,7 @@ function plot_irf!(𝓂::ℳ;
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
-                    lyapunov_algorithm = lyapunov_algorithm)
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
@@ -2137,14 +2150,11 @@ function plot_irf!(𝓂::ℳ;
                            :qme_acceptance_tol => tol.qme_acceptance_tol,
                            :sylvester_tol => tol.sylvester_tol,
                            :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :lyapunov_tol => tol.lyapunov_tol,
-                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
                            :droptol => tol.droptol,
                            :dependencies_tol => tol.dependencies_tol,
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
-                           :lyapunov_algorithm => lyapunov_algorithm,
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state[var_idx],
                            :variable_names => variable_names,
@@ -2330,10 +2340,12 @@ function plot_irf!(𝓂::ℳ;
                             alpha = transparency,
                             lw = 0,  # This removes the lines around the bars
                             linecolor = :transparent,
+                            color = pal[mod1.(i, length(pal))]',
                             label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         elseif plot_type == :compare
             StatsPlots.plot!(legend_plot,
                             [NaN], 
+                            color = pal[mod1.(i, length(pal))]',
                             legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                             label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
@@ -2345,7 +2357,7 @@ function plot_irf!(𝓂::ℳ;
 
         max_periods = max(max_periods, size(k[:plot_data],2))
     end
-
+    
     sort!(joint_shocks)
     sort!(joint_variables)
 
@@ -2507,7 +2519,9 @@ function plot_irf!(𝓂::ℳ;
                 end
 
                 if save_plots
-                    StatsPlots.savefig(p, save_plots_path * "/irf__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                    if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
                 end
 
                 pane += 1
@@ -2596,7 +2610,9 @@ function plot_irf!(𝓂::ℳ;
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/irf__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
 
@@ -2924,8 +2940,9 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PARAMETERS®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
-- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"fevd"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
@@ -2974,6 +2991,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                                 save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                                save_plots_name::Union{String, Symbol} = "fevd",
                                                 save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE, 
                                                 plot_attributes::Dict = Dict(),
@@ -3095,7 +3113,9 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -3127,7 +3147,9 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -3171,8 +3193,9 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $IGNORE_OBC®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
-- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"solution"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
 - $PLOT_ATTRIBUTES®
 - $QME®
@@ -3223,6 +3246,7 @@ function plot_solution(𝓂::ℳ,
                         show_plots::Bool = DEFAULT_SHOW_PLOTS,
                         save_plots::Bool = DEFAULT_SAVE_PLOTS,
                         save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                        save_plots_name::Union{String, Symbol} = "solution",
                         save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                         plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                         plot_attributes::Dict = Dict(),
@@ -3463,7 +3487,9 @@ function plot_solution(𝓂::ℳ,
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/solution__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -3488,7 +3514,9 @@ function plot_solution(𝓂::ℳ,
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/solution__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -3518,14 +3546,14 @@ If occasionally binding constraints are present in the model, they are not taken
 - `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
-- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"conditional_forecast"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - $LABEL®
 - $QME®
 - $SYLVESTER®
-- $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 
@@ -3600,14 +3628,14 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                    save_plots_name::Union{String, Symbol} = "conditional_forecast",
                                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE,
                                     plot_attributes::Dict = Dict(),
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
     # @nospecialize # reduce compile time
     
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -3644,7 +3672,6 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 # levels = levels,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm = sylvester_algorithm,
-                                lyapunov_algorithm = lyapunov_algorithm,
                                 tol = tol,
                                 verbose = verbose)
 
@@ -3753,14 +3780,11 @@ function plot_conditional_forecast(𝓂::ℳ,
                            :qme_acceptance_tol => tol.qme_acceptance_tol,
                            :sylvester_tol => tol.sylvester_tol,
                            :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :lyapunov_tol => tol.lyapunov_tol,
-                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
                            :droptol => tol.droptol,
                            :dependencies_tol => tol.dependencies_tol,
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
-                           :lyapunov_algorithm => lyapunov_algorithm,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
@@ -3841,7 +3865,9 @@ function plot_conditional_forecast(𝓂::ℳ,
                 end
 
                 if save_plots# & (length(pp) > 0)
-                    StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                    if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
                 end
 
                 pane += 1
@@ -3875,7 +3901,9 @@ function plot_conditional_forecast(𝓂::ℳ,
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -3904,15 +3932,15 @@ This function shares most of the signature and functionality of [`plot_condition
 - $LABEL®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
-- $SAVE_PLOTS_FORMATH®
+- $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"conditional_forecast"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - `plot_type` [Default: `:compare`, Type: `Symbol`]: plot type used to represent results. `:compare` means results are shown as separate lines. `:stack` means results are stacked.
-- `transparency` [Default: `0.6`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
+- `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
 - $QME®
 - $SYLVESTER®
-- $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 
@@ -3988,6 +4016,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                    save_plots_name::Union{String, Symbol} = "conditional_forecast",
                                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                                     plot_attributes::Dict = Dict(),
@@ -3996,8 +4025,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
     # @nospecialize # reduce compile time
                  
     @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
@@ -4036,7 +4064,6 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                 # levels = levels,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm = sylvester_algorithm,
-                                lyapunov_algorithm = lyapunov_algorithm,
                                 tol = tol,
                                 verbose = verbose)
 
@@ -4149,14 +4176,11 @@ function plot_conditional_forecast!(𝓂::ℳ,
                            :qme_acceptance_tol => tol.qme_acceptance_tol,
                            :sylvester_tol => tol.sylvester_tol,
                            :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :lyapunov_tol => tol.lyapunov_tol,
-                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
                            :droptol => tol.droptol,
                            :dependencies_tol => tol.dependencies_tol,
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
-                           :lyapunov_algorithm => lyapunov_algorithm,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
@@ -4398,6 +4422,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                             [NaN], 
                             legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                             linecolor = :transparent,
+                            color = pal[mod1.(i, length(pal))]',
                             alpha = transparency,
                             linewidth = 0,
                             label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
@@ -4594,7 +4619,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
             end
 
             if save_plots# & (length(pp) > 0)
-                StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
+                if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -4663,7 +4690,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
         end
 
         if save_plots# & (length(pp) > 0)
-            StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
+            if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
