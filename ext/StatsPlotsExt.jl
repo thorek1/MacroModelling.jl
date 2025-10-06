@@ -3520,6 +3520,7 @@ function _plot_solution_from_container(;
         # Multiple differences - use custom labels or plot labels
         for (i, container) in enumerate(solution_active_plot_container)
             label_text = container[:label] isa Symbol ? string(container[:label]) : container[:label]
+            
             StatsPlots.plot!([NaN], 
                             color = pal[mod1(i, length(pal))],
                             label = string(label_text))
@@ -3649,7 +3650,7 @@ function _plot_solution_from_container(;
                 
                 # Build plot elements array
                 plot_elements = [ppp, legend_plot]
-                layout_heights = [15, 1]
+                layout_heights = [15, length(annotate_diff_input)]
                 
                 # Add relevant input differences table if multiple inputs differ
                 if length(annotate_diff_input) > 2
