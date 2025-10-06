@@ -5,7 +5,11 @@
 # ## Setup
 
 # Load the packages once per session:
+# import Pkg
+# Pkg.offline(true)
+# Pkg.add(["Revise", "StatsPlots"])
 
+using Revise
 using MacroModelling
 import StatsPlots
 
@@ -505,7 +509,6 @@ plot_irf(Gali_2015_chapter_3_obc, variables = :all, save_plots = true, save_plot
 # The effective lower bound is enforced using shocks to the equation containing the max statement. For details of the construction of the occasionally binding constraint see the documentation. For this specific model you can also look at the equations the parser wrote in order to enforce the obc:
 get_equations(Gali_2015_chapter_3_obc)
 
-plot_irf(Gali_2015_chapter_3_obc, variables = :alll, save_plots = true, save_plots_format = :png)
 
 
 # ### parameters
@@ -612,16 +615,76 @@ plot_irf(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.99, :τ => 0.0), 
 plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.95, :τ => 0.5), shocks = :eps_a, label = 0.95, save_plots = true, save_plots_format = :svg)
 
 
-plot_attributes
-plots_per_page
-show_plots
-save_plots
-save_plots_format
-save_plots_path
 
-verbose
+# ### plot_attributes
+# [Default: Dict()]: dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.
+
+# You can also change the color palette using the plot_attributes argument. Here we define a custom color palette (inspired by the color scheme used in the European Commissions economic reports) and use it to plot the IRF of all shocks defined in the Gali_2015_chapter_3_nonlinear model and stack them on top of each other:
+# First we define the custom color palette using hex color codes:
+ec_color_palette = 
+[
+	"#FFD724", 	# "Sunflower Yellow"
+	"#353B73", 	# "Navy Blue"
+	"#2F9AFB", 	# "Sky Blue"
+	"#B8AAA2", 	# "Taupe Grey"
+	"#E75118", 	# "Vermilion" 
+	"#6DC7A9", 	# "Mint Green"
+	"#F09874", 	# "Coral" 
+	"#907800"  	# "Olive" 
+]
+
+
+# Then we get all shocks defined in the model:
+shocks = get_shocks(Gali_2015_chapter_3_nonlinear)
+
+# and then we plot the IRF for the first shock:
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shocks[1], save_plots = true, save_plots_format = :png)
+
+# and then we overlay the IRF for the remaining shocks using the custom color palette by passing on a dictionnary:
+for s in shocks[2:end]
+    plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = s, plot_attributes = Dict(:palette => ec_color_palette), plot_type = :stack, save_plots = true, save_plots_format = :png)
+end
+# ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__multiple_shocks__2_ec_colors.png)
+# The colors of the shocks now follow the custom color palette.
+
+# We can also change other attributes such as the font family (see [here](https://github.com/JuliaPlots/Plots.jl/blob/v1.41.1/src/backends/gr.jl#L61) for options):
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, plot_attributes = Dict(:fontfamily => "computer modern"), save_plots = true, save_plots_format = :png)
+# ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_cm_font.png)
+# All text in the plot is now in the computer modern font. Do note that the rendering of the fonts inherits the constraints of the plotting backend (GR in this case) - e.g. the superscript + is not rendered properly for this font.
+
+
+# ### plots_per_page
+# [Default: 6, Type: Int]: number of subplots per page. If the number of variables to plot exceeds this number, multiple pages will be created.
+# Lets select 9 variables to plot and set plots_per_page to 4:
+plot_irf(Gali_2015_chapter_3_nonlinear, variables = [:Y, :Pi, :R, :C, :N, :W_real, :MC, :i_ann, :A], shocks = :eps_a, plots_per_page = 2, save_plots = true, save_plots_format = :png)
+# ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_9_vars_2_per_page.png)
+# The first page shows the first two variables (sorted alphabetically) in a plot with two subplots for each shock. The title indicates that this is page 1 of 5.
+
+# ### show_plots
+# [Default: true, Type: Bool]: if true, shows the plots otherwise they are just returned as an object. 
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, show_plots = false)
+
+# ### save_plots, save_plots_format, save_plots_path, save_pots_name
+# [Default: false, Type: Bool]: if true, saves the plots to disk otherwise they are just shown and returned as an object. The plots are saved in the format specified by the save_plots_format argument and in the path specified by the save_plots_path argument (the fodlers will be created if they dont exist already). Each plot is saved as a separate file with a name that indicates the model name, shocks, and a running number if there are multiple plots. The default path is the current working directory (pwd()) and the default format is :pdf. Acceptable formats are those supported by the Plots.jl package ([input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats)).
+
+# Here we save the IRFs for all variables and all shocks of the Gali_2015_chapter_3_nonlinear model as a svg file in a directory one level up in the folder hierarchy in a new folder called `plots` with the filename prefix: `:impulse_response`:
+plot_irf(Gali_2015_chapter_3_nonlinear, save_plots = true, save_plots_format = :png, save_plots_path = "./../plots", save_plots_name = :impulse_response)
+
+# The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file. The naming reflects the model used, the shock shown and the running index per shocks if the number of variables exceeds the number of plots per page.
+
+
+# ### verbose
+# [Default: false, Type: Bool]: if true, enables verbose output related to the solution of the model
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, verbose = true)
+
+# The code outputs information about the solution of the steady state blocks.
+# If we change the parameters he also needs to redo the first order solution:
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, parameters = :β => 0.955, verbose = true)
+
+
+
 tol
 quadratic_matrix_equation_algorithm
 sylvester_algorithm
 lyapunov_algorithm
-# ### changing more than one input and using ! function
+
