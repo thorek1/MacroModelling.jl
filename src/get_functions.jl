@@ -1258,15 +1258,6 @@ function get_irf(𝓂::ℳ;
     
     # @timeit_debug timer "Solve model" begin
 
-    # Check if all parameters are defined before attempting to solve
-    if parameters === nothing && length(𝓂.undefined_parameters) > 0
-        @error "Cannot compute IRFs. Model has undefined parameters: " * repr(𝓂.undefined_parameters) * "\nPlease define all parameters using the parameters keyword argument or in a previous @parameters call."
-        # Return empty KeyedArray with proper structure
-        var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
-        shock_idx = shocks == :none ? [:no_shock] : (shocks isa Symbol ? [shocks] : collect(shocks))
-        return KeyedArray(zeros(length(var_idx), periods, length(shock_idx)), Variables = 𝓂.var[var_idx], Periods = 1:periods, Shocks = shock_idx)
-    end
-    
     solve!(𝓂, 
             parameters = parameters, 
             opts = opts,

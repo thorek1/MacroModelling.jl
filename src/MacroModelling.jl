@@ -8825,8 +8825,9 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         if opts.verbose
             @error "Cannot compute non-stochastic steady state. Model has undefined parameters: " * repr(𝓂.undefined_parameters)
         end
-        # Return empty result with high error
-        return zeros(S, length(𝓂.var) + length(𝓂.calibration_equations_parameters)), (S(Inf), 0)
+        # Return empty result with high error - use existing NSSS size if available
+        nsss_size = length(𝓂.solution.non_stochastic_steady_state) > 0 ? length(𝓂.solution.non_stochastic_steady_state) : length(𝓂.var) + length(𝓂.calibration_equations_parameters)
+        return zeros(S, nsss_size), (S(Inf), 0)
     end
     
     # @timeit_debug timer "Calculate NSSS" begin
