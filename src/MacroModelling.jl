@@ -5,7 +5,7 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 # import StatsFuns: normcdf
 import ThreadedSparseArrays
 using PrecompileTools
-import SpecialFunctions: erfcinv, erfc # can't use constants because of SymPy (e.g. sqrt2)
+import SpecialFunctions: erfcinv, erfc, erfinv # can't use constants because of SymPy (e.g. sqrt2)
 import SpecialFunctions
 import SymPyPythonCall as SPyPyC
 import PythonCall
@@ -106,9 +106,9 @@ using DispatchDoctor
 # @stable default_mode = "disable" begin
 
 # Imports
-include("common_docstrings.jl")
-include("options_and_caches.jl")
 include("default_options.jl")
+include("options_and_caches.jl")
+include("common_docstrings.jl")
 include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")
