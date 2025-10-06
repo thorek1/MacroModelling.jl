@@ -693,7 +693,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, tol = custom_tol, save_
 
 # ### quadratic_matrix_equation_algorithm
 # [Default: :schur, Type: Symbol]: algorithm to solve quadratic matrix equation (A * X ^ 2 + B * X + C = 0). Available algorithms: :schur, :doubling
-# The quadratic matrix equation solver is used internally when solving the model. You can choose between different algorithms. The :schur algorithm is generally faster and more reliable, while :doubling can be more precise in some cases:
+# The quadratic matrix equation solver is used internally when solving the model up to first order. You can choose between different algorithms. The :schur algorithm is generally faster and more reliable, while :doubling can be more precise in some cases:
 plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, quadratic_matrix_equation_algorithm = :doubling, save_plots = true, save_plots_format = :png)
 
 # For most use cases, the default :schur algorithm is recommended.
@@ -701,7 +701,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, quadratic_matrix_equati
 
 # ### sylvester_algorithm
 # [Default: selector that uses :doubling for smaller problems and switches to :bicgstab for larger problems, Type: Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}}]: algorithm to solve the Sylvester equation (A * X * B + C = X). Available algorithms: :doubling, :bartels_stewart, :bicgstab, :dqgmres, :gmres. Input argument can contain up to two elements in a Vector or Tuple. The first (second) element corresponds to the second (third) order perturbation solutions' Sylvester equation. If only one element is provided it corresponds to the second order perturbation solutions' Sylvester equation.
-# You can specify which algorithm to use for solving Sylvester equations. For a second-order solution, you might want to use the :bartels_stewart algorithm:
+# You can specify which algorithm to use for solving Sylvester equations, relevant for higher order solutions. For example you can seect the :bartels_stewart algorithm for solving the second order perturbation problem:
 plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :second_order, sylvester_algorithm = :bartels_stewart, save_plots = true, save_plots_format = :png)
 
 # For third-order solutions, you can specify different algorithms for the second and third order Sylvester equations using a Tuple:
@@ -709,13 +709,3 @@ plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :third_orde
 
 # The choice of algorithm can affect both speed and precision, with :doubling and :bartels_stewart generally being faster but :bicgstab, :dqgmres, and :gmres being better for large sparse problems.
 
-
-# ### lyapunov_algorithm
-# [Default: :doubling, Type: Symbol]: algorithm to solve Lyapunov equation (A * X * A' + C = X). Available algorithms: :doubling, :bartels_stewart, :bicgstab, :gmres
-# The Lyapunov equation solver is used when computing variance-covariance matrices. You can choose between different algorithms. The :doubling algorithm is fast and precise for most cases:
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, lyapunov_algorithm = :bartels_stewart, save_plots = true, save_plots_format = :png)
-
-# For large sparse problems, iterative methods like :bicgstab or :gmres might be more efficient, though they may be less precise.
-
-
-# ### changing more than one input and using ! function
