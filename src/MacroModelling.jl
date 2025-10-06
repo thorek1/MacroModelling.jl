@@ -116,6 +116,7 @@ include("dynare.jl")
 include("inspect.jl")
 include("moments.jl")
 include("perturbation.jl")
+include("quadrature_sss.jl")
 
 include("./algorithms/sylvester.jl")
 include("./algorithms/lyapunov.jl")
