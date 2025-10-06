@@ -3433,7 +3433,12 @@ function _plot_solution_from_container(;
     # Get first container element for model info
     first_container = solution_active_plot_container[1]
     model_name = first_container[:model_name]
-    state = first_container[:state]
+    
+    # Collect all unique states from containers
+    joint_states = OrderedSet{Symbol}()
+    for container in solution_active_plot_container
+        push!(joint_states, container[:state])
+    end
     
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
     
@@ -3563,82 +3568,132 @@ function _plot_solution_from_container(;
         end
     end
     
-    # Collect all variables to plot
+    # Collect all variables to plot across all containers
     all_vars = OrderedSet{Symbol}()
     for container in solution_active_plot_container
         foreach(v -> push!(all_vars, v), container[:vars_to_plot])
     end
     
-    # Determine which variables have impact in at least one container
-    vars_with_impact = []
-    for var in all_vars
-        has_any_impact = false
-        for container in solution_active_plot_container
-            if haskey(container[:has_impact], var) && container[:has_impact][var]
-                has_any_impact = true
-                break
-            end
-        end
-        if has_any_impact
-            push!(vars_with_impact, var)
-        end
-    end
-    
-    n_subplots = length(vars_with_impact)
-    pp = []
-    pane = 1
-    plot_count = 1
     return_plots = []
     
-    # Plot each variable
-    for k in vars_with_impact
-        Pl = StatsPlots.plot()
+    # Loop over each state (similar to how plot_irf loops over shocks)
+    for state in joint_states
+        # Filter containers for this state
+        state_containers = [c for c in solution_active_plot_container if c[:state] == state]
         
-        # Plot line for each algorithm in container
-        for (i, container) in enumerate(solution_active_plot_container)
-            if haskey(container[:variable_output], k)
-                # Find state index in vars_to_plot
-                state_idx = findfirst(==(state), container[:vars_to_plot])
-                if !isnothing(state_idx)
-                    state_ss = container[:full_SS_current][state_idx]
-                else
-                    state_ss = 0.0  # fallback
+        # Determine which variables have impact in at least one container for this state
+        vars_with_impact = []
+        for var in all_vars
+            has_any_impact = false
+            for container in state_containers
+                if haskey(container[:has_impact], var) && container[:has_impact][var]
+                    has_any_impact = true
+                    break
                 end
-                
-                StatsPlots.plot!(container[:state_range] .+ state_ss, 
-                    container[:variable_output][k][1,:], 
-                    ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
-                    xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
-                    color = pal[mod1(i, length(pal))],
-                    label = "")
+            end
+            if has_any_impact
+                push!(vars_with_impact, var)
             end
         end
         
-        # Plot SS markers for each algorithm
-        for (i, container) in enumerate(solution_active_plot_container)
-            if haskey(container[:variable_output], k)
-                # Get state and variable indices
-                state_idx = findfirst(==(state), container[:vars_to_plot])
-                var_idx = findfirst(==(k), container[:vars_to_plot])
-                
-                if !isnothing(state_idx) && !isnothing(var_idx)
-                    state_ss = container[:full_SS_current][state_idx]
-                    var_ss = container[:full_SS_current][var_idx]
+        n_subplots = length(vars_with_impact)
+        pp = []
+        pane = 1
+        plot_count = 1
+        
+        # Plot each variable for this state
+        for k in vars_with_impact
+            Pl = StatsPlots.plot()
+            
+            # Plot line for each container with this state
+            for (i, container) in enumerate(solution_active_plot_container)
+                if container[:state] == state && haskey(container[:variable_output], k)
+                    # Find state index in vars_to_plot
+                    state_idx = findfirst(==(state), container[:vars_to_plot])
+                    if !isnothing(state_idx)
+                        state_ss = container[:full_SS_current][state_idx]
+                    else
+                        state_ss = 0.0  # fallback
+                    end
                     
-                    StatsPlots.scatter!([state_ss], [var_ss], 
+                    StatsPlots.plot!(container[:state_range] .+ state_ss, 
+                        container[:variable_output][k][1,:], 
+                        ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
+                        xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
                         color = pal[mod1(i, length(pal))],
                         label = "")
                 end
             end
+            
+            # Plot SS markers for each container with this state
+            for (i, container) in enumerate(solution_active_plot_container)
+                if container[:state] == state && haskey(container[:variable_output], k)
+                    # Get state and variable indices
+                    state_idx = findfirst(==(state), container[:vars_to_plot])
+                    var_idx = findfirst(==(k), container[:vars_to_plot])
+                    
+                    if !isnothing(state_idx) && !isnothing(var_idx)
+                        state_ss = container[:full_SS_current][state_idx]
+                        var_ss = container[:full_SS_current][var_idx]
+                        
+                        StatsPlots.scatter!([state_ss], [var_ss], 
+                            color = pal[mod1(i, length(pal))],
+                            label = "")
+                    end
+                end
+            end
+            
+            push!(pp, Pl)
+            
+            if !(plot_count % plots_per_page == 0)
+                plot_count += 1
+            else
+                plot_count = 1
+                
+                ppp = StatsPlots.plot(pp...; attributes...)
+                
+                # Build plot elements array
+                plot_elements = [ppp, legend_plot]
+                layout_heights = [15, 1]
+                
+                # Add relevant input differences table if multiple inputs differ
+                if length(annotate_diff_input) > 2
+                    annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
+                    ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+                    push!(plot_elements, ppp_input_diff)
+                    push!(layout_heights, 5)
+                end
+                
+                # Create plot title including state info
+                state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(state) : ""
+                plot_title = "Model: "*model_name*state_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+                
+                # Create final plot with appropriate layout
+                p = StatsPlots.plot(plot_elements...,
+                                layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                                plot_title = plot_title; 
+                                attributes_redux...
+                )
+                
+                push!(return_plots, p)
+                
+                if show_plots
+                    display(p)
+                end
+                
+                if save_plots
+                    if !isdir(save_plots_path) mkpath(save_plots_path) end
+                    state_name = replace_indices_in_symbol(state)
+                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_name * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
+                end
+                
+                pane += 1
+                pp = []
+            end
         end
         
-        push!(pp, Pl)
-        
-        if !(plot_count % plots_per_page == 0)
-            plot_count += 1
-        else
-            plot_count = 1
-            
+        # Handle remaining plots for this state
+        if length(pp) > 0
             ppp = StatsPlots.plot(pp...; attributes...)
             
             # Build plot elements array
@@ -3653,10 +3708,14 @@ function _plot_solution_from_container(;
                 push!(layout_heights, 5)
             end
             
+            # Create plot title including state info
+            state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(state) : ""
+            plot_title = "Model: "*model_name*state_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+            
             # Create final plot with appropriate layout
             p = StatsPlots.plot(plot_elements...,
                             layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                            plot_title = "Model: "*model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                            plot_title = plot_title; 
                             attributes_redux...
             )
             
@@ -3668,48 +3727,11 @@ function _plot_solution_from_container(;
             
             if save_plots
                 if !isdir(save_plots_path) mkpath(save_plots_path) end
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_name * "__" * string(pane) * "." * string(save_plots_format))
+                state_name = replace_indices_in_symbol(state)
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_name * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
             end
-            
-            pane += 1
-            pp = []
         end
-    end
-    
-    # Handle remaining plots
-    if length(pp) > 0
-        ppp = StatsPlots.plot(pp...; attributes...)
-        
-        # Build plot elements array
-        plot_elements = [ppp, legend_plot]
-        layout_heights = [15, 1]
-        
-        # Add relevant input differences table if multiple inputs differ
-        if length(annotate_diff_input) > 2
-            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-            ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-            push!(plot_elements, ppp_input_diff)
-            push!(layout_heights, 5)
-        end
-        
-        # Create final plot with appropriate layout
-        p = StatsPlots.plot(plot_elements...,
-                        layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                        plot_title = "Model: "*model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                        attributes_redux...
-        )
-        
-        push!(return_plots, p)
-        
-        if show_plots
-            display(p)
-        end
-        
-        if save_plots
-            if !isdir(save_plots_path) mkpath(save_plots_path) end
-            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_name * "__" * string(pane) * "." * string(save_plots_format))
-        end
-    end
+    end  # End of state loop
     
     return return_plots
 end
