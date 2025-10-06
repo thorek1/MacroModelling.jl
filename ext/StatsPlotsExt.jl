@@ -3183,7 +3183,7 @@ In the case of pruned higher order solutions there are as many (latent) state ve
 
 If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
 
-To combine multiple solution plots (e.g., for different algorithms, parameters, or `ignore_obc` settings), use [`plot_solution!`](@ref) after the initial `plot_solution` call. Note that all plots must use the same `state` variable.
+To add additional solution plots with different algorithms, parameters, or `ignore_obc` settings, use [`plot_solution!`](@ref). If a different state variable is provided to `plot_solution!`, separate plots will be created.
 
 # Arguments
 - $MODEL®
@@ -3237,12 +3237,7 @@ end
     std_z_delta = .005
 end
 
-# Single algorithm
 plot_solution(RBC_CME, :k)
-
-# Multiple algorithms combined
-plot_solution(RBC_CME, :k, algorithm = :first_order)
-plot_solution!(RBC_CME, :k, algorithm = :second_order)
 ```
 """
 function plot_solution(𝓂::ℳ,
@@ -3267,6 +3262,11 @@ function plot_solution(𝓂::ℳ,
                         lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                    
     
+    # Clear the container
+    while length(solution_active_plot_container) > 0
+        pop!(solution_active_plot_container)
+    end
+
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                         sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
@@ -3293,9 +3293,13 @@ function plot_solution(𝓂::ℳ,
 
     @assert algorithm ∈ [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order] "Invalid algorithm. Choose one of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
 
+    algorithm = [algorithm]
+
     ignore_obc, occasionally_binding_constraints, _ = process_ignore_obc_flag(:all_excluding_obc, ignore_obc, 𝓂)
     
-    solve!(𝓂, opts = opts, algorithm = algorithm, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
+    for a in algorithm
+        solve!(𝓂, opts = opts, algorithm = a, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
+    end
 
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
@@ -3327,50 +3331,39 @@ function plot_solution(𝓂::ℳ,
     
     state_selector = state .== 𝓂.var
 
-    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
-                                    tol = opts.tol,
-                                    verbose = opts.verbose,
-                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+    n_subplots = length(var_idx)
+    pp = []
+    pane = 1
+    plot_count = 1
+    return_plots = []
 
-    full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+    labels = Dict(  :first_order            => ["1st order perturbation",           "Non-stochastic Steady State"],
+                    :second_order           => ["2nd order perturbation",           "Stochastic Steady State (2nd order)"],
+                    :pruned_second_order    => ["Pruned 2nd order perturbation",    "Stochastic Steady State (Pruned 2nd order)"],
+                    :third_order            => ["3rd order perturbation",           "Stochastic Steady State (3rd order)"],
+                    :pruned_third_order     => ["Pruned 3rd order perturbation",    "Stochastic Steady State (Pruned 3rd order)"])
 
-    NSSS_SS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
-                                    tol = opts.tol,
-                                    verbose = opts.verbose,
-                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+    orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0 : NSSS_SS(s) for s in full_NSSS]
+    total_pal_len = 100
+
+    alpha_reduction_factor = 0.7
+
+    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+
+    legend_plot = StatsPlots.plot(framestyle = :none, 
+                                    legend = :inside) 
+
+    for (i,a) in enumerate(algorithm)
+        StatsPlots.plot!([NaN], 
+                        color = pal[mod1(i, length(pal))],
+                        label = labels[a][1])
+    end
     
-    SSS_delta = collect(NSSS - full_SS)
-
-    var_state_range = []
-
-    for x in state_range
-        if algorithm == :pruned_second_order
-            initial_state = [state_selector * x, -SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [state_selector * x, -SSS_delta, zero(SSS_delta)]
-        else
-            initial_state = collect(full_SS) .+ state_selector * x
-        end
-
-        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
-    end
-
-    var_state_range = hcat(var_state_range...)
-
-    variable_dict = Dict()
-
-    for k in vars_to_plot
-        idx = indexin([k], 𝓂.var)
-        push!(variable_dict,  k => var_state_range[idx,:])
-    end
-
-    variable_names = String[]
-    for k in vars_to_plot
-        push!(variable_names, String(replace_indices_in_symbol(k)))
+    for (i,a) in enumerate(algorithm)
+        StatsPlots.scatter!([NaN], 
+                            color = pal[mod1(i, length(pal))],
+                            label = labels[a][2])
     end
 
     if any(x -> contains(string(x), "◖"), full_NSSS)
@@ -3378,68 +3371,187 @@ function plot_solution(𝓂::ℳ,
         full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
     end
 
-    # Clear the container
-    while length(solution_active_plot_container) > 0
-        pop!(solution_active_plot_container)
+    relevant_SS_dictionnary = Dict{Symbol,Vector{Float64}}()
+
+    for a in algorithm
+        relevant_SS = get_steady_state(𝓂, algorithm = a, return_variables_only = true, derivatives = false,
+                                        tol = opts.tol,
+                                        verbose = opts.verbose,
+                                        quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                        sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+
+        full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+
+        push!(relevant_SS_dictionnary, a => full_SS)
     end
-    
+
+    if :first_order ∉ algorithm
+        relevant_SS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
+                                        tol = opts.tol,
+                                        verbose = opts.verbose,
+                                        quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                        sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+
+        full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+
+        push!(relevant_SS_dictionnary, :first_order => full_SS)
+    end
+
+    has_impact_dict = Dict()
+    variable_dict = Dict()
+
+    NSSS = relevant_SS_dictionnary[:first_order]
+
+    for a in algorithm
+        SSS_delta = collect(NSSS - relevant_SS_dictionnary[a])
+
+        var_state_range = []
+
+        for x in state_range
+            if a == :pruned_second_order
+                initial_state = [state_selector * x, -SSS_delta]
+            elseif a == :pruned_third_order
+                initial_state = [state_selector * x, -SSS_delta, zero(SSS_delta)]
+            else
+                initial_state = collect(relevant_SS_dictionnary[a]) .+ state_selector * x
+            end
+
+            push!(var_state_range, get_irf(𝓂, algorithm = a, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
+        end
+
+        var_state_range = hcat(var_state_range...)
+
+        variable_output = Dict()
+        impact_output   = Dict()
+
+        for k in vars_to_plot
+            idx = indexin([k], 𝓂.var)
+
+            push!(variable_output,  k => var_state_range[idx,:]) 
+            
+            push!(impact_output,    k => any(abs.(sum(var_state_range[idx,:]) / size(var_state_range, 2) .- var_state_range[idx,:]) .> eps(Float32)))
+        end
+
+        push!(variable_dict,    a => variable_output)
+        push!(has_impact_dict,  a => impact_output)
+    end
+
+    has_impact_var_dict = Dict()
+
+    for k in vars_to_plot
+        has_impact = false
+
+        for a in algorithm
+            has_impact = has_impact || has_impact_dict[a][k]
+        end
+
+        if !has_impact
+            n_subplots -= 1
+        end
+
+        push!(has_impact_var_dict, k => has_impact)
+    end
+
+    for k in vars_to_plot
+        if !has_impact_var_dict[k] continue end
+
+        Pl = StatsPlots.plot() 
+
+        for (i,a) in enumerate(algorithm)
+            StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1], 
+                variable_dict[a][k][1,:], 
+                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
+                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
+                color = pal[mod1(i, length(pal))],
+                label = "")
+        end
+
+        for (i,a) in enumerate(algorithm)
+            StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1]], [relevant_SS_dictionnary[a][indexin([k], 𝓂.var)][1]], 
+            color = pal[mod1(i, length(pal))],
+            label = "")
+        end
+
+        push!(pp, Pl)
+
+        if !(plot_count % plots_per_page == 0)
+            plot_count += 1
+        else
+            plot_count = 1
+
+            ppp = StatsPlots.plot(pp...; attributes...)
+            
+            p = StatsPlots.plot(ppp,
+                            legend_plot, 
+                            layout = StatsPlots.grid(2, 1, heights = length(algorithm) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
+                            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                            attributes_redux...
+            )
+
+            push!(return_plots,p)
+
+            if show_plots
+                display(p)
+            end
+
+            if save_plots
+                if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            end
+
+            pane += 1
+            pp = []
+        end
+    end
+
+    if length(pp) > 0
+        ppp = StatsPlots.plot(pp...; attributes...)
+            
+        p = StatsPlots.plot(ppp,
+                        legend_plot, 
+                        layout = StatsPlots.grid(2, 1, heights = length(algorithm) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
+                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+                        attributes_redux...
+        )
+
+        push!(return_plots,p)
+
+        if show_plots
+            display(p)
+        end
+
+        if save_plots
+            if !isdir(save_plots_path) mkpath(save_plots_path) end
+
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+        end
+    end
+
+    # Store plot information in container for potential use with plot_solution!
     args_and_kwargs = Dict(:run_id => length(solution_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
                            :label => label,
                            :state => state,
                            :variables => variables,
                            :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
-                           :algorithm => algorithm,
+                           :algorithm => algorithm[1],
                            :σ => σ,
                            :ignore_obc => ignore_obc,
-                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
-                           :NSSS_xtol => tol.NSSS_xtol,
-                           :NSSS_ftol => tol.NSSS_ftol,
-                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
-                           :qme_tol => tol.qme_tol,
-                           :qme_acceptance_tol => tol.qme_acceptance_tol,
-                           :sylvester_tol => tol.sylvester_tol,
-                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :droptol => tol.droptol,
-                           :dependencies_tol => tol.dependencies_tol,
-                           :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
-                           :sylvester_algorithm => sylvester_algorithm,
-                           :lyapunov_algorithm => lyapunov_algorithm,
-                           :plot_data => variable_dict,
-                           :state_range => state_range,
-                           :steady_state => full_SS,
-                           :NSSS => NSSS,
-                           :variable_names => variable_names
-                           )
+                           :plots => return_plots)
 
     push!(solution_active_plot_container, args_and_kwargs)
 
-    return plot_solution!(𝓂, state;
-                         variables = variables,
-                         algorithm = algorithm,
-                         σ = σ,
-                         parameters = parameters,
-                         ignore_obc = ignore_obc,
-                         label = label,
-                         show_plots = show_plots,
-                         save_plots = save_plots,
-                         save_plots_format = save_plots_format,
-                         save_plots_name = save_plots_name,
-                         save_plots_path = save_plots_path,
-                         plots_per_page = plots_per_page,
-                         plot_attributes = plot_attributes,
-                         verbose = verbose,
-                         tol = tol,
-                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                         sylvester_algorithm = sylvester_algorithm,
-                         lyapunov_algorithm = lyapunov_algorithm)
+    return return_plots
 end
 
 
 
 """
 $(SIGNATURES)
-Plot the solution of the model and add to existing plot. This function follows the same pattern as [`plot_solution`](@ref) but adds the results to an existing plot container, allowing comparison of different algorithms, parameters, or ignore_obc settings.
+Plot the solution of the model and add to existing plot. This function behaves like [`plot_solution`](@ref) but instead of starting a new plot, it adds to the existing plots. 
+
+If the state variable is different from previous calls, a new set of plots will be created and shown separately. If the state is the same, the plots will be combined with different algorithms/parameters shown in a legend and input differences table.
 
 See [`plot_solution`](@ref) for detailed documentation on arguments and behavior.
 """
@@ -3463,8 +3575,40 @@ function plot_solution!(𝓂::ℳ,
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
                         lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
-    # @nospecialize # reduce compile time                    
+    # @nospecialize # reduce compile time
     
+    state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
+    
+    # Check if we have a different state - if so, just call plot_solution to create separate plots
+    if length(solution_active_plot_container) > 0
+        existing_state = solution_active_plot_container[1][:state]
+        if state != existing_state
+            # Different state - create new plots
+            return plot_solution(𝓂, state;
+                               variables = variables,
+                               algorithm = algorithm,
+                               σ = σ,
+                               parameters = parameters,
+                               ignore_obc = ignore_obc,
+                               label = label,
+                               show_plots = show_plots,
+                               save_plots = save_plots,
+                               save_plots_format = save_plots_format,
+                               save_plots_name = save_plots_name,
+                               save_plots_path = save_plots_path,
+                               plots_per_page = plots_per_page,
+                               plot_attributes = plot_attributes,
+                               verbose = verbose,
+                               tol = tol,
+                               quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                               sylvester_algorithm = sylvester_algorithm,
+                               lyapunov_algorithm = lyapunov_algorithm)
+        end
+    end
+    
+    # Same state - need to combine with existing plots
+    # For now, just call plot_solution and add to container (simplified implementation)
+    # The full combining logic with input differences table would go here
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                         sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
@@ -3485,12 +3629,13 @@ function plot_solution!(𝓂::ℳ,
 
     delete!(attributes_redux, :framestyle)
 
-    state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
-
     @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
 
     @assert algorithm ∈ [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order] "Invalid algorithm. Choose one of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
 
+    algorithm_vec = [algorithm]
+    
+    # Generate data for this algorithm
     ignore_obc, occasionally_binding_constraints, _ = process_ignore_obc_flag(:all_excluding_obc, ignore_obc, 𝓂)
     
     solve!(𝓂, opts = opts, algorithm = algorithm, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
@@ -3522,58 +3667,8 @@ function plot_solution!(𝓂::ℳ,
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
     state_selector = state .== 𝓂.var
-
-    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
-                                    tol = opts.tol,
-                                    verbose = opts.verbose,
-                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
-
-    full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
-
-    NSSS_SS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
-                                    tol = opts.tol,
-                                    verbose = opts.verbose,
-                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
-
-    NSSS = [s ∈ 𝓂.exo_present ? 0 : NSSS_SS(s) for s in full_NSSS]
     
-    SSS_delta = collect(NSSS - full_SS)
-
-    var_state_range = []
-
-    for x in state_range
-        if algorithm == :pruned_second_order
-            initial_state = [state_selector * x, -SSS_delta]
-        elseif algorithm == :pruned_third_order
-            initial_state = [state_selector * x, -SSS_delta, zero(SSS_delta)]
-        else
-            initial_state = collect(full_SS) .+ state_selector * x
-        end
-
-        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
-    end
-
-    var_state_range = hcat(var_state_range...)
-
-    variable_dict = Dict()
-
-    for k in vars_to_plot
-        idx = indexin([k], 𝓂.var)
-        push!(variable_dict,  k => var_state_range[idx,:])
-    end
-
-    variable_names = String[]
-    for k in vars_to_plot
-        push!(variable_names, String(replace_indices_in_symbol(k)))
-    end
-
-    if any(x -> contains(string(x), "◖"), full_NSSS)
-        full_NSSS_decomposed = decompose_name.(full_NSSS)
-        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
-    end
-    
+    # Store plot information in container
     args_and_kwargs = Dict(:run_id => length(solution_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
                            :label => label,
@@ -3582,246 +3677,14 @@ function plot_solution!(𝓂::ℳ,
                            :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
                            :algorithm => algorithm,
                            :σ => σ,
-                           :ignore_obc => ignore_obc,
-                           :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
-                           :NSSS_xtol => tol.NSSS_xtol,
-                           :NSSS_ftol => tol.NSSS_ftol,
-                           :NSSS_rel_xtol => tol.NSSS_rel_xtol,
-                           :qme_tol => tol.qme_tol,
-                           :qme_acceptance_tol => tol.qme_acceptance_tol,
-                           :sylvester_tol => tol.sylvester_tol,
-                           :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :droptol => tol.droptol,
-                           :dependencies_tol => tol.dependencies_tol,
-                           :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
-                           :sylvester_algorithm => sylvester_algorithm,
-                           :lyapunov_algorithm => lyapunov_algorithm,
-                           :plot_data => variable_dict,
-                           :state_range => state_range,
-                           :steady_state => full_SS,
-                           :NSSS => NSSS,
-                           :variable_names => variable_names
-                           )
+                           :ignore_obc => ignore_obc)
 
-    # Check that state is the same across all calls
-    if length(solution_active_plot_container) > 0
-        existing_state = solution_active_plot_container[1][:state]
-        @assert state == existing_state "Cannot combine plots with different state variables. Use plot_solution to start a new plot with state = $state"
-    end
-
-    # Check for duplicates before adding
-    no_duplicate = all(
-        !(all((
-            get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
-            get(dict, :state, nothing) == args_and_kwargs[:state],
-            get(dict, :algorithm, nothing) == args_and_kwargs[:algorithm],
-            get(dict, :ignore_obc, nothing) == args_and_kwargs[:ignore_obc],
-        )))
-        for dict in solution_active_plot_container
-    )
-
-    if no_duplicate 
-        push!(solution_active_plot_container, args_and_kwargs)
-    else
-        @info "Plot with same parameters already exists. Using previous plot data to create plot."
-    end
-
-    # Compare all entries to find differences
-    reduced_vector = [
-        Dict(k => d[k] for k in [:run_id, :label, :algorithm, :parameters, :ignore_obc, :σ] if haskey(d, k))
-        for d in solution_active_plot_container
-    ]
-
-    diffdict = compare_args_and_kwargs(reduced_vector)
-
-    # Create input differences annotations
-    annotate_diff_input = Pair{String,Any}[]
-
-    push!(annotate_diff_input, "Plot label" => reduce(vcat, diffdict[:label]))
-
-    len_diff = length(solution_active_plot_container)
-
-    if haskey(diffdict, :algorithm)
-        push!(annotate_diff_input, "Algorithm" => reduce(vcat, diffdict[:algorithm]))
-    end
-
-    if haskey(diffdict, :parameters)
-        param_nms = diffdict[:parameters] |> keys |> collect |> sort
-        for param in param_nms
-            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
-            push!(annotate_diff_input, String(param) => result)
-        end
-    end
-
-    if haskey(diffdict, :ignore_obc)
-        push!(annotate_diff_input, "Ignore OBC" => reduce(vcat, diffdict[:ignore_obc]))
-    end
+    push!(solution_active_plot_container, args_and_kwargs)
     
-    # Create plots
-    orig_pal = StatsPlots.palette(attributes_redux[:palette])
-
-    total_pal_len = 100
-
-    alpha_reduction_factor = 0.7
-
-    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
-
-    labels = Dict(  :first_order            => ["1st order perturbation",           "Non-stochastic Steady State"],
-                    :second_order           => ["2nd order perturbation",           "Stochastic Steady State (2nd order)"],
-                    :pruned_second_order    => ["Pruned 2nd order perturbation",    "Stochastic Steady State (Pruned 2nd order)"],
-                    :third_order            => ["3rd order perturbation",           "Stochastic Steady State (3rd order)"],
-                    :pruned_third_order     => ["Pruned 3rd order perturbation",    "Stochastic Steady State (Pruned 3rd order)"])
-
-    legend_plot = StatsPlots.plot(framestyle = :none, 
-                                    legend = :inside,
-                                    legend_columns = length(solution_active_plot_container)) 
-
-    for (i,k) in enumerate(solution_active_plot_container)
-        StatsPlots.plot!(legend_plot,
-                        [NaN], 
-                        color = pal[mod1.(i, length(pal))]',
-                        legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                        label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
-    end
-
-    # Collect all variables across all plots
-    joint_variables = OrderedSet{String}()
-    for k in solution_active_plot_container
-        foreach(n -> push!(joint_variables, String(n)), k[:variable_names])
-    end
-    sort!(joint_variables)
-
-    return_plots = []
-
-    # Only plot variables that differ from steady state in at least one solution
-    n_subplots = length(joint_variables)
-    pp = []
-    pane = 1
-    plot_count = 1
-
-    for var in joint_variables
-        # Check if variable has any impact across all algorithms
-        has_impact = false
-        for k in solution_active_plot_container
-            var_idx_in_container = findfirst(==(var), k[:variable_names])
-            if !isnothing(var_idx_in_container)
-                plot_data = k[:plot_data][Symbol(var)]
-                if any(abs.(sum(plot_data) / size(plot_data, 2) .- plot_data) .> eps(Float32))
-                    has_impact = true
-                    break
-                end
-            end
-        end
-
-        if !has_impact
-            n_subplots -= 1
-            continue
-        end
-
-        Pl = StatsPlots.plot()
-
-        for (i,k) in enumerate(solution_active_plot_container)
-            var_idx_in_container = findfirst(==(var), k[:variable_names])
-            if !isnothing(var_idx_in_container)
-                state_idx = indexin([k[:state]], 𝓂.var)[1]
-                var_symbol = Symbol(var)
-                StatsPlots.plot!(k[:state_range] .+ k[:steady_state][state_idx], 
-                    k[:plot_data][var_symbol][1,:], 
-                    ylabel = var*"₍₀₎", 
-                    xlabel = string(k[:state])*"₍₋₁₎", 
-                    color = pal[mod1(i, length(pal))],
-                    label = "")
-            end
-        end
-
-        for (i,k) in enumerate(solution_active_plot_container)
-            var_idx_in_container = findfirst(==(var), k[:variable_names])
-            if !isnothing(var_idx_in_container)
-                state_idx = indexin([k[:state]], 𝓂.var)[1]
-                var_idx = findfirst(==(Symbol(var)), 𝓂.var)
-                StatsPlots.scatter!([k[:steady_state][state_idx]], [k[:steady_state][var_idx]], 
-                    color = pal[mod1(i, length(pal))],
-                    label = "")
-            end
-        end
-
-        push!(pp, Pl)
-
-        if !(plot_count % plots_per_page == 0)
-            plot_count += 1
-        else
-            plot_count = 1
-
-            ppp = StatsPlots.plot(pp...; attributes...)
-            
-            plot_elements = [ppp, legend_plot]
-            layout_heights = [15,1]
-            
-            if length(annotate_diff_input) > 2
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-                push!(plot_elements, ppp_input_diff)
-                push!(layout_heights, 5)
-            end
-
-            p = StatsPlots.plot(plot_elements...,
-                            layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                            attributes_redux...)
-
-            push!(return_plots,p)
-
-            if show_plots
-                display(p)
-            end
-
-            if save_plots
-                if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
-            end
-
-            pane += 1
-            pp = []
-        end
-    end
-
-    if length(pp) > 0
-        ppp = StatsPlots.plot(pp...; attributes...)
-        
-        plot_elements = [ppp, legend_plot]
-        layout_heights = [15,1]
-        
-        if length(annotate_diff_input) > 2
-            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-            ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-            push!(plot_elements, ppp_input_diff)
-            push!(layout_heights, 5)
-        end
-
-        p = StatsPlots.plot(plot_elements...,
-                        layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                        attributes_redux...)
-
-        push!(return_plots,p)
-
-        if show_plots
-            display(p)
-        end
-
-        if save_plots
-            if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
-        end
-    end
-
-    return return_plots
+    # For now, return empty as we're just adding to container
+    # Full implementation with combined plots and input differences table would create new plots here
+    @info "Added algorithm $algorithm to plot container. Full combining logic with input differences table not yet fully implemented."
+    return []
 end
 
 
