@@ -1311,7 +1311,6 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $LABEL®
 - $QME®
 - $SYLVESTER®
-- $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 
@@ -1364,15 +1363,13 @@ function plot_irf(𝓂::ℳ;
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
     # @nospecialize # reduce compile time                
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
-                    lyapunov_algorithm = lyapunov_algorithm)
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
@@ -1515,14 +1512,11 @@ function plot_irf(𝓂::ℳ;
                            :qme_acceptance_tol => tol.qme_acceptance_tol,
                            :sylvester_tol => tol.sylvester_tol,
                            :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :lyapunov_tol => tol.lyapunov_tol,
-                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
                            :droptol => tol.droptol,
                            :dependencies_tol => tol.dependencies_tol,
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
-                           :lyapunov_algorithm => lyapunov_algorithm,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state[var_idx],
@@ -1933,7 +1927,6 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 - `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
 - $QME®
 - $SYLVESTER®
-- $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 # Returns
@@ -2014,8 +2007,7 @@ function plot_irf!(𝓂::ℳ;
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
     # @nospecialize # reduce compile time                
 
     @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
@@ -2023,8 +2015,7 @@ function plot_irf!(𝓂::ℳ;
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
-                    lyapunov_algorithm = lyapunov_algorithm)
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2])
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
@@ -2159,14 +2150,11 @@ function plot_irf!(𝓂::ℳ;
                            :qme_acceptance_tol => tol.qme_acceptance_tol,
                            :sylvester_tol => tol.sylvester_tol,
                            :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :lyapunov_tol => tol.lyapunov_tol,
-                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
                            :droptol => tol.droptol,
                            :dependencies_tol => tol.dependencies_tol,
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
-                           :lyapunov_algorithm => lyapunov_algorithm,
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state[var_idx],
                            :variable_names => variable_names,
@@ -3566,7 +3554,6 @@ If occasionally binding constraints are present in the model, they are not taken
 - $LABEL®
 - $QME®
 - $SYLVESTER®
-- $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 
@@ -3648,8 +3635,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
     # @nospecialize # reduce compile time
     
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -3686,7 +3672,6 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 # levels = levels,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm = sylvester_algorithm,
-                                lyapunov_algorithm = lyapunov_algorithm,
                                 tol = tol,
                                 verbose = verbose)
 
@@ -3795,14 +3780,11 @@ function plot_conditional_forecast(𝓂::ℳ,
                            :qme_acceptance_tol => tol.qme_acceptance_tol,
                            :sylvester_tol => tol.sylvester_tol,
                            :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :lyapunov_tol => tol.lyapunov_tol,
-                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
                            :droptol => tol.droptol,
                            :dependencies_tol => tol.dependencies_tol,
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
-                           :lyapunov_algorithm => lyapunov_algorithm,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
@@ -3959,7 +3941,6 @@ This function shares most of the signature and functionality of [`plot_condition
 - `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
 - $QME®
 - $SYLVESTER®
-- $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 
@@ -4044,8 +4025,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂))
     # @nospecialize # reduce compile time
                  
     @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
@@ -4084,7 +4064,6 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                 # levels = levels,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm = sylvester_algorithm,
-                                lyapunov_algorithm = lyapunov_algorithm,
                                 tol = tol,
                                 verbose = verbose)
 
@@ -4197,14 +4176,11 @@ function plot_conditional_forecast!(𝓂::ℳ,
                            :qme_acceptance_tol => tol.qme_acceptance_tol,
                            :sylvester_tol => tol.sylvester_tol,
                            :sylvester_acceptance_tol => tol.sylvester_acceptance_tol,
-                           :lyapunov_tol => tol.lyapunov_tol,
-                           :lyapunov_acceptance_tol => tol.lyapunov_acceptance_tol,
                            :droptol => tol.droptol,
                            :dependencies_tol => tol.dependencies_tol,
 
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
-                           :lyapunov_algorithm => lyapunov_algorithm,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
