@@ -101,7 +101,7 @@ end
 A call to `plot_irf` computes IRFs for **every exogenous shock** and **every endogenous variable**, using the model’s default solution method (first-order perturbation) and a **one-standard-deviation positive** shock.
 
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear)
 
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
@@ -112,13 +112,13 @@ The plot shows every endogenous variable affected by each exogenous shock and an
 [Default: :first_order, Type: Symbol]: algorithm to solve for the dynamics of the model. Available algorithms: :first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order
 You can plot IRFs for different solution algorithms. Here we use a second-order perturbation solution:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :second_order, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :second_order)
 
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__2_second_order.png)
 The most notable difference is that at second order we observe dynamics for S, which is constant at first order (under certainty equivalence). Furthermore, the steady state levels changed due to the stochastic steady state incorporating precautionary behaviour (see horizontal lines).
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a)
 
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
@@ -126,8 +126,8 @@ plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, save_plots = true, save
 We can compare the two solution methods side by side by plotting them on the same graph:
 ```julia
 
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, save_plots = true, save_plots_format = :png)
-plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :second_order, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a)
+plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :second_order)
 
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_first_and_second_order.png)
@@ -135,7 +135,7 @@ In the plots now see both solution methods overlaid. The first-order solution is
 
 We can add more solution methods to the same plot:
 ```julia
-plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :pruned_third_order, save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :pruned_third_order)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_multiple_orders.png)
 
@@ -167,19 +167,19 @@ init_state(:nu,:,:) .= 0.1
 ```
 Now we can input the modified initial state into the plot_irf function as a vector:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state), save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state))
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_init_state.png)
 
 Note that we also defined the shock eps_a to see how the model reacts to a shock to A. For more details on the shocks input see the corresponding section.
 You can see the difference in the IRF compared to the IRF starting from the non-stochastic steady state. By setting nu to a higher level we essentially mix the effect of a shock to nu with a shock to A. Since here we are working with the linear solution we can disentangle the two effects by stacking the two components. Let's start with the IRF from the initial state as defined above:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :none, initial_state = vec(init_state), save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :none, initial_state = vec(init_state))
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__no_shock__1_init_state.png)
 and then we stack the IRF from a shock to A on top of it:
 ```julia
-plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, plot_type = :stack, save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, plot_type = :stack)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__multiple_shocks__1.png)
 
@@ -197,13 +197,13 @@ init_state_2nd(:nu,:,:) .= 0.1
 ```
 and plot the IRF for eps_a starting from this initial state:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state_2nd), algorithm = :second_order, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state_2nd), algorithm = :second_order)
 
 ```
 while here can as well stack the two components, they will not add up linearly since we are working with a non-linear solution. Instead we can compare the IRF from the initial state across the two solution methods:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state), save_plots = true, save_plots_format = :png)
-plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state_2nd), algorithm = :second_order, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state))
+plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state_2nd), algorithm = :second_order)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_multi_sol.png)
 
@@ -225,7 +225,7 @@ Then we set nu to 0.1 in the first order terms. Inspecting init_state_pruned_3rd
 init_states_pruned_3rd_vec[1][18] = 0.1
 
 
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = init_states_pruned_3rd_vec, algorithm = :pruned_third_order, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = init_states_pruned_3rd_vec, algorithm = :pruned_third_order)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_pruned_3rd_vec_vec.png)
 
@@ -235,14 +235,14 @@ init_state_pruned_3rd = get_irf(Gali_2015_chapter_3_nonlinear, shocks = :none, v
 
 init_state_pruned_3rd(:nu,:,:) .= 0.1
 
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state_pruned_3rd), algorithm = :pruned_third_order, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state_pruned_3rd), algorithm = :pruned_third_order)
 
 ```
 Lets compare this now with the second order and first order version starting from their respective relevant steady states.
 ```julia
 
-plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state_2nd), algorithm = :second_order, save_plots = true, save_plots_format = :png)
-plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state), save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state_2nd), algorithm = :second_order)
+plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, initial_state = vec(init_state))
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_multi_sol_w_init.png)
 Also here we see that the pruned third order solution changes the dynamics while the relevant steady states are the same as for the second order solution.
@@ -255,19 +255,19 @@ shocks for which to calculate the IRFs. Inputs can be a shock name passed on as 
 
 We can call individual shocks by name:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a)
 
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
 
 The same works if we input the shock name as a string:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = "eps_a", save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = "eps_a")
 
 ```
 or multiple shocks at once (as strings or symbols):
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = [:eps_a, :eps_z], save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = [:eps_a, :eps_z])
 
 
 ```
@@ -277,30 +277,30 @@ plot_irf(Gali_2015_chapter_3_nonlinear, shocks = [:eps_a, :eps_z], save_plots = 
 
 This also works if we input multiple shocks as a Tuple:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = (:eps_a, :eps_z), save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = (:eps_a, :eps_z))
 ```
 or a matrix:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = [:eps_a :eps_z], save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = [:eps_a :eps_z])
 
 
 ```
 Then there are some predefined options:
 - `:all_excluding_obc` (default) plots all shocks not used to enforce occasionally binding constraints (OBC).
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :all_excluding_obc, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :all_excluding_obc)
 
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_nu__1.png)
 
 - `:all` plots all shocks including the OBC related ones.
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :all, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :all)
 
 ```
 - `:simulate` triggers random draws of all shocks (excluding obc related shocks). You can set the seed to get reproducible results (e.g. `import Random; Random.seed!(10)`).
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :simulate, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :simulate)
 
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__simulation__1.png)
@@ -324,7 +324,7 @@ init_state(:nu,:,:) .= 0.1
 ```
 Now we can input the modified initial state into the plot_irf function as a vector and set shocks to :none:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :none, initial_state = vec(init_state), save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :none, initial_state = vec(init_state))
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__no_shock__1.png)
 Note how this is similar to a shock to eps_nu but instead we set nu 0.1 in the initial state and then let the model evolve deterministically from there. In the title the reference to the shock disappeared as we set it to :none.
@@ -333,10 +333,10 @@ We can also compare shocks:
 ```julia
 shocks = get_shocks(Gali_2015_chapter_3_nonlinear)
 
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shocks[1], save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shocks[1])
 
 for s in shocks[2:end]
-    plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = s, save_plots = true, save_plots_format = :png)
+    plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = s)
 end
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__multiple_shocks__1_linear.png)
@@ -355,7 +355,7 @@ shock_keyedarray("eps_a",[1]) .= 1
 shock_keyedarray("eps_z",[2]) .= -1/2
 shock_keyedarray("eps_nu",[3]) .= 1/3
 
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shock_keyedarray, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shock_keyedarray)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__shock_matrix__2.png)
 In the title it is now mentioned that the input is a series of shocks and the values of the shock processes Z and nu move with the shifted timing and note that the impact of the eps_z shock has a - in front of it in the model definition, which is why they both move in the same direction. Note also that the number of periods is prolonged by the number of periods in the shock input. Here we defined 3 periods of shocks and the default number of periods is 40, so we see 43 periods in total.
@@ -367,7 +367,7 @@ shock_matrix[1,1] = 1
 shock_matrix[3,2] = -1/2
 shock_matrix[2,3] = 1/3
 
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shock_matrix, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shock_matrix)
 
 ```
 In certain circumstances a shock matrix might correspond to a certain scenario and if we are working with linear solutions we can stack the IRF for different scenarios or components of scenarios. Let's say we have two scenarios defined by two different shock matrices:
@@ -384,8 +384,8 @@ shock_matrix_2[2,6] = -1/3
 ```
 We can plot them on top of each other using the :stack option:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shock_matrix_1, save_plots = true, save_plots_format = :png)
-plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = shock_matrix_2, plot_type = :stack, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shock_matrix_1)
+plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = shock_matrix_2, plot_type = :stack)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__shock_matrix__2_mult_mats.png)
 
@@ -400,7 +400,7 @@ The blue bars correspond to the first shock matrix and the red to the second sho
 number of periods for which to calculate the output. In case a matrix of shocks was provided, periods defines how many periods after the series of shocks the output continues.
 You set the number of periods to 10 like this (for the eps_a shock):
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, periods = 10, shocks = :eps_a, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, periods = 10, shocks = :eps_a)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_10_periods.png)
 The x-axis adjust automatically and now only shows 10 periods.
@@ -412,7 +412,7 @@ shock_matrix[1,1] = .1
 shock_matrix[3,5] = -1/2
 shock_matrix[2,15] = 1/3
 
-plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = shock_matrix, periods = 20, save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = shock_matrix, periods = 20)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__multiple_shocks__1_mixed_periods.png)
 The x-axis adjusted to 35 periods and we see the first plot ending after 10 periods and the second plot ending after 35 periods. The legend below the plot indicates which color corresponds to which shock and in the title we now see that we have multiple shocks in the plot.
@@ -425,7 +425,7 @@ affects the size of shocks as long as they are not set to :none or a shock matri
 [Default: 1.0, Type: Real]: size of the shocks in standard deviations. Only affects shocks that are not passed on as a matrix or KeyedArray or set to :none. A negative value will flip the sign of the shock.
 You can set the size of the shock using the shock_size argument. Here we set it to -2 standard deviations:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, shock_size = -2, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, shock_size = -2)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_shock_size.png)
 
@@ -441,7 +441,7 @@ calculate IRFs for a negative shock.
 
 You can also set negative_shock to true to get the IRF for a negative one standard deviation shock:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, negative_shock = true, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, negative_shock = true)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_z__1_neg_shock.png)
 ```julia
@@ -454,35 +454,35 @@ plot_irf(Gali_2015_chapter_3_nonlinear, negative_shock = true, save_plots = true
 
 You can select specific variables to plot. Here we select only output (Y) and inflation (Pi) using a Vector of Symbols:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, variables = [:Y, :Pi], save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, variables = [:Y, :Pi])
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_var_select.png)
 The plot now only shows the two selected variables (sorted alphabetically) in a plot with two subplots for each shock.
 The same can be done using a Tuple:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, variables = (:Y, :Pi), save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, variables = (:Y, :Pi))
 ```
 a Matrix:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, variables = [:Y :Pi], save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, variables = [:Y :Pi])
 ```
 or providing the variable names as strings:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, variables = ["Y", "Pi"], save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, variables = ["Y", "Pi"])
 ```
 or a single variable as a Symbol:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, variables = :Y, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, variables = :Y)
 ```
 or as a string:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, variables = "Y", save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, variables = "Y")
 
 ```
 Then there are some predefined options:
 - `:all_excluding_auxiliary_and_obc` (default) plots all variables except auxiliary variables and those used to enforce occasionally binding constraints (OBC).
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, variables = :all_excluding_auxiliary_and_obc, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, variables = :all_excluding_auxiliary_and_obc)
 ```
 - `:all_excluding_obc` plots all variables except those used to enforce occasionally binding constraints (OBC).
 In order to see the auxilliary variables let's use a model that has auxilliary variables defined. We can use the FS2000 model:
@@ -535,7 +535,7 @@ end
 ```
 both c and P appear in t+2 and will thereby add auxilliary variables to the model. If we now plot the IRF for all variables excluding obc related ones we see the auxilliary variables as well:
 ```julia
-plot_irf(FS2000, variables = :all_excluding_obc, save_plots = true, save_plots_format = :png)
+plot_irf(FS2000, variables = :all_excluding_obc)
 ```
 ![RBC IRF](../assets/irf__FS2000__e_a__1_aux.png.png)
 c and P appear twice, once as the variable itself and once as an auxilliary variable with the L(1) superscript, indicating that it is the value of the variable in t+1 as it is expected to be in t.
@@ -615,7 +615,7 @@ end
 ```
 if we now plot the IRF for all variables including obc related ones we see the obc related auxilliary variables as well:
 ```julia
-plot_irf(Gali_2015_chapter_3_obc, variables = :all, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_obc, variables = :all)
 ```
 ![RBC_baseline IRF](../assets/irf__Gali_2015_chapter_3_obc__eps_z__3.png)
 Here you see the obc related variables in the last subplot.
@@ -633,27 +633,27 @@ If nothing is provided, the solution is calculated for the parameters defined pr
 
 Let's start by changing the discount factor β from 0.99 to 0.95:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, parameters = :β => 0.95, shocks = :eps_a, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, parameters = :β => 0.95, shocks = :eps_a)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_beta_0_95.png)
 The steady states and dynamics changed as a result of changing the discount factor. As it is a bit more difficult to see what changed between the previous IRF with β = 0.99 and the current one with β = 0.95, we can overlay the two IRFs. Since parameter changes are permanent we first must first set β = 0.99 again and then overlay the IRF with β = 0.95 on top of it:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, parameters = :β => 0.99, shocks = :eps_a, save_plots = true, save_plots_format = :png)
-plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = :β => 0.95, shocks = :eps_a, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, parameters = :β => 0.99, shocks = :eps_a)
+plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = :β => 0.95, shocks = :eps_a)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__2_compare_beta.png)
 The legend below the plot indicates which color corresponds to which value of β and the table underneath the plot shows the relevant steady states for both values of β. Note that the steady states differ across the two values of β and also the dynamics, even when the steady state is still the same (e.g. for Y).
 
 We can also change multiple parameters at once and compare it to the previous plots. Here we change β to 0.97 and τ to 0.5 using a Tuple of Pairs and define the variables with Symbols:
 ```julia
-plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.97, :τ => 0.5), shocks = :eps_a, save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.97, :τ => 0.5), shocks = :eps_a)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__2_beta_tau.png)
 Since the calls to the plot function now differ in more than one input argument, the legend below the plot indicates which color corresponds to which combination of inputs and the table underneath the plot shows the relevant steady states for all three combinations of inputs.
 
 We can also use a Vector of Pairs:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, parameters = [:β => 0.98, :τ => 0.25], shocks = :eps_a, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, parameters = [:β => 0.98, :τ => 0.25], shocks = :eps_a)
 
 ```
 or simply a Vector of parameter values in the order they were defined in the model. We can get them by using:
@@ -661,18 +661,18 @@ or simply a Vector of parameter values in the order they were defined in the mod
 params = get_parameters(Gali_2015_chapter_3_nonlinear, values = true)
 param_vals = [p[2] for p in params]
 
-plot_irf(Gali_2015_chapter_3_nonlinear, parameters = param_vals, shocks = :eps_a, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, parameters = param_vals, shocks = :eps_a)
 
 ```
 ### ignore_obc
 [Default: false, Type: Bool]: if true, ignores occasionally binding constraints (obc) even if they are part of the model. This can be useful for comparing the dynamics of a model with obc to the same model without obc.
 If the model has obc defined, we can ignore them using the ignore_obc argument. Here we compare the IRF of the Gali_2015_chapter_3_obc model with and without obc. Let's start by looking at the IRF for a 3 standard deviation eps_z shock with the obc enforced. The the shock size section and the variabels section for more details on the input arguments. By default obc is enforced so we can call:
 ```julia
-plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3)
 ```
 Then we can overlay the IRF ignoring the obc:
 ```julia
-plot_irf!(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, ignore_obc = true, save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, ignore_obc = true)
 ```
 ![RBC_baseline IRF](../assets/irf__Gali_2015_chapter_3_obc__eps_z__1_ignore_obc.png)
 The legend below the plot indicates which color corresponds to which value of ignore_obc. Note how the interest rate R hits the effective lower bound in period 1 to 3 when obc is enforced (blue line) but not when obc is ignored (orange line). Also note how the dynamics of the other variables change as a result of enforcing the obc. The recession is deeper and longer when the obc is enforced. The length of the lower bound period depends on the size of the shock. 
@@ -685,31 +685,31 @@ The legend below the plot indicates which color corresponds to which value of ig
 
 Lets look at the IRF of the Gali_2015_chapter_3_obc model for a 3 standard deviation eps_z shock with and without using generalised_irf. We start by looking at GIRF:
 ```julia
-plot_irf(Gali_2015_chapter_3_obc, generalised_irf = true, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_obc, generalised_irf = true, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3)
 ```
 ![RBC_baseline IRF](../assets/irf__Gali_2015_chapter_3_obc__eps_z__1_girf.png)
 and then we overlay the standard IRF:
 ```julia
-plot_irf!(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3)
 ```
 ![RBC_baseline IRF](../assets/irf__Gali_2015_chapter_3_obc__eps_z__1_girf.png)
 The legend below the plot indicates which color corresponds to which value of generalised_irf. Note how the interest rate R hits the effective lower bound in period 1 to 3 when using the standard IRF (orange line). This suggest that for the GIRF the accepted draws covers many cases where the OBC is not binding. We can confirm this by also overlaying the IRF ignoring the OBC.
 ```julia
-plot_irf!(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, ignore_obc = true, save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, ignore_obc = true)
 ```
 ![RBC_baseline IRF](../assets/irf__Gali_2015_chapter_3_obc__eps_z__1_girf_ignore_obc.png)
 We see that the IRF ignoring the obc sees R falling more, suggesting that the GIRF draws indeed covers cases where the OBC is  binding. The recession is deeper and longer when the obc is enforced. The length of the lower bound period depends on the size of the shock.
 
 Another use case for GIRFs is to look at the IRF of a model with a higher order solution. Let's look at the IRF of the Gali_2015_chapter_3_nonlinear model solved with pruned second order perturbation for a 1 standard deviation eps_a shock with and without using generalised_irf. We start by looking at GIRF:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, generalised_irf = true, shocks = :eps_a,  algorithm = :pruned_second_order, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, generalised_irf = true, shocks = :eps_a,  algorithm = :pruned_second_order)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_girf.png)
 Some lines are very jittery highlighting the state-dependent nature of the GIRF and the dominant effec tof randomness (e.g. N or MC).
 
 Now lets overlay the standard IRF for the pruned second order solution:
 ```julia
-plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :pruned_second_order, save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :pruned_second_order)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__2_girf_compare.png)
 
@@ -720,28 +720,28 @@ The number of draws and warmup iterations can be adjusted using the generalised_
 
 Lets start with the GIRF that had the wiggly lines above:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, generalised_irf = true, shocks = :eps_a,  algorithm = :pruned_second_order, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, generalised_irf = true, shocks = :eps_a,  algorithm = :pruned_second_order)
 
 ```
 and then we overlay the GIRF with 1000 draws:
 ```julia
-plot_irf!(Gali_2015_chapter_3_nonlinear, generalised_irf = true, generalised_irf_draws = 1000, shocks = :eps_a,  algorithm = :pruned_second_order, save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_nonlinear, generalised_irf = true, generalised_irf_draws = 1000, shocks = :eps_a,  algorithm = :pruned_second_order)
 ```
 here we see that the lines are less wiggly as the number of draws increased:
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__2_girf_1000_draws.png)
 
 and then we overlay the GIRF with 5000 draws:
 ```julia
-plot_irf!(Gali_2015_chapter_3_nonlinear, generalised_irf = true, generalised_irf_draws = 5000, shocks = :eps_a,  algorithm = :pruned_second_order, save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_nonlinear, generalised_irf = true, generalised_irf_draws = 5000, shocks = :eps_a,  algorithm = :pruned_second_order)
 ```
 lines are even less wiggly as the number of draws increased further:
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__2_girf_5000_draws.png)
 
 In order to fully cover the ergodic distribution of the model it can be useful to increase the number of warmup iterations as well. Here we overlay the standard IRF for the pruned second order solution with the GIRF with 5000 draws and 500 warmup iterations:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :pruned_second_order, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :pruned_second_order)
 
-plot_irf!(Gali_2015_chapter_3_nonlinear, generalised_irf = true, generalised_irf_draws = 5000, generalised_irf_warmup_iterations = 500, shocks = :eps_a,  algorithm = :pruned_second_order, save_plots = true, save_plots_format = :png)
+plot_irf!(Gali_2015_chapter_3_nonlinear, generalised_irf = true, generalised_irf_draws = 5000, generalised_irf_warmup_iterations = 500, shocks = :eps_a,  algorithm = :pruned_second_order)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__2_girf_5000_draws_500_warmup.png)
 With this amount of draws and wamrup itereations the difference between the GIRF and standard IRF is very small. This suggest that there is little state-dependence in the model with a second order pruned solution for a 1 standard deviation eps_a shock and the initial insight from the GIRF with 100 draws and 50 warmup iterations was mainly driven by randomness.
@@ -755,21 +755,21 @@ Labels for the plots are shown when you use the plot_irf! function to overlay mu
 Using labels can be useful when the inputs differs in complex ways (shock matrices or multiple input changes) and you want to provide a more descriptive label. 
 Let's for example compare the IRF of the Gali_2015_chapter_3_nonlinear model for a 1 standard deviation eps_a shock with β = 0.99 and τ = 0 to the IRF with β = 0.95 and τ = 0.5 using custom labels String input:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.99, :τ => 0.0), shocks = :eps_a, label = "Std. params", save_plots = true, save_plots_format = :png)
-plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.95, :τ => 0.5), shocks = :eps_a, label = "Alt. params", save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.99, :τ => 0.0), shocks = :eps_a, label = "Std. params")
+plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.95, :τ => 0.5), shocks = :eps_a, label = "Alt. params")
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__2_custom_labels.png)
 The plot now has the name of the labels in the legend below the plot instead of just 1 and 2. Furthermore, the tables highlighting the relevant input differences and relevant steady states also have the labels in the first column instead of just 1 and 2.
 
 The same can be achieved using Symbols as inputs (though they are a bit less expressive):
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.99, :τ => 0.0), shocks = :eps_a, label = :standard, save_plots = true, save_plots_format = :png)
-plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.95, :τ => 0.5), shocks = :eps_a, label = :alternative, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.99, :τ => 0.0), shocks = :eps_a, label = :standard)
+plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.95, :τ => 0.5), shocks = :eps_a, label = :alternative)
 
 ```
 or with Real inputs:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.99, :τ => 0.0), shocks = :eps_a, label = 0.99, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.99, :τ => 0.0), shocks = :eps_a, label = 0.99)
 plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.95, :τ => 0.5), shocks = :eps_a, label = 0.95, save_plots = true, save_plots_format = :svg)
 
 
@@ -801,13 +801,13 @@ shocks = get_shocks(Gali_2015_chapter_3_nonlinear)
 ```
 and then we plot the IRF for the first shock:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shocks[1], save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shocks[1])
 
 ```
 and then we overlay the IRF for the remaining shocks using the custom color palette by passing on a dictionnary:
 ```julia
 for s in shocks[2:end]
-    plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = s, plot_attributes = Dict(:palette => ec_color_palette), plot_type = :stack, save_plots = true, save_plots_format = :png)
+    plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = s, plot_attributes = Dict(:palette => ec_color_palette), plot_type = :stack)
 end
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__multiple_shocks__2_ec_colors.png)
@@ -815,7 +815,7 @@ The colors of the shocks now follow the custom color palette.
 
 We can also change other attributes such as the font family (see [here](https://github.com/JuliaPlots/Plots.jl/blob/v1.41.1/src/backends/gr.jl#L61) for options):
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, plot_attributes = Dict(:fontfamily => "computer modern"), save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, plot_attributes = Dict(:fontfamily => "computer modern"))
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_cm_font.png)
 All text in the plot is now in the computer modern font. Do note that the rendering of the fonts inherits the constraints of the plotting backend (GR in this case) - e.g. the superscript + is not rendered properly for this font.
@@ -827,7 +827,7 @@ All text in the plot is now in the computer modern font. Do note that the render
 [Default: 6, Type: Int]: number of subplots per page. If the number of variables to plot exceeds this number, multiple pages will be created.
 Lets select 9 variables to plot and set plots_per_page to 4:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, variables = [:Y, :Pi, :R, :C, :N, :W_real, :MC, :i_ann, :A], shocks = :eps_a, plots_per_page = 2, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, variables = [:Y, :Pi, :R, :C, :N, :W_real, :MC, :i_ann, :A], shocks = :eps_a, plots_per_page = 2)
 ```
 ![RBC IRF](../assets/irf__Gali_2015_chapter_3_nonlinear__eps_a__1_9_vars_2_per_page.png)
 The first page shows the first two variables (sorted alphabetically) in a plot with two subplots for each shock. The title indicates that this is page 1 of 5.
@@ -870,7 +870,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, parameters = :β => 0.9
 You can adjust the tolerances used in the numerical solvers. The Tolerances object allows you to set tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (qme). For example, to set tighter tolerances (here we also change parameters to force a recomputation of the solution):
 ```julia
 custom_tol = Tolerances(qme_acceptance_tol = 1e-12, sylvester_acceptance_tol = 1e-12)
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, tol = custom_tol, algorithm = :second_order, parameters = :β => 0.9555,verbose = true, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, tol = custom_tol, algorithm = :second_order, parameters = :β => 0.9555,verbose = true)
 
 ```
 This can be useful when you need higher precision in the solution or when the default tolerances are not sufficient for convergence. Use this argument if you have specific needs or encounter issues with the default solver.
@@ -883,7 +883,7 @@ This can be useful when you need higher precision in the solution or when the de
 [Default: :schur, Type: Symbol]: algorithm to solve quadratic matrix equation (A * X ^ 2 + B * X + C = 0). Available algorithms: :schur, :doubling
 The quadratic matrix equation solver is used internally when solving the model up to first order. You can choose between different algorithms. The :schur algorithm is generally faster and more reliable, while :doubling can be more precise in some cases (here we also change parameters to force a recomputation of the solution):
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, quadratic_matrix_equation_algorithm = :doubling, parameters = :β => 0.95555, verbose = true, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, quadratic_matrix_equation_algorithm = :doubling, parameters = :β => 0.95555, verbose = true)
 
 ```
 For most use cases, the default :schur algorithm is recommended. Use this argument if you have specific needs or encounter issues with the default solver.
@@ -895,12 +895,12 @@ For most use cases, the default :schur algorithm is recommended. Use this argume
 [Default: selector that uses :doubling for smaller problems and switches to :bicgstab for larger problems, Type: Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}}]: algorithm to solve the Sylvester equation (A * X * B + C = X). Available algorithms: :doubling, :bartels_stewart, :bicgstab, :dqgmres, :gmres. Input argument can contain up to two elements in a Vector or Tuple. The first (second) element corresponds to the second (third) order perturbation solutions' Sylvester equation. If only one element is provided it corresponds to the second order perturbation solutions' Sylvester equation.
 You can specify which algorithm to use for solving Sylvester equations, relevant for higher order solutions. For example you can seect the :bartels_stewart algorithm for solving the second order perturbation problem:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :second_order, sylvester_algorithm = :bartels_stewart, verbose = true, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :second_order, sylvester_algorithm = :bartels_stewart, verbose = true)
 
 ```
 For third-order solutions, you can specify different algorithms for the second and third order Sylvester equations using a Tuple:
 ```julia
-plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :third_order, sylvester_algorithm = (:doubling, :bicgstab), verbose = true, save_plots = true, save_plots_format = :png)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :third_order, sylvester_algorithm = (:doubling, :bicgstab), verbose = true)
 
 ```
 The choice of algorithm can affect both speed and precision, with :doubling and :bartels_stewart generally being faster but :bicgstab, :dqgmres, and :gmres being better for large sparse problems. Use this argument if you have specific needs or encounter issues with the default solver.
