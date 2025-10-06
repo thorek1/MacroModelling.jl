@@ -3320,6 +3320,52 @@ function plot_solution(𝓂::ℳ,
     
     state_selector = state .== 𝓂.var
 
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
+                                    tol = opts.tol,
+                                    verbose = opts.verbose,
+                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+
+    full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+
+    NSSS_SS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
+                                    tol = opts.tol,
+                                    verbose = opts.verbose,
+                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+
+    NSSS = [s ∈ 𝓂.exo_present ? 0 : NSSS_SS(s) for s in full_NSSS]
+    
+    SSS_delta = collect(NSSS - full_SS)
+
+    var_state_range = []
+
+    for x in state_range
+        if algorithm == :pruned_second_order
+            initial_state = [state_selector * x, -SSS_delta]
+        elseif algorithm == :pruned_third_order
+            initial_state = [state_selector * x, -SSS_delta, zero(SSS_delta)]
+        else
+            initial_state = collect(full_SS) .+ state_selector * x
+        end
+
+        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
+    end
+
+    var_state_range = hcat(var_state_range...)
+
+    variable_dict = Dict()
+
+    for k in vars_to_plot
+        idx = indexin([k], 𝓂.var)
+        push!(variable_dict,  k => var_state_range[idx,:])
+    end
+
+    variable_names = String[]
+    for k in vars_to_plot
+        push!(variable_names, String(replace_indices_in_symbol(k)))
+    end
+
     if any(x -> contains(string(x), "◖"), full_NSSS)
         full_NSSS_decomposed = decompose_name.(full_NSSS)
         full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
