@@ -5,20 +5,22 @@ Modify or exchange calibration equations after model and parameters have been de
 This function allows users to update the calibration equations and their associated parameters
 while keeping track of all revisions made via this function.
 
+**Note**: This function records the changes for tracking purposes, but modifying calibration 
+equations after the model has been set up requires re-running the `@parameters` macro with 
+the new equations to properly update the steady state solver. This function is primarily 
+useful for documentation and tracking purposes.
+
 # Arguments
 - `𝓂::ℳ`: model object to modify
-- `new_equations`: new calibration equations. Can be:
-  - A single expression: `:(k[ss] / y[ss] - 2.5)`
-  - A vector of expressions: `[:(k[ss] / y[ss] - 2.5), :(c[ss] / y[ss] - 0.6)]`
-  - A vector of pairs mapping parameters to equations: `[:α => :(k[ss] / y[ss] - 2.5), :β => :(c[ss] / y[ss] - 0.6)]`
+- `param_equation_pairs`: A vector of pairs mapping parameters to equations: 
+  `[:α => :(k[ss] / y[ss] - 2.5), :β => :(c[ss] / y[ss] - 0.6)]`
 - `revision_note::String = ""`: optional note describing the revision
 
 # Keyword Arguments
 - `verbose::Bool = false`: print information about the modification
-- `recalculate::Bool = true`: whether to recalculate the non-stochastic steady state after modification
 
 # Returns
-- `Nothing`. The function modifies the model object in place.
+- `Nothing`. The function records the revision in the model object.
 
 # Examples
 ```julia
@@ -39,102 +41,61 @@ end
     β = 0.95
 end
 
-# Modify the calibration equation for δ
-modify_calibration_equations!(RBC, :δ => :(k[ss] / q[ss] - 3.0), "Updated capital to output ratio")
-
-# Or modify multiple equations at once
+# Track a modification to the calibration equation for δ
+# (Note: To actually apply this change, you need to re-run @parameters with the new equation)
 modify_calibration_equations!(RBC, 
-    [:δ => :(k[ss] / q[ss] - 3.0), :α => :(y[ss] / k[ss] - 0.3)],
-    "Updated multiple calibration equations")
+    [:δ => :(k[ss] / q[ss] - 3.0)],
+    "Updated capital to output ratio target from 2.5 to 3.0")
+
+# View the revision history
+print_calibration_revision_history(RBC)
 ```
 """
 function modify_calibration_equations!(𝓂::ℳ, 
-                                       new_equations::Union{Expr, Vector{<:Union{Expr, Pair{Symbol, Expr}}}},
+                                       param_equation_pairs::Vector{<:Pair{Symbol, <:Any}},
                                        revision_note::String = "";
-                                       verbose::Bool = false,
-                                       recalculate::Bool = true)
+                                       verbose::Bool = false)
     
-    # Store the current state before modification
-    old_equations = copy(𝓂.calibration_equations)
-    old_parameters = copy(𝓂.calibration_equations_parameters)
-    
-    # Convert input to a standard format
-    if new_equations isa Expr
-        # Single expression without parameter - error
-        error("When providing a single equation, you must specify which parameter it calibrates using the format: :parameter => equation")
+    # Validate input
+    if isempty(param_equation_pairs)
+        error("param_equation_pairs cannot be empty")
     end
     
-    # Process the new equations
-    param_equation_pairs = if all(x -> x isa Pair{Symbol, Expr}, new_equations)
-        new_equations
-    elseif all(x -> x isa Expr, new_equations)
-        # If just expressions, they should match the order of existing calibration parameters
-        if length(new_equations) != length(𝓂.calibration_equations_parameters)
-            error("Number of equations ($(length(new_equations))) must match number of calibration parameters ($(length(𝓂.calibration_equations_parameters)))")
-        end
-        collect(zip(𝓂.calibration_equations_parameters, new_equations))
-    else
-        error("new_equations must be either a vector of expressions or a vector of Symbol => Expr pairs")
-    end
+    # Store equations for the revision history
+    documented_equations = Expr[]
+    documented_parameters = Symbol[]
     
-    # Update each equation
+    # Process each pair
     for (param, eq) in param_equation_pairs
-        # Find the index of this parameter in the calibration parameters
-        param_idx = findfirst(==(param), 𝓂.calibration_equations_parameters)
-        
-        if param_idx === nothing
+        # Check if parameter exists in calibration parameters
+        if param ∉ 𝓂.calibration_equations_parameters
             error("Parameter :$param is not a calibration parameter. Calibration parameters are: $(𝓂.calibration_equations_parameters)")
         end
         
-        # Parse the equation to extract variables and parameters
-        # This is a simplified version - in production you'd want to use the same parsing logic as @parameters
-        parsed_eq = parse_calibration_equation(eq, 𝓂)
+        # Convert equation to Expr if needed
+        eq_expr = eq isa Expr ? eq : :($(eq))
         
-        # Update the calibration equation
-        𝓂.calibration_equations[param_idx] = parsed_eq
+        push!(documented_equations, eq_expr)
+        push!(documented_parameters, param)
         
         if verbose
-            println("Updated calibration equation for parameter :$param")
-            println("  Old: $(old_equations[param_idx])")
-            println("  New: $(parsed_eq)")
+            println("Documented revision for parameter :$param")
+            println("  New target: $(eq_expr)")
         end
     end
     
     # Record this revision in the history
     timestamp = string(Dates.now())
     revision_entry = (timestamp * (isempty(revision_note) ? "" : " - " * revision_note), 
-                     copy(𝓂.calibration_equations), 
-                     copy(𝓂.calibration_equations_parameters))
+                     documented_equations, 
+                     documented_parameters)
     push!(𝓂.calibration_equations_revision_history, revision_entry)
     
-    # Mark the solution as outdated
-    if recalculate
-        𝓂.solution.outdated_NSSS = true
-        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-        
-        if verbose
-            println("Solution marked as outdated. Run solve! to recalculate.")
-        end
+    if verbose
+        println("\nRevision recorded. To apply these changes, re-run the @parameters macro with the new calibration equations.")
     end
     
     return nothing
-end
-
-
-"""
-$(SIGNATURES)
-Helper function to parse calibration equations.
-
-This is a simplified version that converts the equation expression to the internal format.
-In a full implementation, this would use the same parsing logic as the @parameters macro.
-"""
-function parse_calibration_equation(eq::Expr, 𝓂::ℳ)
-    # For now, just return the equation as-is
-    # In a full implementation, this would:
-    # 1. Replace [ss] with steady state symbols
-    # 2. Convert to sympy format
-    # 3. Check that all variables and parameters are valid
-    return eq
 end
 
 
