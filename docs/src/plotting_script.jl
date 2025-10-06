@@ -615,7 +615,6 @@ plot_irf(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.99, :τ => 0.0), 
 plot_irf!(Gali_2015_chapter_3_nonlinear, parameters = (:β => 0.95, :τ => 0.5), shocks = :eps_a, label = 0.95, save_plots = true, save_plots_format = :svg)
 
 
-
 # ### plot_attributes
 # [Default: Dict()]: dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.
 
@@ -683,8 +682,30 @@ plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, parameters = :β => 0.9
 
 
 
-tol
-quadratic_matrix_equation_algorithm
-sylvester_algorithm
-lyapunov_algorithm
+# ### tol
+# [Default: Tolerances(), Type: Tolerances]: define various tolerances for the algorithm used to solve the model. See documentation of Tolerances for more details: ?Tolerances
+# You can adjust the tolerances used in the numerical solvers. The Tolerances object allows you to set tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (qme). For example, to set tighter tolerances:
+custom_tol = Tolerances(qme_tol = 1e-16, lyapunov_tol = 1e-16)
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, tol = custom_tol, save_plots = true, save_plots_format = :png)
+
+# This can be useful when you need higher precision in the solution or when the default tolerances are not sufficient for convergence.
+
+
+# ### quadratic_matrix_equation_algorithm
+# [Default: :schur, Type: Symbol]: algorithm to solve quadratic matrix equation (A * X ^ 2 + B * X + C = 0). Available algorithms: :schur, :doubling
+# The quadratic matrix equation solver is used internally when solving the model up to first order. You can choose between different algorithms. The :schur algorithm is generally faster and more reliable, while :doubling can be more precise in some cases:
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, quadratic_matrix_equation_algorithm = :doubling, save_plots = true, save_plots_format = :png)
+
+# For most use cases, the default :schur algorithm is recommended.
+
+
+# ### sylvester_algorithm
+# [Default: selector that uses :doubling for smaller problems and switches to :bicgstab for larger problems, Type: Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}}]: algorithm to solve the Sylvester equation (A * X * B + C = X). Available algorithms: :doubling, :bartels_stewart, :bicgstab, :dqgmres, :gmres. Input argument can contain up to two elements in a Vector or Tuple. The first (second) element corresponds to the second (third) order perturbation solutions' Sylvester equation. If only one element is provided it corresponds to the second order perturbation solutions' Sylvester equation.
+# You can specify which algorithm to use for solving Sylvester equations, relevant for higher order solutions. For example you can seect the :bartels_stewart algorithm for solving the second order perturbation problem:
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :second_order, sylvester_algorithm = :bartels_stewart, save_plots = true, save_plots_format = :png)
+
+# For third-order solutions, you can specify different algorithms for the second and third order Sylvester equations using a Tuple:
+plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :third_order, sylvester_algorithm = (:doubling, :bicgstab), save_plots = true, save_plots_format = :png)
+
+# The choice of algorithm can affect both speed and precision, with :doubling and :bartels_stewart generally being faster but :bicgstab, :dqgmres, and :gmres being better for large sparse problems.
 
