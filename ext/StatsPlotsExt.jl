@@ -3508,8 +3508,8 @@ function _plot_solution_from_container(;
     # If more than one input differs (besides label), use custom labels from diffdict
     len_diff = length(solution_active_plot_container)
     
-    # Create legend
-    legend_plot = StatsPlots.plot(framestyle = :none, legend = :inside) 
+    # Create legend with 2 columns so dynamics and steady state entries are side by side
+    legend_plot = StatsPlots.plot(framestyle = :none, legend = :inside, legend_columns = 2) 
     
     if length(annotate_diff_input) > 2
         # Multiple differences - use custom labels or plot labels
@@ -3527,17 +3527,39 @@ function _plot_solution_from_container(;
                                 label = string(label_text) * " (SS)")
         end
     else
-        # Single difference (or just labels differ) - use algorithm labels
+        # Single difference (or just labels differ) - use the relevant input difference in legend
+        # Get the legend title and labels from the second entry in annotate_diff_input
+        legend_title_dynamics = length(annotate_diff_input) > 1 ? annotate_diff_input[2][1] : nothing
+        legend_title_ss = legend_title_dynamics
+        
         for (i, container) in enumerate(solution_active_plot_container)
+            # For single difference, use the value of that difference as the label
+            label_text = if length(annotate_diff_input) > 1
+                val = annotate_diff_input[2][2][i]
+                val isa String ? val : String(Symbol(val))
+            else
+                container[:algorithm_label]
+            end
+            
             StatsPlots.plot!([NaN], 
                             color = pal[mod1(i, length(pal))],
-                            label = container[:algorithm_label])
+                            legend_title = legend_title_dynamics,
+                            label = label_text)
         end
         
         for (i, container) in enumerate(solution_active_plot_container)
+            # For single difference, use the value of that difference as the label
+            label_text = if length(annotate_diff_input) > 1
+                val = annotate_diff_input[2][2][i]
+                val isa String ? val : String(Symbol(val))
+            else
+                container[:ss_label]
+            end
+            
             StatsPlots.scatter!([NaN], 
                                 color = pal[mod1(i, length(pal))],
-                                label = container[:ss_label])
+                                legend_title = legend_title_ss,
+                                label = label_text * " (SS)")
         end
     end
     
