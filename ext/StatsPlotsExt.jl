@@ -74,7 +74,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SAVE_PLOTS_FORMATH®
 - $SAVE_PLOTS_PATH®
 - $PLOTS_PER_PAGE®
-- `transparency` [Default: `0.6`, Type: `Float64`]: transparency of stacked bars. Only relevant if `shock_decomposition` is `true`.
+- `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `shock_decomposition` is `true`.
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
 - $LABEL®
@@ -1911,7 +1911,7 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - `plot_type` [Default: `:compare`, Type: `Symbol`]: plot type used to represent results. `:compare` means results are shown as separate lines. `:stack` means results are stacked.
-- `transparency` [Default: `0.6`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
+- `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -3913,7 +3913,7 @@ This function shares most of the signature and functionality of [`plot_condition
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - `plot_type` [Default: `:compare`, Type: `Symbol`]: plot type used to represent results. `:compare` means results are shown as separate lines. `:stack` means results are stacked.
-- `transparency` [Default: `0.6`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
+- `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
