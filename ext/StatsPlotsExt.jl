@@ -3454,12 +3454,20 @@ function _plot_solution_from_container(;
     
     # Create comparison of containers to detect differences
     # Keep relevant keys for comparison: model_name, state, parameters, algorithm, ignore_obc, label
-    reduced_vector = [
-        Dict(k => d[k] for k in [:run_id, :label, :model_name, :state, :parameters, :algorithm, :ignore_obc] if haskey(d, k))
-        for d in solution_active_plot_container
-    ]
+    # Only compare if there are multiple containers
+    diffdict = Dict{Symbol,Any}()
     
-    diffdict = compare_args_and_kwargs(reduced_vector)
+    if length(solution_active_plot_container) > 1
+        reduced_vector = [
+            Dict(k => d[k] for k in [:run_id, :label, :model_name, :state, :parameters, :algorithm, :ignore_obc] if haskey(d, k))
+            for d in solution_active_plot_container
+        ]
+        
+        diffdict = compare_args_and_kwargs(reduced_vector)
+    else
+        # For single container, create a diffdict with just the label
+        diffdict[:label] = [solution_active_plot_container[1][:label]]
+    end
     
     # Build annotation for relevant input differences
     annotate_diff_input = Pair{String,Any}[]
