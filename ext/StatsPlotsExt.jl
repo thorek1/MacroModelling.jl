@@ -10,6 +10,7 @@ import LaTeXStrings
 const irf_active_plot_container = Dict[]
 const conditional_forecast_active_plot_container = Dict[]
 const model_estimates_active_plot_container = Dict[]
+const solution_active_plot_container = Dict[]
 
 import StatsPlots
 import Showoff
@@ -20,7 +21,7 @@ using DispatchDoctor
 
 import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs
 
-import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!
+import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!, plot_solution!
 
 @stable default_mode = "disable" begin
 """
@@ -3187,10 +3188,11 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - `state` [Type: `Union{Symbol,String}`]: state variable to be shown on x-axis.
 # Keyword Arguments
 - $VARIABLES®
-- `algorithm` [Default: `:first_order`, Type: Union{Symbol,Vector{Symbol}}]: solution algorithm for which to show the IRFs. Can be more than one, e.g.: `[:second_order,:pruned_third_order]`"
+- $ALGORITHM®
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS®
 - $IGNORE_OBC®
+- `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -3239,10 +3241,11 @@ plot_solution(RBC_CME, :k)
 function plot_solution(𝓂::ℳ,
                         state::Union{Symbol,String};
                         variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
-                        algorithm::Union{Symbol,Vector{Symbol}} = DEFAULT_ALGORITHM,
+                        algorithm::Symbol = DEFAULT_ALGORITHM,
                         σ::Union{Int64,Float64} = DEFAULT_SIGMA_RANGE,
                         parameters::ParameterType = nothing,
                         ignore_obc::Bool = DEFAULT_IGNORE_OBC,
+                        label::Union{Real, String, Symbol} = DEFAULT_LABEL,
                         show_plots::Bool = DEFAULT_SHOW_PLOTS,
                         save_plots::Bool = DEFAULT_SAVE_PLOTS,
                         save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
@@ -3281,11 +3284,7 @@ function plot_solution(𝓂::ℳ,
 
     @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
 
-    @assert length(setdiff(algorithm isa Symbol ? [algorithm] : algorithm, [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order])) == 0 "Invalid algorithm. Choose any combination of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
-
-    if algorithm isa Symbol
-        algorithm = [algorithm]
-    end
+    @assert algorithm ∈ [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order] "Invalid algorithm. Choose one of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
 
     ignore_obc, occasionally_binding_constraints, _ = process_ignore_obc_flag(:all_excluding_obc, ignore_obc, 𝓂)
     
