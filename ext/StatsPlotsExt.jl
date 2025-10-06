@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, VARIABLE_NAMES®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
 import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -23,6 +23,20 @@ import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_sim
 import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!
 
 @stable default_mode = "disable" begin
+
+"""
+    apply_custom_name(symbol::Symbol, custom_names::Dict{Symbol, String})
+
+Apply custom name from dictionary if available, otherwise use default name.
+"""
+function apply_custom_name(symbol::Symbol, custom_names::Dict{Symbol, String})
+    if haskey(custom_names, symbol)
+        return custom_names[symbol]
+    else
+        return replace_indices_in_symbol(symbol)
+    end
+end
+
 """
     gr_backend()
 Renaming and reexport of StatsPlots function `gr()` to define GR.jl as backend.
@@ -79,6 +93,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
 - $LABEL®
+- $VARIABLE_NAMES®
 - $PLOT_ATTRIBUTES®
 - $QME®
 - $SYLVESTER®
@@ -143,6 +158,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 transparency::Float64 = DEFAULT_TRANSPARENCY,
                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
+                                variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
                                 plot_attributes::Dict = Dict(),
                                 verbose::Bool = DEFAULT_VERBOSE,
                                 tol::Tolerances = Tolerances(),
@@ -194,9 +210,9 @@ function plot_model_estimates(𝓂::ℳ,
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
     shock_idx   = shocks == :none ? [] : parse_shocks_input_to_index(shocks, 𝓂.timings)
 
-    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
+    variable_names_display = [apply_custom_name(𝓂.timings.var[v], variable_names) for v in var_idx]
     
-    shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx]) .* "₍ₓ₎"
+    shock_names_display = [apply_custom_name(𝓂.timings.exo[s], variable_names) * "₍ₓ₎" for s in shock_idx]
     
     legend_columns = 1
 
@@ -291,8 +307,8 @@ function plot_model_estimates(𝓂::ℳ,
                            :data_in_deviations => data_in_deviations,
                            :shocks_to_plot => shocks_to_plot,
                            :reference_steady_state => reference_steady_state[var_idx],
-                           :variable_names => variable_names,
-                           :shock_names => shock_names,
+                           :variable_names => variable_names_display,
+                           :shock_names => shock_names_display,
                            :x_axis => x_axis
                            )
 
@@ -319,7 +335,7 @@ function plot_model_estimates(𝓂::ℳ,
             n_subplots -= 1
         elseif length(shock_idx) > 0
             push!(non_zero_shock_idx, s)
-            push!(non_zero_shock_names, shock_names[i])
+            push!(non_zero_shock_names, shock_names_display[i])
         end
     end
     
@@ -343,7 +359,7 @@ function plot_model_estimates(𝓂::ℳ,
 
                 p = standard_subplot(variables_to_plot[var_idx[i],periods], 
                                     SS, 
-                                    variable_names[i], 
+                                    variable_names_display[i], 
                                     gr_back,
                                     pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
                                     xvals = x_axis)
@@ -354,7 +370,7 @@ function plot_model_estimates(𝓂::ℳ,
                     p = standard_subplot(Val(:stack),
                                         [decomposition[var_idx[i],k,periods] for k in vcat(additional_indices, non_zero_shock_idx)], 
                                         [SS for k in vcat(additional_indices, non_zero_shock_idx)], 
-                                        variable_names[i], 
+                                        variable_names_display[i], 
                                         gr_back,
                                         true, # same_ss,
                                         transparency = transparency,
@@ -409,7 +425,7 @@ function plot_model_estimates(𝓂::ℳ,
             if shock_decomposition
                 additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
 
-                lbls = reshape(vcat(additional_labels, string.(replace_indices_in_symbol.(𝓂.exo[non_zero_shock_idx]))), 1, length(non_zero_shock_idx) + 1 + pruning)
+                lbls = reshape(vcat(additional_labels, string.(non_zero_shock_names)), 1, length(non_zero_shock_idx) + 1 + pruning)
 
                 StatsPlots.bar!(pl,
                                 fill(NaN, 1, length(non_zero_shock_idx) + 1 + pruning), 
@@ -463,7 +479,7 @@ function plot_model_estimates(𝓂::ℳ,
         if shock_decomposition
             additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
 
-            lbls = reshape(vcat(additional_labels, string.(replace_indices_in_symbol.(𝓂.exo[non_zero_shock_idx]))), 1, length(non_zero_shock_idx) + 1 + pruning)
+            lbls = reshape(vcat(additional_labels, string.(non_zero_shock_names)), 1, length(non_zero_shock_idx) + 1 + pruning)
 
             StatsPlots.bar!(pl,
                             fill(NaN, 1, length(non_zero_shock_idx) + 1 + pruning), 
@@ -619,6 +635,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
+                                variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
                                 plot_attributes::Dict = Dict(),
                                 verbose::Bool = DEFAULT_VERBOSE,
                                 tol::Tolerances = Tolerances(),
@@ -670,9 +687,9 @@ function plot_model_estimates!(𝓂::ℳ,
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
     shock_idx   = parse_shocks_input_to_index(shocks, 𝓂.timings)
 
-    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
+    variable_names_display = [apply_custom_name(𝓂.timings.var[v], variable_names) for v in var_idx]
     
-    shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx]) .* "₍ₓ₎"
+    shock_names_display = [apply_custom_name(𝓂.timings.exo[s], variable_names) * "₍ₓ₎" for s in shock_idx]
     
     legend_columns = 1
 
@@ -763,8 +780,8 @@ function plot_model_estimates!(𝓂::ℳ,
                            :data_in_deviations => data_in_deviations,
                            :shocks_to_plot => shocks_to_plot,
                            :reference_steady_state => reference_steady_state[var_idx],
-                           :variable_names => variable_names,
-                           :shock_names => shock_names,
+                           :variable_names => variable_names_display,
+                           :shock_names => shock_names_display,
                            :x_axis => x_axis
                            )
 
@@ -1359,6 +1376,7 @@ function plot_irf(𝓂::ℳ;
                     generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
+                    variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
                     plot_attributes::Dict = Dict(),
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
@@ -1472,16 +1490,16 @@ function plot_irf(𝓂::ℳ;
     end
 
     if shocks == :simulate
-        shock_names = ["simulation"]
+        shock_names_display = ["simulation"]
     elseif shocks == :none
-        shock_names = ["no_shock"]
+        shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
-        shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx])
+        shock_names_display = [apply_custom_name(𝓂.timings.exo[s], variable_names) for s in shock_idx]
     else
-        shock_names = ["shock_matrix"]
+        shock_names_display = ["shock_matrix"]
     end
     
-    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
+    variable_names_display = [apply_custom_name(𝓂.timings.var[v], variable_names) for v in var_idx]
 
     while length(irf_active_plot_container) > 0
         pop!(irf_active_plot_container)
@@ -1520,8 +1538,8 @@ function plot_irf(𝓂::ℳ;
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state[var_idx],
-                           :variable_names => variable_names,
-                           :shock_names => shock_names
+                           :variable_names => variable_names_display,
+                           :shock_names => shock_names_display
                            )
     
     push!(irf_active_plot_container, args_and_kwargs)
@@ -1552,7 +1570,7 @@ function plot_irf(𝓂::ℳ;
             SS = reference_steady_state[v]
 
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
-                variable_name = variable_names[i]
+                variable_name = variable_names_display[i]
 
                 push!(pp, standard_subplot(Y[i,:,shock], SS, variable_name, gr_back, pal = pal))
 
@@ -1568,8 +1586,8 @@ function plot_irf(𝓂::ℳ;
                         shock_string = ""
                         shock_name = "no_shock"
                     elseif shocks isa Union{Symbol_input,String_input}
-                        shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                        shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                        shock_string = ": " * shock_names_display[shock]
+                        shock_name = shock_names_display[shock]
                     else
                         shock_string = "Series of shocks"
                         shock_name = "shock_matrix"
@@ -1604,8 +1622,8 @@ function plot_irf(𝓂::ℳ;
                 shock_string = ""
                 shock_name = "no_shock"
             elseif shocks isa Union{Symbol_input,String_input}
-                shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                shock_string = ": " * shock_names_display[shock]
+                shock_name = shock_names_display[shock]
             else
                 shock_string = "Series of shocks"
                 shock_name = "shock_matrix"
@@ -2002,6 +2020,7 @@ function plot_irf!(𝓂::ℳ;
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                     plot_type::Symbol = DEFAULT_PLOT_TYPE,
+                    variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
                     plot_attributes::Dict = Dict(),
                     transparency::Float64 = DEFAULT_TRANSPARENCY,
                     verbose::Bool = DEFAULT_VERBOSE,
@@ -2116,14 +2135,14 @@ function plot_irf!(𝓂::ℳ;
     if shocks == :simulate
         shock_names = ["simulation"]
     elseif shocks == :none
-        shock_names = ["no_shock"]
+        shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
-        shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx])
+        shock_names_display = [apply_custom_name(𝓂.timings.exo[s], variable_names) for s in shock_idx]
     else
-        shock_names = ["shock_matrix"]
+        shock_names_display = ["shock_matrix"]
     end
     
-    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
+    variable_names_display = [apply_custom_name(𝓂.timings.var[v], variable_names) for v in var_idx]
 
     args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
@@ -2157,8 +2176,8 @@ function plot_irf!(𝓂::ℳ;
                            :sylvester_algorithm => sylvester_algorithm,
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state[var_idx],
-                           :variable_names => variable_names,
-                           :shock_names => shock_names
+                           :variable_names => variable_names_display,
+                           :shock_names => shock_names_display
                            )
 
     no_duplicate = all(
