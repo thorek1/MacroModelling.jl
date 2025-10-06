@@ -3518,13 +3518,10 @@ function _plot_solution_from_container(;
             StatsPlots.plot!([NaN], 
                             color = pal[mod1(i, length(pal))],
                             label = string(label_text))
-        end
-        
-        for (i, container) in enumerate(solution_active_plot_container)
-            label_text = container[:label] isa Symbol ? string(container[:label]) : container[:label]
+                            
             StatsPlots.scatter!([NaN], 
                                 color = pal[mod1(i, length(pal))],
-                                label = string(label_text) * " (SS)")
+                                label = string(label_text) * " (relevant SS)")
         end
     else
         # Single difference (or just labels differ) - use the relevant input difference in legend
@@ -3545,9 +3542,7 @@ function _plot_solution_from_container(;
                             color = pal[mod1(i, length(pal))],
                             legend_title = legend_title_dynamics,
                             label = label_text)
-        end
-        
-        for (i, container) in enumerate(solution_active_plot_container)
+
             # For single difference, use the value of that difference as the label
             label_text = if length(annotate_diff_input) > 1
                 val = annotate_diff_input[2][2][i]
@@ -3643,7 +3638,7 @@ function _plot_solution_from_container(;
             
             # Build plot elements array
             plot_elements = [ppp, legend_plot]
-            layout_heights = [15, 1]
+            layout_heights = [15, length(annotate_diff_input)]
             
             # Add relevant input differences table if multiple inputs differ
             if length(annotate_diff_input) > 2
