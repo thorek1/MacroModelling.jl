@@ -1,5 +1,9 @@
 # # Plotting
 
+# NOTE: This script has been used to generate the plotting documentation (plotting.md).
+# For comprehensive plotting documentation, please refer to plotting.md.
+# This script is kept for reference and for generating plot images via generate_plots.jl.
+
 # MacroModelling.jl integrates a comprehensive plotting toolkit based on [StatsPlots.jl](https://github.com/JuliaPlots/StatsPlots.jl). The plotting API is exported together with the modelling macros, so once you define a model you can immediately visualise impulse responses, simulations, conditional forecasts, model estimates, variance decompositions, and policy functions. All plotting functions live in the `StatsPlotsExt` extension, which is loaded automatically when StatsPlots is imported or used.
 
 # ## Setup
