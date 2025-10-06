@@ -73,6 +73,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"estimation"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `shock_decomposition` is `true`.
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
@@ -136,6 +137,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                 save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                save_plots_name::Union{String, Symbol} = "estimation",
                                 save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                                 transparency::Float64 = DEFAULT_TRANSPARENCY,
@@ -431,7 +433,7 @@ function plot_model_estimates(𝓂::ℳ,
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/estimation__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -484,7 +486,7 @@ function plot_model_estimates(𝓂::ℳ,
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/estimation__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -527,6 +529,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"estimation"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
@@ -607,6 +610,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                 save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                save_plots_name::Union{String, Symbol} = "estimation",
                                 save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
@@ -1187,7 +1191,7 @@ function plot_model_estimates!(𝓂::ℳ,
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/estimation__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -1255,7 +1259,7 @@ function plot_model_estimates!(𝓂::ℳ,
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/estimation__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -1293,6 +1297,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"irf"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - $LABEL®
@@ -1336,6 +1341,7 @@ function plot_irf(𝓂::ℳ;
                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                    save_plots_name::Union{String, Symbol} = "irf",
                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE, 
                     algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -1576,7 +1582,7 @@ function plot_irf(𝓂::ℳ;
                     end
 
                     if save_plots
-                        StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                        StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
                     end
 
                     pane += 1
@@ -1610,7 +1616,7 @@ function plot_irf(𝓂::ℳ;
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/irf__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
     end
@@ -1908,6 +1914,7 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"irf"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - `plot_type` [Default: `:compare`, Type: `Symbol`]: plot type used to represent results. `:compare` means results are shown as separate lines. `:stack` means results are stacked.
@@ -1978,6 +1985,7 @@ function plot_irf!(𝓂::ℳ;
                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                    save_plots_name::Union{String, Symbol} = "irf",
                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL, 
                     algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -2511,7 +2519,7 @@ function plot_irf!(𝓂::ℳ;
                 end
 
                 if save_plots
-                    StatsPlots.savefig(p, save_plots_path * "/irf__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
                 end
 
                 pane += 1
@@ -2600,7 +2608,7 @@ function plot_irf!(𝓂::ℳ;
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/irf__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
 
@@ -2930,6 +2938,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"fevd"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
@@ -2978,6 +2987,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                                 save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                                save_plots_name::Union{String, Symbol} = "fevd",
                                                 save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE, 
                                                 plot_attributes::Dict = Dict(),
@@ -3099,7 +3109,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -3131,7 +3141,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/fevd__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -3177,6 +3187,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"solution"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
 - $PLOT_ATTRIBUTES®
 - $QME®
@@ -3227,6 +3238,7 @@ function plot_solution(𝓂::ℳ,
                         show_plots::Bool = DEFAULT_SHOW_PLOTS,
                         save_plots::Bool = DEFAULT_SAVE_PLOTS,
                         save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                        save_plots_name::Union{String, Symbol} = "solution",
                         save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                         plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                         plot_attributes::Dict = Dict(),
@@ -3467,7 +3479,7 @@ function plot_solution(𝓂::ℳ,
             end
 
             if save_plots
-                StatsPlots.savefig(p, save_plots_path * "/solution__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -3492,7 +3504,7 @@ function plot_solution(𝓂::ℳ,
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/solution__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -3524,6 +3536,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"conditional_forecast"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - $LABEL®
@@ -3604,6 +3617,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                    save_plots_name::Union{String, Symbol} = "conditional_forecast",
                                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE,
                                     plot_attributes::Dict = Dict(),
@@ -3845,7 +3859,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                 end
 
                 if save_plots# & (length(pp) > 0)
-                    StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
                 end
 
                 pane += 1
@@ -3879,7 +3893,7 @@ function plot_conditional_forecast(𝓂::ℳ,
         end
 
         if save_plots
-            StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
@@ -3910,6 +3924,7 @@ This function shares most of the signature and functionality of [`plot_condition
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMATH®
 - $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"conditional_forecast"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - `plot_type` [Default: `:compare`, Type: `Symbol`]: plot type used to represent results. `:compare` means results are shown as separate lines. `:stack` means results are stacked.
@@ -3992,6 +4007,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                    save_plots_name::Union{String, Symbol} = "conditional_forecast",
                                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                                     plot_attributes::Dict = Dict(),
@@ -4599,7 +4615,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             end
 
             if save_plots# & (length(pp) > 0)
-                StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
             end
 
             pane += 1
@@ -4668,7 +4684,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         end
 
         if save_plots# & (length(pp) > 0)
-            StatsPlots.savefig(p, save_plots_path * "/conditional_forecast__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
+            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
         end
     end
 
