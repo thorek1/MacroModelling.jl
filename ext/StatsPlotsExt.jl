@@ -3013,6 +3013,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 save_plots_name::Union{String, Symbol} = "fevd",
                                                 save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE, 
+                                                variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
                                                 plot_attributes::Dict = Dict(),
                                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
                                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
@@ -3091,18 +3092,18 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     for k in vars_to_plot
         if gr_back
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
-            title = replace_indices_in_symbol(k), 
+            title = apply_custom_name(k, variable_names), 
             bar_position = :stack,
             color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
             linecolor = :transparent,
             legend = :none))
         else
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
-            title = replace_indices_in_symbol(k), 
+            title = apply_custom_name(k, variable_names), 
             bar_position = :stack, 
             color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
             linecolor = :transparent,
-            label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot))))
+            label = reshape(string.([apply_custom_name(s, variable_names) for s in shocks_to_plot]),1,length(shocks_to_plot))))
         end
 
         if !(plot_count % plots_per_page == 0)
@@ -3113,7 +3114,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             ppp = StatsPlots.plot(pp...; attributes...)
             
             pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
-                                label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
+                                label = reshape(string.([apply_custom_name(s, variable_names) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
                                 linewidth = 0 , 
                                 linecolor = :transparent,
                                 framestyle = :none, 
@@ -3146,12 +3147,12 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         ppp = StatsPlots.plot(pp...; attributes...)
 
         pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
-                            label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
+                            label = reshape(string.([apply_custom_name(s, variable_names) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
                             linewidth = 0 , 
                             linecolor = :transparent,
                             framestyle = :none, 
                             color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
-                            legend = :inside, 
+                            legend = :inside,
                             legend_columns = legend_columns)
 
         p = StatsPlots.plot(ppp,pp, 
@@ -3268,6 +3269,7 @@ function plot_solution(𝓂::ℳ,
                         save_plots_name::Union{String, Symbol} = "solution",
                         save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                         plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
+                        variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
                         plot_attributes::Dict = Dict(),
                         verbose::Bool = DEFAULT_VERBOSE,
                         tol::Tolerances = Tolerances(),
@@ -3471,8 +3473,8 @@ function plot_solution(𝓂::ℳ,
         for (i,a) in enumerate(algorithm)
             StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1], 
                 variable_dict[a][k][1,:], 
-                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
-                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
+                ylabel = apply_custom_name(k, variable_names)*"₍₀₎", 
+                xlabel = apply_custom_name(state, variable_names)*"₍₋₁₎", 
                 color = pal[mod1(i, length(pal))],
                 label = "")
         end
@@ -3650,6 +3652,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     save_plots_name::Union{String, Symbol} = "conditional_forecast",
                                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE,
+                                    variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
                                     plot_attributes::Dict = Dict(),
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
@@ -3841,7 +3844,7 @@ function plot_conditional_forecast(𝓂::ℳ,
          
             cond_idx = findall(vcat(conditions,shocks)[v,:] .!= nothing)
                 
-            p = standard_subplot(Y[i,:], SS, replace_indices_in_symbol(full_SS[v]), gr_back, pal = pal)
+            p = standard_subplot(Y[i,:], SS, apply_custom_name(full_SS[v], variable_names), gr_back, pal = pal)
             
             if length(cond_idx) > 0
                 StatsPlots.scatter!(p,
