@@ -3550,6 +3550,12 @@ function plot_solution!(𝓂::ℳ,
                            :variable_names => variable_names
                            )
 
+    # Check that state is the same across all calls
+    if length(solution_active_plot_container) > 0
+        existing_state = solution_active_plot_container[1][:state]
+        @assert state == existing_state "Cannot combine plots with different state variables. Use plot_solution to start a new plot with state = $state"
+    end
+
     # Check for duplicates before adding
     no_duplicate = all(
         !(all((
