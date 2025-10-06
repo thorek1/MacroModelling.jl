@@ -888,7 +888,8 @@ function plot_model_estimates!(𝓂::ℳ,
 
     for (i,k) in enumerate(model_estimates_active_plot_container)
         StatsPlots.plot!(legend_plot,
-                        [NaN], 
+                        [NaN],
+                        color = pal[mod1.(i, length(pal))]',
                         legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                         label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
 
@@ -907,6 +908,7 @@ function plot_model_estimates!(𝓂::ℳ,
             StatsPlots.plot!(legend_plot,
                                     [NaN], 
                                     label = lbl,
+                                    color = pal[mod1.(length(model_estimates_active_plot_container) + i, length(pal))]',
                                     # color = pal[i]
                                     )
         end
@@ -2330,10 +2332,12 @@ function plot_irf!(𝓂::ℳ;
                             alpha = transparency,
                             lw = 0,  # This removes the lines around the bars
                             linecolor = :transparent,
+                            color = pal[mod1.(i, length(pal))]',
                             label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         elseif plot_type == :compare
             StatsPlots.plot!(legend_plot,
                             [NaN], 
+                            color = pal[mod1.(i, length(pal))]',
                             legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                             label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
@@ -2345,7 +2349,7 @@ function plot_irf!(𝓂::ℳ;
 
         max_periods = max(max_periods, size(k[:plot_data],2))
     end
-
+    
     sort!(joint_shocks)
     sort!(joint_variables)
 
@@ -4398,6 +4402,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                             [NaN], 
                             legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                             linecolor = :transparent,
+                            color = pal[mod1.(i, length(pal))]',
                             alpha = transparency,
                             linewidth = 0,
                             label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
