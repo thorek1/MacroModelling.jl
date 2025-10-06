@@ -2882,7 +2882,7 @@ function get_moments(𝓂::ℳ;
         
             if any(x -> contains(string(x), "◖"), axis3)
                 axis3_decomposed = decompose_name.(axis3)
-                axis3 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{" * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis3_decomposed]
+                axis3 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis3_decomposed]
             end
 
             if algorithm == :pruned_second_order
