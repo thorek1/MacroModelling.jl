@@ -56,6 +56,8 @@ For higher order perturbation solutions the decomposition additionally contains 
 
 If occasionally binding constraints are present in the model, they are not taken into account here.
 
+For comprehensive plotting documentation with detailed examples, see the [Plotting](@ref) section in the documentation.
+
 # Arguments
 - $MODEL®
 - $DATA®
@@ -1285,6 +1287,8 @@ The left axis shows the level, and the right axis the deviation from the relevan
 
 If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
 
+For comprehensive plotting documentation with detailed examples, see the [Plotting](@ref) section in the documentation.
+
 # Arguments
 - $MODEL®
 # Keyword Arguments
@@ -1898,6 +1902,8 @@ $(SIGNATURES)
 This function allows comparison or stacking of impulse repsonse functions for any combination of inputs.
 
 This function shares most of the signature and functionality of [`plot_irf`](@ref). Its main purpose is to append plots based on the inputs to previous calls of this function and the last call of [`plot_irf`](@ref). In the background it keeps a registry of the inputs and outputs and then plots the comparison or stacks the output.
+
+For comprehensive plotting documentation with detailed examples, see the [Plotting](@ref) section in the documentation.
 
 
 # Arguments
@@ -2930,7 +2936,9 @@ Plot conditional variance decomposition of the model.
 
 The vertical axis shows the share of the shocks variance contribution, and horizontal axis the period of the variance decomposition. The stacked bars represent each shocks variance contribution at a specific time horizon.
 
-If occasionally binding constraints are present in the model, they are not taken into account here. 
+If occasionally binding constraints are present in the model, they are not taken into account here.
+
+For comprehensive plotting documentation with detailed examples, see the [Plotting](@ref) section in the documentation. 
 
 # Arguments
 - $MODEL®
@@ -3181,6 +3189,8 @@ The relevant steady state is plotted along with the mapping from the chosen past
 In the case of pruned higher order solutions there are as many (latent) state vectors as the perturbation order. The first and third order baseline state vectors are the non-stochastic steady state and the second order baseline state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order baseline state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non-stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of infinitely many possible mappings.
 
 If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
+
+For comprehensive plotting documentation with detailed examples, see the [Plotting](@ref) section in the documentation.
 
 # Arguments
 - $MODEL®
@@ -3530,7 +3540,9 @@ Plot the conditional forecast given restrictions on endogenous variables and sho
 
 The left axis shows the level, and the right axis the deviation from the relevant steady state. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks and number of pages per shock.
 
-If occasionally binding constraints are present in the model, they are not taken into account here. 
+If occasionally binding constraints are present in the model, they are not taken into account here.
+
+For comprehensive plotting documentation with detailed examples, see the [Plotting](@ref) section in the documentation. 
 
 # Arguments
 - $MODEL®
