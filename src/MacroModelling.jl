@@ -7434,6 +7434,10 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
                 𝓂.parameter_values[ntrsct_idx[i]] = collect(values(parameters))[i]
             end
         end
+        
+        # Update undefined_parameters list by removing newly defined parameters
+        newly_defined = collect(keys(parameters))
+        𝓂.undefined_parameters = setdiff(𝓂.undefined_parameters, newly_defined)
     end
 
     if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
@@ -7508,6 +7512,11 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
             end
 
             𝓂.parameter_values[match_idx] = parameters[match_idx]
+        end
+        
+        # Update undefined_parameters list - if all parameters are provided via vector, clear the list
+        if length(parameters) == length(𝓂.parameter_values)
+            𝓂.undefined_parameters = Symbol[]
         end
     end
     if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end

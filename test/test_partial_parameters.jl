@@ -66,13 +66,18 @@ end
         ρ = 0.2
     end
     
-    # Test 2: Provide missing parameters via function call
+    # Test 2: Verify undefined parameters are tracked
+    @test length(RBC_later.undefined_parameters) > 0
+    
+    # Test 3: Provide missing parameters via function call as Dict
     params_dict = Dict(:α => 0.5, :β => 0.95, :δ => 0.02, :std_z => 0.01, :ρ => 0.2)
     
-    # Test 3: IRF with explicit parameters should work even when some are undefined in @parameters
-    # Note: This requires updating the undefined_parameters list when parameters are provided
+    # Test 4: IRF with explicit parameters should work even when some are undefined in @parameters
     irf_result = get_irf(RBC_later, parameters = params_dict, periods = 10)
     @test size(irf_result, 2) == 10
+    
+    # Test 5: After providing parameters via Dict, undefined_parameters should be cleared
+    @test length(RBC_later.undefined_parameters) == 0
     
     println("✓ All 'provide parameters later' tests passed")
 end
