@@ -375,9 +375,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             if algorithm == :first_order
                 algos = [:first_order]
             elseif algorithm in [:second_order, :pruned_second_order]
-                algos = [[:first_order], [:first_order, :second_order], [:first_order, :pruned_second_order], [:first_order, :second_order, :pruned_second_order]]
+                algos = [:first_order, :second_order, :pruned_second_order]
             elseif algorithm in [:third_order, :pruned_third_order]
-                algos = [[:first_order], [:first_order, :second_order], [:first_order, :third_order], [:second_order, :third_order], [:third_order, :pruned_third_order], [:first_order, :second_order, :third_order], [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]]
+                algos = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
             end
             
             for variables in vars
@@ -445,6 +445,14 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             ignore_obc = ignore_obc)
                         end
                     end
+                end
+            end
+
+            # Test plot_solution! functionality
+            if length(algos) > 1
+                plot_solution(m, states[1], algorithm = algos[1])
+                for algo in algos[2:end]
+                    plot_solution!(m, states[1], algorithm = algo, label = string(algo))
                 end
             end
 
