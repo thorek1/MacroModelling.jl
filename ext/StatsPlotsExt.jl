@@ -3452,19 +3452,85 @@ function _plot_solution_from_container(;
     alpha_reduction_factor = 0.7
     pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
     
+    # Create comparison of containers to detect differences
+    # Keep relevant keys for comparison: model_name, state, parameters, algorithm, ignore_obc, label
+    reduced_vector = [
+        Dict(k => d[k] for k in [:run_id, :label, :model_name, :state, :parameters, :algorithm, :ignore_obc] if haskey(d, k))
+        for d in solution_active_plot_container
+    ]
+    
+    diffdict = compare_args_and_kwargs(reduced_vector)
+    
+    # Build annotation for relevant input differences
+    annotate_diff_input = Pair{String,Any}[]
+    
+    push!(annotate_diff_input, "Plot label" => reduce(vcat, diffdict[:label]))
+    
+    # Add model name if different
+    if haskey(diffdict, :model_name)
+        push!(annotate_diff_input, "Model" => reduce(vcat, diffdict[:model_name]))
+    end
+    
+    # Add state if different (though we generally expect same state)
+    if haskey(diffdict, :state)
+        push!(annotate_diff_input, "State" => reduce(vcat, diffdict[:state]))
+    end
+    
+    # Add algorithm if different
+    if haskey(diffdict, :algorithm)
+        algo_labels = [String(a) for a in diffdict[:algorithm]]
+        push!(annotate_diff_input, "Algorithm" => algo_labels)
+    end
+    
+    # Add parameters if different
+    if haskey(diffdict, :parameters)
+        param_nms = diffdict[:parameters] |> keys |> collect |> sort
+        for param in param_nms
+            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
+            push!(annotate_diff_input, String(param) => result)
+        end
+    end
+    
+    # Add ignore_obc if different
+    if haskey(diffdict, :ignore_obc)
+        push!(annotate_diff_input, "Ignore OBC" => reduce(vcat, diffdict[:ignore_obc]))
+    end
+    
+    # Determine legend labels based on what differs
+    # If more than one input differs (besides label), use custom labels from diffdict
+    len_diff = length(solution_active_plot_container)
+    
     # Create legend
     legend_plot = StatsPlots.plot(framestyle = :none, legend = :inside) 
     
-    for (i, container) in enumerate(solution_active_plot_container)
-        StatsPlots.plot!([NaN], 
-                        color = pal[mod1(i, length(pal))],
-                        label = container[:algorithm_label])
-    end
-    
-    for (i, container) in enumerate(solution_active_plot_container)
-        StatsPlots.scatter!([NaN], 
+    if length(annotate_diff_input) > 2
+        # Multiple differences - use custom labels or plot labels
+        for (i, container) in enumerate(solution_active_plot_container)
+            label_text = container[:label] isa Symbol ? string(container[:label]) : container[:label]
+            StatsPlots.plot!([NaN], 
                             color = pal[mod1(i, length(pal))],
-                            label = container[:ss_label])
+                            label = string(label_text))
+        end
+        
+        for (i, container) in enumerate(solution_active_plot_container)
+            label_text = container[:label] isa Symbol ? string(container[:label]) : container[:label]
+            StatsPlots.scatter!([NaN], 
+                                color = pal[mod1(i, length(pal))],
+                                label = string(label_text) * " (SS)")
+        end
+    else
+        # Single difference (or just labels differ) - use algorithm labels
+        for (i, container) in enumerate(solution_active_plot_container)
+            StatsPlots.plot!([NaN], 
+                            color = pal[mod1(i, length(pal))],
+                            label = container[:algorithm_label])
+        end
+        
+        for (i, container) in enumerate(solution_active_plot_container)
+            StatsPlots.scatter!([NaN], 
+                                color = pal[mod1(i, length(pal))],
+                                label = container[:ss_label])
+        end
     end
     
     # Collect all variables to plot
@@ -3545,9 +3611,21 @@ function _plot_solution_from_container(;
             
             ppp = StatsPlots.plot(pp...; attributes...)
             
-            p = StatsPlots.plot(ppp,
-                            legend_plot, 
-                            layout = StatsPlots.grid(2, 1, heights = length(solution_active_plot_container) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
+            # Build plot elements array
+            plot_elements = [ppp, legend_plot]
+            layout_heights = [15, 1]
+            
+            # Add relevant input differences table if multiple inputs differ
+            if length(annotate_diff_input) > 2
+                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
+                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+                push!(plot_elements, ppp_input_diff)
+                push!(layout_heights, 5)
+            end
+            
+            # Create final plot with appropriate layout
+            p = StatsPlots.plot(plot_elements...,
+                            layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
                             plot_title = "Model: "*model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                             attributes_redux...
             )
@@ -3572,9 +3650,21 @@ function _plot_solution_from_container(;
     if length(pp) > 0
         ppp = StatsPlots.plot(pp...; attributes...)
         
-        p = StatsPlots.plot(ppp,
-                        legend_plot, 
-                        layout = StatsPlots.grid(2, 1, heights = length(solution_active_plot_container) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
+        # Build plot elements array
+        plot_elements = [ppp, legend_plot]
+        layout_heights = [15, 1]
+        
+        # Add relevant input differences table if multiple inputs differ
+        if length(annotate_diff_input) > 2
+            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
+            ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+            push!(plot_elements, ppp_input_diff)
+            push!(layout_heights, 5)
+        end
+        
+        # Create final plot with appropriate layout
+        p = StatsPlots.plot(plot_elements...,
+                        layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
                         plot_title = "Model: "*model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
                         attributes_redux...
         )
