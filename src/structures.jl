@@ -289,6 +289,7 @@ mutable struct ℳ
     parameters_as_function_of_parameters::Vector{Symbol}
     parameters::Vector{Symbol}
     parameter_values::Vector{Float64}
+    undefined_parameters::Vector{Symbol}
 
     guess::Dict{Symbol, Float64}
 

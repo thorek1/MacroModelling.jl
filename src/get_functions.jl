@@ -1,4 +1,16 @@
 """
+Helper function to check if all parameters are defined and provide informative error messages.
+Returns true if all parameters are defined, false otherwise.
+"""
+function check_parameters_defined(𝓂::ℳ)::Bool
+    if length(𝓂.undefined_parameters) > 0
+        @error "Model has undefined parameters: " * repr(𝓂.undefined_parameters) * "\nPlease define all parameters before computing the non-stochastic steady state or generating output."
+        return false
+    end
+    return true
+end
+
+"""
 $(SIGNATURES)
 Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. When the defaults are used, the filter is selected automatically—Kalman for first order solutions and inversion otherwise—and smoothing is only enabled when the Kalman filter is active. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 
@@ -1246,6 +1258,15 @@ function get_irf(𝓂::ℳ;
     
     # @timeit_debug timer "Solve model" begin
 
+    # Check if all parameters are defined before attempting to solve
+    if parameters === nothing && length(𝓂.undefined_parameters) > 0
+        @error "Cannot compute IRFs. Model has undefined parameters: " * repr(𝓂.undefined_parameters) * "\nPlease define all parameters using the parameters keyword argument or in a previous @parameters call."
+        # Return empty KeyedArray with proper structure
+        var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+        shock_idx = shocks == :none ? [:no_shock] : (shocks isa Symbol ? [shocks] : collect(shocks))
+        return KeyedArray(zeros(length(var_idx), periods, length(shock_idx)), Variables = 𝓂.var[var_idx], Periods = 1:periods, Shocks = shock_idx)
+    end
+    
     solve!(𝓂, 
             parameters = parameters, 
             opts = opts,
