@@ -5,10 +5,11 @@ using Random, Dates
 # TODO: 
 # - write tests and docs for the new functions
 # - revisit plot_solution + ! version of it
-# - inform user when settings have no effect (and reset them) e.g. warmup itereations is only relevant ofr inversion filter
-# - test across different models
+# - check maxlog handling, info warnings
 
 # DONE:
+# - inform user when settings have no effect (and reset them) e.g. warmup iterations is only relevant for inversion filter
+# - test across different models
 # - x axis should be Int not floats for short x axis (e.g. 10)
 # - write model estimates func in get_functions
 # - write the plots! funcs for all other alias funcs
@@ -44,9 +45,15 @@ include("../models/JQ_2012_RBC.jl")
 
 include("../models/Backus_Kehoe_Kydland_1992.jl")
 
-include("../models/Ghironi_Melitz_2005.jl")
+include("../models/Caldara_et_al_2012.jl")
+SS(Caldara_et_al_2012, derivatives = false, algorithm = :third_order)
+SSS(Caldara_et_al_2012, derivatives = false)
+SS(Caldara_et_al_2012, derivatives = false)
 
-plot_irf(Ghironi_Melitz_2005)
+include("../models/Ghironi_Melitz_2005.jl")
+SSS(Ghironi_Melitz_2005, derivatives = false)
+SS(Ghironi_Melitz_2005, derivatives = false)
+plot_girf(Ghironi_Melitz_2005, ignore_obc = true)
 
 get_variables(Gali_2015_chapter_3_nonlinear)
 
@@ -72,6 +79,7 @@ plot_irf!(JQ_2012_RBC, shocks = get_shocks(JQ_2012_RBC)[2], shock_size = 100)
 using Random
 include("../models/Gali_2015_chapter_3_obc.jl")
 
+plot_girf(Gali_2015_chapter_3_obc, ignore_obc = false)
 
 Random.seed!(14)
 plot_simulation(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0, ignore_obc = true)
@@ -230,6 +238,8 @@ observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :
 data = rekey(data, :Variable => observables)
 
 
+plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], filter = :inversion, smooth = true)
+
 plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
 
 plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 3, :calfa => 0.24])
@@ -301,13 +311,14 @@ plot_model_estimates!(Smets_Wouters_2003,
                     label = "inv",
                     filter = :inversion)
 
+
 using CSV, DataFrames
 include("../models/FS2000.jl")
 using Dates
 
 # load data
 dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = labels)
+# data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = labels)
 data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat,1))
 data = log.(data)
 
@@ -318,10 +329,25 @@ observables = sort(Symbol.("log_".*names(dat)))
 data = data(observables,:)
 
 plot_model_estimates(FS2000, data, 
-                    filter = :inversion
+                    filter = :inversion,smooth = true
                     # presample_periods = 100
                     )
 
+plot_model_estimates(FS2000, data, 
+                    # filter = :inversion,
+                    smooth = true,
+                    warmup_iterations = 15,
+                    # presample_periods = 100
+                    )
+                    
+plot_model_estimates(FS2000, data, 
+                    algorithm = :pruned_second_order,
+                    filter = :kalman,
+                    smooth = true,
+                    warmup_iterations = 15,
+                    # presample_periods = 100
+                    )
+                    
 plot_model_estimates!(FS2000, data, 
                     filter = :inversion,
                     warmup_iterations = 150,
@@ -347,6 +373,25 @@ plot_model_estimates(FS2000, data, presample_periods = 3, shock_decomposition = 
 # transparency = 1.0,
 # plots_per_page = 4,
 save_plots = true)
+
+plot_irf(FS2000, algorithm = :pruned_second_order)
+
+plot_irf(FS2000, generalised_irf = true)
+
+Random.seed!(14)
+plot_irf(FS2000, generalised_irf = true, algorithm = :pruned_second_order)
+
+Random.seed!(14)
+plot_irf(FS2000, generalised_irf = true, algorithm = :pruned_second_order, shocks = :simulate)
+
+Random.seed!(14)
+plot_irf(FS2000, shocks = :simulate)
+
+samp = randn(FS2000.timings.nExo, 10)
+
+plot_irf(FS2000, generalised_irf = true, algorithm = :pruned_second_order, shocks = samp)
+
+plot_irf(FS2000, generalised_irf = true, algorithm = :pruned_second_order)
 
 include("../models/GNSS_2010.jl")
 
