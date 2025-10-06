@@ -2725,11 +2725,11 @@ function get_moments(𝓂::ℳ;
         @info "Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call." maxlog = DEFAULT_MAXLOG
     end 
 
-    if (!variance && !standard_deviation && !non_stochastic_steady_state && !mean)
+    if (!variance && !standard_deviation && !non_stochastic_steady_state && !mean && !covariance)
         derivatives = false
     end
 
-    if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state || mean)
+    if parameter_derivatives != :all && (variance || standard_deviation || non_stochastic_steady_state || mean || covariance)
         derivatives = true
     end
 
