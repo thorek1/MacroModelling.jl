@@ -3183,6 +3183,8 @@ In the case of pruned higher order solutions there are as many (latent) state ve
 
 If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
 
+To combine multiple solution plots (e.g., for different algorithms, parameters, or `ignore_obc` settings), use [`plot_solution!`](@ref) after the initial `plot_solution` call. Note that all plots must use the same `state` variable.
+
 # Arguments
 - $MODEL®
 - `state` [Type: `Union{Symbol,String}`]: state variable to be shown on x-axis.
@@ -3235,7 +3237,12 @@ end
     std_z_delta = .005
 end
 
+# Single algorithm
 plot_solution(RBC_CME, :k)
+
+# Multiple algorithms combined
+plot_solution(RBC_CME, :k, algorithm = :first_order)
+plot_solution!(RBC_CME, :k, algorithm = :second_order)
 ```
 """
 function plot_solution(𝓂::ℳ,
