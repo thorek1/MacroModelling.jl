@@ -48,6 +48,7 @@ import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
 import DataStructures: CircularBuffer
+import QuasiMonteCarlo
 import MacroTools: unblock, postwalk, prewalk, @capture, flatten
 
 # import SpeedMapping: speedmapping
