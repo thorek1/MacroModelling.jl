@@ -3188,7 +3188,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - `state` [Type: `Union{Symbol,String}`]: state variable to be shown on x-axis.
 # Keyword Arguments
 - $VARIABLES®
-- `algorithm` [Default: `:first_order`, Type: Union{Symbol,Vector{Symbol}}]: solution algorithm for which to show the IRFs. Can be more than one, e.g.: `[:second_order,:pruned_third_order]`"
+- $ALGORITHM®
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS®
 - $IGNORE_OBC®
@@ -3330,7 +3330,7 @@ function plot_solution(𝓂::ℳ,
     end
 
     # Get steady state for the algorithm
-    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, stochastic = algorithm != :first_order, return_variables_only = true, derivatives = false,
                                     tol = opts.tol,
                                     verbose = opts.verbose,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
@@ -3463,12 +3463,58 @@ function _plot_solution_from_container(;
     diffdict = Dict{Symbol,Any}()
     
     if length(solution_active_plot_container) > 1
-        reduced_vector = [
-            Dict(k => d[k] for k in [:run_id, :label, :model_name, :state, :parameters, :algorithm, :ignore_obc] if haskey(d, k))
+        no_duplicate = all(
+            !(all((
+                get(dict, :parameters, nothing) == solution_active_plot_container[end][:parameters],
+                get(dict, :model_name, nothing) == solution_active_plot_container[end][:model_name],
+                get(dict, :algorithm, nothing) == solution_active_plot_container[end][:algorithm],
+                get(dict, :ignore_obc, nothing) == solution_active_plot_container[end][:ignore_obc],
+                all(get(dict, k, nothing) == get(solution_active_plot_container[end], k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
+            )))
+            for dict in solution_active_plot_container[1:end-1]
+        ) # "New plot must be different from previous plot. Use the version without ! to plot."
+
+        if !no_duplicate
+            @info "Plot with same parameters already exists. Using previous plot data to create plot."
+
+            pop!(solution_active_plot_container)
+        end
+
+        if length(solution_active_plot_container) == 0
+            diffdict[:label] = [solution_active_plot_container[1][:label]]
+        else
+            # 1. Keep only certain keys from each dictionary
+            reduced_vector = [
+                Dict(k => d[k] for k in vcat(:run_id, :label, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
+                for d in solution_active_plot_container
+            ]
+
+            diffdict = compare_args_and_kwargs(reduced_vector)
+
+            # 2. Group the original vector by :model_name
+            grouped_by_model = Dict{Any, Vector{Dict}}()
+
+            for d in solution_active_plot_container[1:end-1]
+                model = d[:model_name]
+                d_sub = Dict(k => d[k] for k in setdiff(keys(solution_active_plot_container[end]), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
+                push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
+            end
+
+            model_names = []
+
             for d in solution_active_plot_container
-        ]
-        
-        diffdict = compare_args_and_kwargs(reduced_vector)
+                push!(model_names, d[:model_name])
+            end
+
+            model_names = unique(model_names)
+
+            for model in model_names
+                if length(grouped_by_model[model]) > 1
+                    diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
+                    diffdict = merge_by_runid(diffdict, diffdict_grouped)
+                end
+            end
+        end
     else
         # For single container, create a diffdict with just the label
         diffdict[:label] = [solution_active_plot_container[1][:label]]
@@ -3560,7 +3606,7 @@ function _plot_solution_from_container(;
             StatsPlots.scatter!([NaN], 
                                 color = pal[mod1(i, length(pal))],
                                 legend_title = legend_title_ss,
-                                label = label_text * " (SS)")
+                                label = label_text * " (relevant SS)")
         end
     end
     
@@ -3734,13 +3780,73 @@ end
 
 
 """
+
 $(SIGNATURES)
-Add a solution plot for another algorithm to combine with previous plot_solution or plot_solution! calls.
+Add another model variant to the previous plot of the solution. 
 
-This function works like `plot_solution` but adds to the current plot container instead of starting fresh.
-Multiple calls to `plot_solution!` can be combined to compare different solution algorithms.
+Each plot shows the relationship between the chosen state (defined in `state`) and one of the chosen variables (defined in `variables`).
 
-See [`plot_solution`](@ref) for full documentation of arguments.
+The relevant steady state is plotted along with the mapping from the chosen past state to one present variable per plot. All other (non-chosen) states remain in the relevant steady state.
+
+In the case of pruned higher order solutions there are as many (latent) state vectors as the perturbation order. The first and third order baseline state vectors are the non-stochastic steady state and the second order baseline state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order baseline state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non-stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of infinitely many possible mappings.
+
+If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
+
+# Arguments
+- $MODEL®
+- `state` [Type: `Union{Symbol,String}`]: state variable to be shown on x-axis.
+# Keyword Arguments
+- $VARIABLES®
+- $ALGORITHM®
+- `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
+- $PARAMETERS®
+- $IGNORE_OBC®
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMAT®
+- $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"solution"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
+- `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
+- $PLOT_ATTRIBUTES®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
+
+# Examples
+```julia
+using MacroModelling, StatsPlots
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+plot_solution(RBC_CME, :k)
+
+plot_solution!(RBC_CME, :k, algorithm = :pruned_second_order)
+```
 """
 function plot_solution!(𝓂::ℳ,
                         state::Union{Symbol,String};
@@ -3832,7 +3938,7 @@ function plot_solution!(𝓂::ℳ,
     end
 
     # Get steady state for the algorithm
-    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, stochastic = algorithm != :first_order, return_variables_only = true, derivatives = false,
                                     tol = opts.tol,
                                     verbose = opts.verbose,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
