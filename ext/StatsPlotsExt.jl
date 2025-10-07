@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, VARIABLE_NAMES®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONNARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
 import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -94,7 +94,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
 - $LABEL®
-- $VARIABLE_NAMES®
+- $RENAME_DICTIONNARY®
 - $PLOT_ATTRIBUTES®
 - $QME®
 - $SYLVESTER®
@@ -159,7 +159,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 transparency::Float64 = DEFAULT_TRANSPARENCY,
                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
-                                variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
+                                rename_dictionnary::Dict{Symbol, String} = Dict{Symbol, String}(),
                                 plot_attributes::Dict = Dict(),
                                 verbose::Bool = DEFAULT_VERBOSE,
                                 tol::Tolerances = Tolerances(),
@@ -211,9 +211,9 @@ function plot_model_estimates(𝓂::ℳ,
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
     shock_idx   = shocks == :none ? [] : parse_shocks_input_to_index(shocks, 𝓂.timings)
 
-    variable_names_display = [apply_custom_name(𝓂.timings.var[v], variable_names) for v in var_idx]
+    variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
     
-    shock_names_display = [apply_custom_name(𝓂.timings.exo[s], variable_names) * "₍ₓ₎" for s in shock_idx]
+    shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) * "₍ₓ₎" for s in shock_idx]
     
     legend_columns = 1
 
@@ -636,7 +636,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
-                                variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
+                                rename_dictionnary::Dict{Symbol, String} = Dict{Symbol, String}(),
                                 plot_attributes::Dict = Dict(),
                                 verbose::Bool = DEFAULT_VERBOSE,
                                 tol::Tolerances = Tolerances(),
@@ -688,9 +688,9 @@ function plot_model_estimates!(𝓂::ℳ,
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
     shock_idx   = parse_shocks_input_to_index(shocks, 𝓂.timings)
 
-    variable_names_display = [apply_custom_name(𝓂.timings.var[v], variable_names) for v in var_idx]
+    variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
     
-    shock_names_display = [apply_custom_name(𝓂.timings.exo[s], variable_names) * "₍ₓ₎" for s in shock_idx]
+    shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) * "₍ₓ₎" for s in shock_idx]
     
     legend_columns = 1
 
@@ -1377,7 +1377,7 @@ function plot_irf(𝓂::ℳ;
                     generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
-                    variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
+                    rename_dictionnary::Dict{Symbol, String} = Dict{Symbol, String}(),
                     plot_attributes::Dict = Dict(),
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
@@ -1495,12 +1495,12 @@ function plot_irf(𝓂::ℳ;
     elseif shocks == :none
         shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
-        shock_names_display = [apply_custom_name(𝓂.timings.exo[s], variable_names) for s in shock_idx]
+        shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) for s in shock_idx]
     else
         shock_names_display = ["shock_matrix"]
     end
     
-    variable_names_display = [apply_custom_name(𝓂.timings.var[v], variable_names) for v in var_idx]
+    variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
 
     while length(irf_active_plot_container) > 0
         pop!(irf_active_plot_container)
@@ -2021,7 +2021,7 @@ function plot_irf!(𝓂::ℳ;
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                     plot_type::Symbol = DEFAULT_PLOT_TYPE,
-                    variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
+                    rename_dictionnary::Dict{Symbol, String} = Dict{Symbol, String}(),
                     plot_attributes::Dict = Dict(),
                     transparency::Float64 = DEFAULT_TRANSPARENCY,
                     verbose::Bool = DEFAULT_VERBOSE,
@@ -2138,12 +2138,12 @@ function plot_irf!(𝓂::ℳ;
     elseif shocks == :none
         shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
-        shock_names_display = [apply_custom_name(𝓂.timings.exo[s], variable_names) for s in shock_idx]
+        shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) for s in shock_idx]
     else
         shock_names_display = ["shock_matrix"]
     end
     
-    variable_names_display = [apply_custom_name(𝓂.timings.var[v], variable_names) for v in var_idx]
+    variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
 
     args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
@@ -3014,7 +3014,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 save_plots_name::Union{String, Symbol} = "fevd",
                                                 save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE, 
-                                                variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
+                                                rename_dictionnary::Dict{Symbol, String} = Dict{Symbol, String}(),
                                                 plot_attributes::Dict = Dict(),
                                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
                                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
@@ -3093,18 +3093,18 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     for k in vars_to_plot
         if gr_back
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
-            title = apply_custom_name(k, variable_names), 
+            title = apply_custom_name(k, rename_dictionnary), 
             bar_position = :stack,
             color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
             linecolor = :transparent,
             legend = :none))
         else
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
-            title = apply_custom_name(k, variable_names), 
+            title = apply_custom_name(k, rename_dictionnary), 
             bar_position = :stack, 
             color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
             linecolor = :transparent,
-            label = reshape(string.([apply_custom_name(s, variable_names) for s in shocks_to_plot]),1,length(shocks_to_plot))))
+            label = reshape(string.([apply_custom_name(s, rename_dictionnary) for s in shocks_to_plot]),1,length(shocks_to_plot))))
         end
 
         if !(plot_count % plots_per_page == 0)
@@ -3115,7 +3115,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             ppp = StatsPlots.plot(pp...; attributes...)
             
             pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
-                                label = reshape(string.([apply_custom_name(s, variable_names) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
+                                label = reshape(string.([apply_custom_name(s, rename_dictionnary) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
                                 linewidth = 0 , 
                                 linecolor = :transparent,
                                 framestyle = :none, 
@@ -3148,7 +3148,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         ppp = StatsPlots.plot(pp...; attributes...)
 
         pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
-                            label = reshape(string.([apply_custom_name(s, variable_names) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
+                            label = reshape(string.([apply_custom_name(s, rename_dictionnary) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
                             linewidth = 0 , 
                             linecolor = :transparent,
                             framestyle = :none, 
@@ -3271,7 +3271,7 @@ function plot_solution(𝓂::ℳ,
                         save_plots_name::Union{String, Symbol} = "solution",
                         save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                         plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
-                        variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
+                        rename_dictionnary::Dict{Symbol, String} = Dict{Symbol, String}(),
                         plot_attributes::Dict = Dict(),
                         verbose::Bool = DEFAULT_VERBOSE,
                         tol::Tolerances = Tolerances(),
@@ -4151,7 +4151,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     save_plots_name::Union{String, Symbol} = "conditional_forecast",
                                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE,
-                                    variable_names::Dict{Symbol, String} = Dict{Symbol, String}(),
+                                    rename_dictionnary::Dict{Symbol, String} = Dict{Symbol, String}(),
                                     plot_attributes::Dict = Dict(),
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
@@ -4343,7 +4343,7 @@ function plot_conditional_forecast(𝓂::ℳ,
          
             cond_idx = findall(vcat(conditions,shocks)[v,:] .!= nothing)
                 
-            p = standard_subplot(Y[i,:], SS, apply_custom_name(full_SS[v], variable_names), gr_back, pal = pal)
+            p = standard_subplot(Y[i,:], SS, apply_custom_name(full_SS[v], rename_dictionnary), gr_back, pal = pal)
             
             if length(cond_idx) > 0
                 StatsPlots.scatter!(p,
