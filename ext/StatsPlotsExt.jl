@@ -3380,7 +3380,7 @@ function plot_solution(𝓂::ℳ,
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, �.timings) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
 
