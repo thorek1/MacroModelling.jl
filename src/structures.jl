@@ -422,6 +422,7 @@ mutable struct ℳ
     third_order_derivatives::Tuple{AbstractMatrix{<: Real},Function}
     third_order_derivatives_parameters::Tuple{AbstractMatrix{<: Real},Function}
     third_order_derivatives_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
+    dyn_equations_func::Function
 
     # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
     # model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}

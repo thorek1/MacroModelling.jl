@@ -6982,6 +6982,28 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
 
     𝓂.jacobian = buffer, func_exprs
 
+    # Generate dynamic equations function
+    # This function evaluates the dynamic equations themselves (not derivatives)
+    # and fills a pre-allocated residual vector
+    dyn_eqs_vector = collect(dyn_equations)
+    
+    lennz_dyn_eqs = count(!iszero, dyn_eqs_vector)
+    
+    if lennz_dyn_eqs > nnz_parallel_threshold
+        parallel_dyn = Symbolics.ShardedForm(1500,4)
+    else
+        parallel_dyn = Symbolics.SerialForm()
+    end
+    
+    _, func_dyn_eqs = Symbolics.build_function(dyn_eqs_vector, 𝔓, 𝔙, 
+                                            cse = cse, 
+                                            skipzeros = skipzeros, 
+                                            parallel = parallel_dyn,
+                                            expression_module = @__MODULE__,
+                                            expression = Val(false))::Tuple{<:Function, <:Function}
+    
+    𝓂.dyn_equations_func = func_dyn_eqs
+
 
     ∇₁_parameters = derivatives[1][2][:,1:nps]
 
