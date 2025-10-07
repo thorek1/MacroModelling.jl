@@ -3729,9 +3729,6 @@ function get_dynamic_residuals(𝓂::ℳ,
                                shocks::Vector{Float64};
                                parameters::Union{Vector{Float64}, Nothing} = nothing)
     
-    # Use model's parameters if not provided
-    params = parameters === nothing ? 𝓂.parameter_values : parameters
-    
     # Ensure the model has been solved (which generates the function)
     if 𝓂.dyn_equations_func === (x -> x)
         error("Dynamic equations function not yet generated. Call solve!(model) first.")
@@ -3749,28 +3746,46 @@ function get_dynamic_residuals(𝓂::ℳ,
     present = variables[n_vars+1:2*n_vars]
     future = variables[2*n_vars+1:3*n_vars]
     
-    # Get indices
+    # Construct the combined parameter and steady state vector
+    # The generated function expects 𝔓 = [parameters, calibration_parameters, steady_state_values]
+    if parameters === nothing
+        base_params = 𝓂.parameter_values
+    else
+        base_params = parameters
+    end
+    
+    # Extended parameters include regular parameters plus calibration equation parameters
+    # For now, we don't handle calibration parameters in this helper, so they're zero
+    pars_ext = vcat(base_params, zeros(length(𝓂.calibration_equations_parameters)))
+    
+    # Steady state values come from the present state at the appropriate indices
+    dyn_ss_idx = aux_idx.dyn_ss_idx
+    SS_vals = present[dyn_ss_idx]
+    
+    # Construct full parameter vector 𝔓 = [pars_ext, SS_vals]
+    params_and_SS = vcat(pars_ext, SS_vals)
+    
+    # Construct variable vector 𝔙 in the order: [future, present, past, shocks]
     dyn_var_future_idx = aux_idx.dyn_var_future_idx
     dyn_var_present_idx = aux_idx.dyn_var_present_idx
     dyn_var_past_idx = aux_idx.dyn_var_past_idx
     
-    # Construct variable vector in the order expected by the function: [future, present, past, shocks]
-    var_vec = zeros(length(dyn_var_future_idx) + length(dyn_var_present_idx) + 
-                   length(dyn_var_past_idx) + length(shocks))
+    n_future = length(dyn_var_future_idx)
+    n_present = length(dyn_var_present_idx)
+    n_past = length(dyn_var_past_idx)
     
-    var_vec[1:length(dyn_var_future_idx)] = future[dyn_var_future_idx]
-    var_vec[length(dyn_var_future_idx)+1:length(dyn_var_future_idx)+length(dyn_var_present_idx)] = 
-        present[dyn_var_present_idx]
-    var_vec[length(dyn_var_future_idx)+length(dyn_var_present_idx)+1:
-            length(dyn_var_future_idx)+length(dyn_var_present_idx)+length(dyn_var_past_idx)] = 
-        past[dyn_var_past_idx]
+    var_vec = zeros(n_future + n_present + n_past + length(shocks))
+    
+    var_vec[1:n_future] = future[dyn_var_future_idx]
+    var_vec[n_future+1:n_future+n_present] = present[dyn_var_present_idx]
+    var_vec[n_future+n_present+1:n_future+n_present+n_past] = past[dyn_var_past_idx]
     var_vec[end-length(shocks)+1:end] = shocks
     
     # Allocate residual vector
     residual = zeros(length(𝓂.dyn_equations))
     
-    # Call the generated function
-    𝓂.dyn_equations_func(residual, params, var_vec)
+    # Call the generated function: dyn_equations_func!(residual, 𝔓, 𝔙)
+    𝓂.dyn_equations_func(residual, params_and_SS, var_vec)
     
     return residual
 end
