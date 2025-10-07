@@ -4345,7 +4345,36 @@ function plot_conditional_forecast(𝓂::ℳ,
     while length(conditional_forecast_active_plot_container) > 0
         pop!(conditional_forecast_active_plot_container)
     end
-    
+
+    # 1. Define the number of variables and shocks for clarity
+    n_shocks = 𝓂.timings.nExo
+    n_vars = length(var_names) - n_shocks
+
+    # 2. Create a boolean mask to identify shocks (true) and variables (false) BEFORE sorting
+    is_shock_mask = vcat(falses(n_vars), trues(n_shocks))
+
+    # 3. Get the new display names from the dictionary
+    var_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names]
+
+    # 4. Get the permutation that will sort the display names alphabetically
+    var_sort_perm = sortperm(var_names_display)
+
+    # 5. Apply this single permutation to all relevant arrays to keep them in sync
+    # Apply to data matrices
+    Y = Y[var_sort_perm, :]
+    conditions = conditions[var_sort_perm, :]
+    shocks = shocks[var_sort_perm, :]
+    reference_steady_state = reference_steady_state[var_sort_perm]
+    var_idx = var_idx[var_sort_perm]
+
+    # Apply to the mask and the display names themselves
+    is_shock_mask_sorted = is_shock_mask[var_sort_perm]
+    var_names_display_sorted = var_names_display[var_sort_perm]
+
+    # 6. Use the sorted mask to separate the sorted display names into two distinct lists
+    sorted_variable_names_display = var_names_display_sorted[.!is_shock_mask_sorted]
+    sorted_shock_names_display = var_names_display_sorted[is_shock_mask_sorted]
+
     args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
                            :label => label,
@@ -4373,22 +4402,11 @@ function plot_conditional_forecast(𝓂::ℳ,
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
 
-    # Sort variables alphabetically by display name and prepare display names
-    var_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names]
-    var_sort_perm = sortperm(var_names_display)
-    var_names_sorted = var_names[var_sort_perm]
-    var_idx = var_idx[var_sort_perm]
-    reference_steady_state = reference_steady_state[var_sort_perm]
-    Y = Y[var_sort_perm, :]
-    conditions = conditions[var_sort_perm, :]
-    shocks = shocks[var_sort_perm, :]
-
-    args_and_kwargs = merge(args_and_kwargs, Dict(
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
-                           :variable_names => var_names_sorted[1:end - 𝓂.timings.nExo],
-                           :shock_names => var_names_sorted[end - 𝓂.timings.nExo + 1:end]
-                           ))
+                            :variable_names => sorted_variable_names_display, # Use the new sorted variable names
+                            :shock_names => sorted_shock_names_display      # Use the new sorted shock names
+                           )
     
     push!(conditional_forecast_active_plot_container, args_and_kwargs)
 
@@ -4747,15 +4765,34 @@ function plot_conditional_forecast!(𝓂::ℳ,
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
     end
 
-    # Sort variables alphabetically by display name and prepare display names
+    # 1. Define the number of variables and shocks for clarity
+    n_shocks = 𝓂.timings.nExo
+    n_vars = length(var_names) - n_shocks
+
+    # 2. Create a boolean mask to identify shocks (true) and variables (false) BEFORE sorting
+    is_shock_mask = vcat(falses(n_vars), trues(n_shocks))
+
+    # 3. Get the new display names from the dictionary
     var_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names]
+
+    # 4. Get the permutation that will sort the display names alphabetically
     var_sort_perm = sortperm(var_names_display)
-    var_names_sorted = var_names[var_sort_perm]
-    var_idx = var_idx[var_sort_perm]
-    reference_steady_state = reference_steady_state[var_sort_perm]
+
+    # 5. Apply this single permutation to all relevant arrays to keep them in sync
+    # Apply to data matrices
     Y = Y[var_sort_perm, :]
     conditions = conditions[var_sort_perm, :]
     shocks = shocks[var_sort_perm, :]
+    reference_steady_state = reference_steady_state[var_sort_perm]
+    var_idx = var_idx[var_sort_perm]
+
+    # Apply to the mask and the display names themselves
+    is_shock_mask_sorted = is_shock_mask[var_sort_perm]
+    var_names_display_sorted = var_names_display[var_sort_perm]
+
+    # 6. Use the sorted mask to separate the sorted display names into two distinct lists
+    sorted_variable_names_display = var_names_display_sorted[.!is_shock_mask_sorted]
+    sorted_shock_names_display = var_names_display_sorted[is_shock_mask_sorted]
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
@@ -4794,8 +4831,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
-                           :variable_names => var_names_sorted[1:end - 𝓂.timings.nExo],
-                           :shock_names => var_names_sorted[end - 𝓂.timings.nExo + 1:end]
+                           :variable_names => sorted_variable_names_display, # Use the new sorted variable names
+                           :shock_names => sorted_shock_names_display      # Use the new sorted shock names
                            )
                            
     no_duplicate = all(
