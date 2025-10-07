@@ -4002,6 +4002,11 @@ function plot_solution!(𝓂::ℳ,
 
     vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
 
+    # Sort variables alphabetically by display name
+    vars_display_names = [apply_custom_name(v, rename_dictionnary) for v in vars_to_plot]
+    vars_sort_perm = sortperm(vars_display_names)
+    vars_to_plot = vars_to_plot[vars_sort_perm]
+
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
     state_selector = state .== 𝓂.var
