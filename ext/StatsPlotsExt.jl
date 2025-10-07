@@ -4346,34 +4346,35 @@ function plot_conditional_forecast(𝓂::ℳ,
         pop!(conditional_forecast_active_plot_container)
     end
 
-    # 1. Define the number of variables and shocks for clarity
-    n_shocks = 𝓂.timings.nExo
-    n_vars = length(var_names) - n_shocks
+    # Create display names for variables and shocks
+    variable_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    shock_names_display = [apply_custom_name(s, rename_dictionnary) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
-    # 2. Create a boolean mask to identify shocks (true) and variables (false) BEFORE sorting
-    is_shock_mask = vcat(falses(n_vars), trues(n_shocks))
+    # Get original indices for variables and shocks
+    var_indices = findall(v -> v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo), var_names)
+    shock_indices = findall(s -> s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo), var_names)
 
-    # 3. Get the new display names from the dictionary
-    var_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names]
+    # Get sorting permutations for variables and shocks separately
+    var_sort_perm = sortperm(variable_names_display)
+    shock_sort_perm = sortperm(shock_names_display)
 
-    # 4. Get the permutation that will sort the display names alphabetically
-    var_sort_perm = sortperm(var_names_display)
+    # Apply sorting permutations to original indices
+    sorted_var_indices = var_indices[var_sort_perm]
+    sorted_shock_indices = shock_indices[shock_sort_perm]
 
-    # 5. Apply this single permutation to all relevant arrays to keep them in sync
-    # Apply to data matrices
-    Y = Y[var_sort_perm, :]
+    # Combine sorted indices
+    combined_sort_perm = vcat(sorted_var_indices, sorted_shock_indices)
+
+    # Apply the combined permutation to all relevant arrays
+    Y = Y[combined_sort_perm, :]
     conditions = conditions[var_sort_perm, :]
-    shocks = shocks[var_sort_perm, :]
-    reference_steady_state = reference_steady_state[var_sort_perm]
+    shocks = shocks[shock_sort_perm, :]
+    reference_steady_state = reference_steady_state[combined_sort_perm]
     var_idx = var_idx[var_sort_perm]
 
-    # Apply to the mask and the display names themselves
-    is_shock_mask_sorted = is_shock_mask[var_sort_perm]
-    var_names_display_sorted = var_names_display[var_sort_perm]
-
-    # 6. Use the sorted mask to separate the sorted display names into two distinct lists
-    sorted_variable_names_display = var_names_display_sorted[.!is_shock_mask_sorted]
-    sorted_shock_names_display = var_names_display_sorted[is_shock_mask_sorted]
+    # Get the sorted display names
+    sorted_variable_names_display = sort(variable_names_display)
+    sorted_shock_names_display = sort(shock_names_display)
 
     args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
@@ -4765,34 +4766,35 @@ function plot_conditional_forecast!(𝓂::ℳ,
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
     end
 
-    # 1. Define the number of variables and shocks for clarity
-    n_shocks = 𝓂.timings.nExo
-    n_vars = length(var_names) - n_shocks
+    # Create display names for variables and shocks
+    variable_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    shock_names_display = [apply_custom_name(s, rename_dictionnary) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
-    # 2. Create a boolean mask to identify shocks (true) and variables (false) BEFORE sorting
-    is_shock_mask = vcat(falses(n_vars), trues(n_shocks))
+    # Get original indices for variables and shocks
+    var_indices = findall(v -> v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo), var_names)
+    shock_indices = findall(s -> s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo), var_names)
 
-    # 3. Get the new display names from the dictionary
-    var_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names]
+    # Get sorting permutations for variables and shocks separately
+    var_sort_perm = sortperm(variable_names_display)
+    shock_sort_perm = sortperm(shock_names_display)
 
-    # 4. Get the permutation that will sort the display names alphabetically
-    var_sort_perm = sortperm(var_names_display)
+    # Apply sorting permutations to original indices
+    sorted_var_indices = var_indices[var_sort_perm]
+    sorted_shock_indices = shock_indices[shock_sort_perm]
 
-    # 5. Apply this single permutation to all relevant arrays to keep them in sync
-    # Apply to data matrices
-    Y = Y[var_sort_perm, :]
+    # Combine sorted indices
+    combined_sort_perm = vcat(sorted_var_indices, sorted_shock_indices)
+
+    # Apply the combined permutation to all relevant arrays
+    Y = Y[combined_sort_perm, :]
     conditions = conditions[var_sort_perm, :]
-    shocks = shocks[var_sort_perm, :]
-    reference_steady_state = reference_steady_state[var_sort_perm]
+    shocks = shocks[shock_sort_perm, :]
+    reference_steady_state = reference_steady_state[combined_sort_perm]
     var_idx = var_idx[var_sort_perm]
 
-    # Apply to the mask and the display names themselves
-    is_shock_mask_sorted = is_shock_mask[var_sort_perm]
-    var_names_display_sorted = var_names_display[var_sort_perm]
-
-    # 6. Use the sorted mask to separate the sorted display names into two distinct lists
-    sorted_variable_names_display = var_names_display_sorted[.!is_shock_mask_sorted]
-    sorted_shock_names_display = var_names_display_sorted[is_shock_mask_sorted]
+    # Get the sorted display names
+    sorted_variable_names_display = sort(variable_names_display)
+    sorted_shock_names_display = sort(shock_names_display)
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
