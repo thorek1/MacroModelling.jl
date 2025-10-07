@@ -218,7 +218,7 @@ function plot_model_estimates(𝓂::ℳ,
     variable_names_display = variable_names_display[var_sort_perm]
     
     shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) * "₍ₓ₎" for s in shock_idx]
-    if length(shock_idx) > 0
+    if length(shock_idx) > 1
         shock_sort_perm = sortperm(shock_names_display)
         shock_idx = shock_idx[shock_sort_perm]
         shock_names_display = shock_names_display[shock_sort_perm]
@@ -705,7 +705,7 @@ function plot_model_estimates!(𝓂::ℳ,
     variable_names_display = variable_names_display[var_sort_perm]
     
     shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) * "₍ₓ₎" for s in shock_idx]
-    if length(shock_idx) > 0
+    if length(shock_idx) > 1
         shock_sort_perm = sortperm(shock_names_display)
         shock_idx = shock_idx[shock_sort_perm]
         shock_names_display = shock_names_display[shock_sort_perm]
@@ -1517,7 +1517,7 @@ function plot_irf(𝓂::ℳ;
     elseif shocks isa Union{Symbol_input,String_input}
         shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) for s in shock_idx]
         # Sort shocks alphabetically by display name
-        if length(shock_idx) > 0
+        if length(shock_idx) > 1
             shock_sort_perm = sortperm(shock_names_display)
             shock_idx = shock_idx[shock_sort_perm]
             shock_names_display = shock_names_display[shock_sort_perm]
@@ -2165,13 +2165,13 @@ function plot_irf!(𝓂::ℳ;
     end
 
     if shocks == :simulate
-        shock_names = ["simulation"]
+        shock_names_display = ["simulation"]
     elseif shocks == :none
         shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
         shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) for s in shock_idx]
         # Sort shocks alphabetically by display name
-        if length(shock_idx) > 0
+        if length(shock_idx) > 1
             shock_sort_perm = sortperm(shock_names_display)
             shock_idx = shock_idx[shock_sort_perm]
             shock_names_display = shock_names_display[shock_sort_perm]
