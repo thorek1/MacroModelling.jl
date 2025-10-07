@@ -106,9 +106,9 @@ using DispatchDoctor
 # @stable default_mode = "disable" begin
 
 # Imports
+include("default_options.jl")
 include("common_docstrings.jl")
 include("options_and_caches.jl")
-include("default_options.jl")
 include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")
