@@ -450,13 +450,47 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 end
             end
 
+
+            plot_solution(m, states[1])
+
+            i = 1
+
             # Test plot_solution! for combining multiple algorithms
-            if length(algos) > 1
-                plot_solution(m, states[1], algorithm = algos[1])
-                for i in 2:length(algos)
-                    plot_solution!(m, states[1], algorithm = algos[i])
+            for model in [m, m2]
+                for ignore_obc in [true, false]
+                    for state in states[[1,end]]
+                        for σ in [0.5, 5]
+                            if i % 10 == 0
+                                plot_solution(m, states[1])
+                            end
+
+                            i += 1
+                            
+                            plot_solution!(model, state, σ = σ, ignore_obc = ignore_obc)
+                        end
+                    end
                 end
             end
+
+             
+            plot_solution(m, states[1])
+
+            i = 1
+
+            # Test plot_solution! for combining multiple algorithms
+            for model in [m, m2]
+                for parameters in params
+                    for algo in algos
+                        if i % 10 == 0
+                            plot_solution(m, states[1])
+                        end
+
+                        i += 1
+                        
+                        plot_solution!(model, state, algorithm = algo, parameters = parameters)
+                    end
+                end
+            end                               
 
             # plotlyjs_backend()
 
