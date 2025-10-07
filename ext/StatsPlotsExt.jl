@@ -211,9 +211,18 @@ function plot_model_estimates(𝓂::ℳ,
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
     shock_idx   = shocks == :none ? [] : parse_shocks_input_to_index(shocks, 𝓂.timings)
 
+    # Create display names and sort alphabetically
     variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
+    var_sort_perm = sortperm(variable_names_display)
+    var_idx = var_idx[var_sort_perm]
+    variable_names_display = variable_names_display[var_sort_perm]
     
     shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) * "₍ₓ₎" for s in shock_idx]
+    if length(shock_idx) > 0
+        shock_sort_perm = sortperm(shock_names_display)
+        shock_idx = shock_idx[shock_sort_perm]
+        shock_names_display = shock_names_display[shock_sort_perm]
+    end
     
     legend_columns = 1
 
@@ -688,9 +697,18 @@ function plot_model_estimates!(𝓂::ℳ,
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
     shock_idx   = parse_shocks_input_to_index(shocks, 𝓂.timings)
 
+    # Create display names and sort alphabetically
     variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
+    var_sort_perm = sortperm(variable_names_display)
+    var_idx = var_idx[var_sort_perm]
+    variable_names_display = variable_names_display[var_sort_perm]
     
     shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) * "₍ₓ₎" for s in shock_idx]
+    if length(shock_idx) > 0
+        shock_sort_perm = sortperm(shock_names_display)
+        shock_idx = shock_idx[shock_sort_perm]
+        shock_names_display = shock_names_display[shock_sort_perm]
+    end
     
     legend_columns = 1
 
@@ -1496,11 +1514,21 @@ function plot_irf(𝓂::ℳ;
         shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
         shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) for s in shock_idx]
+        # Sort shocks alphabetically by display name
+        if length(shock_idx) > 0
+            shock_sort_perm = sortperm(shock_names_display)
+            shock_idx = shock_idx[shock_sort_perm]
+            shock_names_display = shock_names_display[shock_sort_perm]
+        end
     else
         shock_names_display = ["shock_matrix"]
     end
     
+    # Create display names and sort variables alphabetically
     variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
+    var_sort_perm = sortperm(variable_names_display)
+    var_idx = var_idx[var_sort_perm]
+    variable_names_display = variable_names_display[var_sort_perm]
 
     while length(irf_active_plot_container) > 0
         pop!(irf_active_plot_container)
@@ -2139,11 +2167,21 @@ function plot_irf!(𝓂::ℳ;
         shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
         shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) for s in shock_idx]
+        # Sort shocks alphabetically by display name
+        if length(shock_idx) > 0
+            shock_sort_perm = sortperm(shock_names_display)
+            shock_idx = shock_idx[shock_sort_perm]
+            shock_names_display = shock_names_display[shock_sort_perm]
+        end
     else
         shock_names_display = ["shock_matrix"]
     end
     
+    # Create display names and sort variables alphabetically
     variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
+    var_sort_perm = sortperm(variable_names_display)
+    var_idx = var_idx[var_sort_perm]
+    variable_names_display = variable_names_display[var_sort_perm]
 
     args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
@@ -3060,7 +3098,17 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
 
     vars_to_plot = intersect(axiskeys(fevds)[1],𝓂.timings.var[var_idx])
     
+    # Sort variables alphabetically by display name
+    vars_display_names = [apply_custom_name(v, rename_dictionnary) for v in vars_to_plot]
+    vars_sort_perm = sortperm(vars_display_names)
+    vars_to_plot = vars_to_plot[vars_sort_perm]
+    
     shocks_to_plot = axiskeys(fevds)[2]
+    
+    # Sort shocks alphabetically by display name
+    shocks_display_names = [apply_custom_name(s, rename_dictionnary) for s in shocks_to_plot]
+    shocks_sort_perm = sortperm(shocks_display_names)
+    shocks_to_plot = shocks_to_plot[shocks_sort_perm]
 
     legend_columns = 1
 
@@ -3332,9 +3380,14 @@ function plot_solution(𝓂::ℳ,
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+    var_idx = parse_variables_input_to_index(variables, �.timings) |> sort
 
     vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
+
+    # Sort variables alphabetically by display name
+    vars_display_names = [apply_custom_name(v, rename_dictionnary) for v in vars_to_plot]
+    vars_sort_perm = sortperm(vars_display_names)
+    vars_to_plot = vars_to_plot[vars_sort_perm]
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
@@ -4314,6 +4367,16 @@ function plot_conditional_forecast(𝓂::ℳ,
                            )
     
     push!(conditional_forecast_active_plot_container, args_and_kwargs)
+
+    # Sort variables alphabetically by display name
+    var_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names]
+    var_sort_perm = sortperm(var_names_display)
+    var_names = var_names[var_sort_perm]
+    var_idx = var_idx[var_sort_perm]
+    reference_steady_state = reference_steady_state[var_sort_perm]
+    Y = Y[var_sort_perm, :]
+    conditions = conditions[var_sort_perm, :]
+    shocks = shocks[var_sort_perm, :]
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
