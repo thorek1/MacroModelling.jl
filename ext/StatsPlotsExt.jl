@@ -4373,23 +4373,24 @@ function plot_conditional_forecast(𝓂::ℳ,
                            :quadratic_matrix_equation_algorithm => quadratic_matrix_equation_algorithm,
                            :sylvester_algorithm => sylvester_algorithm,
 
-                           :plot_data => Y,
-                           :reference_steady_state => reference_steady_state,
-                           :variable_names => var_names[1:end - 𝓂.timings.nExo],
-                           :shock_names => var_names[end - 𝓂.timings.nExo + 1:end]
-                           )
-    
-    push!(conditional_forecast_active_plot_container, args_and_kwargs)
-
-    # Sort variables alphabetically by display name
+    # Sort variables alphabetically by display name and prepare display names
     var_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names]
     var_sort_perm = sortperm(var_names_display)
-    var_names = var_names[var_sort_perm]
+    var_names_sorted = var_names[var_sort_perm]
     var_idx = var_idx[var_sort_perm]
     reference_steady_state = reference_steady_state[var_sort_perm]
     Y = Y[var_sort_perm, :]
     conditions = conditions[var_sort_perm, :]
     shocks = shocks[var_sort_perm, :]
+
+    args_and_kwargs = merge(args_and_kwargs, Dict(
+                           :plot_data => Y,
+                           :reference_steady_state => reference_steady_state,
+                           :variable_names => var_names_sorted[1:end - 𝓂.timings.nExo],
+                           :shock_names => var_names_sorted[end - 𝓂.timings.nExo + 1:end]
+                           ))
+    
+    push!(conditional_forecast_active_plot_container, args_and_kwargs)
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
@@ -4746,6 +4747,16 @@ function plot_conditional_forecast!(𝓂::ℳ,
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
     end
 
+    # Sort variables alphabetically by display name and prepare display names
+    var_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names]
+    var_sort_perm = sortperm(var_names_display)
+    var_names_sorted = var_names[var_sort_perm]
+    var_idx = var_idx[var_sort_perm]
+    reference_steady_state = reference_steady_state[var_sort_perm]
+    Y = Y[var_sort_perm, :]
+    conditions = conditions[var_sort_perm, :]
+    shocks = shocks[var_sort_perm, :]
+
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
     total_pal_len = 100
@@ -4783,8 +4794,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
-                           :variable_names => var_names[1:end - 𝓂.timings.nExo],
-                           :shock_names => var_names[end - 𝓂.timings.nExo + 1:end]
+                           :variable_names => var_names_sorted[1:end - 𝓂.timings.nExo],
+                           :shock_names => var_names_sorted[end - 𝓂.timings.nExo + 1:end]
                            )
                            
     no_duplicate = all(
