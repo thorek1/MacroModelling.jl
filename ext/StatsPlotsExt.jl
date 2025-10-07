@@ -554,6 +554,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
 - $DATA_IN_LEVELS®
 - $LABEL®
+- $RENAME_DICTIONNARY®
 - $SMOOTH®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
@@ -1345,6 +1346,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - $LABEL®
+- $RENAME_DICTIONNARY®
 - $QME®
 - $SYLVESTER®
 - $TOLERANCES®
@@ -1963,6 +1965,7 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 - $INITIAL_STATE®
 - $IGNORE_OBC®
 - $LABEL®
+- $RENAME_DICTIONNARY®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -3005,6 +3008,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PLOT_ATTRIBUTES®
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
+- $RENAME_DICTIONNARY®
 - $QME®
 - $LYAPUNOV®
 - $TOLERANCES®
@@ -3267,6 +3271,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - `save_plots_name` [Default: `"solution"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
 - $PLOT_ATTRIBUTES®
+- $RENAME_DICTIONNARY®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -3882,6 +3887,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - `save_plots_name` [Default: `"solution"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
 - $PLOT_ATTRIBUTES®
+- $RENAME_DICTIONNARY®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -3936,6 +3942,7 @@ function plot_solution!(𝓂::ℳ,
                         save_plots_name::Union{String, Symbol} = "solution",
                         save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                         plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
+                        rename_dictionnary::Dict{Symbol, String} = Dict{Symbol, String}(),
                         plot_attributes::Dict = Dict(),
                         verbose::Bool = DEFAULT_VERBOSE,
                         tol::Tolerances = Tolerances(),
@@ -4128,6 +4135,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SAVE_PLOTS_PATH®
 - `save_plots_name` [Default: `"conditional_forecast"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
+- $RENAME_DICTIONNARY®
 - $PLOT_ATTRIBUTES®
 - $LABEL®
 - $QME®
