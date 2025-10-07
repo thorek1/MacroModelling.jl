@@ -3662,3 +3662,115 @@ get_residuals = get_non_stochastic_steady_state_residuals
 See [`get_non_stochastic_steady_state_residuals`](@ref)
 """
 check_residuals = get_non_stochastic_steady_state_residuals
+
+
+"""
+$(SIGNATURES)
+Evaluate the dynamic equations of the model and return the residuals.
+
+This function provides a convenient interface to evaluate the model's dynamic equations
+at any point in the state space. It is particularly useful for:
+- Verifying that the steady state satisfies the dynamic equations
+- Debugging model specifications
+- Custom solution algorithms
+
+The function takes care of organizing the inputs in the correct order expected by 
+the underlying generated function.
+
+# Arguments
+- $MODEL®
+- `variables`: Vector of variable values ordered as [past, present, future]
+- `shocks`: Vector of shock values (exogenous variables)
+
+# Keyword Arguments
+- `parameters`: Parameter values to use. Defaults to the model's current parameter values.
+
+# Returns
+- Vector of residuals for each dynamic equation. At a valid solution (e.g., steady state 
+  with zero shocks), these residuals should be approximately zero.
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+# Get the steady state
+SS = get_steady_state(RBC)
+
+# Prepare inputs: at steady state, past = present = future = SS
+variables = vcat(SS, SS, SS)  # [past, present, future]
+shocks = zeros(length(RBC.exo))  # Zero shocks
+
+# Evaluate the dynamic equations
+residuals = get_dynamic_residuals(RBC, variables, shocks)
+
+# Residuals should be near zero at steady state
+maximum(abs.(residuals))
+# output
+3.552713678800501e-15
+```
+"""
+function get_dynamic_residuals(𝓂::ℳ,
+                               variables::Vector{Float64},
+                               shocks::Vector{Float64};
+                               parameters::Union{Vector{Float64}, Nothing} = nothing)
+    
+    # Use model's parameters if not provided
+    params = parameters === nothing ? 𝓂.parameter_values : parameters
+    
+    # Ensure the model has been solved (which generates the function)
+    if 𝓂.dyn_equations_func === (x -> x)
+        error("Dynamic equations function not yet generated. Call solve!(model) first.")
+    end
+    
+    # Get auxiliary indices
+    aux_idx = 𝓂.solution.perturbation.auxiliary_indices
+    
+    n_vars = length(𝓂.var)
+    @assert length(variables) == 3 * n_vars "variables should contain [past, present, future] for all $(n_vars) variables"
+    @assert length(shocks) == length(𝓂.exo) "shocks should contain $(length(𝓂.exo)) shock values"
+    
+    # Extract past, present, future from input
+    past = variables[1:n_vars]
+    present = variables[n_vars+1:2*n_vars]
+    future = variables[2*n_vars+1:3*n_vars]
+    
+    # Get indices
+    dyn_var_future_idx = aux_idx.dyn_var_future_idx
+    dyn_var_present_idx = aux_idx.dyn_var_present_idx
+    dyn_var_past_idx = aux_idx.dyn_var_past_idx
+    
+    # Construct variable vector in the order expected by the function: [future, present, past, shocks]
+    var_vec = zeros(length(dyn_var_future_idx) + length(dyn_var_present_idx) + 
+                   length(dyn_var_past_idx) + length(shocks))
+    
+    var_vec[1:length(dyn_var_future_idx)] = future[dyn_var_future_idx]
+    var_vec[length(dyn_var_future_idx)+1:length(dyn_var_future_idx)+length(dyn_var_present_idx)] = 
+        present[dyn_var_present_idx]
+    var_vec[length(dyn_var_future_idx)+length(dyn_var_present_idx)+1:
+            length(dyn_var_future_idx)+length(dyn_var_present_idx)+length(dyn_var_past_idx)] = 
+        past[dyn_var_past_idx]
+    var_vec[end-length(shocks)+1:end] = shocks
+    
+    # Allocate residual vector
+    residual = zeros(length(𝓂.dyn_equations))
+    
+    # Call the generated function
+    𝓂.dyn_equations_func(residual, params, var_vec)
+    
+    return residual
+end
