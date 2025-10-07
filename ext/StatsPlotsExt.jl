@@ -4527,6 +4527,7 @@ This function shares most of the signature and functionality of [`plot_condition
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
 - $ALGORITHM®
 - $LABEL®
+- $RENAME_DICTIONNARY®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -4619,6 +4620,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     plot_attributes::Dict = Dict(),
                                     plot_type::Symbol = DEFAULT_PLOT_TYPE,
                                     transparency::Float64 = DEFAULT_TRANSPARENCY,
+                                    rename_dictionnary::Dict{Symbol, String} = Dict{Symbol, String}(),
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
