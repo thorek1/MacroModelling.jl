@@ -375,9 +375,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             if algorithm == :first_order
                 algos = [:first_order]
             elseif algorithm in [:second_order, :pruned_second_order]
-                algos = [[:first_order], [:first_order, :second_order], [:first_order, :pruned_second_order], [:first_order, :second_order, :pruned_second_order]]
+                algos = [:first_order, :second_order, :pruned_second_order]
             elseif algorithm in [:third_order, :pruned_third_order]
-                algos = [[:first_order], [:first_order, :second_order], [:first_order, :third_order], [:second_order, :third_order], [:third_order, :pruned_third_order], [:first_order, :second_order, :third_order], [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]]
+                algos = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
             end
             
             for variables in vars
@@ -387,6 +387,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                             for sylvester_algorithm in sylvester_algorithms
                                 clear_solution_caches!(m, algorithm)
                     
+                                # Test single algorithm
                                 plot_solution(m, states[1], 
                                                 algorithm = algos[end],
                                                 variables = variables,
@@ -439,6 +440,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 for ignore_obc in [true, false]
                     for state in states[[1,end]]
                         for algo in algos
+                            # Test single algorithm
                             plot_solution(m, state,
                                             σ = σ,
                                             algorithm = algo,
@@ -447,6 +449,48 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     end
                 end
             end
+
+
+            plot_solution(m, states[1])
+
+            i = 1
+
+            # Test plot_solution! for combining multiple algorithms
+            for model in [m, m2]
+                for ignore_obc in [true, false]
+                    for state in states[[1,end]]
+                        for σ in [0.5, 5]
+                            if i % 10 == 0
+                                plot_solution(m, states[1])
+                            end
+
+                            i += 1
+                            
+                            plot_solution!(model, state, σ = σ, ignore_obc = ignore_obc)
+                        end
+                    end
+                end
+            end
+
+             
+            plot_solution(m, states[1])
+
+            i = 1
+
+            # Test plot_solution! for combining multiple algorithms
+            for model in [m, m2]
+                for parameters in params
+                    for algo in algos
+                        if i % 10 == 0
+                            plot_solution(m, states[1])
+                        end
+
+                        i += 1
+                        
+                        plot_solution!(model, state, algorithm = algo, parameters = parameters)
+                    end
+                end
+            end                               
 
             # plotlyjs_backend()
 

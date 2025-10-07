@@ -10,6 +10,7 @@ import LaTeXStrings
 const irf_active_plot_container = Dict[]
 const conditional_forecast_active_plot_container = Dict[]
 const model_estimates_active_plot_container = Dict[]
+const solution_active_plot_container = Dict[]
 
 import StatsPlots
 import Showoff
@@ -20,7 +21,7 @@ using DispatchDoctor
 
 import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs
 
-import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!
+import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!, plot_solution!
 
 @stable default_mode = "disable" begin
 """
@@ -3187,7 +3188,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - `state` [Type: `Union{Symbol,String}`]: state variable to be shown on x-axis.
 # Keyword Arguments
 - $VARIABLES®
-- `algorithm` [Default: `:first_order`, Type: Union{Symbol,Vector{Symbol}}]: solution algorithm for which to show the IRFs. Can be more than one, e.g.: `[:second_order,:pruned_third_order]`"
+- $ALGORITHM®
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS®
 - $IGNORE_OBC®
@@ -3239,10 +3240,11 @@ plot_solution(RBC_CME, :k)
 function plot_solution(𝓂::ℳ,
                         state::Union{Symbol,String};
                         variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
-                        algorithm::Union{Symbol,Vector{Symbol}} = DEFAULT_ALGORITHM,
+                        algorithm::Symbol = DEFAULT_ALGORITHM,
                         σ::Union{Int64,Float64} = DEFAULT_SIGMA_RANGE,
                         parameters::ParameterType = nothing,
                         ignore_obc::Bool = DEFAULT_IGNORE_OBC,
+                        label::Union{Real, String, Symbol} = DEFAULT_LABEL,
                         show_plots::Bool = DEFAULT_SHOW_PLOTS,
                         save_plots::Bool = DEFAULT_SAVE_PLOTS,
                         save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
@@ -3281,17 +3283,11 @@ function plot_solution(𝓂::ℳ,
 
     @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
 
-    @assert length(setdiff(algorithm isa Symbol ? [algorithm] : algorithm, [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order])) == 0 "Invalid algorithm. Choose any combination of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
-
-    if algorithm isa Symbol
-        algorithm = [algorithm]
-    end
+    @assert algorithm ∈ [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order] "Invalid algorithm. Choose one of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
 
     ignore_obc, occasionally_binding_constraints, _ = process_ignore_obc_flag(:all_excluding_obc, ignore_obc, 𝓂)
     
-    for a in algorithm
-        solve!(𝓂, opts = opts, algorithm = a, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
-    end
+    solve!(𝓂, opts = opts, algorithm = algorithm, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
 
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
@@ -3323,39 +3319,9 @@ function plot_solution(𝓂::ℳ,
     
     state_selector = state .== 𝓂.var
 
-    n_subplots = length(var_idx)
-    pp = []
-    pane = 1
-    plot_count = 1
-    return_plots = []
-
-    labels = Dict(  :first_order            => ["1st order perturbation",           "Non-stochastic Steady State"],
-                    :second_order           => ["2nd order perturbation",           "Stochastic Steady State (2nd order)"],
-                    :pruned_second_order    => ["Pruned 2nd order perturbation",    "Stochastic Steady State (Pruned 2nd order)"],
-                    :third_order            => ["3rd order perturbation",           "Stochastic Steady State (3rd order)"],
-                    :pruned_third_order     => ["Pruned 3rd order perturbation",    "Stochastic Steady State (Pruned 3rd order)"])
-
-    orig_pal = StatsPlots.palette(attributes_redux[:palette])
-
-    total_pal_len = 100
-
-    alpha_reduction_factor = 0.7
-
-    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
-
-    legend_plot = StatsPlots.plot(framestyle = :none, 
-                                    legend = :inside) 
-
-    for (i,a) in enumerate(algorithm)
-        StatsPlots.plot!([NaN], 
-                        color = pal[mod1(i, length(pal))],
-                        label = labels[a][1])
-    end
-    
-    for (i,a) in enumerate(algorithm)
-        StatsPlots.scatter!([NaN], 
-                            color = pal[mod1(i, length(pal))],
-                            label = labels[a][2])
+    # Clear container for new plot
+    while length(solution_active_plot_container) > 0
+        pop!(solution_active_plot_container)
     end
 
     if any(x -> contains(string(x), "◖"), full_NSSS)
@@ -3363,164 +3329,697 @@ function plot_solution(𝓂::ℳ,
         full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
     end
 
-    relevant_SS_dictionnary = Dict{Symbol,Vector{Float64}}()
+    # Get steady state for the algorithm
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, stochastic = algorithm != :first_order, return_variables_only = true, derivatives = false,
+                                    tol = opts.tol,
+                                    verbose = opts.verbose,
+                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    for a in algorithm
-        relevant_SS = get_steady_state(𝓂, algorithm = a, return_variables_only = true, derivatives = false,
-                                        tol = opts.tol,
-                                        verbose = opts.verbose,
-                                        quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                        sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+    full_SS_current = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
 
-        full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+    # Get NSSS (first order steady state) for reference
+    NSSS_SS = algorithm == :first_order ? relevant_SS : get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
+                                    tol = opts.tol,
+                                    verbose = opts.verbose,
+                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-        push!(relevant_SS_dictionnary, a => full_SS)
+    NSSS = [s ∈ 𝓂.exo_present ? 0 : NSSS_SS(s) for s in full_NSSS]
+
+    SSS_delta = collect(NSSS - full_SS_current)
+
+    # Compute variable responses across state range
+    var_state_range = []
+
+    for x in state_range
+        if algorithm == :pruned_second_order
+            initial_state = [state_selector * x, -SSS_delta]
+        elseif algorithm == :pruned_third_order
+            initial_state = [state_selector * x, -SSS_delta, zero(SSS_delta)]
+        else
+            initial_state = collect(full_SS_current) .+ state_selector * x
+        end
+
+        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
     end
 
-    if :first_order ∉ algorithm
-        relevant_SS = get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
-                                        tol = opts.tol,
-                                        verbose = opts.verbose,
-                                        quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
-                                        sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+    var_state_range = hcat(var_state_range...)
 
-        full_SS = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+    variable_output = Dict()
+    has_impact = Dict()
 
-        push!(relevant_SS_dictionnary, :first_order => full_SS)
+    for k in vars_to_plot
+        idx = indexin([k], 𝓂.var)
+
+        push!(variable_output,  k => var_state_range[idx,:]) 
+        
+        push!(has_impact,    k => any(abs.(sum(var_state_range[idx,:]) / size(var_state_range, 2) .- var_state_range[idx,:]) .> eps(Float32)))
     end
 
-    has_impact_dict = Dict()
-    variable_dict = Dict()
+    # Store data in container
+    labels = Dict(  :first_order            => ["1st order perturbation",           "Non-stochastic Steady State"],
+                    :second_order           => ["2nd order perturbation",           "Stochastic Steady State (2nd order)"],
+                    :pruned_second_order    => ["Pruned 2nd order perturbation",    "Stochastic Steady State (Pruned 2nd order)"],
+                    :third_order            => ["3rd order perturbation",           "Stochastic Steady State (3rd order)"],
+                    :pruned_third_order     => ["Pruned 3rd order perturbation",    "Stochastic Steady State (Pruned 3rd order)"])
 
-    NSSS = relevant_SS_dictionnary[:first_order]
+    args_and_kwargs = Dict(:run_id => length(solution_active_plot_container) + 1,
+                           :model_name => 𝓂.model_name,
+                           :label => label,
+                           :state => state,
+                           :state_range => state_range,
+                           :variables => variables,
+                           :algorithm => algorithm,
+                           :σ => σ,
+                           :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
+                           :ignore_obc => ignore_obc,
+                           :variable_output => variable_output,
+                           :has_impact => has_impact,
+                           :vars_to_plot => vars_to_plot,
+                           :full_SS_current => full_SS_current,
+                           :algorithm_label => labels[algorithm][1],
+                           :ss_label => labels[algorithm][2])
 
-    for a in algorithm
-        SSS_delta = collect(NSSS - relevant_SS_dictionnary[a])
+    push!(solution_active_plot_container, args_and_kwargs)
 
-        var_state_range = []
+    # Generate plots from container
+    return _plot_solution_from_container(;
+                                         show_plots = show_plots,
+                                         save_plots = save_plots,
+                                         save_plots_format = save_plots_format,
+                                         save_plots_name = save_plots_name,
+                                         save_plots_path = save_plots_path,
+                                         plots_per_page = plots_per_page,
+                                         plot_attributes = plot_attributes)
+end
 
-        for x in state_range
-            if a == :pruned_second_order
-                initial_state = [state_selector * x, -SSS_delta]
-            elseif a == :pruned_third_order
-                initial_state = [state_selector * x, -SSS_delta, zero(SSS_delta)]
-            else
-                initial_state = collect(relevant_SS_dictionnary[a]) .+ state_selector * x
+
+# Helper function to generate plots from the solution container
+function _plot_solution_from_container(;
+                                        show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                                        save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                                        save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                        save_plots_name::Union{String, Symbol} = "solution",
+                                        save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                                        plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
+                                        plot_attributes::Dict = Dict())
+    
+    if length(solution_active_plot_container) == 0
+        @warn "No solution data to plot. Call plot_solution first."
+        return []
+    end
+    
+    # Get first container element for model info
+    first_container = solution_active_plot_container[1]
+    model_name = first_container[:model_name]
+    
+    # Collect all unique states from containers
+    joint_states = OrderedSet{Symbol}()
+    for container in solution_active_plot_container
+        push!(joint_states, container[:state])
+    end
+    
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    
+    if !gr_back
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
+    else
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
+    end
+    
+    attributes = merge(attrbts, plot_attributes)
+    attributes_redux = copy(attributes)
+    delete!(attributes_redux, :framestyle)
+    
+    orig_pal = StatsPlots.palette(attributes_redux[:palette])
+    total_pal_len = 100
+    alpha_reduction_factor = 0.7
+    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+    
+    # Create comparison of containers to detect differences
+    # Keep relevant keys for comparison: model_name, state, parameters, algorithm, ignore_obc, label
+    # Only compare if there are multiple containers
+    diffdict = Dict{Symbol,Any}()
+    
+    if length(solution_active_plot_container) > 1
+        no_duplicate = all(
+            !(all((
+                get(dict, :parameters, nothing) == solution_active_plot_container[end][:parameters],
+                get(dict, :model_name, nothing) == solution_active_plot_container[end][:model_name],
+                get(dict, :algorithm, nothing) == solution_active_plot_container[end][:algorithm],
+                get(dict, :ignore_obc, nothing) == solution_active_plot_container[end][:ignore_obc],
+                all(get(dict, k, nothing) == get(solution_active_plot_container[end], k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
+            )))
+            for dict in solution_active_plot_container[1:end-1]
+        ) # "New plot must be different from previous plot. Use the version without ! to plot."
+
+        if !no_duplicate
+            @info "Plot with same parameters already exists. Using previous plot data to create plot."
+
+            pop!(solution_active_plot_container)
+        end
+
+        if length(solution_active_plot_container) == 0
+            diffdict[:label] = [solution_active_plot_container[1][:label]]
+        else
+            # 1. Keep only certain keys from each dictionary
+            reduced_vector = [
+                Dict(k => d[k] for k in vcat(:run_id, :label, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
+                for d in solution_active_plot_container
+            ]
+
+            diffdict = compare_args_and_kwargs(reduced_vector)
+
+            # 2. Group the original vector by :model_name
+            grouped_by_model = Dict{Any, Vector{Dict}}()
+
+            for d in solution_active_plot_container[1:end-1]
+                model = d[:model_name]
+                d_sub = Dict(k => d[k] for k in setdiff(keys(solution_active_plot_container[end]), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
+                push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
             end
 
-            push!(var_state_range, get_irf(𝓂, algorithm = a, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
+            model_names = []
+
+            for d in solution_active_plot_container
+                push!(model_names, d[:model_name])
+            end
+
+            model_names = unique(model_names)
+
+            for model in model_names
+                if length(grouped_by_model[model]) > 1
+                    diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
+                    diffdict = merge_by_runid(diffdict, diffdict_grouped)
+                end
+            end
         end
-
-        var_state_range = hcat(var_state_range...)
-
-        variable_output = Dict()
-        impact_output   = Dict()
-
-        for k in vars_to_plot
-            idx = indexin([k], 𝓂.var)
-
-            push!(variable_output,  k => var_state_range[idx,:]) 
+    else
+        # For single container, create a diffdict with just the label
+        diffdict[:label] = [solution_active_plot_container[1][:label]]
+    end
+    
+    # Build annotation for relevant input differences
+    annotate_diff_input = Pair{String,Any}[]
+    
+    push!(annotate_diff_input, "Plot label" => reduce(vcat, diffdict[:label]))
+    
+    # Add model name if different
+    if haskey(diffdict, :model_name)
+        push!(annotate_diff_input, "Model" => reduce(vcat, diffdict[:model_name]))
+    end
+    
+    # Add state if different (though we generally expect same state)
+    if haskey(diffdict, :state)
+        push!(annotate_diff_input, "State" => reduce(vcat, diffdict[:state]))
+    end
+    
+    # Add algorithm if different
+    if haskey(diffdict, :algorithm)
+        algo_labels = [String(a) for a in diffdict[:algorithm]]
+        push!(annotate_diff_input, "Algorithm" => algo_labels)
+    end
+    
+    # Add parameters if different
+    if haskey(diffdict, :parameters)
+        param_nms = diffdict[:parameters] |> keys |> collect |> sort
+        for param in param_nms
+            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
+            push!(annotate_diff_input, String(param) => result)
+        end
+    end
+    
+    # Add ignore_obc if different
+    if haskey(diffdict, :ignore_obc)
+        push!(annotate_diff_input, "Ignore OBC" => reduce(vcat, diffdict[:ignore_obc]))
+    end
+    
+    # Determine legend labels based on what differs
+    # If more than one input differs (besides label), use custom labels from diffdict
+    len_diff = length(solution_active_plot_container)
+    
+    # Create legend with 2 columns so dynamics and steady state entries are side by side
+    legend_plot = StatsPlots.plot(framestyle = :none, legend = :inside, legend_columns = 2) 
+    
+    if length(annotate_diff_input) > 2
+        # Multiple differences - use custom labels or plot labels
+        for (i, container) in enumerate(solution_active_plot_container)
+            label_text = container[:label] isa Symbol ? string(container[:label]) : container[:label]
             
-            push!(impact_output,    k => any(abs.(sum(var_state_range[idx,:]) / size(var_state_range, 2) .- var_state_range[idx,:]) .> eps(Float32)))
+            StatsPlots.plot!([NaN], 
+                            color = pal[mod1(i, length(pal))],
+                            label = string(label_text))
+                            
+            StatsPlots.scatter!([NaN], 
+                                color = pal[mod1(i, length(pal))],
+                                label = string(label_text) * " (relevant SS)")
         end
+    else
+        # Single difference (or just labels differ) - use the relevant input difference in legend
+        # Get the legend title and labels from the second entry in annotate_diff_input
+        legend_title_dynamics = length(annotate_diff_input) > 1 ? annotate_diff_input[2][1] : nothing
+        legend_title_ss = legend_title_dynamics
+        
+        for (i, container) in enumerate(solution_active_plot_container)
+            # For single difference, use the value of that difference as the label
+            label_text = if length(annotate_diff_input) > 1
+                val = annotate_diff_input[2][2][i]
+                val isa String ? val : String(Symbol(val))
+            else
+                container[:algorithm_label]
+            end
+            
+            StatsPlots.plot!([NaN], 
+                            color = pal[mod1(i, length(pal))],
+                            legend_title = legend_title_dynamics,
+                            label = label_text)
 
-        push!(variable_dict,    a => variable_output)
-        push!(has_impact_dict,  a => impact_output)
+            # For single difference, use the value of that difference as the label
+            label_text = if length(annotate_diff_input) > 1
+                val = annotate_diff_input[2][2][i]
+                val isa String ? val : String(Symbol(val))
+            else
+                container[:ss_label]
+            end
+            
+            StatsPlots.scatter!([NaN], 
+                                color = pal[mod1(i, length(pal))],
+                                legend_title = legend_title_ss,
+                                label = label_text * " (relevant SS)")
+        end
     end
-
-    has_impact_var_dict = Dict()
-
-    for k in vars_to_plot
-        has_impact = false
-
-        for a in algorithm
-            has_impact = has_impact || has_impact_dict[a][k]
-        end
-
-        if !has_impact
-            n_subplots -= 1
-        end
-
-        push!(has_impact_var_dict, k => has_impact)
+    
+    # Collect all variables to plot across all containers
+    all_vars = OrderedSet{Symbol}()
+    for container in solution_active_plot_container
+        foreach(v -> push!(all_vars, v), container[:vars_to_plot])
     end
-
-    for k in vars_to_plot
-        if !has_impact_var_dict[k] continue end
-
-        Pl = StatsPlots.plot() 
-
-        for (i,a) in enumerate(algorithm)
-            StatsPlots.plot!(state_range .+ relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1], 
-                variable_dict[a][k][1,:], 
-                ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
-                xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
-                color = pal[mod1(i, length(pal))],
-                label = "")
+    
+    return_plots = []
+    
+    # Loop over each state (similar to how plot_irf loops over shocks)
+    for state in joint_states
+        # Filter containers for this state
+        state_containers = [c for c in solution_active_plot_container if c[:state] == state]
+        
+        # Determine which variables have impact in at least one container for this state
+        vars_with_impact = []
+        for var in all_vars
+            has_any_impact = false
+            for container in state_containers
+                if haskey(container[:has_impact], var) && container[:has_impact][var]
+                    has_any_impact = true
+                    break
+                end
+            end
+            if has_any_impact
+                push!(vars_with_impact, var)
+            end
         end
-
-        for (i,a) in enumerate(algorithm)
-            StatsPlots.scatter!([relevant_SS_dictionnary[a][indexin([state], 𝓂.var)][1]], [relevant_SS_dictionnary[a][indexin([k], 𝓂.var)][1]], 
-            color = pal[mod1(i, length(pal))],
-            label = "")
+        
+        n_subplots = length(vars_with_impact)
+        pp = []
+        pane = 1
+        plot_count = 1
+        
+        # Plot each variable for this state
+        for k in vars_with_impact
+            Pl = StatsPlots.plot()
+            
+            # Plot line for each container with this state
+            for (i, container) in enumerate(solution_active_plot_container)
+                if container[:state] == state && haskey(container[:variable_output], k)
+                    # Find state index in vars_to_plot
+                    state_idx = findfirst(==(state), container[:vars_to_plot])
+                    if !isnothing(state_idx)
+                        state_ss = container[:full_SS_current][state_idx]
+                    else
+                        state_ss = 0.0  # fallback
+                    end
+                    
+                    StatsPlots.plot!(container[:state_range] .+ state_ss, 
+                        container[:variable_output][k][1,:], 
+                        ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
+                        xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
+                        color = pal[mod1(i, length(pal))],
+                        label = "")
+                end
+            end
+            
+            # Plot SS markers for each container with this state
+            for (i, container) in enumerate(solution_active_plot_container)
+                if container[:state] == state && haskey(container[:variable_output], k)
+                    # Get state and variable indices
+                    state_idx = findfirst(==(state), container[:vars_to_plot])
+                    var_idx = findfirst(==(k), container[:vars_to_plot])
+                    
+                    if !isnothing(state_idx) && !isnothing(var_idx)
+                        state_ss = container[:full_SS_current][state_idx]
+                        var_ss = container[:full_SS_current][var_idx]
+                        
+                        StatsPlots.scatter!([state_ss], [var_ss], 
+                            color = pal[mod1(i, length(pal))],
+                            label = "")
+                    end
+                end
+            end
+            
+            push!(pp, Pl)
+            
+            if !(plot_count % plots_per_page == 0)
+                plot_count += 1
+            else
+                plot_count = 1
+                
+                ppp = StatsPlots.plot(pp...; attributes...)
+                
+                # Build plot elements array
+                plot_elements = [ppp, legend_plot]
+                layout_heights = [15, length(annotate_diff_input)]
+                
+                # Add relevant input differences table if multiple inputs differ
+                if length(annotate_diff_input) > 2
+                    annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
+                    ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+                    push!(plot_elements, ppp_input_diff)
+                    push!(layout_heights, 5)
+                end
+                
+                # Create plot title including state info
+                state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(state) : ""
+                plot_title = "Model: "*model_name*state_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+                
+                # Create final plot with appropriate layout
+                p = StatsPlots.plot(plot_elements...,
+                                layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                                plot_title = plot_title; 
+                                attributes_redux...
+                )
+                
+                push!(return_plots, p)
+                
+                if show_plots
+                    display(p)
+                end
+                
+                if save_plots
+                    if !isdir(save_plots_path) mkpath(save_plots_path) end
+                    state_name = replace_indices_in_symbol(state)
+                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_name * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
+                end
+                
+                pane += 1
+                pp = []
+            end
         end
-
-        push!(pp, Pl)
-
-        if !(plot_count % plots_per_page == 0)
-            plot_count += 1
-        else
-            plot_count = 1
-
+        
+        # Handle remaining plots for this state
+        if length(pp) > 0
             ppp = StatsPlots.plot(pp...; attributes...)
             
-            p = StatsPlots.plot(ppp,
-                            legend_plot, 
-                            layout = StatsPlots.grid(2, 1, heights = length(algorithm) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
-                            plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
+            # Build plot elements array
+            plot_elements = [ppp, legend_plot]
+            layout_heights = [15, length(annotate_diff_input)]
+            
+            # Add relevant input differences table if multiple inputs differ
+            if length(annotate_diff_input) > 2
+                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
+                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+                push!(plot_elements, ppp_input_diff)
+                push!(layout_heights, 5)
+            end
+            
+            # Create plot title including state info
+            state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(state) : ""
+            plot_title = "Model: "*model_name*state_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+            
+            # Create final plot with appropriate layout
+            p = StatsPlots.plot(plot_elements...,
+                            layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                            plot_title = plot_title; 
                             attributes_redux...
             )
-
-            push!(return_plots,p)
-
+            
+            push!(return_plots, p)
+            
             if show_plots
                 display(p)
             end
-
+            
             if save_plots
                 if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+                state_name = replace_indices_in_symbol(state)
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_name * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
             end
-
-            pane += 1
-            pp = []
         end
-    end
-
-    if length(pp) > 0
-        ppp = StatsPlots.plot(pp...; attributes...)
-            
-        p = StatsPlots.plot(ppp,
-                        legend_plot, 
-                        layout = StatsPlots.grid(2, 1, heights = length(algorithm) > 3 ? [0.65, 0.35] : [0.8, 0.2]),
-                        plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                        attributes_redux...
-        )
-
-        push!(return_plots,p)
-
-        if show_plots
-            display(p)
-        end
-
-        if save_plots
-            if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
-        end
-    end
-
+    end  # End of state loop
+    
     return return_plots
+end
+
+
+"""
+
+$(SIGNATURES)
+Add another model variant to the previous plot of the solution. 
+
+Each plot shows the relationship between the chosen state (defined in `state`) and one of the chosen variables (defined in `variables`).
+
+The relevant steady state is plotted along with the mapping from the chosen past state to one present variable per plot. All other (non-chosen) states remain in the relevant steady state.
+
+In the case of pruned higher order solutions there are as many (latent) state vectors as the perturbation order. The first and third order baseline state vectors are the non-stochastic steady state and the second order baseline state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order baseline state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non-stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of infinitely many possible mappings.
+
+If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
+
+# Arguments
+- $MODEL®
+- `state` [Type: `Union{Symbol,String}`]: state variable to be shown on x-axis.
+# Keyword Arguments
+- $VARIABLES®
+- $ALGORITHM®
+- `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
+- $PARAMETERS®
+- $IGNORE_OBC®
+- $SHOW_PLOTS®
+- $SAVE_PLOTS®
+- $SAVE_PLOTS_FORMAT®
+- $SAVE_PLOTS_PATH®
+- `save_plots_name` [Default: `"solution"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
+- `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
+- $PLOT_ATTRIBUTES®
+- $QME®
+- $SYLVESTER®
+- $LYAPUNOV®
+- $TOLERANCES®
+- $VERBOSE®
+
+# Returns
+- `Vector{Plot}` of individual plots
+
+# Examples
+```julia
+using MacroModelling, StatsPlots
+
+@model RBC_CME begin
+    y[0]=A[0]*k[-1]^alpha
+    1/c[0]=beta*1/c[1]*(alpha*A[1]*k[0]^(alpha-1)+(1-delta))
+    1/c[0]=beta*1/c[1]*(R[0]/Pi[+1])
+    R[0] * beta =(Pi[0]/Pibar)^phi_pi
+    A[0]*k[-1]^alpha=c[0]+k[0]-(1-delta*z_delta[0])*k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1]  + std_eps * eps_z[x]
+end
+
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
+end
+
+plot_solution(RBC_CME, :k)
+
+plot_solution!(RBC_CME, :k, algorithm = :pruned_second_order)
+```
+"""
+function plot_solution!(𝓂::ℳ,
+                        state::Union{Symbol,String};
+                        variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
+                        algorithm::Symbol = DEFAULT_ALGORITHM,
+                        σ::Union{Int64,Float64} = DEFAULT_SIGMA_RANGE,
+                        parameters::ParameterType = nothing,
+                        ignore_obc::Bool = DEFAULT_IGNORE_OBC,
+                        label::Union{Real, String, Symbol} = length(solution_active_plot_container) + 1,
+                        show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                        save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                        save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                        save_plots_name::Union{String, Symbol} = "solution",
+                        save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                        plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
+                        plot_attributes::Dict = Dict(),
+                        verbose::Bool = DEFAULT_VERBOSE,
+                        tol::Tolerances = Tolerances(),
+                        quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
+                        sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+                        lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+    # @nospecialize # reduce compile time
+    
+    # Do NOT clear container - add to existing
+    
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                        sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                        lyapunov_algorithm = lyapunov_algorithm)
+
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+
+    if !gr_back
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
+    else
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
+    end
+
+    attributes = merge(attrbts, plot_attributes)
+                    
+    attributes_redux = copy(attributes)
+
+    delete!(attributes_redux, :framestyle)
+
+    state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
+
+    @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
+
+    @assert algorithm ∈ [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order] "Invalid algorithm. Choose one of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
+
+    ignore_obc, occasionally_binding_constraints, _ = process_ignore_obc_flag(:all_excluding_obc, ignore_obc, 𝓂)
+    
+    solve!(𝓂, opts = opts, algorithm = algorithm, dynamics = true, parameters = parameters, obc = occasionally_binding_constraints)
+
+    SS_and_std = get_moments(𝓂, 
+                            derivatives = false,
+                            parameters = parameters,
+                            variables = :all,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            sylvester_algorithm = sylvester_algorithm,
+                            lyapunov_algorithm = lyapunov_algorithm,
+                            tol = tol,
+                            verbose = verbose)
+
+    SS_and_std[:non_stochastic_steady_state] = SS_and_std[:non_stochastic_steady_state] isa KeyedArray ? axiskeys(SS_and_std[:non_stochastic_steady_state],1) isa Vector{String} ? rekey(SS_and_std[:non_stochastic_steady_state], 1 => axiskeys(SS_and_std[:non_stochastic_steady_state],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:non_stochastic_steady_state] : SS_and_std[:non_stochastic_steady_state]
+    
+    SS_and_std[:standard_deviation] = SS_and_std[:standard_deviation] isa KeyedArray ? axiskeys(SS_and_std[:standard_deviation],1) isa Vector{String} ? rekey(SS_and_std[:standard_deviation], 1 => axiskeys(SS_and_std[:standard_deviation],1).|> x->Symbol.(replace.(x, "{" => "◖", "}" => "◗"))) : SS_and_std[:standard_deviation] : SS_and_std[:standard_deviation]
+
+    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+
+    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+
+    full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
+
+    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+
+    vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
+
+    state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
+    
+    state_selector = state .== 𝓂.var
+
+    if any(x -> contains(string(x), "◖"), full_NSSS)
+        full_NSSS_decomposed = decompose_name.(full_NSSS)
+        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
+    end
+
+    # Get steady state for the algorithm
+    relevant_SS = get_steady_state(𝓂, algorithm = algorithm, stochastic = algorithm != :first_order, return_variables_only = true, derivatives = false,
+                                    tol = opts.tol,
+                                    verbose = opts.verbose,
+                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+
+    full_SS_current = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+
+    # Get NSSS (first order steady state) for reference
+    NSSS_SS = algorithm == :first_order ? relevant_SS : get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
+                                    tol = opts.tol,
+                                    verbose = opts.verbose,
+                                    quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
+                                    sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
+
+    NSSS = [s ∈ 𝓂.exo_present ? 0 : NSSS_SS(s) for s in full_NSSS]
+
+    SSS_delta = collect(NSSS - full_SS_current)
+
+    # Compute variable responses across state range
+    var_state_range = []
+
+    for x in state_range
+        if algorithm == :pruned_second_order
+            initial_state = [state_selector * x, -SSS_delta]
+        elseif algorithm == :pruned_third_order
+            initial_state = [state_selector * x, -SSS_delta, zero(SSS_delta)]
+        else
+            initial_state = collect(full_SS_current) .+ state_selector * x
+        end
+
+        push!(var_state_range, get_irf(𝓂, algorithm = algorithm, periods = 1, ignore_obc = ignore_obc, initial_state = initial_state, shocks = :none, levels = true, variables = :all)[:,1,1] |> collect)
+    end
+
+    var_state_range = hcat(var_state_range...)
+
+    variable_output = Dict()
+    has_impact = Dict()
+
+    for k in vars_to_plot
+        idx = indexin([k], 𝓂.var)
+
+        push!(variable_output,  k => var_state_range[idx,:]) 
+        
+        push!(has_impact,    k => any(abs.(sum(var_state_range[idx,:]) / size(var_state_range, 2) .- var_state_range[idx,:]) .> eps(Float32)))
+    end
+
+    # Store data in container
+    labels = Dict(  :first_order            => ["1st order perturbation",           "Non-stochastic Steady State"],
+                    :second_order           => ["2nd order perturbation",           "Stochastic Steady State (2nd order)"],
+                    :pruned_second_order    => ["Pruned 2nd order perturbation",    "Stochastic Steady State (Pruned 2nd order)"],
+                    :third_order            => ["3rd order perturbation",           "Stochastic Steady State (3rd order)"],
+                    :pruned_third_order     => ["Pruned 3rd order perturbation",    "Stochastic Steady State (Pruned 3rd order)"])
+
+    args_and_kwargs = Dict(:run_id => length(solution_active_plot_container) + 1,
+                           :model_name => 𝓂.model_name,
+                           :label => label,
+                           :state => state,
+                           :state_range => state_range,
+                           :variables => variables,
+                           :algorithm => algorithm,
+                           :σ => σ,
+                           :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
+                           :ignore_obc => ignore_obc,
+                           :variable_output => variable_output,
+                           :has_impact => has_impact,
+                           :vars_to_plot => vars_to_plot,
+                           :full_SS_current => full_SS_current,
+                           :algorithm_label => labels[algorithm][1],
+                           :ss_label => labels[algorithm][2])
+
+    push!(solution_active_plot_container, args_and_kwargs)
+
+    # Generate plots from container
+    return _plot_solution_from_container(;
+                                         show_plots = show_plots,
+                                         save_plots = save_plots,
+                                         save_plots_format = save_plots_format,
+                                         save_plots_name = save_plots_name,
+                                         save_plots_path = save_plots_path,
+                                         plots_per_page = plots_per_page,
+                                         plot_attributes = plot_attributes)
 end
 
 
