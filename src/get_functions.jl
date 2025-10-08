@@ -3677,6 +3677,7 @@ at any point in the state space. It is particularly useful for:
 # Arguments
 - `residual`: Pre-allocated vector to store the residuals (modified in-place)
 - `parameters`: Vector of parameter values
+- `calibration_parameters`: Vector of calibration parameter values
 - `past`: Vector of past variable values (t-1)
 - `present`: Vector of present variable values (t)
 - `future`: Vector of future variable values (t+1)
@@ -3717,8 +3718,11 @@ SS_for_func = SS[aux_idx.dyn_ss_idx]
 # Allocate residual vector
 residual = zeros(length(RBC.dyn_equations))
 
+# Calibration parameters (typically zeros if none defined)
+calib_params = zeros(length(RBC.calibration_equations_parameters))
+
 # Evaluate at steady state with zero shocks
-get_dynamic_residuals(residual, RBC.parameter_values, SS, SS, SS, SS_for_func, zeros(length(RBC.exo)), RBC)
+get_dynamic_residuals(residual, RBC.parameter_values, calib_params, SS, SS, SS, SS_for_func, zeros(length(RBC.exo)), RBC)
 
 # Residuals should be near zero at steady state
 maximum(abs.(residual))
@@ -3728,12 +3732,13 @@ maximum(abs.(residual))
 """
 function get_dynamic_residuals(residual::Vector{Float64},
                                parameters::Vector{Float64},
+                               calibration_parameters::Vector{Float64},
                                past::Vector{Float64},
                                present::Vector{Float64},
                                future::Vector{Float64},
                                steady_state::Vector{Float64},
                                shocks::Vector{Float64},
                                𝓂::ℳ)
-    𝓂.dyn_equations_func(residual, parameters, past, present, future, steady_state, shocks)
+    𝓂.dyn_equations_func(residual, parameters, calibration_parameters, steady_state, future, present, past, shocks)
     return nothing
 end

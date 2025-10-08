@@ -7051,11 +7051,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         parallel_dyn = Symbolics.SerialForm()
     end
     
-    # Pre-allocate calibration parameters vector once
-    calib_params_zeros = zeros(n_calib_params)
-    
     # Generate function with full vector inputs - indexing handled symbolically
     # Signature: func!(residual, parameters, calib_params, steady_state, future, present, past, shocks)
+    # Calibration parameters are included as they may depend on stochastic steady state in the future
     _, func_dyn_eqs_core = Symbolics.build_function(dyn_eqs_substituted, 
                                             params_sym, calib_params_sym, ss_sym, 
                                             future_sym, present_sym, past_sym, shocks_sym,
@@ -7065,10 +7063,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                             expression_module = @__MODULE__,
                                             expression = Val(false))::Tuple{<:Function, <:Function}
     
-    # Store the generated function directly - no wrapper needed
-    # The function expects: (residual, parameters, calib_params, steady_state, future, present, past, shocks)
-    # But we want to hide calib_params from the user, so create a minimal wrapper
-    𝓂.dyn_equations_func = func_dyn_eqs_core # (residual, parameters, calib_params_zeros, steady_state, future, present, past, shocks)
+    # Store the generated function directly
+    # User must provide calibration parameters (they cannot be pre-determined)
+    𝓂.dyn_equations_func = func_dyn_eqs_core
 
 
     ∇₁_parameters = derivatives[1][2][:,1:nps]
