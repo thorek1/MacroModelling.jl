@@ -3730,14 +3730,14 @@ maximum(abs.(residual))
 3.552713678800501e-15
 ```
 """
-function get_dynamic_residuals(residual::Vector{Float64},
-                               parameters::Vector{Float64},
-                               calibration_parameters::Vector{Float64},
-                               past::Vector{Float64},
-                               present::Vector{Float64},
-                               future::Vector{Float64},
-                               steady_state::Vector{Float64},
-                               shocks::Vector{Float64},
+function get_dynamic_residuals(residual::Vector{<:Number},
+                               parameters::Vector{<:Number},
+                               calibration_parameters::Vector{<:Number},
+                               past::Vector{<:Number},
+                               present::Vector{<:Number},
+                               future::Vector{<:Number},
+                               steady_state::Vector{<:Number},
+                               shocks::Vector{<:Number},
                                𝓂::ℳ)
     𝓂.dyn_equations_func(residual, parameters, calibration_parameters, steady_state, future, present, past, shocks)
     return nothing
