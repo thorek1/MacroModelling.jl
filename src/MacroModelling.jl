@@ -6987,7 +6987,59 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     # and fills a pre-allocated residual vector
     dyn_eqs_vector = collect(dyn_equations)
     
-    lennz_dyn_eqs = count(!iszero, dyn_eqs_vector)
+    # Create separate symbolic variable arrays for each component to avoid allocations
+    n_params = length(𝓂.parameters)
+    n_calib_params = length(𝓂.calibration_equations_parameters)
+    n_ss = length(dyn_ss_idx)
+    n_future = length(dyn_var_future_idx)
+    n_present = length(dyn_var_present_idx)
+    n_past = length(dyn_var_past_idx)
+    n_exo = length(𝓂.exo)
+    
+    Symbolics.@variables params_sym[1:n_params] calib_params_sym[1:n_calib_params] ss_sym[1:n_ss] future_sym[1:n_future] present_sym[1:n_present] past_sym[1:n_past] shocks_sym[1:n_exo]
+    
+    # Create substitution mapping from 𝔓 and 𝔙 to the new separate variables
+    substitution_dict = Dict{Symbolics.Num, Symbolics.Num}()
+    
+    # Map parameters (first nps elements of 𝔓)
+    for i in 1:n_params
+        substitution_dict[𝔓[i]] = params_sym[i]
+    end
+    
+    # Map calibration parameters
+    for i in 1:n_calib_params
+        substitution_dict[𝔓[n_params + i]] = calib_params_sym[i]
+    end
+    
+    # Map steady state values
+    for i in 1:n_ss
+        substitution_dict[𝔓[n_params + n_calib_params + i]] = ss_sym[i]
+    end
+    
+    # Map future variables
+    for i in 1:n_future
+        substitution_dict[𝔙[i]] = future_sym[i]
+    end
+    
+    # Map present variables
+    for i in 1:n_present
+        substitution_dict[𝔙[n_future + i]] = present_sym[i]
+    end
+    
+    # Map past variables
+    for i in 1:n_past
+        substitution_dict[𝔙[n_future + n_present + i]] = past_sym[i]
+    end
+    
+    # Map shocks
+    for i in 1:n_exo
+        substitution_dict[𝔙[n_future + n_present + n_past + i]] = shocks_sym[i]
+    end
+    
+    # Substitute into equations
+    dyn_eqs_substituted = Symbolics.substitute.(dyn_eqs_vector, Ref(substitution_dict))
+    
+    lennz_dyn_eqs = count(!iszero, dyn_eqs_substituted)
     
     if lennz_dyn_eqs > nnz_parallel_threshold
         parallel_dyn = Symbolics.ShardedForm(1500,4)
@@ -6995,46 +7047,35 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         parallel_dyn = Symbolics.SerialForm()
     end
     
-    # First generate the core function with the standard signature
-    _, func_dyn_eqs_core = Symbolics.build_function(dyn_eqs_vector, 𝔓, 𝔙, 
+    # Generate function with separate component inputs - no allocations needed in wrapper
+    # Signature: func!(residual, parameters, calib_params, steady_state, future, present, past, shocks)
+    _, func_dyn_eqs_core = Symbolics.build_function(dyn_eqs_substituted, 
+                                            params_sym, calib_params_sym, ss_sym, 
+                                            future_sym, present_sym, past_sym, shocks_sym,
                                             cse = cse, 
                                             skipzeros = skipzeros, 
                                             parallel = parallel_dyn,
                                             expression_module = @__MODULE__,
                                             expression = Val(false))::Tuple{<:Function, <:Function}
     
-    # Create wrapper function with user-friendly signature that handles indexing internally
-    # Signature: func!(residual, parameters, past, present, future, steady_state, shocks)
-    n_params = length(𝓂.parameters)
-    n_calib_params = length(𝓂.calibration_equations_parameters)
-    n_vars = length(𝓂.var)
-    n_exo = length(𝓂.exo)
-    
+    # Create wrapper that extracts indexed views without allocation
     # Capture indices in closure
     local_dyn_var_future_idx = copy(dyn_var_future_idx)
     local_dyn_var_present_idx = copy(dyn_var_present_idx)
     local_dyn_var_past_idx = copy(dyn_var_past_idx)
-    local_dyn_ss_idx = copy(dyn_ss_idx)
+    
+    # Pre-allocate calibration parameters vector once (outside the function)
+    calib_params_zeros = zeros(n_calib_params)
     
     func_dyn_eqs = function(residual, parameters, past, present, future, steady_state, shocks)
-        # Build the 𝔓 vector: [parameters, calibration_parameters, steady_state_values]
-        pars_ext = vcat(parameters, zeros(n_calib_params))
-        params_and_SS = vcat(pars_ext, steady_state)
+        # Extract views/slices with indexing (no allocations)
+        future_indexed = @view future[local_dyn_var_future_idx]
+        present_indexed = @view present[local_dyn_var_present_idx]
+        past_indexed = @view past[local_dyn_var_past_idx]
         
-        # Build the 𝔙 vector: [future[indices], present[indices], past[indices], shocks]
-        n_future = length(local_dyn_var_future_idx)
-        n_present = length(local_dyn_var_present_idx)
-        n_past = length(local_dyn_var_past_idx)
-        
-        var_vec = zeros(n_future + n_present + n_past + n_exo)
-        
-        var_vec[1:n_future] = future[local_dyn_var_future_idx]
-        var_vec[n_future+1:n_future+n_present] = present[local_dyn_var_present_idx]
-        var_vec[n_future+n_present+1:n_future+n_present+n_past] = past[local_dyn_var_past_idx]
-        var_vec[end-n_exo+1:end] = shocks
-        
-        # Call the core generated function
-        func_dyn_eqs_core(residual, params_and_SS, var_vec)
+        # Call the core generated function with separate components (no allocations)
+        func_dyn_eqs_core(residual, parameters, calib_params_zeros, steady_state, 
+                         future_indexed, present_indexed, past_indexed, shocks)
     end
     
     𝓂.dyn_equations_func = func_dyn_eqs
