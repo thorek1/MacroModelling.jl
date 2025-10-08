@@ -257,7 +257,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 i += 1
 
                 plot_model_estimates!(m, data, 
-                                        label = join(string.(collect(shocks)), " "),
+                                        label = join(string.(length(shocks) > 0 ? collect(shocks) : shocks), " "),
                                         shocks = shocks,
                                         algorithm = algorithm, 
                                         data_in_levels = false)
@@ -453,18 +453,18 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             plot_solution(m, states[1])
 
-            i = 1
+            # i = 1
 
             # Test plot_solution! for combining multiple algorithms
             for ignore_obc in [true, false]
                 for model in [m, m2]
                     for state in states[[1,end]]
                         for σ in [0.5, 5]
-                            if i % 3 == 0
-                                plot_solution(m, states[2])
-                            end
+                            # if i % 3 == 0
+                            #     plot_solution(m, states[2])
+                            # end
 
-                            i += 1
+                            # i += 1
                             
                             plot_solution!(model, state, σ = σ, ignore_obc = ignore_obc)
                         end
