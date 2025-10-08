@@ -6991,7 +6991,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         x -> replace_symbols.(x, Ref(parameter_dict)) |> 
         x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
         x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
-    
+        
     dyn_eqs_vector = collect(vcat(dyn_equations, calib_eqs_processed))
     
     # Create separate symbolic variable arrays for FULL vectors
