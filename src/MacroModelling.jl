@@ -6985,7 +6985,14 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     # Generate dynamic equations function
     # This function evaluates the dynamic equations themselves (not derivatives)
     # and fills a pre-allocated residual vector
-    dyn_eqs_vector = collect(dyn_equations)
+    # Also includes calibration equations (concatenated) to support stochastic steady state cases
+    calib_eqs_processed = 𝓂.calibration_equations |> 
+        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+        x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+    
+    dyn_eqs_vector = collect(vcat(dyn_equations, calib_eqs_processed))
     
     # Create separate symbolic variable arrays for FULL vectors
     # The generated function will handle indexing internally

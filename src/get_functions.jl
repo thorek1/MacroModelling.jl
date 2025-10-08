@@ -3715,8 +3715,8 @@ SS = get_steady_state(RBC)
 aux_idx = RBC.solution.perturbation.auxiliary_indices
 SS_for_func = SS[aux_idx.dyn_ss_idx]
 
-# Allocate residual vector
-residual = zeros(length(RBC.dyn_equations))
+# Allocate residual vector (includes both dynamic and calibration equations)
+residual = zeros(length(RBC.dyn_equations) + length(RBC.calibration_equations))
 
 # Calibration parameters (typically zeros if none defined)
 calib_params = zeros(length(RBC.calibration_equations_parameters))
