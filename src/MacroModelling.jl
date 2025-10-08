@@ -7029,6 +7029,22 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         substitution_dict[𝔓[n_params + i]] = calib_params_sym[i]
     end
     
+    # Map steady state variables
+    # These map both 𝔓 entries (steady state values in parameter vector) 
+    # and corresponding 𝔙 entries (steady state variable references) to ss_sym
+    for i in 1:n_ss
+        # Map 𝔓 entry to ss_sym
+        substitution_dict[𝔓[n_params + n_calib_params + i]] = ss_sym[i]
+        
+        # Also map the 𝔙 entry for this steady state variable
+        # dyn_ss_idx tells us which variable indices correspond to steady state
+        if i <= length(dyn_ss_idx)
+            ss_var_pos = dyn_ss_idx[i]
+            # This variable's steady state reference in 𝔙 should also map to ss_sym
+            substitution_dict[𝔙[dyn_var_idxs[ss_var_pos]]] = ss_sym[i]
+        end
+    end
+    
     # Map future variables - use the indices to map to full vector
     for (i, var_idx) in enumerate(dyn_var_future_idx)
         substitution_dict[𝔙[i]] = future_sym[var_idx]
