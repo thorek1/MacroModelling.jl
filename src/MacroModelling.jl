@@ -6986,24 +6986,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     # and fills a pre-allocated residual vector
     # Also includes calibration equations (concatenated) to support stochastic steady state cases
     
-    # First, replace variables with timing indices in calibration equations with steady state versions
-    # This converts k[0], k[-1], k[1] to k (steady state)
-    timing_to_ss_dict = Dict{Symbol, Symbol}()
-    for var in 𝓂.var
-        # Add mappings for all timing variations to the base variable (steady state)
-        var_str = string(var)
-        timing_to_ss_dict[var] = Symbol(var_str * "₍ₛₛ₎")
-    end
-    
-    calib_eqs_processed = 𝓂.calibration_equations |> 
-        x -> replace_symbols.(x, Ref(timing_to_ss_dict)) |>  # Remove timing indices first
-        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
-        x -> replace_symbols.(x, Ref(parameter_dict)) |> 
-        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
-        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
-        
-    dyn_eqs_vector = collect(vcat(dyn_equations, calib_eqs_processed))
-    
     # Create separate symbolic variable arrays for FULL vectors
     # The generated function will handle indexing internally
     n_params = length(𝓂.parameters)
@@ -7015,61 +6997,74 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     # Create symbolic arrays for full vectors (not indexed subsets)
     Symbolics.@variables params_sym[1:n_params] calib_params_sym[1:n_calib_params] ss_sym[1:n_ss] future_sym[1:n_vars] present_sym[1:n_vars] past_sym[1:n_vars] shocks_sym[1:n_exo]
     
-    # Create substitution mapping from 𝔓 and 𝔙 to the new separate variables
-    # The indexing is encoded in the substitution
-    substitution_dict = Dict{Symbolics.Num, Symbolics.Num}()
+    # Create substitution mapping directly from original equation symbols to new separate variables
+    # Start from 𝓂.dyn_equations and 𝓂.calibration_equations
+    direct_substitution_dict = Dict{Symbol, Symbolics.Num}()
     
     # Map parameters
-    for i in 1:n_params
-        substitution_dict[𝔓[i]] = params_sym[i]
+    for (i, param) in enumerate(𝓂.parameters)
+        direct_substitution_dict[param] = params_sym[i]
     end
     
     # Map calibration parameters
-    for i in 1:n_calib_params
-        substitution_dict[𝔓[n_params + i]] = calib_params_sym[i]
+    for (i, calib_param) in enumerate(𝓂.calibration_equations_parameters)
+        direct_substitution_dict[calib_param] = calib_params_sym[i]
     end
     
-    # Map steady state variables
-    # These map both 𝔓 entries (steady state values in parameter vector) 
-    # and corresponding 𝔙 entries (steady state variable references) to ss_sym
-    for i in 1:n_ss
-        # Map 𝔓 entry to ss_sym
-        substitution_dict[𝔓[n_params + n_calib_params + i]] = ss_sym[i]
+    # Map variables with timing indices
+    # For dynamic equations: map k₍₀₎, k₍₋₁₎, k₍₁₎ to present, past, future
+    # For calibration equations: also map steady state variables k₍ₛₛ₎
+    for (var_idx, var) in enumerate(𝓂.var)
+        var_str = string(var)
         
-        # Also map the 𝔙 entry for this steady state variable
-        # dyn_ss_idx tells us which variable indices correspond to steady state
-        if i <= length(dyn_ss_idx)
-            ss_var_pos = dyn_ss_idx[i]
-            # This variable's steady state reference in 𝔙 should also map to ss_sym
-            substitution_dict[𝔙[dyn_var_idxs[ss_var_pos]]] = ss_sym[i]
-        end
+        # Future timing: k₍₁₎ -> future_sym[var_idx]
+        direct_substitution_dict[Symbol(var_str * "₍₁₎")] = future_sym[var_idx]
+        
+        # Present timing: k₍₀₎ -> present_sym[var_idx]
+        direct_substitution_dict[Symbol(var_str * "₍₀₎")] = present_sym[var_idx]
+        
+        # Past timing: k₍₋₁₎ -> past_sym[var_idx]
+        direct_substitution_dict[Symbol(var_str * "₍₋₁₎")] = past_sym[var_idx]
     end
     
-    # Map future variables - use the indices to map to full vector
-    for (i, var_idx) in enumerate(dyn_var_future_idx)
-        substitution_dict[𝔙[i]] = future_sym[var_idx]
-    end
-    
-    # Map present variables
-    offset = length(dyn_var_future_idx)
-    for (i, var_idx) in enumerate(dyn_var_present_idx)
-        substitution_dict[𝔙[offset + i]] = present_sym[var_idx]
-    end
-    
-    # Map past variables
-    offset += length(dyn_var_present_idx)
-    for (i, var_idx) in enumerate(dyn_var_past_idx)
-        substitution_dict[𝔙[offset + i]] = past_sym[var_idx]
+    # Map steady state variables (for calibration equations)
+    # Find which variables appear in steady state and map them to ss_sym
+    for (i, ss_idx) in enumerate(dyn_ss_idx)
+        var = 𝓂.var[ss_idx]
+        var_str = string(var)
+        # Steady state: k₍ₛₛ₎ -> ss_sym[i]
+        direct_substitution_dict[Symbol(var_str * "₍ₛₛ₎")] = ss_sym[i]
     end
     
     # Map shocks
-    offset += length(dyn_var_past_idx)
-    for i in 1:n_exo
-        substitution_dict[𝔙[offset + i]] = shocks_sym[i]
+    for (i, shock) in enumerate(𝓂.exo)
+        shock_str = string(shock)
+        direct_substitution_dict[Symbol(shock_str * "₍ₓ₎")] = shocks_sym[i]
     end
     
-    # Substitute into equations
-    dyn_eqs_substituted = Symbolics.substitute.(dyn_eqs_vector, Ref(substitution_dict))
+    # Process dynamic equations: apply calibration replacements first, then direct substitution
+    dyn_eqs_direct = 𝓂.dyn_equations |> 
+        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+        x -> replace_symbols.(x, Ref(direct_substitution_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__))
+    
+    # Process calibration equations: replace timing indices with steady state first
+    # In calibration equations, variables with timing (k₍₀₎, k₍₋₁₎, k₍₁₎) should become k₍ₛₛ₎
+    timing_to_ss_dict = Dict{Symbol, Symbol}()
+    for var in 𝓂.var
+        var_str = string(var)
+        timing_to_ss_dict[Symbol(var_str * "₍₀₎")] = Symbol(var_str * "₍ₛₛ₎")
+        timing_to_ss_dict[Symbol(var_str * "₍₋₁₎")] = Symbol(var_str * "₍ₛₛ₎")
+        timing_to_ss_dict[Symbol(var_str * "₍₁₎")] = Symbol(var_str * "₍ₛₛ₎")
+    end
+    
+    calib_eqs_direct = 𝓂.calibration_equations |> 
+        x -> replace_symbols.(x, Ref(timing_to_ss_dict)) |>  # Convert timing to steady state
+        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+        x -> replace_symbols.(x, Ref(direct_substitution_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__))
+        
+    dyn_eqs_substituted = vcat(dyn_eqs_direct, calib_eqs_direct)
     
     lennz_dyn_eqs = length(dyn_eqs_substituted)
     
