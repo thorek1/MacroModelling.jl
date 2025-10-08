@@ -3734,33 +3734,6 @@ function get_dynamic_residuals(residual::Vector{Float64},
                                steady_state::Vector{Float64},
                                shocks::Vector{Float64},
                                𝓂::ℳ)
-    
-    # Ensure the model has been solved (which generates the function)
-    if 𝓂.dyn_equations_func === (x -> x)
-        error("Dynamic equations function not yet generated. Call solve!(model) first.")
-    end
-    
-    # Validate input sizes
-    n_vars = length(𝓂.var)
-    n_eqs = length(𝓂.dyn_equations)
-    n_exo = length(𝓂.exo)
-    n_params = length(𝓂.parameters)
-    
-    # Get auxiliary indices to determine SS size
-    aux_idx = 𝓂.solution.perturbation.auxiliary_indices
-    n_ss = length(aux_idx.dyn_ss_idx)
-    
-    @assert length(residual) == n_eqs "residual vector should have length $(n_eqs)"
-    @assert length(parameters) == n_params "parameters should have length $(n_params)"
-    @assert length(past) == n_vars "past should have length $(n_vars)"
-    @assert length(present) == n_vars "present should have length $(n_vars)"
-    @assert length(future) == n_vars "future should have length $(n_vars)"
-    @assert length(steady_state) == n_ss "steady_state should have length $(n_ss)"
-    @assert length(shocks) == n_exo "shocks should have length $(n_exo)"
-    
-    # Call the generated function with simple signature
-    # All indexing is handled inside the generated function
     𝓂.dyn_equations_func(residual, parameters, past, present, future, steady_state, shocks)
-    
     return nothing
 end
