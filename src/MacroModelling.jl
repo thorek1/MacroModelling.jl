@@ -6986,7 +6986,20 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     # This function evaluates the dynamic equations themselves (not derivatives)
     # and fills a pre-allocated residual vector
     # Also includes calibration equations (concatenated) to support stochastic steady state cases
+    
+    # First, replace variables with timing indices in calibration equations with steady state versions
+    # This converts k[0], k[-1], k[1] to k (steady state)
+    timing_to_ss_dict = Dict{Symbol, Symbol}()
+    for var in 𝓂.var
+        # Add mappings for all timing variations to the base variable (steady state)
+        var_str = string(var)
+        timing_to_ss_dict[Symbol(var_str * "₍₀₎")] = var
+        timing_to_ss_dict[Symbol(var_str * "₍₋₁₎")] = var
+        timing_to_ss_dict[Symbol(var_str * "₍₁₎")] = var
+    end
+    
     calib_eqs_processed = 𝓂.calibration_equations |> 
+        x -> replace_symbols.(x, Ref(timing_to_ss_dict)) |>  # Remove timing indices first
         x -> replace_symbols.(x, Ref(calib_replacements)) |> 
         x -> replace_symbols.(x, Ref(parameter_dict)) |> 
         x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
