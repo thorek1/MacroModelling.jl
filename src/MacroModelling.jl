@@ -7068,8 +7068,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     # Store the generated function directly - no wrapper needed
     # The function expects: (residual, parameters, calib_params, steady_state, future, present, past, shocks)
     # But we want to hide calib_params from the user, so create a minimal wrapper
-    𝓂.dyn_equations_func = (residual, parameters, past, present, future, steady_state, shocks) -> 
-        func_dyn_eqs_core(residual, parameters, calib_params_zeros, steady_state, future, present, past, shocks)
+    𝓂.dyn_equations_func = func_dyn_eqs_core # (residual, parameters, calib_params_zeros, steady_state, future, present, past, shocks)
 
 
     ∇₁_parameters = derivatives[1][2][:,1:nps]
