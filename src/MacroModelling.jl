@@ -6927,7 +6927,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         end
     end
 
-
     for v in 𝓂.calibration_equations_no_var
         push!(calib_vars, v.args[1])
         push!(calib_expr, v.args[2])
@@ -6993,9 +6992,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     for var in 𝓂.var
         # Add mappings for all timing variations to the base variable (steady state)
         var_str = string(var)
-        timing_to_ss_dict[Symbol(var_str * "₍₀₎")] = var
-        timing_to_ss_dict[Symbol(var_str * "₍₋₁₎")] = var
-        timing_to_ss_dict[Symbol(var_str * "₍₁₎")] = var
+        timing_to_ss_dict[var] = Symbol(var_str * "₍ₛₛ₎")
     end
     
     calib_eqs_processed = 𝓂.calibration_equations |> 
