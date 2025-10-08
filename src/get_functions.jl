@@ -3666,7 +3666,7 @@ check_residuals = get_non_stochastic_steady_state_residuals
 
 """
 $(SIGNATURES)
-Evaluate the dynamic equations of the model and return the residuals.
+Evaluate the dynamic equations of the model and fill the pre-allocated residual vector.
 
 This function provides a convenient interface to evaluate the model's dynamic equations
 at any point in the state space. It is particularly useful for:
@@ -3674,20 +3674,18 @@ at any point in the state space. It is particularly useful for:
 - Debugging model specifications
 - Custom solution algorithms
 
-The function takes care of organizing the inputs in the correct order expected by 
-the underlying generated function.
-
 # Arguments
-- $MODEL®
-- `variables`: Vector of variable values ordered as [past, present, future]
+- `residual`: Pre-allocated vector to store the residuals (modified in-place)
+- `parameters`: Vector of parameter values
+- `past`: Vector of past variable values (t-1)
+- `present`: Vector of present variable values (t)
+- `future`: Vector of future variable values (t+1)
+- `steady_state`: Vector of steady state values
 - `shocks`: Vector of shock values (exogenous variables)
-
-# Keyword Arguments
-- `parameters`: Parameter values to use. Defaults to the model's current parameter values.
+- `𝓂`: Model object
 
 # Returns
-- Vector of residuals for each dynamic equation. At a valid solution (e.g., steady state 
-  with zero shocks), these residuals should be approximately zero.
+- Nothing (residuals are filled in the `residual` vector)
 
 # Examples
 ```jldoctest
@@ -3708,84 +3706,61 @@ end
     β = 0.95
 end
 
-# Get the steady state
+# Solve and get steady state
+solve!(RBC)
 SS = get_steady_state(RBC)
 
-# Prepare inputs: at steady state, past = present = future = SS
-variables = vcat(SS, SS, SS)  # [past, present, future]
-shocks = zeros(length(RBC.exo))  # Zero shocks
+# Get steady state values for the SS argument
+aux_idx = RBC.solution.perturbation.auxiliary_indices
+SS_for_func = SS[aux_idx.dyn_ss_idx]
 
-# Evaluate the dynamic equations
-residuals = get_dynamic_residuals(RBC, variables, shocks)
+# Allocate residual vector
+residual = zeros(length(RBC.dyn_equations))
+
+# Evaluate at steady state with zero shocks
+get_dynamic_residuals(residual, RBC.parameter_values, SS, SS, SS, SS_for_func, zeros(length(RBC.exo)), RBC)
 
 # Residuals should be near zero at steady state
-maximum(abs.(residuals))
+maximum(abs.(residual))
 # output
 3.552713678800501e-15
 ```
 """
-function get_dynamic_residuals(𝓂::ℳ,
-                               variables::Vector{Float64},
-                               shocks::Vector{Float64};
-                               parameters::Union{Vector{Float64}, Nothing} = nothing)
+function get_dynamic_residuals(residual::Vector{Float64},
+                               parameters::Vector{Float64},
+                               past::Vector{Float64},
+                               present::Vector{Float64},
+                               future::Vector{Float64},
+                               steady_state::Vector{Float64},
+                               shocks::Vector{Float64},
+                               𝓂::ℳ)
     
     # Ensure the model has been solved (which generates the function)
     if 𝓂.dyn_equations_func === (x -> x)
         error("Dynamic equations function not yet generated. Call solve!(model) first.")
     end
     
-    # Get auxiliary indices
-    aux_idx = 𝓂.solution.perturbation.auxiliary_indices
-    
+    # Validate input sizes
     n_vars = length(𝓂.var)
-    @assert length(variables) == 3 * n_vars "variables should contain [past, present, future] for all $(n_vars) variables"
-    @assert length(shocks) == length(𝓂.exo) "shocks should contain $(length(𝓂.exo)) shock values"
+    n_eqs = length(𝓂.dyn_equations)
+    n_exo = length(𝓂.exo)
+    n_params = length(𝓂.parameters)
     
-    # Extract past, present, future from input
-    past = variables[1:n_vars]
-    present = variables[n_vars+1:2*n_vars]
-    future = variables[2*n_vars+1:3*n_vars]
+    # Get auxiliary indices to determine SS size
+    aux_idx = 𝓂.solution.perturbation.auxiliary_indices
+    n_ss = length(aux_idx.dyn_ss_idx)
     
-    # Construct the combined parameter and steady state vector
-    # The generated function expects 𝔓 = [parameters, calibration_parameters, steady_state_values]
-    if parameters === nothing
-        base_params = 𝓂.parameter_values
-    else
-        base_params = parameters
-    end
+    @assert length(residual) == n_eqs "residual vector should have length $(n_eqs)"
+    @assert length(parameters) == n_params "parameters should have length $(n_params)"
+    @assert length(past) == n_vars "past should have length $(n_vars)"
+    @assert length(present) == n_vars "present should have length $(n_vars)"
+    @assert length(future) == n_vars "future should have length $(n_vars)"
+    @assert length(steady_state) == n_ss "steady_state should have length $(n_ss)"
+    @assert length(shocks) == n_exo "shocks should have length $(n_exo)"
     
-    # Extended parameters include regular parameters plus calibration equation parameters
-    # For now, we don't handle calibration parameters in this helper, so they're zero
-    pars_ext = vcat(base_params, zeros(length(𝓂.calibration_equations_parameters)))
+    # Call the generated function with simple signature
+    # All indexing is handled inside the generated function
+    𝓂.dyn_equations_func(residual, parameters, past, present, future, steady_state, shocks)
     
-    # Steady state values come from the present state at the appropriate indices
-    dyn_ss_idx = aux_idx.dyn_ss_idx
-    SS_vals = present[dyn_ss_idx]
-    
-    # Construct full parameter vector 𝔓 = [pars_ext, SS_vals]
-    params_and_SS = vcat(pars_ext, SS_vals)
-    
-    # Construct variable vector 𝔙 in the order: [future, present, past, shocks]
-    dyn_var_future_idx = aux_idx.dyn_var_future_idx
-    dyn_var_present_idx = aux_idx.dyn_var_present_idx
-    dyn_var_past_idx = aux_idx.dyn_var_past_idx
-    
-    n_future = length(dyn_var_future_idx)
-    n_present = length(dyn_var_present_idx)
-    n_past = length(dyn_var_past_idx)
-    
-    var_vec = zeros(n_future + n_present + n_past + length(shocks))
-    
-    var_vec[1:n_future] = future[dyn_var_future_idx]
-    var_vec[n_future+1:n_future+n_present] = present[dyn_var_present_idx]
-    var_vec[n_future+n_present+1:n_future+n_present+n_past] = past[dyn_var_past_idx]
-    var_vec[end-length(shocks)+1:end] = shocks
-    
-    # Allocate residual vector
-    residual = zeros(length(𝓂.dyn_equations))
-    
-    # Call the generated function: dyn_equations_func!(residual, 𝔓, 𝔙)
-    𝓂.dyn_equations_func(residual, params_and_SS, var_vec)
-    
-    return residual
+    return nothing
 end

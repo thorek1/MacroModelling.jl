@@ -6995,12 +6995,47 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         parallel_dyn = Symbolics.SerialForm()
     end
     
-    _, func_dyn_eqs = Symbolics.build_function(dyn_eqs_vector, 𝔓, 𝔙, 
+    # First generate the core function with the standard signature
+    _, func_dyn_eqs_core = Symbolics.build_function(dyn_eqs_vector, 𝔓, 𝔙, 
                                             cse = cse, 
                                             skipzeros = skipzeros, 
                                             parallel = parallel_dyn,
                                             expression_module = @__MODULE__,
                                             expression = Val(false))::Tuple{<:Function, <:Function}
+    
+    # Create wrapper function with user-friendly signature that handles indexing internally
+    # Signature: func!(residual, parameters, past, present, future, steady_state, shocks)
+    n_params = length(𝓂.parameters)
+    n_calib_params = length(𝓂.calibration_equations_parameters)
+    n_vars = length(𝓂.var)
+    n_exo = length(𝓂.exo)
+    
+    # Capture indices in closure
+    local_dyn_var_future_idx = copy(dyn_var_future_idx)
+    local_dyn_var_present_idx = copy(dyn_var_present_idx)
+    local_dyn_var_past_idx = copy(dyn_var_past_idx)
+    local_dyn_ss_idx = copy(dyn_ss_idx)
+    
+    func_dyn_eqs = function(residual, parameters, past, present, future, steady_state, shocks)
+        # Build the 𝔓 vector: [parameters, calibration_parameters, steady_state_values]
+        pars_ext = vcat(parameters, zeros(n_calib_params))
+        params_and_SS = vcat(pars_ext, steady_state)
+        
+        # Build the 𝔙 vector: [future[indices], present[indices], past[indices], shocks]
+        n_future = length(local_dyn_var_future_idx)
+        n_present = length(local_dyn_var_present_idx)
+        n_past = length(local_dyn_var_past_idx)
+        
+        var_vec = zeros(n_future + n_present + n_past + n_exo)
+        
+        var_vec[1:n_future] = future[local_dyn_var_future_idx]
+        var_vec[n_future+1:n_future+n_present] = present[local_dyn_var_present_idx]
+        var_vec[n_future+n_present+1:n_future+n_present+n_past] = past[local_dyn_var_past_idx]
+        var_vec[end-n_exo+1:end] = shocks
+        
+        # Call the core generated function
+        func_dyn_eqs_core(residual, params_and_SS, var_vec)
+    end
     
     𝓂.dyn_equations_func = func_dyn_eqs
 
