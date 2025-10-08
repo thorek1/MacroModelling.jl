@@ -6991,7 +6991,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     n_params = length(𝓂.parameters)
     n_calib_params = length(𝓂.calibration_equations_parameters)
     n_vars = length(𝓂.var)
-    n_ss = length(dyn_ss_idx)
+    n_ss = n_vars
     n_exo = length(𝓂.exo)
     
     # Create symbolic arrays for full vectors (not indexed subsets)
@@ -7029,8 +7029,7 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     
     # Map steady state variables (for calibration equations)
     # Find which variables appear in steady state and map them to ss_sym
-    for (i, ss_idx) in enumerate(dyn_ss_idx)
-        var = 𝓂.var[ss_idx]
+    for (i, var) in enumerate(𝓂.var)
         var_str = string(var)
         # Steady state: k₍ₛₛ₎ -> ss_sym[i]
         direct_substitution_dict[Symbol(var_str * "₍ₛₛ₎")] = ss_sym[i]
@@ -7053,11 +7052,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     timing_to_ss_dict = Dict{Symbol, Symbol}()
     for var in 𝓂.var
         var_str = string(var)
-        timing_to_ss_dict[Symbol(var_str * "₍₀₎")] = Symbol(var_str * "₍ₛₛ₎")
-        timing_to_ss_dict[Symbol(var_str * "₍₋₁₎")] = Symbol(var_str * "₍ₛₛ₎")
-        timing_to_ss_dict[Symbol(var_str * "₍₁₎")] = Symbol(var_str * "₍ₛₛ₎")
+        timing_to_ss_dict[var] = Symbol(var_str * "₍ₛₛ₎")
     end
-    
+
     calib_eqs_direct = 𝓂.calibration_equations |> 
         x -> replace_symbols.(x, Ref(timing_to_ss_dict)) |>  # Convert timing to steady state
         x -> replace_symbols.(x, Ref(calib_replacements)) |> 
