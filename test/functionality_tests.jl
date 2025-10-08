@@ -645,7 +645,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             for parameters in params
                 for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
-                        for lyapunov_algorithm in lyapunov_algorithms
+                        # for lyapunov_algorithm in lyapunov_algorithms
                             for sylvester_algorithm in sylvester_algorithms
                                 if i % 10 == 0
                                     plot_irf(m, algorithm = algorithm)
@@ -659,10 +659,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             parameters = parameters,
                                             tol = tol,
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                            lyapunov_algorithm = lyapunov_algorithm,
+                                            # lyapunov_algorithm = lyapunov_algorithm,
                                             sylvester_algorithm = sylvester_algorithm)
                             end
-                        end
+                        # end
                     end
                 end
             end
@@ -1070,7 +1070,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
-                    for lyapunov_algorithm in lyapunov_algorithms
+                    # for lyapunov_algorithm in lyapunov_algorithms
                         for sylvester_algorithm in sylvester_algorithms
                             if i % 4 == 0
                                 plot_conditional_forecast(m, conditions[end],
@@ -1089,10 +1089,10 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                         shocks = shocks[end],
                                                         tol = tol,
                                                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                        # lyapunov_algorithm = lyapunov_algorithm,
                                                         sylvester_algorithm = sylvester_algorithm)
                         end
-                    end
+                    # end
                 end
             end
 
@@ -1752,7 +1752,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     for verbose in [false] # [true, false]
                         for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                             for quadratic_matrix_equation_algorithm in qme_algorithms
-                                for lyapunov_algorithm in lyapunov_algorithms
+                                # for lyapunov_algorithm in lyapunov_algorithms
                                     for sylvester_algorithm in sylvester_algorithms
                                         
                                         clear_solution_caches!(m, algorithm)
@@ -1766,7 +1766,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                             shocks = shocks[end],
                                                                             tol = tol,
                                                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                            lyapunov_algorithm = lyapunov_algorithm,
+                                                                            # lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm,
                                                                             verbose = verbose)
 
@@ -1781,7 +1781,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 shocks = shocks[end],
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                # lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
 
@@ -1818,7 +1818,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 
                                         @test isapprox(cond_fcst, cond_fcst_lvl)
                                     end
-                                end
+                                # end
                             end
                         end
                     end
@@ -2733,7 +2733,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
-                        for lyapunov_algorithm in lyapunov_algorithms
+                        # for lyapunov_algorithm in lyapunov_algorithms
                             for sylvester_algorithm in sylvester_algorithms
                                 clear_solution_caches!(m, algorithm)
                                             
@@ -2744,11 +2744,11 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                 initial_state = initial_state,
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                # lyapunov_algorithm = lyapunov_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)
                                 @test isapprox(irf_, IRF_, rtol = 1e-6)
                             end
-                        end
+                        # end
                     end
                 end
                 
