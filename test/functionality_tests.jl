@@ -371,7 +371,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
         @testset "plot_solution" begin
             states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
-            
+            states2 = vcat(get_state_variables(m2), m2.timings.past_not_future_and_mixed)
+
             if algorithm == :first_order
                 algos = [:first_order]
             elseif algorithm in [:second_order, :pruned_second_order]
@@ -451,14 +452,14 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
 
-            plot_solution(m2, states[end])
+            plot_solution(m2, states2[end])
 
             # i = 1
 
             # Test plot_solution! for combining multiple algorithms
             for ignore_obc in [true, false]
-                for model in [m, m2]
-                    for state in states[[1,end]]
+                for (model, stt) in [(m, states), (m2, states2)]
+                    for state in stt[[1,end]]
                         for σ in [0.5, 5]
                             # if i % 3 == 0
                             #     plot_solution(m, states[2])
