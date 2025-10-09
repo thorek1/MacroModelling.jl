@@ -474,7 +474,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
              
-            plot_solution(m, states[1])
+            plot_solution(m2, states2[1])
 
             i = 1
 
@@ -1799,7 +1799,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 shocks = shocks[end],
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                # lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
 
@@ -1813,7 +1813,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                                                                 shocks = shocks[end],
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                # lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
                                                                                 
