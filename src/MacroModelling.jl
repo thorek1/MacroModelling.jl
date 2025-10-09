@@ -570,15 +570,15 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
         
         shock_history = zeros(𝓂.timings.nExo, periods_extended)
         
-        shock_history[indexin(shock_input,𝓂.timings.exo),1:size(shocks)[2]] = shocks
+        shock_history[indexin(shock_input,𝓂.timings.exo), 1:size(shocks)[2]] = shocks
 
         shock_idx = 1
-    else
+    else (typeof(shocks) <: Symbol_input) || (typeof(shocks) <: String_input)
         shock_history = shocks
 
         periods_extended = periods
         
-        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+        shock_idx = parse_shocks_input_to_index(shocks, 𝓂.timings)
     end
 
     if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64} || shocks == :none
