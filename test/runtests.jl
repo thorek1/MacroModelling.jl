@@ -50,12 +50,12 @@ include("functionality_tests.jl")
 # end
 
 if test_set == "jet"
-    if VERSION < v"1.12"
+    if VERSION < v"1.13"
         using JET
     end
     
     @testset verbose = true "Static checking (JET.jl)" begin
-        if VERSION < v"1.12"
+        if VERSION < v"1.13"
             JET.test_package(MacroModelling; target_defined_modules = true, toplevel_logger = nothing)
         end
     end
@@ -698,7 +698,7 @@ if test_set == "higher_order_3"
     # test_higher_order = true
 
     include("models/Caldara_et_al_2012_estim.jl")
-    
+
     @testset verbose = true "RBC_CME with calibration equations second order" begin
         include("models/RBC_CME_calibration_equations.jl")
         functionality_test(m, Caldara_et_al_2012_estim, algorithm = :second_order, plots = plots)
