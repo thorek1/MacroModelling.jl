@@ -7458,7 +7458,7 @@ write_parameters_input!(𝓂::ℳ, parameters::Matrix{Real}; verbose::Bool = tru
 
 function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose::Bool = true)
     if length(parameters) > length(𝓂.parameter_values)
-        println("Model has "*string(length(𝓂.parameter_values))*" parameters. "*string(length(parameters))*" were provided. The following will be ignored: "*string(parameters[length(𝓂.parameter_values)+1:end]...))
+        println("Model has $(length(𝓂.parameter_values)) parameters. $(length(parameters)) were provided. The following will be ignored: $(join(parameters[length(𝓂.parameter_values)+1:end], " "))")
 
         parameters = parameters[1:length(𝓂.parameter_values)]
     end
