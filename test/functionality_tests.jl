@@ -451,7 +451,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
 
-            plot_solution(m, states[end])
+            plot_solution(m2, states[end])
 
             # i = 1
 
