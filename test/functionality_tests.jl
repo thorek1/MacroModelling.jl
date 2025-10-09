@@ -479,7 +479,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             i = 1
 
             # Test plot_solution! for combining multiple algorithms
-            for model in [m, m2]
+            for (model, state) in [(m, states[1]), (m2, states2[1])]
                 for parameters in params
                     for algo in algos
                         if i % 10 == 0
