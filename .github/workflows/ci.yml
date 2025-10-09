@@ -142,7 +142,7 @@ jobs:
         if: matrix.version == '1'
         run: |
           # Finds the line starting with 'JET =' and replaces the quoted version string with "0.10"
-          sed -i -e '/^JET[[:space:]]*=/s/"[^"]*"/"0.10"/' Project.toml
+          sed -i '/^\[compat\]/,/^[^#\[]/ { /^JET[[:space:]]*=/ s/"[^"]*"/"0.10"/ }' Project.toml
       - name: Set Custom Test Environment Variable (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
