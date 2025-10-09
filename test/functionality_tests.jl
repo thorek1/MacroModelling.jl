@@ -1,5 +1,6 @@
 function functionality_test(m, m2; algorithm = :first_order, plots = true)
     old_params = copy(m.parameter_values)
+    old_params2 = copy(m2.parameter_values)
     
     # options to itereate over
     filters = [:inversion, :kalman]
@@ -18,6 +19,15 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
                 old_params]
                 
+    
+    params2 = [old_params2, 
+                (m2.parameters[1] => old_params2[1] * exp(rand()*1e-4)), 
+                Tuple(m2.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
+                m2.parameters .=> old_params2, 
+                (string(m2.parameters[1]) => old_params2[1] * 1.0001), 
+                Tuple(string.(m2.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params]
+
     param_derivs = [:all, 
                     m.parameters[1], 
                     m.parameters[1:3], 
@@ -479,8 +489,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             i = 1
 
             # Test plot_solution! for combining multiple algorithms
-            for (model, state) in [(m, states[1]), (m2, states2[1])]
-                for parameters in params
+            for (model, state, pars) in [(m, states[1], params), (m2, states2[1], params2)]
+                for parameters in pars
                     for algo in algos
                         if i % 10 == 0
                             plot_solution(m, states[1])
