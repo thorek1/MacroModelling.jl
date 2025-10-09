@@ -131,20 +131,25 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
-      - name: Remove Pigeons from non-estimation runs
+      - name: Remove Pigeons from non estimation runs
         if: contains(matrix.test_set, 'estimat') == false
+        shell: bash
         run: |
-          sed -i '' \
-            -e '/^\[targets\]/,$s/,[[:space:]]*"Pigeons"//g' \
-            -e '/^\[targets\]/,$s/"Pigeons",[[:space:]]*//g' \
-            Project.toml      
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"Pigeons"//g' \
+            -e '/^\[targets\]/,$ s/"Pigeons",[[:space:]]*//g' \
+            Project.toml
+          rm -f Project.toml.bak
+
       - name: Remove JET from estimation runs
         if: contains(matrix.test_set, 'estimat') == true
+        shell: bash
         run: |
-          sed -i '' \
-            -e '/^\[targets\]/,$s/,[[:space:]]*"JET"//g' \
-            -e '/^\[targets\]/,$s/"JET",[[:space:]]*//g' \
-            Project.toml   
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"JET"//g' \
+            -e '/^\[targets\]/,$ s/"JET",[[:space:]]*//g' \
+            Project.toml
+          rm -f Project.toml.bak 
       - name: Set Custom Test Environment Variable (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
