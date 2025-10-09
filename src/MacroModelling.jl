@@ -574,7 +574,7 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
 
         shock_idx = 1
     else (typeof(shocks) <: Symbol_input) || (typeof(shocks) <: String_input)
-        shock_history = shocks
+        shock_history = zeros(𝓂.timings.nExo, periods)
 
         periods_extended = periods
         
@@ -8619,7 +8619,7 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
 end
 
 
-function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T::timings)#::Union{UnitRange{Int64}, Int64, Vector{Int64}}
+function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, T::timings)#::Union{UnitRange{Int64}, Int64, Vector{Int64}}
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks == :all
