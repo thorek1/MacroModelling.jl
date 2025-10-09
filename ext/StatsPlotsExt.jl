@@ -938,8 +938,8 @@ function plot_model_estimates!(𝓂::ℳ,
                         legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                         label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
 
-        foreach(n -> push!(joint_variables, String(n)), k[:variable_names] isa AbstractVector ? k[:variable_names] : (k[:variable_names],))
-        foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractVector ? k[:shock_names] : (k[:shock_names],))
+        foreach(n -> push!(joint_variables, String(n)), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
+        foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
     end
     
     if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
@@ -2411,8 +2411,8 @@ function plot_irf!(𝓂::ℳ;
                             label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
 
-        foreach(n -> push!(joint_variables, String(n)), k[:variable_names] isa AbstractVector ? k[:variable_names] : (k[:variable_names],))
-        foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractVector ? k[:shock_names] : (k[:shock_names],))
+        foreach(n -> push!(joint_variables, String(n)), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
+        foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
 
         single_shock_per_irf = single_shock_per_irf && length(k[:shock_names]) == 1
 
@@ -5083,8 +5083,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
                             label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
 
-        foreach(n -> push!(joint_variables, String(n)), k[:variable_names] isa AbstractVector ? k[:variable_names] : (k[:variable_names],))
-        foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractVector ? k[:shock_names] : (k[:shock_names],))
+        foreach(n -> push!(joint_variables, String(n)), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
+        foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
         
         max_periods = max(max_periods, size(k[:plot_data],2))
     end

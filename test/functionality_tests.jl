@@ -257,7 +257,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 i += 1
 
                 plot_model_estimates!(m, data, 
-                                        label = join(string.(length(shocks) > 0 ? collect(shocks) : shocks), " "),
+                                        label = shocks isa String ? shocks : shocks isa Symbol ? string(shocks) : join(string.(collect(shocks)), " "),
                                         shocks = shocks,
                                         algorithm = algorithm, 
                                         data_in_levels = false)
