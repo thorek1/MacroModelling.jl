@@ -142,9 +142,7 @@ jobs:
       - name: JET compat to 0.10 on julia 1.12
         if: matrix.version == '1'
         run: |
-          sed -i \
-            -e '/^\[compat\]/,$s/^JET = ".*"/JET = "0.10"/' \
-            Project.toml
+          sed -i '/^\[compat\]/,/^\[.*\]/{ s/^JET = ".*"/JET = "0.10"/ }' Project.toml
       - name: Set Custom Test Environment Variable (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
