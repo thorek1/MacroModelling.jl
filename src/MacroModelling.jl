@@ -573,7 +573,9 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
         shock_history[indexin(shock_input,𝓂.timings.exo), 1:size(shocks)[2]] = shocks
 
         shock_idx = 1
-    else (typeof(shocks) <: Symbol_input) || (typeof(shocks) <: String_input)
+    elseif shocks isa Expr
+        error("Expressions are not a valid input for shocks. Please provide a Symbol, Vector of Symbols, Matrix of Float64, KeyedArray of Float64, or :none.")
+    elseif (typeof(shocks) <: Symbol_input) || (typeof(shocks) <: String_input)
         shock_history = zeros(𝓂.timings.nExo, periods)
 
         periods_extended = periods
