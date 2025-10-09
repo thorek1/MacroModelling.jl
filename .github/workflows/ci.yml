@@ -131,9 +131,8 @@ jobs:
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
-      # On the Julia “pre” matrix entries, drop the unsupported test-only package
-      - name: Remove Pigeons from non estimation runs
-        if: !contains(matrix.test_set, 'estimat')
+      - name: Remove Pigeons from non-estimation runs
+        if: contains(matrix.test_set, 'estimat') == false
         run: |
           sed -i \
             -e '/^\[targets\]/,$s/,[[:space:]]*"Pigeons"//g' \
