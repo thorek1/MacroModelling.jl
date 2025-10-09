@@ -3573,7 +3573,7 @@ function _plot_solution_from_container(;
             # 2. Group the original vector by :model_name
             grouped_by_model = Dict{Any, Vector{Dict}}()
 
-            for d in solution_active_plot_container[1:end-1]
+            for d in solution_active_plot_container#[1:end-1]
                 model = d[:model_name]
                 d_sub = Dict(k => d[k] for k in setdiff(keys(solution_active_plot_container[end]), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
                 push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
