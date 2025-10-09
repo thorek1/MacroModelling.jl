@@ -1,0 +1,9 @@
+[deps]
+LaTeXStrings = "b964fa9f-0449-5b57-a5c2-d3ea65f4040f"
+Showoff = "992d4aef-0814-514b-bc4d-f2e9a6c4116f"
+StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
+
+[compat]
+LaTeXStrings = "1"
+Showoff = "1"
+StatsPlots = "0.15"
