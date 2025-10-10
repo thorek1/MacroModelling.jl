@@ -4266,6 +4266,8 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
 
+    full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : full_SS
+
     var_names = axiskeys(Y,1)   
 
     var_names = var_names isa Vector{String} ? var_names .|> replace_indices : var_names
@@ -4290,12 +4292,22 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
-    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in var_names]
+    if length(intersect(𝓂.aux,full_var_SS)) > 0
+        for v in 𝓂.aux
+            idx = indexin([v],full_var_SS)
+            if !isnothing(idx[1])
+                full_var_SS[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+            end
+        end
+        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    end
+
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS]
 
     var_length = length(full_SS) - 𝓂.timings.nExo
-
+    
     if conditions isa SparseMatrixCSC{Float64}
-        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(full_var_SS)
 
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
         nzs = findnz(conditions)
@@ -4304,7 +4316,7 @@ function plot_conditional_forecast(𝓂::ℳ,
         end
         conditions = cond_tmp
     elseif conditions isa Matrix{Union{Nothing,Float64}}
-        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(full_var_SS)
 
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
         cond_tmp[:,axes(conditions,2)] = conditions
@@ -4347,29 +4359,33 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     # Create display names for variables and shocks
+    full_variable_names_display = [apply_custom_name(v, rename_dictionnary) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    full_shock_names_display = [apply_custom_name(s, rename_dictionnary) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+
     variable_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
     shock_names_display = [apply_custom_name(s, rename_dictionnary) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
-
-    # Get original indices for variables and shocks
-    var_indices = findall(v -> v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo), var_names)
-    shock_indices = findall(s -> s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo), var_names)
 
     # Get sorting permutations for variables and shocks separately
     var_sort_perm = sortperm(variable_names_display)
     shock_sort_perm = sortperm(shock_names_display)
 
+    # Get sorting permutations for variables and shocks separately
+    full_var_sort_perm = sortperm(full_variable_names_display)
+    full_shock_sort_perm = sortperm(full_shock_names_display)
+
     # Apply sorting permutations to original indices
-    sorted_var_indices = var_indices[var_sort_perm]
-    sorted_shock_indices = shock_indices[shock_sort_perm]
+    # sorted_var_indices = var_indices[var_sort_perm]
+    # sorted_shock_indices = shock_indices[shock_sort_perm]
 
     # Combine sorted indices
-    combined_sort_perm = vcat(sorted_var_indices, sorted_shock_indices)
+    combined_sort_perm = vcat(var_sort_perm, shock_sort_perm)
+    full_combined_sort_perm = vcat(full_var_sort_perm, full_shock_sort_perm)
 
     # Apply the combined permutation to all relevant arrays
     Y = Y[combined_sort_perm, :]
-    conditions = conditions[var_sort_perm, :]
-    shocks = shocks[shock_sort_perm, :]
-    reference_steady_state = reference_steady_state[combined_sort_perm]
+    conditions = conditions[full_var_sort_perm, :]
+    shocks = shocks[full_shock_sort_perm, :]
+    reference_steady_state = reference_steady_state[full_combined_sort_perm]
     var_idx = var_idx[var_sort_perm]
 
     # Get the sorted display names
@@ -4436,7 +4452,7 @@ function plot_conditional_forecast(𝓂::ℳ,
         SS = reference_steady_state[i]
 
         if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[v,:] .!= nothing)) > 0
-         
+
             cond_idx = findall(vcat(conditions,shocks)[v,:] .!= nothing)
                 
             p = standard_subplot(Y[i,:], SS, apply_custom_name(full_SS[v], rename_dictionnary), gr_back, pal = pal)
