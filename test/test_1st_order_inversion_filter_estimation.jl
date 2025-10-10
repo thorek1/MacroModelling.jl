@@ -60,7 +60,7 @@ modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS
 
 println("Mode variable values: $(modeFS2000i.values); Mode loglikelihood: $(modeFS2000i.lp)")
 
-FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :inversion, -floatmax(Float64)))
+FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :inversion, -floatmax(Float64)+1e10))
 
 init_params = FS2000.parameter_values
 
