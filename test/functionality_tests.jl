@@ -59,6 +59,15 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             simulation = simulate(m2, algorithm = algorithm)
 
+            last_stable_col = -5
+            
+            for i in eachcol(simulation[:,:,1])
+                last_stable_col += 1
+                if any(isnan,i) break end
+            end
+
+            simulation = simulation[:,1:last_stable_col,:]
+
             data_in_levels2 = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m2.var[var_idxs]) : m2.var[var_idxs],:,:simulate)
             data2 = data_in_levels2 .- m2.solution.non_stochastic_steady_state[var_idxs]
 
@@ -76,6 +85,15 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             Random.seed!(41823)
 
             simulation = simulate(m, algorithm = algorithm)
+
+            last_stable_col = -5
+            
+            for i in eachcol(simulation[:,:,1])
+                last_stable_col += 1
+                if any(isnan,i) break end
+            end
+
+            simulation = simulation[:,1:last_stable_col,:]
 
             data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
             data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
@@ -1351,6 +1369,15 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         Random.seed!(418023)
 
         simulation = simulate(m, algorithm = algorithm)
+
+        last_stable_col = -5
+        
+        for i in eachcol(simulation[:,:,1])
+            last_stable_col += 1
+            if any(isnan,i) break end
+        end
+
+        simulation = simulation[:,1:last_stable_col,:]
 
         data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
         data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
