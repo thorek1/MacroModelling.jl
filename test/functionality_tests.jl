@@ -17,7 +17,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 m.parameters .=> old_params, 
                 (string(m.parameters[1]) => old_params[1] * 1.0001), 
                 Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
-                old_params2]
+                old_params]
                 
     
     params2 = [old_params2, 
@@ -26,7 +26,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 m2.parameters .=> old_params2, 
                 (string(m2.parameters[1]) => old_params2[1] * 1.0001), 
                 Tuple(string.(m2.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
-                old_params]
+                old_params2]
 
     param_derivs = [:all, 
                     m.parameters[1], 
