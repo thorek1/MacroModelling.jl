@@ -698,7 +698,7 @@ if test_set == "higher_order_3"
     # test_higher_order = true
 
     include("models/Caldara_et_al_2012_estim.jl")
-
+    
     @testset verbose = true "RBC_CME with calibration equations second order" begin
         include("models/RBC_CME_calibration_equations.jl")
         functionality_test(m, Caldara_et_al_2012_estim, algorithm = :second_order, plots = plots)

@@ -1214,7 +1214,7 @@ function get_irf(𝓂::ℳ;
                 generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
                 generalised_irf_warmup_iterations::Int = DEFAULT_GENERALISED_IRF_WARMUP,
                 generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
-                initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
+                initial_state::Union{Vector{Vector{R}},Vector{R}} = DEFAULT_INITIAL_STATE,
                 levels::Bool = false,
                 shock_size::Real = DEFAULT_SHOCK_SIZE,
                 ignore_obc::Bool = DEFAULT_IGNORE_OBC,
@@ -1223,7 +1223,7 @@ function get_irf(𝓂::ℳ;
                 tol::Tolerances = Tolerances(),
                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
+                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray where R <: Real
     # @nospecialize # reduce compile time            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
