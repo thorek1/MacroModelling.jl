@@ -1,0 +1,48 @@
+name: Copilot Setup Steps
+description: Instructions for setting up Julia and required packages for MacroModelling.jl development
+
+steps:
+  - name: Install Julia
+    description: Install Julia using juliaup installer
+    commands:
+      - curl -fsSL https://install.julialang.org -o juliaup.sh
+      - sh juliaup.sh --yes --default-channel release
+      - export PATH="$HOME/.juliaup/bin:$PATH"
+    notes: |
+      - Julia version 1.10 or higher is required
+      - After installation, verify with: julia --version
+      - The juliaup installer will manage Julia versions
+
+  - name: Install Julia Packages
+    description: Install MacroModelling.jl, StatsPlots.jl, and Turing.jl
+    commands:
+      - julia -e 'using Pkg; Pkg.add(["MacroModelling", "StatsPlots", "Turing"])'
+    notes: |
+      - MacroModelling.jl: Core package for DSGE modeling
+      - StatsPlots.jl: Required for plotting functionality
+      - Turing.jl: Used for estimation with gradient-based samplers
+      - Installation may take several minutes due to dependencies
+
+  - name: Verify Installation
+    description: Verify that all packages are installed correctly
+    commands:
+      - julia -e 'using MacroModelling; println("MacroModelling.jl loaded successfully")'
+      - julia -e 'using StatsPlots; println("StatsPlots.jl loaded successfully")'
+      - julia -e 'using Turing; println("Turing.jl loaded successfully")'
+    notes: |
+      - Each package should load without errors
+      - First load may take longer due to precompilation
+
+  - name: Run Julia with Threading
+    description: For optimal performance, run Julia with automatic thread detection
+    commands:
+      - julia -t auto
+    notes: |
+      - The -t auto flag enables automatic thread detection
+      - This is recommended for running benchmarks and tests
+
+additional_notes: |
+  - For more information, see the README.md installation section
+  - Documentation is available at https://thorek1.github.io/MacroModelling.jl/stable
+  - Example models are located in the models/ directory
+  - To run tests, use: julia -t auto --project -e 'using Pkg; Pkg.test()'
