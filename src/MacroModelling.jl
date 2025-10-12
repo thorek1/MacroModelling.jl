@@ -5515,7 +5515,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     aug_state₁ = sparse([zeros(𝓂.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.timings.nExo)])
 
-    tmp = (ℒ.I - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed])
+    tmp = (ℒ.I(𝓂.timings.nPast_not_future_and_mixed) - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed])
 
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
@@ -5863,7 +5863,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     aug_state₁ = sparse([zeros(𝓂.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.timings.nExo)])
     
-    tmp = (ℒ.I - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed])
+    tmp = (ℒ.I(𝓂.timings.nPast_not_future_and_mixed) - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed])
 
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
