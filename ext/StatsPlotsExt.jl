@@ -3381,7 +3381,7 @@ function plot_solution(𝓂::ℳ,
 
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
-    full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
+    full_SS = [s ∈ 𝓂.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
@@ -3415,7 +3415,7 @@ function plot_solution(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    full_SS_current = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+    full_SS_current = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     # Get NSSS (first order steady state) for reference
     NSSS_SS = algorithm == :first_order ? relevant_SS : get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
@@ -3424,7 +3424,7 @@ function plot_solution(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0 : NSSS_SS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
     SSS_delta = collect(NSSS - full_SS_current)
 
@@ -4001,7 +4001,7 @@ function plot_solution!(𝓂::ℳ,
 
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
-    full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
+    full_SS = [s ∈ 𝓂.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
@@ -4030,7 +4030,7 @@ function plot_solution!(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    full_SS_current = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+    full_SS_current = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     # Get NSSS (first order steady state) for reference
     NSSS_SS = algorithm == :first_order ? relevant_SS : get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
@@ -4039,7 +4039,7 @@ function plot_solution!(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0 : NSSS_SS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
     SSS_delta = collect(NSSS - full_SS_current)
 

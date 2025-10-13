@@ -2397,7 +2397,7 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, 
                                     stochastic = false, 
@@ -2408,7 +2408,7 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0 : relevant_NSSS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : relevant_NSSS(s) for s in full_NSSS]
 
     SSS_delta = NSSS - reference_steady_state
 
