@@ -86,7 +86,7 @@ pt = @time Pigeons.pigeons(target = FS2000_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 2,
             n_rounds = 10,
-            multithreaded = true)
+            multithreaded = false)
 
 samps = MCMCChains.Chains(pt)
 
@@ -140,7 +140,7 @@ println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 #             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
 #             n_chains = 1,
 #             n_rounds = 6,
-#             multithreaded = true)
+#             multithreaded = false)
 
 # samps = MCMCChains.Chains(Pigeons.get_sample(pt))
 
