@@ -33,15 +33,20 @@ dists = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_loglikelihood)
+Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_loglikelihood; verbose = false)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, 
-                                                data, 
-                                                all_params, 
-                                                algorithm = algorithm, 
-                                                on_failure_loglikelihood = on_failure_loglikelihood)
+        llh = get_loglikelihood(m, 
+                                 data, 
+                                 all_params, 
+                                 algorithm = algorithm, 
+                                 on_failure_loglikelihood = on_failure_loglikelihood)
+        if verbose
+            @info "Loglikelihood: $llh with params $all_params"
+        end
+
+        Turing.@addlogprob! llh
     end
 end
 
@@ -58,11 +63,11 @@ println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 sample_nuts = mean(samps).nt.mean
 
 # generate a Pigeons log potential
-FS2000_pruned2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -floatmax(Float64)+1e10))
+FS2000_pruned2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -floatmax(Float64)+1e10, verbose = true))
 
 init_params = sample_nuts
 
-LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -floatmax(Float64)+1e10), (all_params = init_params,))
+LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -floatmax(Float64)+1e10, verbose = true), (all_params = init_params,))
 
 if isfinite(LLH)
     const FS2000_pruned2nd_LP = typeof(FS2000_pruned2nd_lp)
