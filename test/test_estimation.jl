@@ -67,7 +67,7 @@ sample_nuts = mean(samps).nt.mean
 
 
 # generate a Pigeons log potential
-FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, -floatmax(Float64)+1e10, verbose = true))
+FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, -floatmax(Float64)+1e10)) #, verbose = true))
 
 init_params = FS2000.parameter_values
 
