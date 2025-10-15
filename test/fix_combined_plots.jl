@@ -3,6 +3,8 @@ using MacroModelling
 import StatsPlots
 using Random, Dates
 using Zygote, ForwardDiff
+import MacroModelling: clear_solution_caches!
+
 # TODO: 
 # - write tests and docs for the new functions
 # - revisit plot_solution + ! version of it
@@ -33,6 +35,233 @@ ECB_palette = [
 ]
 
 include("../models/Gali_Monacelli_2005_CITR.jl")
+
+include("../models/Backus_Kehoe_Kydland_1992.jl")
+m = Backus_Kehoe_Kydland_1992
+
+include("models/Caldara_et_al_2012_estim.jl")
+m2 = Caldara_et_al_2012_estim
+
+algorithm = :first_order
+
+
+old_params = copy(m.parameter_values)
+    old_params2 = copy(m2.parameter_values)
+    
+    # options to itereate over
+    filters = [:inversion, :kalman]
+
+    sylvester_algorithms = (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+
+    qme_algorithms = [:schur, :doubling]
+
+    lyapunov_algorithms = [:doubling, :bartels_stewart, :bicgstab, :gmres]
+
+    params = [old_params, 
+                (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                m.parameters .=> old_params, 
+                (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params]
+                
+    
+    params2 = [old_params2, 
+                (m2.parameters[1] => old_params2[1] * exp(rand()*1e-4)), 
+                Tuple(m2.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
+                m2.parameters .=> old_params2, 
+                (string(m2.parameters[1]) => old_params2[1] * 1.0001), 
+                Tuple(string.(m2.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params2]
+
+    param_derivs = [:all, 
+                    m.parameters[1], 
+                    m.parameters[1:3], 
+                    Tuple(m.parameters[1:3]), 
+                    reshape(m.parameters[1:3],3,1), 
+                    string.(m.parameters[1]), 
+                    string.(m.parameters[1:2]), 
+                    string.(Tuple(m.parameters[1:3])), 
+                    string.(reshape(m.parameters[1:3],3,1))]
+
+    vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
+
+    init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
+
+    init_states = [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
+# 
+    # if plots
+        # @testset "plot_model_estimates" begin
+            sol2 = get_solution(m2) # TODO: investigate why this creates world age problems in tests
+            
+            if length(m2.exo) > 3
+                n_shocks_influence_var = vec(sum(abs.(sol2[end-length(m2.exo)+1:end,:]) .> eps(),dims = 1))
+                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m2.obc_violation_equations) > 0 ? 2 : end]]
+            else
+                var_idxs = [1]
+            end
+
+            Random.seed!(41823)
+
+            simulation = simulate(m2, algorithm = algorithm)
+
+            last_stable_col = -5
+            
+            for i in eachcol(simulation[:,:,1])
+                last_stable_col += 1
+                if any(isnan,i) break end
+            end
+
+            simulation = simulation[:,1:last_stable_col,:]
+
+            data_in_levels2 = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m2.var[var_idxs]) : m2.var[var_idxs],:,:simulate)
+            data2 = data_in_levels2 .- m2.solution.non_stochastic_steady_state[var_idxs]
+
+
+
+            sol = get_solution(m)
+            
+            if length(m.exo) > 3
+                n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+            else
+                var_idxs = [1]
+            end
+
+            Random.seed!(41823)
+
+            simulation = simulate(m, algorithm = algorithm)
+
+            last_stable_col = -5
+            
+            for i in eachcol(simulation[:,:,1])
+                last_stable_col += 1
+                if any(isnan,i) break end
+            end
+
+            simulation = simulation[:,1:last_stable_col,:]
+
+            data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+            data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
+
+            
+            for variables in vars
+                plot_model_estimates(m, data, 
+                                        variables = variables,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
+
+            rename_dict = Dict((m.timings.var) .=> lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}")))
+            
+            plot_model_estimates(m, data_in_levels,
+                                    rename_dictionnary = rename_dict,
+                                    parameters = params[1],
+                                    algorithm = algorithm,
+                                    data_in_levels = true)
+
+            i = 1
+            for variables in vars
+                if i % 4 == 0
+                    plot_model_estimates(m, data_in_levels,
+                                            parameters = params[1],
+                                            algorithm = algorithm, 
+                                            data_in_levels = true)
+                end
+
+                i += 1
+
+                plot_model_estimates!(m, data, 
+                                        variables = variables,
+                                        label = string(variables),
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+        # end
+
+
+
+
+
+algorithm = :pruned_second_order
+
+old_params = copy(m.parameter_values)
+    # old_params2 = copy(m2.parameter_values)
+    
+    # options to itereate over
+    filters = [:inversion, :kalman]
+
+    sylvester_algorithms = (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+
+    qme_algorithms = [:schur, :doubling]
+
+    lyapunov_algorithms = [:doubling, :bartels_stewart, :bicgstab, :gmres]
+
+    params = [old_params, 
+                (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                m.parameters .=> old_params, 
+                (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params]
+                
+    
+    # params2 = [old_params2, 
+    #             (m2.parameters[1] => old_params2[1] * exp(rand()*1e-4)), 
+    #             Tuple(m2.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
+    #             m2.parameters .=> old_params2, 
+    #             (string(m2.parameters[1]) => old_params2[1] * 1.0001), 
+    #             Tuple(string.(m2.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
+    #             old_params2]
+
+    param_derivs = [:all, 
+                    m.parameters[1], 
+                    m.parameters[1:3], 
+                    Tuple(m.parameters[1:3]), 
+                    reshape(m.parameters[1:3],3,1), 
+                    string.(m.parameters[1]), 
+                    string.(m.parameters[1:2]), 
+                    string.(Tuple(m.parameters[1:3])), 
+                    string.(reshape(m.parameters[1:3],3,1))]
+
+    vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
+
+    init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
+
+    init_states = [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
+
+
+            states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
+
+            if algorithm == :first_order
+                algos = [:first_order]
+            elseif algorithm in [:second_order, :pruned_second_order]
+                algos = [:first_order, :second_order, :pruned_second_order]
+            elseif algorithm in [:third_order, :pruned_third_order]
+                algos = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+            end
+            
+            for variables in vars
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        for lyapunov_algorithm in lyapunov_algorithms
+                            for sylvester_algorithm in sylvester_algorithms
+                                clear_solution_caches!(m, algorithm)
+                    
+                                # Test single algorithm
+                                plot_solution(m, states[1], 
+                                                algorithm = algos[end],
+                                                variables = variables,
+                                                tol = tol,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                sylvester_algorithm = sylvester_algorithm)
+                            end
+                        end
+                    end
+                end
+            end
 
 
 include("../models/Gali_2015_chapter_3_nonlinear.jl")
@@ -100,9 +329,19 @@ sol = get_solution(m)
             var_idxs = [1]
         end
 
-        Random.seed!(418023)
+        Random.seed!(41230)
 
         simulation = simulate(m, algorithm = algorithm)
+
+        last_stable_col = -5
+        
+        for i in eachcol(simulation[:,:,1])
+            last_stable_col += 1
+            if any(isnan,i) break end
+        end
+
+        simulation = simulation[:,1:last_stable_col,:]
+
 
         data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
         data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
@@ -334,32 +573,20 @@ sol = get_solution(m)
 get_parameters(m)
 get_variables(m)
 
-                                    llh = get_loglikelihood(m, data_in_levels, old_params, algorithm = algorithm)
+llh = get_loglikelihood(m, data_in_levels[:,1:20], old_params, algorithm = algorithm)
 
-                                            FOR_grad_llh = ForwardDiff.gradient(x -> get_loglikelihood(m, data_in_levels, x,
-                                                                                                            # algorithm = algorithm,
-                                                                                                            algorithm = :first_order,
-                                                                                                            # filter = filter,
-                                                                                                            # presample_periods = presample_periods,
-                                                                                                            # initial_covariance = initial_covariance,
-                                                                                                            # tol = tol,
-                                                                                                            # quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                                            # lyapunov_algorithm = lyapunov_algorithm,
-                                                                                                            # sylvester_algorithm = sylvester_algorithm,
-                                                                                                            # verbose = verbose
-                                                                                                            ), old_params)
-                                            ZYG_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels, x,
-                                                                                                            # algorithm = algorithm,
-                                                                                                            algorithm = :first_order,
-                                                                                                            # filter = filter,
-                                                                                                            # presample_periods = presample_periods,
-                                                                                                            # initial_covariance = initial_covariance,
-                                                                                                            # tol = tol,
-                                                                                                            # quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                                            # lyapunov_algorithm = lyapunov_algorithm,
-                                                                                                            # sylvester_algorithm = sylvester_algorithm,
-                                                                                                            # verbose = verbose
-                                                                                                            ), old_params)
+ZYG_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels[:,1:20], x,
+                                                                # algorithm = algorithm,
+                                                                algorithm = :first_order,
+                                                                # filter = filter,
+                                                                # presample_periods = presample_periods,
+                                                                # initial_covariance = initial_covariance,
+                                                                # tol = tol,
+                                                                # quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                # lyapunov_algorithm = lyapunov_algorithm,
+                                                                # sylvester_algorithm = sylvester_algorithm,
+                                                                # verbose = verbose
+                                                                ), old_params)
         
 
         for filter in (algorithm == :first_order ? filters : [:inversion])
