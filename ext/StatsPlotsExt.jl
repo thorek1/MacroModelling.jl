@@ -30,7 +30,7 @@ import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simula
 
 Apply custom name from dictionary if available, otherwise use default name.
 """
-function apply_custom_name(symbol<:Union{Symbol, String}, custom_names::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}})
+function apply_custom_name(symbol::R, custom_names::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}}) where R <: Union{Symbol, String}
     if haskey(custom_names, symbol)
         return custom_names[symbol]
     else
