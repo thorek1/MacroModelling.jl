@@ -25,17 +25,71 @@ import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simula
 
 @stable default_mode = "disable" begin
 
+const SUPERSCRIPT_MAP = (
+    '⁰' => '0', '¹' => '1', '²' => '2', '³' => '3', '⁴' => '4',
+    '⁵' => '5', '⁶' => '6', '⁷' => '7', '⁸' => '8', '⁹' => '9'
+)
+
+
+# A function to replace all superscripts in a symbol's string representation
+function normalize_superscript(s::Symbol)
+    # The 's => SUPERSCRIPT_MAP[s]' part creates a pair for replacement
+    # The final argument specifies which characters to look for
+    return replace(string(s), SUPERSCRIPT_MAP...)
+end
+
+function normalize_superscript(s::String)
+    # The 's => SUPERSCRIPT_MAP[s]' part creates a pair for replacement
+    # The final argument specifies which characters to look for
+    return replace(s, SUPERSCRIPT_MAP...)
+end
+
 """
     apply_custom_name(symbol::Symbol, custom_names::Dict{Symbol, String})
 
 Apply custom name from dictionary if available, otherwise use default name.
 """
-function apply_custom_name(symbol::R, custom_names::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}}) where R <: Union{Symbol, String}
+function apply_custom_name(symbol::R, custom_names::AbstractDict{S, T}) where {R <: Union{Symbol, String}, S <: Union{Symbol, String}, T <: Union{Symbol, String}}
+    # First, check for an exact match with the original symbol
     if haskey(custom_names, symbol)
         return custom_names[symbol]
-    else
-        return replace_indices_in_symbol(symbol)
     end
+    
+    # Handle cross-type check for exact match (String vs Symbol)
+    if symbol isa Symbol && haskey(custom_names, String(symbol))
+        return custom_names[String(symbol)]
+    elseif symbol isa String && haskey(custom_names, Symbol(symbol))
+        return custom_names[Symbol(symbol)]
+    end
+
+    # If no exact match, strip lag operators and compare base names.
+    s_str = string(symbol)
+    lag_regex = r"^(.*)(ᴸ⁽.*⁾)$"
+    m = match(lag_regex, s_str)
+
+    base_symbol_str, lag_part = if m !== nothing
+        (m.captures[1], m.captures[2])
+    else
+        (s_str, "")
+    end
+
+    for (key, value) in custom_names
+        key_str = string(key)
+        key_m = match(lag_regex, key_str)
+        
+        base_key_str = if key_m !== nothing
+            key_m.captures[1]
+        else
+            key_str
+        end
+
+        if base_key_str == base_symbol_str
+            return string(value) * lag_part
+        end
+    end
+
+    # If no match found, return the default formatted name
+    return replace_indices_in_symbol(symbol)
 end
 
 """
@@ -213,13 +267,13 @@ function plot_model_estimates(𝓂::ℳ,
 
     # Create display names and sort alphabetically
     variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
-    var_sort_perm = sortperm(variable_names_display)
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
     
     shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) * "₍ₓ₎" for s in shock_idx]
     if length(shock_idx) > 1
-        shock_sort_perm = sortperm(shock_names_display)
+        shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
         shock_idx = shock_idx[shock_sort_perm]
         shock_names_display = shock_names_display[shock_sort_perm]
     end
@@ -700,13 +754,13 @@ function plot_model_estimates!(𝓂::ℳ,
 
     # Create display names and sort alphabetically
     variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
-    var_sort_perm = sortperm(variable_names_display)
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
     
     shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) * "₍ₓ₎" for s in shock_idx]
     if length(shock_idx) > 1
-        shock_sort_perm = sortperm(shock_names_display)
+        shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
         shock_idx = shock_idx[shock_sort_perm]
         shock_names_display = shock_names_display[shock_sort_perm]
     end
@@ -1518,7 +1572,7 @@ function plot_irf(𝓂::ℳ;
         shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) for s in shock_idx]
         # Sort shocks alphabetically by display name
         if length(shock_idx) > 1
-            shock_sort_perm = sortperm(shock_names_display)
+            shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
             shock_idx = shock_idx[shock_sort_perm]
             shock_names_display = shock_names_display[shock_sort_perm]
         end
@@ -1528,7 +1582,7 @@ function plot_irf(𝓂::ℳ;
     
     # Create display names and sort variables alphabetically
     variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
-    var_sort_perm = sortperm(variable_names_display)
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
 
@@ -2172,7 +2226,7 @@ function plot_irf!(𝓂::ℳ;
         shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionnary) for s in shock_idx]
         # Sort shocks alphabetically by display name
         if length(shock_idx) > 1
-            shock_sort_perm = sortperm(shock_names_display)
+            shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
             shock_idx = shock_idx[shock_sort_perm]
             shock_names_display = shock_names_display[shock_sort_perm]
         end
@@ -2182,7 +2236,7 @@ function plot_irf!(𝓂::ℳ;
     
     # Create display names and sort variables alphabetically
     variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionnary) for v in var_idx]
-    var_sort_perm = sortperm(variable_names_display)
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
 
@@ -3104,14 +3158,14 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     
     # Sort variables alphabetically by display name
     vars_display_names = [apply_custom_name(v, rename_dictionnary) for v in vars_to_plot]
-    vars_sort_perm = sortperm(vars_display_names)
+    vars_sort_perm = sortperm(vars_display_names, by = normalize_superscript)
     vars_to_plot = vars_to_plot[vars_sort_perm]
     
     shocks_to_plot = axiskeys(fevds)[2]
     
     # Sort shocks alphabetically by display name
     shocks_display_names = [apply_custom_name(s, rename_dictionnary) for s in shocks_to_plot]
-    shocks_sort_perm = sortperm(shocks_display_names)
+    shocks_sort_perm = sortperm(shocks_display_names, by = normalize_superscript)
     shocks_to_plot = shocks_to_plot[shocks_sort_perm]
 
     legend_columns = 1
@@ -3391,7 +3445,7 @@ function plot_solution(𝓂::ℳ,
 
     # Sort variables alphabetically by display name
     vars_display_names = [apply_custom_name(v, rename_dictionnary) for v in vars_to_plot]
-    vars_sort_perm = sortperm(vars_display_names)
+    vars_sort_perm = sortperm(vars_display_names, by = normalize_superscript)
     vars_to_plot = vars_to_plot[vars_sort_perm]
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
@@ -4011,7 +4065,7 @@ function plot_solution!(𝓂::ℳ,
 
     # Sort variables alphabetically by display name
     vars_display_names = [apply_custom_name(v, rename_dictionnary) for v in vars_to_plot]
-    vars_sort_perm = sortperm(vars_display_names)
+    vars_sort_perm = sortperm(vars_display_names, by = normalize_superscript)
     vars_to_plot = vars_to_plot[vars_sort_perm]
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
@@ -4366,12 +4420,12 @@ function plot_conditional_forecast(𝓂::ℳ,
     shock_names_display = [apply_custom_name(s, rename_dictionnary) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
     # Get sorting permutations for variables and shocks separately
-    var_sort_perm = sortperm(variable_names_display)
-    shock_sort_perm = sortperm(shock_names_display)
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
+    shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
 
     # Get sorting permutations for variables and shocks separately
-    full_var_sort_perm = sortperm(full_variable_names_display)
-    full_shock_sort_perm = sortperm(full_shock_names_display)
+    full_var_sort_perm = sortperm(full_variable_names_display, by = normalize_superscript)
+    full_shock_sort_perm = sortperm(full_shock_names_display, by = normalize_superscript)
 
     # Apply sorting permutations to original indices
     # sorted_var_indices = var_indices[var_sort_perm]
@@ -4783,16 +4837,16 @@ function plot_conditional_forecast!(𝓂::ℳ,
     end
 
     # Create display names for variables and shocks
-    variable_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
-    shock_names_display = [apply_custom_name(s, rename_dictionnary) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    variable_names_display = [apply_custom_name(v, rename_dictionnary) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo)]
+    shock_names_display = [apply_custom_name(s, rename_dictionnary) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo)]
 
     # Get original indices for variables and shocks
-    var_indices = findall(v -> v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo), var_names)
-    shock_indices = findall(s -> s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo), var_names)
+    var_indices = findall(v -> v ∉ map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), var_names)
+    shock_indices = findall(s -> s ∈ map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), var_names)
 
     # Get sorting permutations for variables and shocks separately
-    var_sort_perm = sortperm(variable_names_display)
-    shock_sort_perm = sortperm(shock_names_display)
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
+    shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
 
     # Apply sorting permutations to original indices
     sorted_var_indices = var_indices[var_sort_perm]
