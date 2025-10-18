@@ -101,6 +101,7 @@ const DEFAULT_ARGS_AND_KWARGS_NAMES = Dict(
     :label => "Label",
     :filter => "Filter",
     :warmup_iterations => "Warmup Iterations",
+    :rename_dictionnary => "Rename Dictionary",
     :quadratic_matrix_equation_algorithm => "Quadratic Matrix Equation Algorithm",
     :sylvester_algorithm => "Sylvester Algorithm",
     :lyapunov_algorithm => "Lyapunov Algorithm",
