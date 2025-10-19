@@ -10,6 +10,9 @@
     @test isapprox(var_dec([:y,:r,:c],:eps_r) * 100, [7.35, 31.93, 0.59],rtol = 1e-3)
 
     write_to_dynare_file(Guerrieri_Iacoviello_2017)
+    println("Current working directory: ", pwd())
+    println("Files in current directory: ", readdir())
+    println(read("Guerrieri_Iacoviello_2017.mod", String))
     translate_dynare_file("Guerrieri_Iacoviello_2017.mod")
     include("Guerrieri_Iacoviello_2017.jl")
     # get_solution(Guerrieri_Iacoviello_2017)
