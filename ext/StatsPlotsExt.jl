@@ -2453,7 +2453,7 @@ function plot_irf!(𝓂::ℳ;
             push!(annotate_diff_input, "Shock" => labels)
         end
     end
-println(diffdict)
+    
     if haskey(diffdict, :initial_state)
         vals = diffdict[:initial_state]
 
@@ -4552,7 +4552,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
     shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
-    
+
     # Get sorting permutations for variables and shocks separately
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
