@@ -1846,7 +1846,7 @@ function standard_subplot(::Val{:compare},
                             same_ss::Bool; 
                             xvals = 1:maximum(length.(irf_data)),
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
-                            transparency::Float64 = DEFAULT_TRANSPARENCY) where S <: AbstractFloat
+                            transparency::Float64 = DEFAULT_TRANSPARENCY) where {S <: AbstractFloat, R <: Union{String, Symbol}}
     plot_dat = []
     plot_ss = 0
     
