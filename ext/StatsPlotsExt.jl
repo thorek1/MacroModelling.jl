@@ -784,8 +784,7 @@ function plot_model_estimates!(𝓂::ℳ,
     for k in relevant_keys
         push!(processed_rename_dictionary, k => rename_dictionary[k])
     end
-    # processed_rename_dictionary = length(relevant_keys) > 0 ? sort([k =>rename_dictionary[k] for k in relevant_keys]) : Pair{Symbol,Symbol}[]
-    
+
     legend_columns = 1
 
     legend_items = length(shock_idx) + 3 + pruning
@@ -1627,11 +1626,20 @@ function plot_irf(𝓂::ℳ;
         shock_names_display = ["shock_matrix"]
     end
     
-    # Create display names and sort variables alphabetically
-    variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionary) for v in var_idx]
+    # Create display names and sort alphabetically
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.var[v], rename_dictionary)) for v in var_idx]
+    @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
+    
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
 
     while length(irf_active_plot_container) > 0
         pop!(irf_active_plot_container)
@@ -1671,7 +1679,8 @@ function plot_irf(𝓂::ℳ;
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state[var_idx],
                            :variable_names => variable_names_display,
-                           :shock_names => shock_names_display
+                           :shock_names => shock_names_display,
+                           :rename_dictionary => processed_rename_dictionary
                            )
     
     push!(irf_active_plot_container, args_and_kwargs)
@@ -1783,10 +1792,10 @@ end
 
 function standard_subplot(irf_data::AbstractVector{S}, 
                             steady_state::S, 
-                            variable_name::String, 
+                            variable_name::R, 
                             gr_back::Bool;
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
-                            xvals = 1:length(irf_data)) where S <: AbstractFloat
+                            xvals = 1:length(irf_data)) where {S <: AbstractFloat, R <: Union{String, Symbol}}
     can_dual_axis = gr_back && all((irf_data .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
     
     xrotation = length(string(xvals[1])) > 5 ? 30 : 0
@@ -1832,7 +1841,7 @@ end
 function standard_subplot(::Val{:compare}, 
                             irf_data::Vector{<:AbstractVector{S}}, 
                             steady_state::Vector{S}, 
-                            variable_name::String, 
+                            variable_name::R, 
                             gr_back::Bool, 
                             same_ss::Bool; 
                             xvals = 1:maximum(length.(irf_data)),
@@ -2281,11 +2290,20 @@ function plot_irf!(𝓂::ℳ;
         shock_names_display = ["shock_matrix"]
     end
     
-    # Create display names and sort variables alphabetically
-    variable_names_display = [apply_custom_name(𝓂.timings.var[v], rename_dictionary) for v in var_idx]
+    # Create display names and sort alphabetically
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.var[v], rename_dictionary)) for v in var_idx]
+    @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
+    
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
 
     args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
@@ -2320,13 +2338,15 @@ function plot_irf!(𝓂::ℳ;
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state[var_idx],
                            :variable_names => variable_names_display,
-                           :shock_names => shock_names_display
+                           :shock_names => shock_names_display,
+                           :rename_dictionary => processed_rename_dictionary
                            )
 
     no_duplicate = all(
         !(all((
             get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
             get(dict, :shock_names, nothing) == args_and_kwargs[:shock_names],
+            get(dict, :rename_dictionary, nothing) == args_and_kwargs[:rename_dictionary],
             get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
             get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
             all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
@@ -2459,6 +2479,29 @@ function plot_irf!(𝓂::ℳ;
         push!(annotate_diff_input, "Initial state" => labels)
     end
     
+    rename_idx = Int[]
+
+    if haskey(diffdict, :rename_dictionary)
+        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
+        unique_dicts = unique(non_nothing_dicts)
+
+        for init in diffdict[:rename_dictionary]
+            if isnothing(init) || length(init) == 0
+                push!(rename_idx, 0)
+                continue
+            end
+
+            for (i,u) in enumerate(unique_dicts)
+                if u == init
+                    push!(rename_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
+    end
+
     same_shock_direction = true
     
     for k in setdiff(keys(args_and_kwargs), 
@@ -2466,6 +2509,7 @@ function plot_irf!(𝓂::ℳ;
                             :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :label,
                             :shocks, :shock_names,
                             :variables, :variable_names,
+                            :rename_dictionary,
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
                         ]
                     )
@@ -2479,11 +2523,7 @@ function plot_irf!(𝓂::ℳ;
         end
     end
 
-    # if haskey(diffdict, :shock_names)
-    #     if !all(length.(diffdict[:shock_names]) .== 1)
-    #         push!(annotate_diff_input, "Shock name" => map(x->x[1], diffdict[:shock_names]))
-    #     end
-    # end
+
 
     legend_plot = StatsPlots.plot(framestyle = :none, 
                                     legend = :inside, 
@@ -4460,11 +4500,14 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     # Create display names for variables and shocks
-    full_variable_names_display = [apply_custom_name(v, rename_dictionary) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
-    full_shock_names_display = [apply_custom_name(s, rename_dictionary) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    full_variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    full_shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
-    variable_names_display = [apply_custom_name(v, rename_dictionary) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
-    shock_names_display = [apply_custom_name(s, rename_dictionary) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    @assert length(full_variable_names_display) == length(unique(full_variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    @assert length(full_shock_names_display) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
     # Get sorting permutations for variables and shocks separately
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
@@ -4474,9 +4517,14 @@ function plot_conditional_forecast(𝓂::ℳ,
     full_var_sort_perm = sortperm(full_variable_names_display, by = normalize_superscript)
     full_shock_sort_perm = sortperm(full_shock_names_display, by = normalize_superscript)
 
-    # Apply sorting permutations to original indices
-    # sorted_var_indices = var_indices[var_sort_perm]
-    # sorted_shock_indices = shock_indices[shock_sort_perm]
+    # Process rename dictionary to only include relevant keys in sorted order
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
 
     # Combine sorted indices
     combined_sort_perm = vcat(var_sort_perm, shock_sort_perm)
@@ -4522,8 +4570,9 @@ function plot_conditional_forecast(𝓂::ℳ,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
-                            :variable_names => sorted_variable_names_display, # Use the new sorted variable names
-                            :shock_names => sorted_shock_names_display      # Use the new sorted shock names
+                           :variable_names => sorted_variable_names_display, # Use the new sorted variable names
+                           :shock_names => sorted_shock_names_display,       # Use the new sorted shock names
+                           :rename_dictionary => processed_rename_dictionary
                            )
     
     push!(conditional_forecast_active_plot_container, args_and_kwargs)
@@ -4884,29 +4933,41 @@ function plot_conditional_forecast!(𝓂::ℳ,
     end
 
     # Create display names for variables and shocks
-    variable_names_display = [apply_custom_name(v, rename_dictionary) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo)]
-    shock_names_display = [apply_custom_name(s, rename_dictionary) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo)]
+    full_variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    full_shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
-    # Get original indices for variables and shocks
-    var_indices = findall(v -> v ∉ map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), var_names)
-    shock_indices = findall(s -> s ∈ map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), var_names)
+    @assert length(full_variable_names_display) == length(unique(full_variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    @assert length(full_shock_names_display) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
     # Get sorting permutations for variables and shocks separately
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
 
-    # Apply sorting permutations to original indices
-    sorted_var_indices = var_indices[var_sort_perm]
-    sorted_shock_indices = shock_indices[shock_sort_perm]
+    # Get sorting permutations for variables and shocks separately
+    full_var_sort_perm = sortperm(full_variable_names_display, by = normalize_superscript)
+    full_shock_sort_perm = sortperm(full_shock_names_display, by = normalize_superscript)
+
+    # Process rename dictionary to only include relevant keys in sorted order
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
 
     # Combine sorted indices
-    combined_sort_perm = vcat(sorted_var_indices, sorted_shock_indices)
+    combined_sort_perm = vcat(var_sort_perm, shock_sort_perm)
+    full_combined_sort_perm = vcat(full_var_sort_perm, full_shock_sort_perm)
 
     # Apply the combined permutation to all relevant arrays
     Y = Y[combined_sort_perm, :]
-    conditions = conditions[var_sort_perm, :]
-    shocks = shocks[shock_sort_perm, :]
-    reference_steady_state = reference_steady_state[combined_sort_perm]
+    conditions = conditions[full_var_sort_perm, :]
+    shocks = shocks[full_shock_sort_perm, :]
+    reference_steady_state = reference_steady_state[full_combined_sort_perm]
     var_idx = var_idx[var_sort_perm]
 
     # Get the sorted display names
@@ -4951,12 +5012,14 @@ function plot_conditional_forecast!(𝓂::ℳ,
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
                            :variable_names => sorted_variable_names_display, # Use the new sorted variable names
-                           :shock_names => sorted_shock_names_display      # Use the new sorted shock names
+                           :shock_names => sorted_shock_names_display,       # Use the new sorted shock names
+                           :rename_dictionary => processed_rename_dictionary
                            )
                            
     no_duplicate = all(
         !(all((
             get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
+            get(dict, :rename_dictionary, nothing) == args_and_kwargs[:rename_dictionary],
             get(dict, :conditions, nothing) == args_and_kwargs[:conditions],
             get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
             get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
@@ -5146,6 +5209,29 @@ function plot_conditional_forecast!(𝓂::ℳ,
         push!(annotate_diff_input, "Initial state" => labels)
     end
 
+    rename_idx = Int[]
+
+    if haskey(diffdict, :rename_dictionary)
+        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
+        unique_dicts = unique(non_nothing_dicts)
+
+        for init in diffdict[:rename_dictionary]
+            if isnothing(init) || length(init) == 0
+                push!(rename_idx, 0)
+                continue
+            end
+
+            for (i,u) in enumerate(unique_dicts)
+                if u == init
+                    push!(rename_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
+    end
+
     same_shock_direction = true
     
     for k in setdiff(keys(args_and_kwargs), 
@@ -5153,6 +5239,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                             :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :conditions, :conditions_in_levels, :label,
                             :shocks, :shock_names,
                             :variables, :variable_names,
+                            :rename_dictionary,
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
                         ]
                     )
