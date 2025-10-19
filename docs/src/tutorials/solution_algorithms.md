@@ -380,16 +380,19 @@ where ``s_t = [(y_{t-1} - \bar{y})^\top, \sigma, u_t^\top]^\top`` is the augment
 \begin{aligned}
 &\nabla_+ S_1 \begin{bmatrix} S_1^y \\ 0 \end{bmatrix} S_3^{(c)} + \nabla_0 S_3^{(c)} \\
 &+ \nabla_3 \left( \sum_{\text{perms}} \mathrm{kron}^3(S_1^{aug}) \right) \\
-&+ \nabla_2 \left( \mathrm{kron}(S_1^{aug}, S_2^{aug}) + \mathrm{kron}(S_2^{aug}, S_1^{aug}) \right) = 0
+&+ \nabla_2 \left( \mathrm{kron}(S_1^{aug}, S_2^{aug}) + \mathrm{kron}(S_2^{aug}, S_1^{aug}) + \text{perms} \right) \\
+&+ \nabla_1 S_2 \left( \mathrm{kron}(S_1^{aug}, S_2^{aug}) + \mathrm{kron}(S_2^{aug}, S_1^{aug}) \right) = 0
 \end{aligned}
 ```
 
 where:
 - ``S_3^{(c)}`` represents the compressed form with three-way symmetry
 - ``\nabla_3`` is the third-order derivative tensor of model equations
-- The sum over permutations accounts for all orderings of the three Kronecker factors
-- ``S_2^{aug}`` extends the second-order solution to include interactions with the perturbation parameter
-- The ``\nabla_2`` term captures coupling between first and second-order solutions
+- The sum over permutations in the ``\nabla_3`` term accounts for all orderings of the three Kronecker factors
+- ``S_2^{aug}`` extends the second-order solution to the augmented state space
+- The ``\nabla_2`` terms capture interactions between first and second-order solutions with all necessary permutations
+- The ``\nabla_1 S_2`` term (representing ``\nabla_+``) captures the effect of second-order terms on future expectations
+- Multiple Kronecker products of ``S_2`` with ``S_1`` appear to account for all second-order interactions
 
 This is equivalently written as the **generalized Sylvester equation**:
 ```math
@@ -435,12 +438,18 @@ where (see Tensor Representation section):
 
 - ``C`` includes third derivatives and interactions with the second-order solution:
 ```math
-C = (\nabla_0 + \nabla_+ S_1^y)^{-1} \left[ \nabla_3 \left(\mathrm{kron}^3(s_t^{aug}) + P_{1\ell̂} \mathrm{kron}^3(s_t^{aug}) P_{1r̃} + \cdots \right) + \nabla_2 \mathrm{kron}(s_t^{aug}, s_2^{aug}) \right]
+\begin{aligned}
+C = (\nabla_0 + \nabla_+ S_1^y)^{-1} \Big[ &\nabla_3 \left(\mathrm{kron}^3(s_t^{aug}) + P_{1\ell̂} \mathrm{kron}^3(s_t^{aug}) P_{1r̃} + \cdots \right) \\
+&+ \nabla_2 \left( \mathrm{kron}(s_t^{aug}, s_2^{aug}) + \text{perms with } S_1, S_2 \right) \\
+&+ \nabla_+ S_2 \mathrm{kron}(s_t^{aug}, s_2^{aug}) \Big]
+\end{aligned}
 ```
 where:
   - ``\nabla_3``: third-order derivative tensor (extremely sparse, applied in flattened form)
   - ``P_{1\ell̂}, P_{2\ell̂}``: permutations in full derivative space dimension ``\bar{n}``
-  - The second term couples second-order solution ``S_2`` with first-order states
+  - ``s_2^{aug} = S_2 \mathrm{kron}(s_{t-1}^{aug}, s_{t-1}^{aug})`` represents second-order state evolution
+  - The ``\nabla_2`` terms include multiple interactions: ``\mathrm{kron}(S_1, S_2 \mathrm{kron}(S_1, S_1))``, ``\mathrm{kron}(S_1, S_2 \sigma)``, with permutations
+  - The ``\nabla_+ S_2`` term captures how second-order terms affect future expectations
 
 The key computational challenges:
 1. Efficiently computing ``\mathrm{kron}^3(s_{t-1}^{aug})`` in compressed form
