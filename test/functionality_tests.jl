@@ -757,19 +757,20 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
             
-            plot_irf(m, parameters = params[1], algorithm = algorithm)
+            plot_irf(m, parameters = params[2], algorithm = algorithm)
             
             i = 1
             for rename_dict in rename_dicts
                 for variables in vars
                     if i % 4 == 0
-                        plot_irf(m, parameters = params[1], algorithm = algorithm)
+                        plot_irf(m, parameters = params[2], algorithm = algorithm)
                     end
 
                     i += 1
                     
-                    plot_irf!(m, 
+                    plot_irf!(m,
                                 variables = variables,
+                                parameters = params[1],
                                 label = string(variables),
                                 rename_dictionary = rename_dict,
                                 algorithm = algorithm)
@@ -1206,7 +1207,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
             
 
-            plot_conditional_forecast(m, conditions[end],
+            plot_conditional_forecast(m2, conditions2[end],
                                         conditions_in_levels = false,
                                         algorithm = algorithm)
 
@@ -1215,7 +1216,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             for rename_dict in rename_dicts
                 for variables in vars
                     if i % 4 == 0
-                        plot_conditional_forecast(m, conditions[end],
+                        plot_conditional_forecast(m2, conditions2[end],
                                                 conditions_in_levels = false,
                                                 algorithm = algorithm)
                     end
