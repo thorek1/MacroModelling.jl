@@ -276,16 +276,21 @@ y_t = \bar{y} + S_1 \begin{bmatrix} y_{t-1} - \bar{y} \\ u_t \end{bmatrix} + \fr
 where ``S_2`` is the second-order solution tensor (represented as a matrix in flattened form), and ``\otimes 2`` denotes the Kronecker product of a vector with itself.
 
 **The second-order solution matrix ``S_2`` must satisfy:**
+
+When we substitute the full policy function (including second-order terms) into the second-order Taylor expansion of the model equations, we get:
 ```math
-\nabla_+ S_1 \begin{bmatrix} S_1^y \\ 0 \end{bmatrix} S_2^{(c)} + \nabla_0 S_2^{(c)} + \nabla_2 \left( \mathrm{kron}(S_1^{aug}, S_1^{aug}) + \mathrm{kron}([I, 0, 0]^\top, [0, 1, 0]^\top) \right) = 0
+\underbrace{\nabla_+ S_1 \begin{bmatrix} S_1^y \\ 0 \end{bmatrix} S_2^{(c)} + \nabla_0 S_2^{(c)}}_{\text{First-order operator on } S_2} + \underbrace{\nabla_2 \left( \mathrm{kron}(S_1^{aug}, S_1^{aug}) + \mathrm{kron}([I, 0, 0]^\top, [0, 1, 0]^\top) \right)}_{\text{Second-order terms}} = 0
 ```
 
 where:
+- The first-order operator ``\nabla_+ S_1 [S_1^y, 0]^\top + \nabla_0`` acts on ``S_2`` (this is the same operator from the first-order problem)
 - ``S_2^{(c)}`` represents the compressed form of the second-order solution (see Tensor Representation section)
 - ``S_1^{aug} = [S_1^y, 0, S_1^u]`` is the augmented first-order solution including the perturbation parameter column
 - ``\nabla_2`` is the Hessian of model equations
 - The Kronecker products represent all second-order interactions of states, perturbation parameter, and shocks
 - ``[I, 0, 0]^\top`` selects state variables, ``[0, 1, 0]^\top`` selects the perturbation parameter position
+
+**Key insight**: The first-order condition for ``S_1`` is already satisfied (``\nabla_+ S_1 [S_1^y, 0]^\top + \nabla_0 S_1 + \nabla_- [I, 0]^\top + \nabla_e [0, I]^\top = 0``), so when solving for ``S_2``, we only need to balance the new second-order terms that appear.
 
 This is equivalently written as the **generalized Sylvester equation**:
 ```math
@@ -376,29 +381,34 @@ y_t = \bar{y} + S_1 s_t + \frac{1}{2} S_2 s_t^{\otimes 2} + \frac{1}{6} S_3 s_t^
 where ``s_t = [(y_{t-1} - \bar{y})^\top, \sigma, u_t^\top]^\top`` is the augmented state vector including the perturbation parameter, and ``S_3`` is the third-order solution tensor (stored in compressed flattened form).
 
 **The third-order solution matrix ``S_3`` must satisfy:**
+
+When we substitute the full policy function (including third-order terms) into the third-order Taylor expansion of the model equations, we get:
 ```math
 \begin{aligned}
-&\nabla_+ S_1 \begin{bmatrix} S_1^y \\ 0 \end{bmatrix} S_3^{(c)} + \nabla_0 S_3^{(c)} \\
-&+ \nabla_3 \left( \sum_{\text{perms}} \mathrm{kron}^3(S_1^{aug}) \right) \\
-&+ \nabla_2 \left( \mathrm{kron}(S_1^{aug}, S_2^{aug}) + \mathrm{kron}(S_2^{aug}, S_1^{aug}) + \text{perms} \right) \\
-&+ \nabla_1 S_2 \left( \mathrm{kron}(S_1^{aug}, S_2^{aug}) + \mathrm{kron}(S_2^{aug}, S_1^{aug}) \right) = 0
+&\underbrace{\nabla_+ S_1 \begin{bmatrix} S_1^y \\ 0 \end{bmatrix} S_3^{(c)} + \nabla_0 S_3^{(c)}}_{\text{First-order operator on } S_3} \\
+&+ \underbrace{\nabla_3 \left( \sum_{\text{perms}} \mathrm{kron}^3(S_1^{aug}) \right)}_{\text{Third-order terms with } S_1} \\
+&+ \underbrace{\nabla_2 \left( \mathrm{kron}(S_1^{aug}, S_2^{aug}) + \mathrm{kron}(S_2^{aug}, S_1^{aug}) + \text{perms} \right)}_{\text{Second-order operator with } S_1 \text{ and } S_2} \\
+&+ \underbrace{\nabla_+ S_2 \left( \mathrm{kron}(S_1^{aug}, S_2^{aug}) + \mathrm{kron}(S_2^{aug}, S_1^{aug}) \right)}_{\text{Second-order terms affecting expectations}} = 0
 \end{aligned}
 ```
 
 where:
+- The **first-order operator** ``\nabla_+ S_1 [S_1^y, 0]^\top + \nabla_0`` acts on ``S_3`` (same operator as for ``S_1`` and ``S_2``)
 - ``S_3^{(c)}`` represents the compressed form with three-way symmetry
 - ``\nabla_3`` is the third-order derivative tensor of model equations
 - The sum over permutations in the ``\nabla_3`` term accounts for all orderings of the three Kronecker factors
 - ``S_2^{aug}`` extends the second-order solution to the augmented state space
 - The ``\nabla_2`` terms capture interactions between first and second-order solutions with all necessary permutations
-- The ``\nabla_1 S_2`` term (representing ``\nabla_+``) captures the effect of second-order terms on future expectations
+- The ``\nabla_+ S_2`` term captures the effect of second-order terms on future expectations
 - Multiple Kronecker products of ``S_2`` with ``S_1`` appear to account for all second-order interactions
+
+**Key insight**: The first-order condition for ``S_1`` and the second-order condition for ``S_2`` are already satisfied, so when solving for ``S_3``, we only need to balance the new third-order terms. The same first-order differential operator ``\nabla_+ S_1 [S_1^y, 0]^\top + \nabla_0`` appears in all orders.
 
 This is equivalently written as the **generalized Sylvester equation**:
 ```math
 A S_3 B + C = S_3
 ```
-where ``A`` is the same as in second-order, but ``B`` and ``C`` now involve third-order terms, multiple permutations, and interactions with ``S_2`` (see algorithm details below).
+where ``A`` is the same as in second-order (the first-order operator), but ``B`` and ``C`` now involve third-order terms, multiple permutations, and interactions with ``S_2`` (see algorithm details below).
 
 ### Derivation
 
