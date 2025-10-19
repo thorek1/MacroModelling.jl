@@ -84,7 +84,7 @@ function apply_custom_name(symbol::R, custom_names::AbstractDict{S, T})::R where
         end
 
         if base_key_str == base_symbol_str
-            return string(value) * lag_part
+            return R(string(value) * lag_part)
         end
     end
 
