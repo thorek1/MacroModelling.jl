@@ -41,12 +41,11 @@ function translate_mod_file(path_to_mod_file::AbstractString)
         end
     end
 
-println(read("log.txt", String))
     cd(parse_model, tmp)
 
     son = JSON.parsefile(tmp * "/" * directory_2 * "/model/json/modfile.json")
-println(son)
-    @assert son isa Dict "Failed to parse the model."
+
+    @assert son isa Dict || son isa JSON.Object "Failed to parse the model."
 
     vars = [i["name"] for i in son["endogenous"]]
     shocks = [i["name"] for i in son["exogenous"]]
