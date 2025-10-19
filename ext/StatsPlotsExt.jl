@@ -1615,7 +1615,8 @@ function plot_irf(𝓂::ℳ;
     elseif shocks == :none
         shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
-        shock_names_display = [apply_custom_name(𝓂.timings.exo[s], rename_dictionary) for s in shock_idx]
+        shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.exo[s], rename_dictionary)) for s in shock_idx]
+        @assert length(shock_names_display) == length(unique(shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
         # Sort shocks alphabetically by display name
         if length(shock_idx) > 1
             shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
