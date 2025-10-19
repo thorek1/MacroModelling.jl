@@ -2,6 +2,12 @@ name: CI
 on:
   - push
 #   - pull_request
+
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   test:
     env: 
@@ -159,16 +165,7 @@ jobs:
       - name: Set JULIA_NUM_THREADS for estimation tests
         if: (matrix.version == '1' && (matrix.test_set == 'estimation' || matrix.test_set == 'estimate_sw07' || matrix.test_set == '1st_order_inversion_estimation'))
         run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
-      - uses: actions/cache@v4
-        env:
-          cache-name: cache-artifacts
-        with:
-          path: ~/.julia/artifacts
-          key: ${{ runner.os }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-test-${{ env.cache-name }}-
-            ${{ runner.os }}-test-
-            ${{ runner.os }}-
+      - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
         with:
