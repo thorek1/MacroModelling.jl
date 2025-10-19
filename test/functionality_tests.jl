@@ -40,6 +40,8 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
     vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
 
+    rename_dicts = [Dict((m.timings.var) .=> lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), Dict{Symbol,String}()]
+
     init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
 
     init_states = [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
@@ -373,28 +375,31 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
 
-            # plot_model_estimates(m, data_in_levels, 
-            #                         parameters = params[1],
-            #                         algorithm = algorithm, 
-            #                         data_in_levels = true)
-                                    
-            # i = 1             
-            # for variables in vars
-            #     if i % 4 == 0
-            #         plot_model_estimates(m, data_in_levels,
-            #                                 parameters = params[1],
-            #                                 algorithm = algorithm, 
-            #                                 data_in_levels = true)
-            #     end
+            plot_model_estimates(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+            
+            i = 1
+            for rename_dict in rename_dicts
+                for variables in vars
+                    if i % 4 == 0
+                        plot_model_estimates(m, data_in_levels,
+                                                parameters = params[1],
+                                                algorithm = algorithm, 
+                                                data_in_levels = true)
+                    end
 
-            #     i += 1
+                    i += 1
 
-            #     plot_model_estimates!(m, data, 
-            #                             variables = variables,
-            #                             label = string(variables),
-            #                             algorithm = algorithm, 
-            #                             data_in_levels = false)
-            # end
+                    plot_model_estimates!(m, data, 
+                                            variables = variables,
+                                            label = string(variables),
+                                            rename_dict = rename_dict,
+                                            algorithm = algorithm, 
+                                            data_in_levels = false)
+                end
+            end
         end
 
         @testset "plot_solution" begin
