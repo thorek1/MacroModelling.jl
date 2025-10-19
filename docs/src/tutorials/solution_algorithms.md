@@ -17,13 +17,22 @@ where ``y_t`` are endogenous variables and ``u_t`` are exogenous shocks.
 
 ## First-Order Perturbation Solution
 
-### Problem Formulation
+### The Equation to Solve
 
 The first-order approximation yields a linear policy function:
 ```math
 y_t = \bar{y} + S_1 \begin{bmatrix} y_{t-1} - \bar{y} \\ u_t \end{bmatrix}
 ```
 where ``\bar{y}`` is the steady state and ``S_1`` is the first-order solution matrix.
+
+**The first-order solution matrix ``S_1`` must satisfy:**
+```math
+\nabla_+ S_1 \begin{bmatrix} S_1^y \\ 0 \end{bmatrix} + \nabla_0 S_1 + \nabla_- \begin{bmatrix} I_{n_-} \\ 0 \end{bmatrix} + \nabla_e \begin{bmatrix} 0 \\ I_{n_e} \end{bmatrix} = 0
+```
+
+where ``S_1 = [S_1^y \quad S_1^u]`` is partitioned into the response to lagged endogenous variables (``S_1^y``) and shocks (``S_1^u``), ``I_{n_-}`` is the identity matrix of dimension ``n_-`` (number of state variables), and ``I_{n_e}`` is the identity for shocks.
+
+This condition ensures that when we substitute the policy function into the linearized model equations, the system is satisfied for all possible states and shocks.
 
 ### Derivation
 
@@ -38,7 +47,9 @@ where:
 - ``\nabla_-`` is the Jacobian with respect to past variables ``y_{t-1}``
 - ``\nabla_e`` is the Jacobian with respect to exogenous shocks ``u_t``
 
-### Algorithm
+Substituting the policy function ``y_t = \bar{y} + S_1 s_t`` where ``s_t = [(y_{t-1} - \bar{y})^\top, u_t^\top]^\top`` and using ``\mathbb{E}_t[y_{t+1}] = \bar{y} + S_1 \mathbb{E}_t[s_{t+1}] = \bar{y} + S_1 [S_1^y(y_{t-1} - \bar{y}), 0]^\top`` gives the equation above.
+
+### Algorithm to Find ``S_1``
 
 The solution matrix ``S_1 = [S_1^y \quad S_1^u]`` where ``S_1^y`` relates to lagged endogenous variables and ``S_1^u`` relates to shocks.
 
@@ -255,20 +266,38 @@ The compression/permutation matrices are precomputed once when the model is pars
 
 ## Second-Order Perturbation Solution
 
-### Problem Formulation
+### The Equation to Solve
 
 The second-order approximation adds quadratic terms:
 ```math
 y_t = \bar{y} + S_1 \begin{bmatrix} y_{t-1} - \bar{y} \\ u_t \end{bmatrix} + \frac{1}{2} S_2 \begin{bmatrix} y_{t-1} - \bar{y} \\ u_t \end{bmatrix}^{\otimes 2}
 ```
 
-where ``S_2`` is the second-order solution tensor (represented as a matrix), and ``\otimes 2`` denotes the Kronecker product of a vector with itself.
+where ``S_2`` is the second-order solution tensor (represented as a matrix in flattened form), and ``\otimes 2`` denotes the Kronecker product of a vector with itself.
+
+**The second-order solution matrix ``S_2`` must satisfy:**
+```math
+\nabla_+ S_1 \begin{bmatrix} S_1^y \\ 0 \end{bmatrix} S_2^{(c)} + \nabla_0 S_2^{(c)} + \nabla_2 \left( \mathrm{kron}(S_1^{aug}, S_1^{aug}) + \mathrm{kron}([I, 0, 0]^\top, [0, 1, 0]^\top) \right) = 0
+```
+
+where:
+- ``S_2^{(c)}`` represents the compressed form of the second-order solution (see Tensor Representation section)
+- ``S_1^{aug} = [S_1^y, 0, S_1^u]`` is the augmented first-order solution including the perturbation parameter column
+- ``\nabla_2`` is the Hessian of model equations
+- The Kronecker products represent all second-order interactions of states, perturbation parameter, and shocks
+- ``[I, 0, 0]^\top`` selects state variables, ``[0, 1, 0]^\top`` selects the perturbation parameter position
+
+This is equivalently written as the **generalized Sylvester equation**:
+```math
+A S_2 B + C = S_2
+```
+where ``A, B, C`` are constructed from the Jacobians and first-order solution (see algorithm details below).
 
 ### Derivation
 
 The second-order Taylor expansion includes Hessian terms. After substituting the first-order solution and collecting second-order terms, we obtain a generalized Sylvester equation.
 
-### Algorithm
+### Algorithm to Find ``S_2``
 
 **Step 1: Construct Auxiliary Matrices**
 
@@ -337,20 +366,42 @@ The size accounts for:
 
 ## Third-Order Perturbation Solution
 
-### Problem Formulation
+### The Equation to Solve
 
 The third-order approximation includes cubic terms:
 ```math
 y_t = \bar{y} + S_1 s_t + \frac{1}{2} S_2 s_t^{\otimes 2} + \frac{1}{6} S_3 s_t^{\otimes 3}
 ```
 
-where ``s_t`` is the augmented state vector (as in second order) and ``S_3`` is the third-order solution tensor.
+where ``s_t = [(y_{t-1} - \bar{y})^\top, \sigma, u_t^\top]^\top`` is the augmented state vector including the perturbation parameter, and ``S_3`` is the third-order solution tensor (stored in compressed flattened form).
+
+**The third-order solution matrix ``S_3`` must satisfy:**
+```math
+\begin{aligned}
+&\nabla_+ S_1 \begin{bmatrix} S_1^y \\ 0 \end{bmatrix} S_3^{(c)} + \nabla_0 S_3^{(c)} \\
+&+ \nabla_3 \left( \sum_{\text{perms}} \mathrm{kron}^3(S_1^{aug}) \right) \\
+&+ \nabla_2 \left( \mathrm{kron}(S_1^{aug}, S_2^{aug}) + \mathrm{kron}(S_2^{aug}, S_1^{aug}) \right) = 0
+\end{aligned}
+```
+
+where:
+- ``S_3^{(c)}`` represents the compressed form with three-way symmetry
+- ``\nabla_3`` is the third-order derivative tensor of model equations
+- The sum over permutations accounts for all orderings of the three Kronecker factors
+- ``S_2^{aug}`` extends the second-order solution to include interactions with the perturbation parameter
+- The ``\nabla_2`` term captures coupling between first and second-order solutions
+
+This is equivalently written as the **generalized Sylvester equation**:
+```math
+A S_3 B + C = S_3
+```
+where ``A`` is the same as in second-order, but ``B`` and ``C`` now involve third-order terms, multiple permutations, and interactions with ``S_2`` (see algorithm details below).
 
 ### Derivation
 
 The third-order solution requires computing third-order derivatives (the Hessian tensor) of the model equations. The solution again takes the form of a generalized Sylvester equation, but now involving third-order terms.
 
-### Algorithm
+### Algorithm to Find ``S_3``
 
 **Step 1: Construct Third-Order Auxiliary Matrices**
 
