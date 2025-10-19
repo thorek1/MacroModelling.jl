@@ -46,6 +46,11 @@ When the parser encounters a `max(a, b)` or `min(a, b)` operator, the model is a
    ϵᵒᵇᶜᴸ⁽⁻ⁱ⁾[0] = ϵᵒᵇᶜᴸ⁽⁻⁽ⁱ⁻¹⁾⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁽ᴴ⁻ⁱ⁾[x]
    ```
    
+   where:
+   - `activeᵒᵇᶜshocks` is a parameter that enables (=1) or disables (=0) OBC enforcement
+   - `[x]` denotes exogenous shocks (shocks not determined by model dynamics)
+   - `ϵᵒᵇᶜ⁽ⁱ⁾` are the anticipated shocks at different horizons
+   
    These equations implement a telescoping sum that allows the algorithm to inject anticipated shocks at different horizons to enforce the constraint.
 
 ## Optimization Algorithm
