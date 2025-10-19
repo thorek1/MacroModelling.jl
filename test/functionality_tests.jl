@@ -543,7 +543,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
                     i += 1
                     
-                    plot_solution!(m, 
+                    plot_solution!(m, states[1],
                                     variables = variables,
                                     rename_dictionary = rename_dict)
                 end
