@@ -4900,6 +4900,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
 
+    full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : full_SS
+
     var_names = axiskeys(Y,1)   
 
     var_names = var_names isa Vector{String} ? var_names .|> replace_indices : var_names
@@ -4924,10 +4926,20 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
-    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in var_names]
+    if length(intersect(𝓂.aux,full_var_SS)) > 0
+        for v in 𝓂.aux
+            idx = indexin([v],full_var_SS)
+            if !isnothing(idx[1])
+                full_var_SS[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+            end
+        end
+        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    end
+
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS]
 
     var_length = length(full_SS) - 𝓂.timings.nExo
-
+    
     if conditions isa SparseMatrixCSC{Float64}
         @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
 
