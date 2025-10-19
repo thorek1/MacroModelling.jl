@@ -529,7 +529,25 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                         plot_solution!(model, state, algorithm = algo, parameters = parameters)
                     end
                 end
-            end                               
+            end
+
+
+            plot_solution(m2, states2[1])
+            
+            i = 1
+            for rename_dict in rename_dicts
+                for variables in vars
+                    if i % 4 == 0
+                        plot_solution(m2, states2[1])
+                    end
+
+                    i += 1
+                    
+                    plot_solution!(m, 
+                                    variables = variables,
+                                    rename_dictionary = rename_dict)
+                end
+            end
 
             # plotlyjs_backend()
 
@@ -758,25 +776,6 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                 end
             end
 
-            plot_irf(m, algorithm = algorithm,
-                        parameters = params[1])
-            
-            i = 1
-            
-            for variables in vars
-                if i % 4 == 0
-                    plot_irf(m, algorithm = algorithm,
-                                parameters = params[1])
-                end
-
-                i += 1
-                
-                clear_solution_caches!(m, algorithm)
-                            
-                plot_irf!(m, algorithm = algorithm, variables = variables,
-                            parameters = params[2])
-            end
-
 
             for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                 clear_solution_caches!(m, algorithm)
@@ -861,7 +860,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for periods in [10,40]
                 for variables in vars
-                    plot_conditional_variance_decomposition(m, periods = periods, variables = variables)
+                    for rename_dict in rename_dicts
+                        plot_conditional_variance_decomposition(m, 
+                                                                periods = periods, 
+                                                                variables = variables, 
+                                                                rename_dictionary = rename_dict)
+                    end
                 end
             end
 
