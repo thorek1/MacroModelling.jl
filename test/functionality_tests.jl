@@ -40,7 +40,12 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
     vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
 
-    rename_dicts = [Dict((m.timings.var) .=> lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), Dict{Symbol,String}()]
+    rename_dicts = [
+        Dict((m.timings.var) .=> lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
+        Dict((m.timings.var) .=> Symbol.(lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}")))), 
+        Dict(String.(m.timings.var) .=> lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
+        Dict{Symbol,String}()
+    ]
 
     init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
 
@@ -395,7 +400,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                     plot_model_estimates!(m, data, 
                                             variables = variables,
                                             label = string(variables),
-                                            rename_dict = rename_dict,
+                                            rename_dictionary = rename_dict,
                                             algorithm = algorithm, 
                                             data_in_levels = false)
                 end
@@ -734,6 +739,25 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
             end
 
             
+            plot_irf(m, parameters = params[1], algorithm = algorithm)
+            
+            i = 1
+            for rename_dict in rename_dicts
+                for variables in vars
+                    if i % 4 == 0
+                        plot_irf(m, parameters = params[1], algorithm = algorithm)
+                    end
+
+                    i += 1
+                    
+                    plot_irf!(m, 
+                                variables = variables,
+                                label = string(variables),
+                                rename_dictionary = rename_dict,
+                                algorithm = algorithm)
+                end
+            end
+
             plot_irf(m, algorithm = algorithm,
                         parameters = params[1])
             
@@ -1184,22 +1208,24 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             i = 1
 
-            for variables in vars
-                if i % 4 == 0
-                    plot_conditional_forecast(m, conditions[end],
-                                            conditions_in_levels = false,
-                                            algorithm = algorithm)
+            for rename_dict in rename_dicts
+                for variables in vars
+                    if i % 4 == 0
+                        plot_conditional_forecast(m, conditions[end],
+                                                conditions_in_levels = false,
+                                                algorithm = algorithm)
+                    end
+
+                    i += 1
+
+                    plot_conditional_forecast!(m, conditions[end],
+                                                conditions_in_levels = false,
+                                                initial_state = init_states[end], 
+                                                rename_dictionary = rename_dict,
+                                                variables = variables,
+                                                algorithm = algorithm)
                 end
-
-                i += 1
-
-                plot_conditional_forecast!(m, conditions[end],
-                                            conditions_in_levels = false,
-                                            initial_state = init_states[end], 
-                                            variables = variables,
-                                            algorithm = algorithm)
             end
-
 
             for initial_state in init_states
                 plot_conditional_forecast(m, conditions[end],
