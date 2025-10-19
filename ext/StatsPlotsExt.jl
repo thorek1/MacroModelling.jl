@@ -4544,14 +4544,14 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     # Create display names for variables and shocks
-    full_variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
-    full_shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    full_variable_names_display = [(apply_custom_name(v, rename_dictionary)) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    full_shock_names_display = [(apply_custom_name(s, rename_dictionary)) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
     @assert length(full_variable_names_display) == length(unique(full_variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
     @assert length(full_shock_names_display) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
 
-    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
-    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    variable_names_display = [(apply_custom_name(v, rename_dictionary)) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    shock_names_display = [(apply_custom_name(s, rename_dictionary)) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
     # Get sorting permutations for variables and shocks separately
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
@@ -4571,15 +4571,15 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     # Combine sorted indices
-    combined_sort_perm = vcat(var_sort_perm, shock_sort_perm)
-    full_combined_sort_perm = vcat(full_var_sort_perm, full_shock_sort_perm)
+    combined_sort_perm = vcat(var_sort_perm, (length(𝓂.timings.var) .+ (1:length(𝓂.timings.exo)))[shock_sort_perm])
+    full_combined_sort_perm = vcat(full_var_sort_perm, (length(𝓂.timings.var) .+ (1:length(𝓂.timings.exo)))[full_shock_sort_perm])
 
     # Apply the combined permutation to all relevant arrays
     Y = Y[combined_sort_perm, :]
     conditions = conditions[full_var_sort_perm, :]
     shocks = shocks[full_shock_sort_perm, :]
     reference_steady_state = reference_steady_state[full_combined_sort_perm]
-    var_idx = var_idx[var_sort_perm]
+    var_idx = var_idx[combined_sort_perm]
 
     # Get the sorted display names
     sorted_variable_names_display = sort(variable_names_display)
@@ -4992,8 +4992,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
     full_variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
     full_shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
-    @assert length(full_variable_names_display) == length(unique(full_variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
-    @assert length(full_shock_names_display) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+    @assert length(unique([v for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)])) == length(unique(full_variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    @assert length(unique([v for v in full_var_SS if v ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)])) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
 
     variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
     shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
@@ -5016,15 +5016,15 @@ function plot_conditional_forecast!(𝓂::ℳ,
     end
 
     # Combine sorted indices
-    combined_sort_perm = vcat(var_sort_perm, shock_sort_perm)
-    full_combined_sort_perm = vcat(full_var_sort_perm, full_shock_sort_perm)
+    combined_sort_perm = vcat(var_sort_perm, (length(𝓂.timings.var) .+ (1:length(𝓂.timings.exo)))[shock_sort_perm])
+    full_combined_sort_perm = vcat(full_var_sort_perm, (length(𝓂.timings.var) .+ (1:length(𝓂.timings.exo)))[full_shock_sort_perm])
 
     # Apply the combined permutation to all relevant arrays
     Y = Y[combined_sort_perm, :]
     conditions = conditions[full_var_sort_perm, :]
     shocks = shocks[full_shock_sort_perm, :]
     reference_steady_state = reference_steady_state[full_combined_sort_perm]
-    var_idx = var_idx[var_sort_perm]
+    var_idx = var_idx[combined_sort_perm]
 
     # Get the sorted display names
     sorted_variable_names_display = sort(variable_names_display)
