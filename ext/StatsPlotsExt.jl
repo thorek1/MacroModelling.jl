@@ -3245,15 +3245,17 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     vars_to_plot = intersect(axiskeys(fevds)[1],𝓂.timings.var[var_idx])
     
     # Sort variables alphabetically by display name
-    vars_display_names = [apply_custom_name(v, rename_dictionary) for v in vars_to_plot]
-    vars_sort_perm = sortperm(vars_display_names, by = normalize_superscript)
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in vars_to_plot]
+    @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    vars_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     vars_to_plot = vars_to_plot[vars_sort_perm]
     
     shocks_to_plot = axiskeys(fevds)[2]
     
     # Sort shocks alphabetically by display name
-    shocks_display_names = [apply_custom_name(s, rename_dictionary) for s in shocks_to_plot]
-    shocks_sort_perm = sortperm(shocks_display_names, by = normalize_superscript)
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in shocks_to_plot]
+    @assert length(shock_names_display) == length(unique(shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+    shocks_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
     shocks_to_plot = shocks_to_plot[shocks_sort_perm]
 
     legend_columns = 1
@@ -3532,9 +3534,17 @@ function plot_solution(𝓂::ℳ,
     vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
 
     # Sort variables alphabetically by display name
-    vars_display_names = [apply_custom_name(v, rename_dictionary) for v in vars_to_plot]
-    vars_sort_perm = sortperm(vars_display_names, by = normalize_superscript)
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in vars_to_plot]
+    vars_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     vars_to_plot = vars_to_plot[vars_sort_perm]
+
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
@@ -3620,7 +3630,8 @@ function plot_solution(𝓂::ℳ,
                            :vars_to_plot => vars_to_plot,
                            :full_SS_current => full_SS_current,
                            :algorithm_label => labels[algorithm][1],
-                           :ss_label => labels[algorithm][2])
+                           :ss_label => labels[algorithm][2],
+                           :rename_dictionary => processed_rename_dictionary)
 
     push!(solution_active_plot_container, args_and_kwargs)
 
@@ -3770,7 +3781,30 @@ function _plot_solution_from_container(;
             push!(annotate_diff_input, String(param) => result)
         end
     end
-    
+   
+    rename_idx = Int[]
+
+    if haskey(diffdict, :rename_dictionary)
+        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
+        unique_dicts = unique(non_nothing_dicts)
+
+        for init in diffdict[:rename_dictionary]
+            if isnothing(init) || length(init) == 0
+                push!(rename_idx, 0)
+                continue
+            end
+
+            for (i,u) in enumerate(unique_dicts)
+                if u == init
+                    push!(rename_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
+    end 
+
     # Add ignore_obc if different
     if haskey(diffdict, :ignore_obc)
         push!(annotate_diff_input, "Ignore OBC" => reduce(vcat, diffdict[:ignore_obc]))
@@ -4152,9 +4186,17 @@ function plot_solution!(𝓂::ℳ,
     vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
 
     # Sort variables alphabetically by display name
-    vars_display_names = [apply_custom_name(v, rename_dictionary) for v in vars_to_plot]
-    vars_sort_perm = sortperm(vars_display_names, by = normalize_superscript)
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in vars_to_plot]
+    vars_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     vars_to_plot = vars_to_plot[vars_sort_perm]
+
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
@@ -4235,7 +4277,8 @@ function plot_solution!(𝓂::ℳ,
                            :vars_to_plot => vars_to_plot,
                            :full_SS_current => full_SS_current,
                            :algorithm_label => labels[algorithm][1],
-                           :ss_label => labels[algorithm][2])
+                           :ss_label => labels[algorithm][2],
+                           :rename_dictionary => processed_rename_dictionary)
 
     push!(solution_active_plot_container, args_and_kwargs)
 
