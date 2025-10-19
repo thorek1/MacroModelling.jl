@@ -305,15 +305,15 @@ using MacroModelling
     1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α-1) + (1-δ))
     c[0] + k[0] = (1-δ) * k[-1] + q[0]
     q[0] = exp(z[0]) * k[-1]^α
-    z[0] = ρ * z[-1] + σ * eps_z[x]
+    z[0] = ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
 end
 
 @parameters RBC begin
     α = 0.5
     β = 0.95
     δ = 0.02
-    ρ = 0.9
-    σ = 0.01
+    ρᶻ = 0.9
+    σᶻ = 0.01
 end
 
 # Get different order solutions
