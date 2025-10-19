@@ -98,6 +98,161 @@ where:
 - ``n_-`` is the number of state variables
 - ``n_e`` is the number of shocks
 
+## Tensor Representation and Flattening
+
+Higher-order perturbation solutions naturally involve tensors (multidimensional arrays). However, the algorithms work with these tensors in a flattened 2D matrix representation for computational efficiency. This section explains the mapping between tensor and matrix representations.
+
+### Tensor Form of Higher-Order Solutions
+
+In their natural form, higher-order perturbation solutions are represented as tensors:
+
+**Second-order**: The solution is a 3-tensor ``\mathcal{S}_2 \in \mathbb{R}^{n \times n_s \times n_s}`` where:
+```math
+y_{t,i} - \bar{y}_i = \sum_{j=1}^{n_s} \sum_{k=1}^{n_s} \mathcal{S}_{2,ijk} \, s_{t,j} \, s_{t,k}
+```
+for variable ``i`` and state variables ``s_t = [y_{t-1} - \bar{y}, \sigma, u_t]^\top`` of dimension ``n_s = n_- + 1 + n_e``.
+
+**Third-order**: The solution is a 4-tensor ``\mathcal{S}_3 \in \mathbb{R}^{n \times n_s \times n_s \times n_s}`` where:
+```math
+y_{t,i} - \bar{y}_i = \sum_{j=1}^{n_s} \sum_{k=1}^{n_s} \sum_{\ell=1}^{n_s} \mathcal{S}_{3,ijk\ell} \, s_{t,j} \, s_{t,k} \, s_{t,\ell}
+```
+
+### Symmetry and Compression
+
+Due to the symmetry of partial derivatives, many tensor entries are equal:
+- **Second-order**: ``\mathcal{S}_{2,ijk} = \mathcal{S}_{2,ikj}`` (order of ``j`` and ``k`` doesn't matter)
+- **Third-order**: ``\mathcal{S}_{3,ijk\ell}`` is symmetric in indices ``j, k, \ell`` (6 equivalent orderings)
+
+This symmetry allows significant **compression** - we only need to store unique entries.
+
+### Flattening to 2D Matrices
+
+The implementation works with **flattened** 2D matrices rather than full tensors:
+
+#### Second-Order Flattening
+
+The 3-tensor ``\mathcal{S}_2`` is flattened into a matrix ``S_2 \in \mathbb{R}^{n \times m_2}`` where ``m_2 = \frac{n_s(n_s+1)}{2}`` (only unique entries due to symmetry).
+
+**Mapping**: The Kronecker product ``s_t \otimes s_t`` creates a vector of length ``n_s^2``:
+```math
+s_t \otimes s_t = \begin{bmatrix} s_{t,1} s_{t,1} \\ s_{t,1} s_{t,2} \\ \vdots \\ s_{t,1} s_{t,n_s} \\ s_{t,2} s_{t,1} \\ \vdots \\ s_{t,n_s} s_{t,n_s} \end{bmatrix}
+```
+
+The **compression matrix** ``C_2 \in \mathbb{R}^{n_s^2 \times m_2}`` selects the unique symmetric entries:
+- It maps the full Kronecker product (``n_s^2`` entries) to compressed form (``m_2`` unique entries)
+- Column ``k`` of ``C_2`` has a single 1 at the position of the ``k``-th unique product term
+- For example, if ``s_t = [s_1, s_2]^\top`` then ``C_2`` maps ``[s_1 s_1, s_1 s_2, s_2 s_1, s_2 s_2]^\top`` to ``[s_1 s_1, s_1 s_2, s_2 s_2]^\top``
+
+The **uncompression matrix** ``U_2 = C_2^\top D`` where ``D`` duplicates entries to restore full form:
+```math
+U_2 \in \mathbb{R}^{m_2 \times n_s^2}
+```
+- It expands the compressed solution back to full Kronecker product form
+- Ensures ``s_t \otimes s_t = U_2 \cdot C_2^\top (s_t \otimes s_t)``
+
+**Usage in algorithm**:
+```julia
+# Compress: full Kronecker product → unique entries
+compressed_kron = C_2' * kron(s_t, s_t)  # m_2 × 1
+
+# Uncompress: solution in compressed form → full form for multiplication
+full_form = U_2 * S_2_compressed  # Apply solution
+```
+
+The second-order solution satisfies ``A S_2 B + C = S_2`` where ``B`` operates in compressed space.
+
+#### Third-Order Flattening  
+
+The 4-tensor ``\mathcal{S}_3`` is flattened into ``S_3 \in \mathbb{R}^{n \times m_3}`` where ``m_3 = \frac{n_s(n_s+1)(n_s+2)}{6}`` (unique entries with three-way symmetry).
+
+The Kronecker cube ``s_t \otimes s_t \otimes s_t`` has ``n_s^3`` entries, but only ``m_3`` are unique.
+
+**Compression and uncompression matrices**:
+- ``C_3 \in \mathbb{R}^{n_s^3 \times m_3}``: maps full cube to unique entries
+- ``U_3 \in \mathbb{R}^{m_3 \times n_s^3}``: expands back to full form
+
+The construction is analogous to second-order but handles three-way symmetry.
+
+### Permutation Matrices
+
+Permutation matrices handle different orderings of tensor indices. They are crucial when combining terms that involve products in different orders.
+
+#### Second-Order Permutations
+
+For second-order, the main permutation concern is swapping the two state arguments. The symmetry ``\mathcal{S}_{2,ijk} = \mathcal{S}_{2,ikj}`` is handled by ``C_2`` and ``U_2``.
+
+#### Third-Order Permutations
+
+Third-order involves multiple permutation matrices due to three indices:
+
+**Matrix ``\mathbf{P}``**: Combines different orderings in derivative calculations. It represents the sum:
+```math
+\mathbf{P} = P_{(1,2,3)} + P_{(1,3,2)} + P_{(3,1,2)}
+```
+where ``P_{(\pi)}`` permutes a flattened tensor according to permutation ``\pi``. This handles terms like:
+```math
+\frac{\partial^3 f}{\partial x_i \partial x_j \partial x_k} \text{ with all orderings of } i,j,k
+```
+
+**Left and right permutations** (``P_{1\ell}, P_{1r}``, etc.): Handle specific reorderings needed when computing products:
+- ``P_{1\ell}``: Left-multiplication permutation swapping first two indices ``(i,j,k) \to (j,i,k)``
+- ``P_{1r}``: Right-multiplication permutation (transpose of ``P_{1\ell}``)
+- ``P_{1\ell̂}, P_{2\ell̂}``: Permutations for derivative space (full dimension ``\bar{n}``)
+- ``P_{1\ell̄}, P_{2\ell̄}``: Permutations for compressed state space
+- ``P_{1r̃}, P_{2r̃}``: Right-multiplication versions for compressed space
+
+These enable efficient computation of terms like:
+```math
+\nabla_3 \mathrm{kron}(s_t, s_t, s_t) + \nabla_3 P_{1\ell̂} \mathrm{kron}(s_t, s_t, s_t) P_{1r̃}
+```
+which combines the derivative tensor with different argument orderings.
+
+**Matrix ``\mathbf{SP}``**: A special sparse permutation that identifies which state variables actually appear in third-order terms (exploiting sparsity in the derivative tensor).
+
+### Example: Second-Order Matrix Construction
+
+Consider a simple case with ``n_s = 3`` state variables ``s_t = [s_1, s_2, s_3]^\top``.
+
+**Full Kronecker product** (9 entries):
+```math
+s_t \otimes s_t = [s_1 s_1, s_1 s_2, s_1 s_3, s_2 s_1, s_2 s_2, s_2 s_3, s_3 s_1, s_3 s_2, s_3 s_3]^\top
+```
+
+**Compressed form** (6 unique entries due to symmetry):
+```math
+\text{compressed} = [s_1 s_1, s_1 s_2, s_1 s_3, s_2 s_2, s_2 s_3, s_3 s_3]^\top
+```
+
+**Compression matrix** ``C_2`` (9 × 6):
+```math
+C_2 = \begin{bmatrix}
+1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 1 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 1 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1
+\end{bmatrix}
+```
+
+Notice rows 2 and 4 are identical (both map to ``s_1 s_2``), as are rows 3 and 7 (``s_1 s_3``), and rows 6 and 8 (``s_2 s_3``).
+
+The algorithm computes ``S_2`` in the compressed 6-column space and uses ``U_2`` when applying it to full Kronecker products.
+
+### Why This Matters
+
+This flattening approach provides significant benefits:
+
+1. **Memory efficiency**: Storing ``\frac{n_s(n_s+1)}{2}`` instead of ``n_s^2`` entries for second-order (factor of ~2 savings)
+2. **Computational efficiency**: Operating on compressed matrices is faster
+3. **Numerical stability**: Compressed form naturally enforces symmetry constraints
+4. **Sparse operations**: Real models are sparse; flattened form enables efficient sparse linear algebra
+
+The compression/permutation matrices are precomputed once when the model is parsed and reused throughout the solution process.
+
 ## Second-Order Perturbation Solution
 
 ### Problem Formulation
@@ -136,17 +291,21 @@ The second-order solution satisfies:
 A S_2 B + C = S_2
 ```
 
-where:
+where ``S_2`` is stored in **compressed form** (see the Tensor Representation section above):
 
 - ``A = (\nabla_0 + \nabla_+ S_1^y)^{-1} \nabla_+ \in \mathbb{R}^{n \times n}``
 
-- ``B = U_2^\top \mathrm{kron}(s_{t-1}^{aug}, s_{t-1}^{aug}) C_2`` is the Kronecker product of augmented states, with:
-  - ``U_2`` a permutation matrix for duplication removal
-  - ``C_2`` a compression matrix for symmetry
+- ``B = U_2^\top \mathrm{kron}(s_{t-1}^{aug}, s_{t-1}^{aug}) C_2 \in \mathbb{R}^{m_2 \times m_2}`` operates in compressed space:
+  - ``C_2 \in \mathbb{R}^{n_s^2 \times m_2}``: compression matrix selecting unique symmetric entries
+  - ``U_2 \in \mathbb{R}^{m_2 \times n_s^2}``: uncompression matrix expanding back to full Kronecker form
+  - The product ``U_2^\top \mathrm{kron}(s, s) C_2`` represents the state evolution in compressed coordinates
 
-- ``C = (\nabla_0 + \nabla_+ S_1^y)^{-1} \nabla_2 \mathrm{kron}(s_t^{aug}, s_t^{aug})`` contains the second-order derivatives
+- ``C = (\nabla_0 + \nabla_+ S_1^y)^{-1} \nabla_2 \mathrm{kron}(s_t^{aug}, s_t^{aug})`` contains the second-order derivatives term:
+  - ``\nabla_2`` is the Hessian of model equations (sparse due to limited cross-products)
+  - Applied to the Kronecker product of current states
+  - Then pre-multiplied by the inverted Jacobian
 
-The term ``\nabla_2`` represents the Hessian of the model equations, which is a sparse matrix due to most variables not appearing in products.
+The compression ensures we solve for only ``m_2 = \frac{n_s(n_s+1)}{2}`` unique entries instead of ``n_s^2``.
 
 **Step 3: Solve Generalized Sylvester Equation**
 
@@ -207,26 +366,35 @@ The third-order solution satisfies:
 A S_3 B + C = S_3
 ```
 
-where:
+where ``S_3`` is stored in **compressed form** with ``m_3 = \frac{n_s(n_s+1)(n_s+2)}{6}`` columns:
 
 - ``A = (\nabla_0 + \nabla_+ S_1^y)^{-1} \nabla_+`` (same as second order)
 
-- ``B`` involves third-order Kronecker products with special structure:
+- ``B \in \mathbb{R}^{m_3 \times m_3}`` involves third-order Kronecker products with permutations:
 ```math
-B = U_3^\top \left[ \mathrm{kron}(s_{t-1}^{aug}, \sigma) + P_1^L \mathrm{kron}(s_{t-1}^{aug}, \sigma) P_1^R + P_2^L \mathrm{kron}(s_{t-1}^{aug}, \sigma) P_2^R + \mathrm{kron}^3(s_{t-1}^{aug}) \right] C_3
+B = U_3^\top \left[ \mathrm{kron}(s_{t-1}^{aug}, \sigma) + P_{1\ell̄} \mathrm{kron}(s_{t-1}^{aug}, \sigma) P_{1r̃} + P_{2\ell̄} \mathrm{kron}(s_{t-1}^{aug}, \sigma) P_{2r̃} + \mathrm{kron}^3(s_{t-1}^{aug}) \right] C_3
+```
+where (see Tensor Representation section):
+  - ``C_3 \in \mathbb{R}^{n_s^3 \times m_3}``: compression matrix selecting unique entries with three-way symmetry
+  - ``U_3 \in \mathbb{R}^{m_3 \times n_s^3}``: uncompression matrix expanding to full Kronecker cube
+  - ``P_{1\ell̄}, P_{2\ell̄}``: left permutation matrices reordering the three indices in compressed space
+  - ``P_{1r̃}, P_{2r̃}``: corresponding right permutation matrices (transposes)
+  - ``\mathrm{kron}^3(s) = s \otimes s \otimes s``: third Kronecker power
+  - The multiple permutation terms handle different orderings: ``(i,j,k,\sigma)``, ``(i,k,j,\sigma)``, ``(k,i,j,\sigma)``
+
+- ``C`` includes third derivatives and interactions with the second-order solution:
+```math
+C = (\nabla_0 + \nabla_+ S_1^y)^{-1} \left[ \nabla_3 \left(\mathrm{kron}^3(s_t^{aug}) + P_{1\ell̂} \mathrm{kron}^3(s_t^{aug}) P_{1r̃} + \cdots \right) + \nabla_2 \mathrm{kron}(s_t^{aug}, s_2^{aug}) \right]
 ```
 where:
-  - ``U_3`` removes duplicates in third-order terms
-  - ``P_1^L, P_1^R, P_2^L, P_2^R`` are permutation matrices handling different orderings
-  - ``\mathrm{kron}^3`` is the third Kronecker power
-  - ``C_3`` is a compression matrix
+  - ``\nabla_3``: third-order derivative tensor (extremely sparse, applied in flattened form)
+  - ``P_{1\ell̂}, P_{2\ell̂}``: permutations in full derivative space dimension ``\bar{n}``
+  - The second term couples second-order solution ``S_2`` with first-order states
 
-- ``C`` includes third derivatives and second-order solution terms:
-```math
-C = (\nabla_0 + \nabla_+ S_1^y)^{-1} \left[ \nabla_3 \mathrm{kron}^3(s_t^{aug}) + \nabla_2 \mathrm{kron}(s_t^{aug}, s_2^{aug}) \right]
-```
-
-The key challenge is efficiently computing ``\mathrm{kron}^3(s_{t-1}^{aug})`` and the interaction between third derivatives ``\nabla_3`` and the existing second-order solution.
+The key computational challenges:
+1. Efficiently computing ``\mathrm{kron}^3(s_{t-1}^{aug})`` in compressed form
+2. Applying multiple permutations to handle all derivative orderings
+3. Maintaining sparsity throughout (``\nabla_3`` is extremely sparse)
 
 **Step 3: Solve Third-Order Sylvester Equation**
 
