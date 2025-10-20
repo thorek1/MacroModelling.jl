@@ -41,9 +41,9 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
     vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
 
     rename_dicts = [
-        Dict((m.timings.var) .=> lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
-        Dict((m.timings.var) .=> Symbol.(lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}")))), 
-        Dict(String.(m.timings.var) .=> lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
+        Dict((m.timings.var) .=> (replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
+        Dict((m.timings.var) .=> Symbol.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
+        Dict(String.(m.timings.var) .=> (replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
         Dict{Symbol,String}()
     ]
 
