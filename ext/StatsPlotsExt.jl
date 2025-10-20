@@ -4571,8 +4571,8 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     # Combine sorted indices
-    combined_sort_perm = vcat(var_sort_perm, (length(𝓂.timings.var) .+ (1:length(𝓂.timings.exo)))[shock_sort_perm])
-    full_combined_sort_perm = vcat(full_var_sort_perm, (length(𝓂.timings.var) .+ (1:length(𝓂.timings.exo)))[full_shock_sort_perm])
+    combined_sort_perm = vcat(var_sort_perm, (length(variable_names_display) .+ (1:length(shock_names_display)))[shock_sort_perm])
+    full_combined_sort_perm = vcat(full_var_sort_perm, (length(full_variable_names_display) .+ (1:length(full_shock_names_display)))[full_shock_sort_perm])
 
     # Apply the combined permutation to all relevant arrays
     Y = Y[combined_sort_perm, :]
@@ -5016,8 +5016,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
     end
 
     # Combine sorted indices
-    combined_sort_perm = vcat(var_sort_perm, (length(𝓂.timings.var) .+ (1:length(𝓂.timings.exo)))[shock_sort_perm])
-    full_combined_sort_perm = vcat(full_var_sort_perm, (length(𝓂.timings.var) .+ (1:length(𝓂.timings.exo)))[full_shock_sort_perm])
+    combined_sort_perm = vcat(var_sort_perm, (length(variable_names_display) .+ (1:length(shock_names_display)))[shock_sort_perm])
+    full_combined_sort_perm = vcat(full_var_sort_perm, (length(full_variable_names_display) .+ (1:length(full_shock_names_display)))[full_shock_sort_perm])
 
     # Apply the combined permutation to all relevant arrays
     Y = Y[combined_sort_perm, :]
