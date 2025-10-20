@@ -1224,7 +1224,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
                 var_indx = findfirst(==(var), k[:variable_names])
 
-                if var ∈ string.(obs_symbols_display)
+                if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
                     if common_axis == []
                         idx = 1:length(k[:x_axis])
                     else
@@ -1255,7 +1255,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
                 var_indx = findfirst(==(var), k[:variable_names]) 
 
-                if var ∈ string.(obs_symbols_display)
+                if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
                     data_in_deviations = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)),:]
                     data_in_deviations[1:k[:presample_periods]] .= NaN
                     
