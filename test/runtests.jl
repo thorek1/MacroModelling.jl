@@ -433,26 +433,26 @@ if test_set == "plots_5"
         plot_shock_decomposition(FS2000, dataFS2000_rekey2)
 
 
-        plot_model_estimates(FS2000, dataFS2000_rekey)
+        plot_model_estimates(FS2000, dataFS2000_rekey, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
         plot_model_estimates!(Smets_Wouters_2007, data_rekey)
 
 
-        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356)
+        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
         plot_model_estimates!(Smets_Wouters_2007, data_rekey)
 
-        plot_model_estimates!(FS2000, dataFS2000_rekey, parameters = :alp => 0.3)
+        plot_model_estimates!(FS2000, dataFS2000_rekey, parameters = :alp => 0.3, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
 
         plot_model_estimates!(Smets_Wouters_2007, data_rekey, parameters = :csigma => 0.3)
 
-        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, shock_decomposition = true)
+        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, shock_decomposition = true, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
 
         estims = get_estimated_variables(Smets_Wouters_2007, data)
 
-        plot_irf(Smets_Wouters_2007, shocks = :em)
+        plot_irf(Smets_Wouters_2007, shocks = :em, shock_size = 10)
 
         plot_irf!(Smets_Wouters_2007,initial_state = collect(estims[:,end]), shocks = :none, plot_type = :stack)
 
@@ -467,11 +467,11 @@ if test_set == "plots_5"
 
         plot_irf(Smets_Wouters_2007, shocks = :em, periods = 5)
         
-        plot_irf!(FS2000, shocks = :e_m, periods = 5, plot_type = :stack)
+        plot_irf!(FS2000, shocks = :e_m, periods = 5, plot_type = :stack, shock_size = 10, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
-        plot_irf!(FS2000, shocks = [:e_m, :e_a])
-
-        plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea])
+        plot_irf!(FS2000, shocks = [:e_m, :e_a], shock_size = 20 , rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+        
+        plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea], shock_size = 0.5)
         
         
 

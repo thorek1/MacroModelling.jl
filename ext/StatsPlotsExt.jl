@@ -2427,7 +2427,7 @@ function plot_irf!(𝓂::ℳ;
         seen     = [] # distinct non-trivial normalised matrices
         next_idx = 0
 
-        for x in shcks
+        for (i,x) in enumerate(shcks)
             if x === nothing
                 push!(labels, "")
             elseif typeof(x) <: AbstractMatrix
@@ -2443,10 +2443,10 @@ function plot_irf!(𝓂::ℳ;
 
             elseif x isa AbstractVector
                 # Pass through vector entries, flatten into labels
-                push!(labels, "[" * join(string.(x), ", ") * "]")
+                push!(labels, "[" * join(string.(apply_custom_name.(x, Ref(Dict(irf_active_plot_container[i][:rename_dictionary])))), ", ") * "]")
             else
                 # Pass through scalar names
-                push!(labels, string(x))
+                push!(labels, string(apply_custom_name(x, Dict(irf_active_plot_container[i][:rename_dictionary]))))
             end
         end
         
@@ -2559,8 +2559,8 @@ function plot_irf!(𝓂::ℳ;
                             label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
 
-        foreach(n -> push!(joint_variables, String(n)), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
-        foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
+        foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
+        foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
 
         single_shock_per_irf = single_shock_per_irf && length(k[:shock_names]) == 1
 
@@ -2587,8 +2587,8 @@ function plot_irf!(𝓂::ℳ;
             not_zero_anywhere = false
 
             for k in irf_active_plot_container
-                var_idx = findfirst(==(var), k[:variable_names])
-                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), k[:shock_names])
+                var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
+                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), apply_custom_name.(k[:shock_names], Ref(Dict(k[:rename_dictionary]))))
                 
                 if isnothing(var_idx) || isnothing(shock_idx)
                     # If the variable or shock is not present in the current irf_active_plot_container,
@@ -2615,8 +2615,8 @@ function plot_irf!(𝓂::ℳ;
             Ys = AbstractVector{eltype(irf_active_plot_container[1][:plot_data])}[]
 
             for k in irf_active_plot_container
-                var_idx = findfirst(==(var), k[:variable_names])
-                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), k[:shock_names])
+                var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
+                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), apply_custom_name.(k[:shock_names], Ref(Dict(k[:rename_dictionary]))))
 
                 if isnothing(var_idx) || isnothing(shock_idx)
                     # If the variable or shock is not present in the current irf_active_plot_container,
