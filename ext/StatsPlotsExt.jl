@@ -431,13 +431,6 @@ function plot_model_estimates(𝓂::ℳ,
             if !(all(isapprox.(variables_to_plot[var_idx[i],periods], 0, atol = eps(Float32))))
                 SS = reference_steady_state[var_idx[i]]
 
-                p = standard_subplot(variables_to_plot[var_idx[i],periods], 
-                                    SS, 
-                                    variable_names_display[i], 
-                                    gr_back,
-                                    pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
-                                    xvals = x_axis)
-
                 if shock_decomposition
                     additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
 
@@ -460,6 +453,13 @@ function plot_model_estimates(𝓂::ℳ,
                             color = shock_decomposition ? data_color : pal[2])
                     end
                 else
+                    p = standard_subplot(variables_to_plot[var_idx[i],periods], 
+                                        SS, 
+                                        variable_names_display[i], 
+                                        gr_back,
+                                        pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
+                                        xvals = x_axis)
+
                     if var_idx[i] ∈ obs_idx
                         StatsPlots.plot!(p,
                             x_axis,
@@ -1976,8 +1976,8 @@ function standard_subplot(::Val{:stack},
                     sum(x -> isfinite(x) ? x : 0.0, plot_data, dims = 2), 
                     color = color_total, 
                     label = "",
-                        xrotation = xrotation)
-
+                    xrotation = xrotation)
+                        
     chosen_xticks = StatsPlots.xticks(p)
 
     p = StatsPlots.groupedbar(typeof(plot_data) <: AbstractVector ? hcat(plot_data) : plot_data,
@@ -2000,7 +2000,13 @@ function standard_subplot(::Val{:stack},
     else
         idxs = indexin(chosen_xticks[1][2], string.(xvals))
 
-        replace!(idxs, nothing => 0)
+        if isnothing(idxs[1])
+            idxs[1] = 0
+        end
+
+        if isnothing(idxs[end])
+            idxs[end] = idxs[end-1] + (idxs[end-1] - idxs[end-2])
+        end
 
         StatsPlots.xticks!(p, Int.(idxs), chosen_xticks[1][2])
         # StatsPlots.xticks!(p, chosen_xticks_bar[1][1], chosen_xticks_bar[1][2])
