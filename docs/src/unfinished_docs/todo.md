@@ -5,7 +5,7 @@
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
 - [ ] make sympy optional (maybe even an extension) and use Symbolics where possible
 - [ ] collect helper function only used in statsplots extension in that script
-- [ ] make package mooncake compatible. write custom pullback functions where necessary
+- [ ] make package mooncake compatible. write custom pullback functions where necessary (all in one for llh)
 - [ ] print out th OCB shocks as auxilliary shocks
 - [ ] generalised higher order IRF is around mean not SSS. plot mean line?
 - [ ] set irrelevant arguments back to default and inform user
