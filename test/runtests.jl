@@ -469,7 +469,7 @@ if test_set == "plots_5"
         
         plot_irf!(FS2000, shocks = :e_m, periods = 5, plot_type = :stack, shock_size = 10, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
-        plot_irf!(FS2000, shocks = [:e_m, :e_a], shock_size = 20 , rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+        plot_irf!(FS2000, shocks = [:e_m, :e_a], shock_size = 20, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
         plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea], shock_size = 0.5)
         
@@ -491,13 +491,13 @@ if test_set == "plots_5"
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
         cndtns_lvl[1,8] = 1.45
 
-        plot_conditional_forecast!(FS2000, cndtns_lvl)
+        plot_conditional_forecast!(FS2000, cndtns_lvl, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
 
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,4), Variables = [:y], Periods = 1:4)
         cndtns_lvl[1,4] = 2.01
 
-        plot_conditional_forecast!(FS2000, cndtns_lvl, plot_type = :stack)
+        plot_conditional_forecast!(FS2000, cndtns_lvl, plot_type = :stack, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         # conditons on #3 is nothing which makes sense since it is not showing
 
         shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
@@ -518,11 +518,11 @@ if test_set == "plots_5"
 
         plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl)
 
-        plot_conditional_forecast!(FS2000, cndtns_lvl)
+        plot_conditional_forecast!(FS2000, cndtns_lvl, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
         shock_mat = sprandn(FS2000.timings.nExo, 10, .1)
 
-        plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat, label = :rand_shocks)
+        plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat, label = :rand_shocks, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
     end
 
