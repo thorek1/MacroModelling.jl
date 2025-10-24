@@ -3634,7 +3634,7 @@ function plot_solution(𝓂::ℳ,
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
-                           :full_SS_current => full_SS_current,
+                           :full_SS_current => full_SS_current[indexin(vars_to_plot, 𝓂.var)],
                            :algorithm_label => labels[algorithm][1],
                            :ss_label => labels[algorithm][2],
                            :rename_dictionary => processed_rename_dictionary)
@@ -3910,7 +3910,7 @@ function _plot_solution_from_container(;
             
             # Plot line for each container with this state
             for (i, container) in enumerate(solution_active_plot_container)
-                if container[:state] == state && haskey(container[:variable_output], k)
+                if container[:state] == state && haskey(container[:variable_output], k) && container[:has_impact][k]
                     # Find state index in vars_to_plot
                     state_idx = findfirst(==(state), container[:vars_to_plot])
                     if !isnothing(state_idx)
@@ -3930,7 +3930,7 @@ function _plot_solution_from_container(;
             
             # Plot SS markers for each container with this state
             for (i, container) in enumerate(solution_active_plot_container)
-                if container[:state] == state && haskey(container[:variable_output], k)
+                if container[:state] == state && haskey(container[:variable_output], k) && container[:has_impact][k]
                     # Get state and variable indices
                     state_idx = findfirst(==(state), container[:vars_to_plot])
                     var_idx = findfirst(==(k), container[:vars_to_plot])
@@ -4281,7 +4281,7 @@ function plot_solution!(𝓂::ℳ,
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
-                           :full_SS_current => full_SS_current,
+                           :full_SS_current => full_SS_current[indexin(vars_to_plot, 𝓂.var)],
                            :algorithm_label => labels[algorithm][1],
                            :ss_label => labels[algorithm][2],
                            :rename_dictionary => processed_rename_dictionary)
