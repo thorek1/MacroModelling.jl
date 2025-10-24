@@ -59,7 +59,7 @@ function apply_custom_name(symbol::R, custom_names::AbstractDict{S, T})::R where
     if symbol isa Symbol && haskey(custom_names, String(replace_indices_in_symbol(symbol)))
         return R(custom_names[String(replace_indices_in_symbol(symbol))])
     elseif symbol isa String && haskey(custom_names, Symbol(symbol))
-        return custom_names[Symbol(symbol)]
+        return R(custom_names[Symbol(symbol)])
     end
 
     # If no exact match, strip lag operators and compare base names.
