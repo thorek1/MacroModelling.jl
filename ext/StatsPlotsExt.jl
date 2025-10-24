@@ -2441,7 +2441,7 @@ function plot_irf!(𝓂::ℳ;
                 
                 push!(labels, "Shock Matrix #$(idx)")
 
-            elseif x isa AbstractVector
+            elseif x isa AbstractVector || x isa Tuple
                 # Pass through vector entries, flatten into labels
                 push!(labels, "[" * join(string.(apply_custom_name.(x, Ref(Dict(irf_active_plot_container[i][:rename_dictionary])))), ", ") * "]")
             else
