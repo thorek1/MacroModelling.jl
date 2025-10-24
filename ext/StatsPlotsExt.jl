@@ -4602,6 +4602,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                            :periods => periods_input,
                            :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
                            :variables => variables,
+                           :var_idx => var_idx,
                            :algorithm => algorithm,
 
                            :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
@@ -4649,7 +4650,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     for (i,v) in enumerate(var_idx)
-        SS = reference_steady_state[i]
+        SS = reference_steady_state[v]
 
         if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[v,:] .!= nothing)) > 0
 
@@ -5055,6 +5056,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                            :periods => periods_input,
                            :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
                            :variables => variables,
+                           :var_idx => var_idx,
                            :algorithm => algorithm,
 
                            :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
@@ -5300,7 +5302,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                         [
                             :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :conditions, :conditions_in_levels, :label,
                             :shocks, :shock_names,
-                            :variables, :variable_names,
+                            :variables, :variable_names, :var_idx,
                             :rename_dictionary,
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
                         ]
@@ -5389,7 +5391,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                 # we skip this iteration.
                 continue
             else
-                if any(.!isapprox.(k[:plot_data][var_idx,:], 0, atol = eps(Float32))) || any(!=(nothing), vcat(k[:conditions], k[:shocks])[var_idx, :])
+                if any(.!isapprox.(k[:plot_data][var_idx,:], 0, atol = eps(Float32))) || any(!=(nothing), vcat(k[:conditions], k[:shocks])[k[:var_idx][var_idx], :])
                     not_zero_in_any_cond_fcst = not_zero_in_any_cond_fcst || true
                     # break # If any cond_fcst data is not approximately zero, we set the flag to true.
                 end
@@ -5418,7 +5420,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             else
                 dat = fill(NaN, max_periods)
                 dat[1:length(k[:plot_data][var_idx,:])] .= k[:plot_data][var_idx,:]
-                push!(SSs, k[:reference_steady_state][var_idx])
+                push!(SSs, k[:reference_steady_state][k[:var_idx][var_idx]])
                 push!(Ys, dat) # k[:plot_data][var_idx,:])
             end
         end
@@ -5442,15 +5444,14 @@ function plot_conditional_forecast!(𝓂::ℳ,
         if plot_type == :compare
             for (i,k) in enumerate(conditional_forecast_active_plot_container)   
                 var_idx = findfirst(==(var), String.(apply_custom_name.(vcat(k[:variable_names], k[:shock_names]), Ref(Dict(k[:rename_dictionary])))))
-                
-                if isnothing(var_idx) continue end
 
-                cond_idx = findall(vcat(k[:conditions], k[:shocks])[var_idx,:] .!= nothing)
+                if isnothing(var_idx) continue end
+                cond_idx = findall(vcat(k[:conditions], k[:shocks])[k[:var_idx][var_idx],:] .!= nothing)
                 
                 if length(cond_idx) > 0
-                    SS = k[:reference_steady_state][var_idx]
+                    SS = k[:reference_steady_state][k[:var_idx][var_idx]]
 
-                    vals = vcat(k[:conditions], k[:shocks])[var_idx, cond_idx]
+                    vals = vcat(k[:conditions], k[:shocks])[k[:var_idx][var_idx], cond_idx]
 
                     if k[:conditions_in_levels]
                         vals .-= SS
