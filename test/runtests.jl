@@ -514,9 +514,9 @@ if test_set == "plots_5"
         
         shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
 
-        plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, label = "SW07 w shocks")
+        plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, label = "SW07 w shocks", variables = [:y, :k, :c])
 
-        plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl)
+        plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl, variables = [:y,:w])
 
         plot_conditional_forecast!(FS2000, cndtns_lvl, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
@@ -524,6 +524,23 @@ if test_set == "plots_5"
 
         plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat, label = :rand_shocks, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
+
+        plot_solution(FS2000, :k)
+
+        plot_solution!(FS2000, :k, algorithm = :second_order)
+
+
+        plot_solution(Smets_Wouters_2007, :pinf)
+
+        plot_solution!(Smets_Wouters_2007, :pinf, algorithm = :second_order)
+
+
+        plot_solution(FS2000, :y)
+        
+        plot_solution!(Smets_Wouters_2007, :y, variables = [:y, :k, :c])
+
+        plot_solution!(Smets_Wouters_2007, :y, algorithm = :second_order, variables = [:y, :k, :c])
+
     end
 
     # multiple models
