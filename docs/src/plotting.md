@@ -803,7 +803,7 @@ and then we plot the IRF for the first shock:
 plot_irf(Gali_2015_chapter_3_nonlinear, shocks = shocks[1])
 
 ```
-and then we overlay the IRF for the remaining shocks using the custom color palette by passing on a dictionnary:
+and then we overlay the IRF for the remaining shocks using the custom color palette by passing on a dictionary:
 ```julia
 for s in shocks[2:end]
     plot_irf!(Gali_2015_chapter_3_nonlinear, shocks = s, plot_attributes = Dict(:palette => ec_color_palette), plot_type = :stack)
