@@ -465,6 +465,11 @@ if test_set == "plots_5"
         plot_irf!(Smets_Wouters_2007, shocks = shock_mat, plot_type = :stack)
 
 
+        plot_irf(Smets_Wouters_2007, shocks = :em, periods = 5, variables = [:y, :k, :c])
+        
+        plot_irf!(FS2000, shocks = :e_m, periods = 5, plot_type = :stack, shock_size = 10, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w), variables = [:y, :k, :c])
+
+
         plot_irf(Smets_Wouters_2007, shocks = :em, periods = 5)
         
         plot_irf!(FS2000, shocks = :e_m, periods = 5, plot_type = :stack, shock_size = 10, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
