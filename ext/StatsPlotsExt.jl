@@ -1635,6 +1635,7 @@ function plot_irf(𝓂::ℳ;
     variable_names_display = variable_names_display[var_sort_perm]
     
     relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+    Y = Y[var_sort_perm, :, :]
 
     processed_rename_dictionary = Any[]
 
@@ -2303,7 +2304,8 @@ function plot_irf!(𝓂::ℳ;
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
-    
+    Y = Y[var_sort_perm, :, :]
+
     relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
 
     processed_rename_dictionary = Any[]
