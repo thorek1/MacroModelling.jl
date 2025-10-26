@@ -1,4 +1,16 @@
 """
+Helper function to check if all parameters are defined and provide informative error messages.
+Returns true if all parameters are defined, false otherwise.
+"""
+function check_parameters_defined(𝓂::ℳ)::Bool
+    if length(𝓂.undefined_parameters) > 0
+        @error "Model has undefined parameters: " * repr(𝓂.undefined_parameters) * "\nPlease define all parameters before computing the non-stochastic steady state or generating output."
+        return false
+    end
+    return true
+end
+
+"""
 $(SIGNATURES)
 Return the shock decomposition in absolute deviations from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The deviations are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. When the defaults are used, the filter is selected automatically—Kalman for first order solutions and inversion otherwise—and smoothing is only enabled when the Kalman filter is active. Data is by default assumed to be in levels unless `data_in_levels` is set to `false`.
 

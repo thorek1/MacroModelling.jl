@@ -827,6 +827,7 @@ macro model(𝓂,ex...)
                         $parameters,
                         $parameters,
                         $parameter_values,
+                        Symbol[], # undefined_parameters
 
                         Dict{Symbol, Float64}(), # guess
 
@@ -1445,7 +1446,12 @@ macro parameters(𝓂,ex...)
         calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         
-        @assert length(setdiff(setdiff(setdiff(union(reduce(union, par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)...])
+        # Check for undefined parameters and store them instead of throwing an error
+        undefined_pars = setdiff(setdiff(setdiff(union(reduce(union, par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)
+        
+        if length(undefined_pars) > 0
+            @info "Model set up with undefined parameters: " * repr([undefined_pars...]) * "\nNon-stochastic steady state and solution cannot be calculated until all parameters are defined."
+        end
 
         for (k,v) in $bounds
             mod.$𝓂.bounds[k] = haskey(mod.$𝓂.bounds, k) ? (max(mod.$𝓂.bounds[k][1], v[1]), min(mod.$𝓂.bounds[k][2], v[2])) : (v[1], v[2])
@@ -1469,6 +1475,7 @@ macro parameters(𝓂,ex...)
     
         mod.$𝓂.parameters = calib_parameters
         mod.$𝓂.parameter_values = calib_values
+        mod.$𝓂.undefined_parameters = collect(undefined_pars)
         mod.$𝓂.calibration_equations = calib_equations_list
         mod.$𝓂.parameters_as_function_of_parameters = calib_parameters_no_var
         mod.$𝓂.calibration_equations_no_var = calib_equations_no_var_list
@@ -1530,7 +1537,7 @@ macro parameters(𝓂,ex...)
 
         opts = merge_calculation_options(verbose = $verbose)
 
-        if !$precompile
+        if !$precompile && length(undefined_pars) == 0
             if !$silent 
                 print("Find non-stochastic steady state:\t\t\t\t\t") 
             end
@@ -1560,6 +1567,11 @@ macro parameters(𝓂,ex...)
 
             mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
             mod.$𝓂.solution.outdated_NSSS = false
+        elseif !$precompile && length(undefined_pars) > 0
+            # Skip NSSS calculation when parameters are undefined
+            if !$silent 
+                println("Skipped non-stochastic steady state calculation (undefined parameters)")
+            end
         end
 
 
