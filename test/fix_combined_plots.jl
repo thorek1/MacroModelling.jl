@@ -6,11 +6,11 @@ using Zygote, ForwardDiff
 import MacroModelling: clear_solution_caches!
 
 # TODO: 
-# - write tests and docs for the new functions
-# - revisit plot_solution + ! version of it
-# - check maxlog handling, info warnings
+# - write dling, info warnings
 
 # DONE:
+# - write tests and docs for the new functions
+# - revisit plot_solution + ! version of it
 # - inform user when settings have no effect (and reset them) e.g. warmup iterations is only relevant for inversion filter
 # - test across different models
 # - x axis should be Int not floats for short x axis (e.g. 10)
@@ -34,7 +34,7 @@ ECB_palette = [
     "#5c5c5c"   # gray
 ]
 
-include("../models/Gali_Monacelli_2005_CITR.jl")
+# include("../models/Gali_Monacelli_2005_CITR.jl")
 
 include("../models/Backus_Kehoe_Kydland_1992.jl")
 m = Backus_Kehoe_Kydland_1992
@@ -145,39 +145,100 @@ old_params = copy(m.parameter_values)
             data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
             
-            for variables in vars
-                plot_model_estimates(m, data, 
-                                        variables = variables,
-                                        algorithm = algorithm, 
-                                        data_in_levels = false)
-            end
+            # for variables in vars
+            #     plot_model_estimates(m, data, 
+            #                             variables = variables,
+            #                             algorithm = algorithm, 
+            #                             data_in_levels = false)
+            # end
 
 
             rename_dict = Dict((m.timings.var) .=> lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}")))
             
-            plot_model_estimates(m, data_in_levels,
-                                    rename_dictionnary = rename_dict,
+            rename_dict = Dict((m.timings.exo) .=> lowercase.(replace.(String.(m.timings.exo), "_" => " ", "◖" => " {", "◗" => "}")))
+            
+            rename_dicts = [Dict((m.timings.var) .=> lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), Dict{Symbol,String}()]
+       
+
+            plot_model_estimates(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+            
+            plot_model_estimates!(m, data_in_levels,
                                     parameters = params[1],
                                     algorithm = algorithm,
+                                    rename_dictionary = rename_dicts[1],
+                                    data_in_levels = true)
+            
+            plot_model_estimates!(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    rename_dictionary = Dict("Y{H}" => "GDP"),
+                                    data_in_levels = true)
+            
+
+
+            plot_model_estimates(m2, data_in_levels2, 
+                                    parameters = params2[1],
+                                    algorithm = algorithm, 
+                                    shock_decomposition = false,
+                                    # rename_dictionary = Dict(:y => :GDP, :Rᵏ => :Interest_Rate),
                                     data_in_levels = true)
 
+            plot_model_estimates!(m2, data_in_levels2,
+                                    parameters = params2[1],
+                                    algorithm = algorithm,
+                                    rename_dictionary = Dict(:y => :GDP, :Rᵏ => :Interest_Rate),
+                                    data_in_levels = true)
+            
+
+            plot_model_estimates!(m2, data_in_levels2,
+                                    parameters = params2[1],
+                                    algorithm = algorithm,
+                                    rename_dictionary = Dict(:ykk => :GDP, :Rᵏk => :Interest_Rate_),
+                                    data_in_levels = true)
+            
+
+            plot_model_estimates(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+            
             i = 1
-            for variables in vars
-                if i % 4 == 0
-                    plot_model_estimates(m, data_in_levels,
-                                            parameters = params[1],
+
+            for rename_dict in rename_dicts
+                for variables in vars
+                    if i % 4 == 0
+                        plot_model_estimates(m, data_in_levels,
+                                                parameters = params[1],
+                                                algorithm = algorithm, 
+                                                data_in_levels = true)
+                    end
+
+                    i += 1
+
+                    plot_model_estimates!(m, data, 
+                                            variables = variables,
+                                            label = string(variables),
+                                            rename_dictionary = rename_dict,
                                             algorithm = algorithm, 
-                                            data_in_levels = true)
+                                            data_in_levels = false)
                 end
-
-                i += 1
-
-                plot_model_estimates!(m, data, 
-                                        variables = variables,
-                                        label = string(variables),
-                                        algorithm = algorithm, 
-                                        data_in_levels = false)
             end
+
+            plot_model_estimates(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+            
+            plot_model_estimates!(m, data, 
+                                    variables = vars[2],
+                                    label = string(vars[2]),
+                                    rename_dictionary = rename_dicts[2],
+                                    algorithm = algorithm, 
+                                    data_in_levels = false)
+
         # end
 
 
