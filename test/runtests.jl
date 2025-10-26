@@ -610,7 +610,7 @@ if test_set == "plots_5"
 
         plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
 
-        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_second_order, generalised_irf = true)
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_second_order, generalised_irf = true, generalised_irf_draws = 1000)
 
 
         plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
