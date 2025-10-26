@@ -1116,7 +1116,7 @@ The plots appear in the specified folder with the specified prefix. Each plot is
 
 ### Variable and Shock Renaming
 
-The `rename_dictionary` argument (default: `Dict()`, type: `Dict{Symbol, String}`) maps variable or shock symbols to custom display names in plots. This is particularly useful when comparing models with different variable naming conventions, allowing them to be displayed with consistent labels.
+The `rename_dictionary` argument (default: `Dict()`, type: `AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}}`) maps variable or shock symbols to custom display names in plots. This is particularly useful when comparing models with different variable naming conventions, allowing them to be displayed with consistent labels.
 
 For example, to rename variables for clearer display:
 
@@ -1125,17 +1125,17 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"))
 ```
 
-This feature is especially valuable when overlaying IRFs from different models. Consider two models with different naming conventions - one using `c` for consumption and another using `C`. The `rename_dictionary` allows harmonizing these names when plotting them together:
+This feature is especially valuable when overlaying IRFs from different models. Consider comparing FS2000 (which uses lowercase variable names like `c`) with Gali_2015_chapter_3_nonlinear (which uses uppercase like `C`). The `rename_dictionary` allows harmonizing these names when plotting them together:
 
 ```julia
-# First model with lowercase variable names
-plot_irf(model1,
-    shocks = :eps_a,
-    rename_dictionary = Dict(:c => "Consumption", :y => "Output", :r => "Interest Rate"))
-
-# Overlay second model with different naming, mapped to same display names
-plot_irf!(model2,
+# First model (FS2000) with lowercase variable names
+plot_irf(FS2000,
     shocks = :e_a,
+    rename_dictionary = Dict(:c => "Consumption", :y => "Output", :R => "Interest Rate"))
+
+# Overlay second model (Gali_2015_chapter_3_nonlinear) with different naming, mapped to same display names
+plot_irf!(Gali_2015_chapter_3_nonlinear,
+    shocks = :eps_a,
     rename_dictionary = Dict(:C => "Consumption", :Y => "Output", :R => "Interest Rate"))
 ```
 
