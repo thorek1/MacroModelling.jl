@@ -344,7 +344,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 Then there are some predefined options:
 
-- `:all_excluding_obc` (default) plots all shocks not used to enforce occasionally binding constraints (OBC).
+`:all_excluding_obc` (default) plots all shocks not used to enforce occasionally binding constraints (OBC).
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -353,14 +353,14 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_nu shock](../assets/all_ex_obc_irf__Gali_2015_chapter_3_nonlinear__eps_nu__1.png)
 
-- `:all` plots all shocks including the OBC related ones.
+`:all` plots all shocks including the OBC related ones.
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
     shocks = :all)
 ```
 
-- `:simulate` triggers random draws of all shocks (excluding OBC-related shocks). The seed can be set to get reproducible results (e.g. `import Random; Random.seed!(10)`).
+`:simulate` triggers random draws of all shocks (excluding OBC-related shocks). The seed can be set to get reproducible results (e.g. `import Random; Random.seed!(10)`).
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -369,7 +369,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - simulated shocks](../assets/simulated_irf__Gali_2015_chapter_3_nonlinear__simulation__1.png)
 
-- `:none` can be used in combination with an `initial_state` for deterministic simulations. See the section on `initial_state` for more details. Start by getting the initial state in levels:
+`:none` can be used in combination with an `initial_state` for deterministic simulations. See the section on `initial_state` for more details. Start by getting the initial state in levels:
 
 ```julia
 init_state = get_irf(Gali_2015_chapter_3_nonlinear,
@@ -609,14 +609,15 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 Then there are some predefined options:
 
-- `:all_excluding_auxiliary_and_obc` (default) plots all variables except auxiliary variables and those used to enforce occasionally binding constraints (OBC).
+`:all_excluding_auxiliary_and_obc` (default) plots all variables except auxiliary variables and those used to enforce occasionally binding constraints (OBC).
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
     variables = :all_excluding_auxiliary_and_obc)
 ```
 
-- `:all_excluding_obc` plots all variables except those used to enforce occasionally binding constraints (OBC).
+`:all_excluding_obc` plots all variables except those used to enforce occasionally binding constraints (OBC).
+
 To see auxiliary variables, use a model that defines them. The FS2000 model can be used:
 
 ```julia
@@ -652,7 +653,7 @@ end
 end
 ```
 
-Since both c and P appear in t+2, they generate auxiliary variables in the model. Plotting the IRF for all variables excluding OBC-related ones reveals the auxiliary variables:
+Since both `c` and `P` appear in t+2, they generate auxiliary variables in the model. Plotting the IRF for all variables excluding OBC-related ones reveals the auxiliary variables:
 
 ```julia
 plot_irf(FS2000, 
@@ -663,7 +664,9 @@ plot_irf(FS2000,
 
 Both `c` and `P` appear twice: once as the variable itself and once as an auxiliary variable with the `L(1)` superscript, representing the value of the variable in t+1 as expected in t.
 
-- `:all` plots all variables including auxiliary variables and those used to enforce occasionally binding constraints (OBC). Use the `Gali_2015_chapter_3` model with an effective lower bound (note the max statement in the Taylor rule):
+`:all` plots all variables including auxiliary variables and those used to enforce occasionally binding constraints (OBC).
+
+Use the `Gali_2015_chapter_3` model with an effective lower bound (note the max statement in the Taylor rule):
 
 ```julia
 @model Gali_2015_chapter_3_obc begin
@@ -746,7 +749,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     shocks = :eps_a)
 ```
 
-![Gali 2015 IRF - eps_a shock (β=0.95)](../assets/beta_095_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
+![Gali 2015 IRF - eps_a shock (`β = 0.95`)](../assets/beta_095_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
 The steady states and dynamics changed as a result of changing the discount factor. To better visualize the differences between `β = 0.99` and `β = 0.95`, the two IRFs can be overlaid. Since parameter changes are permanent, first reset `β = 0.99` before overlaying the IRF with `β = 0.95` on top of it:
 
@@ -874,7 +877,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock GIRF (pruned 2nd order)](../assets/girf_2nd_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-Some lines are quite jittery, highlighting the state-dependent nature of the GIRF and the dominant effect of randomness (e.g., N or MC).
+Some lines are quite jittery, highlighting the state-dependent nature of the GIRF and the dominant effect of randomness (e.g., `N` or `MC`).
 
 Now overlay the standard IRF for the pruned second order solution:
 
@@ -886,7 +889,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock GIRF vs standard (pruned 2nd order)](../assets/girf_compare_irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
 
-The comparison reveals that the response of S is highly state-dependent and can go either way depending on the economy's state when the shock occurs. The same applies to `W_real`, while other variables are less state-dependent, making the GIRF and standard IRF more similar.
+The comparison reveals that the response of `S` is highly state-dependent and can go either way depending on the economy's state when the shock occurs. The same applies to `W_real`, while other variables are less state-dependent, making the GIRF and standard IRF more similar.
 
 ### GIRF Configuration
 
@@ -953,7 +956,7 @@ With this configuration, the difference between the GIRF and standard IRF is min
 The `label` argument (type: `Union{String,Symbol,Real}`) controls labels that appear in plots when using the `plot_irf!` function to overlay multiple IRFs. By default, labels are sequential numbers, but custom labels can be provided using this argument. Acceptable inputs are a String, Symbol, or a Real.
 
 Custom labels are particularly useful when inputs differ in complex ways (e.g., shock matrices or multiple input changes).
-For example, let's compare the IRF of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with β = 0.99 and τ = 0 to the IRF with `β = 0.95` and τ = 0.5 using custom labels String input:
+For example, let's compare the IRF of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with `β = 0.99` and `τ = 0` to the IRF with `β = 0.95` and `τ = 0.5` using custom labels String input:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
