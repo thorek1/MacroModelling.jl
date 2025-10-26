@@ -298,7 +298,7 @@ This shows that the pruned third-order solution changes the dynamics while maint
 
 ### Shocks
 
-The `shocks` argument (default: `:all_excluding_obc`) determines which IRFs to calculate. Shock names can be specified as either a Symbol or String (e.g. :y, or "y"), or Tuple, Matrix or Vector of String or Symbol. `:simulate` triggers random draws of all shocks (excluding those related to occasionally binding constraints). `:all_excluding_obc` includes all shocks except OBC-related ones. `:all` also includes the OBC related shocks. A series of shocks can be passed using either a `Matrix{Float64}` or a `KeyedArray{Float64}`, with shocks (Symbol or String) in rows and periods in columns. The `KeyedArray` type is provided by the AxisKeys package. The simulation length equals the input length in the period dimension plus the number of periods specified in the `periods` argument. When using a `KeyedArray{Float64}`, ensure that rows are named with valid shock names of type Symbol. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
+The `shocks` argument (default: `:all_excluding_obc`) determines which IRFs to calculate. Shock names can be specified as either a `Symbol` or `String` (e.g., `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:simulate` triggers random draws of all shocks (excluding those related to occasionally binding constraints). `:all_excluding_obc` includes all shocks except OBC-related ones. `:all` also includes the OBC related shocks. A series of shocks can be passed using either a `Matrix{Float64}` or a `KeyedArray{Float64}`, with shocks (`Symbol` or `String`) in rows and periods in columns. The `KeyedArray` type is provided by the AxisKeys package. The simulation length equals the input length in the period dimension plus the number of periods specified in the `periods` argument. When using a `KeyedArray{Float64}`, ensure that rows are named with valid shock names of type `Symbol`. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
 
 Individual shocks can be called by name:
 
@@ -327,7 +327,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_z shock](../assets/multi_shocks_irf__Gali_2015_chapter_3_nonlinear__eps_z__3.png)
 
-Multiple shocks can also be input as a Tuple:
+Multiple shocks can also be input as a `Tuple`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -450,7 +450,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 In the title it is now mentioned that the input is a series of shocks and the values of the shock processes Z and `nu` move with the shifted timing and note that the impact of the `eps_z` shock has a - in front of it in the model definition, which is why they both move in the same direction. Note also that the number of periods is prolonged by the number of periods in the shock input. This example defines 3 periods of shocks and the default number of periods is 40, so the result shows 43 periods in total.
 
-The same can be done with a Matrix:
+The same can be done with a `Matrix`:
 
 ```julia
 shock_matrix = zeros(length(shocks), n_periods)
@@ -572,14 +572,14 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 ![Gali 2015 IRF - selected variables (Y, Pi)](../assets/var_select_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
 The plot now displays only the two selected variables (sorted alphabetically), with two subplots for each shock.
-The same can be done using a Tuple:
+The same can be done using a `Tuple`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
     variables = (:Y, :Pi))
 ```
 
-a Matrix:
+a `Matrix`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -593,7 +593,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     variables = ["Y", "Pi"])
 ```
 
-or a single variable as a Symbol:
+or a single variable as a `Symbol`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -739,7 +739,7 @@ get_equations(Gali_2015_chapter_3_obc)
 
 ### Parameter Values
 
-When no parameters are provided, the solution uses the previously defined parameter values. Parameters can be provided as a Vector of values, or as a Vector or Tuple of Pairs mapping parameter Symbols or Strings to values. The solution is recalculated when new parameter values differ from the previous ones.
+When no parameters are provided, the solution uses the previously defined parameter values. Parameters can be provided as a `Vector` of values, or as a `Vector` or `Tuple` of Pairs mapping parameter Symbols or Strings to values. The solution is recalculated when new parameter values differ from the previous ones.
 
 Start by changing the discount factor `β` from 0.99 to 0.95:
 
@@ -767,7 +767,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 The legend below the plot indicates which color corresponds to each `β` value, with the table underneath showing the relevant steady states. Note that both the steady states and dynamics differ across the two `β` values, even when the steady state remains the same (e.g., for `Y`).
 
-Multiple parameters can also be changed simultaneously to compare the results to previous plots. This example changes `β` to 0.97 and `τ` to 0.5 using a Tuple of Pairs and define the variables with Symbols:
+Multiple parameters can also be changed simultaneously to compare the results to previous plots. This example changes `β` to 0.97 and `τ` to 0.5 using a `Tuple` of Pairs and define the variables with Symbols:
 
 ```julia
 plot_irf!(Gali_2015_chapter_3_nonlinear,
@@ -779,7 +779,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to each input combination, with the table showing steady states for all three combinations.
 
-A Vector of Pairs can also be used:
+A `Vector` of Pairs can also be used:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -787,7 +787,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     shocks = :eps_a)
 ```
 
-Alternatively, use a Vector of parameter values in the order they were defined in the model. To obtain them:
+Alternatively, use a `Vector` of parameter values in the order they were defined in the model. To obtain them:
 
 ```julia
 params = get_parameters(Gali_2015_chapter_3_nonlinear, values = true)
@@ -953,10 +953,10 @@ With this configuration, the difference between the GIRF and standard IRF is min
 
 ### Plot Labels
 
-The `label` argument (type: `Union{String,Symbol,Real}`) controls labels that appear in plots when using the `plot_irf!` function to overlay multiple IRFs. By default, labels are sequential numbers, but custom labels can be provided using this argument. Acceptable inputs are a String, Symbol, or a Real.
+The `label` argument (type: `Union{String,Symbol,Real}`) controls labels that appear in plots when using the `plot_irf!` function to overlay multiple IRFs. By default, labels are sequential numbers, but custom labels can be provided using this argument. Acceptable inputs are a `String`, `Symbol`, or a Real.
 
 Custom labels are particularly useful when inputs differ in complex ways (e.g., shock matrices or multiple input changes).
-For example, let's compare the IRF of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with `β = 0.99` and `τ = 0` to the IRF with `β = 0.95` and `τ = 0.5` using custom labels String input:
+For example, let's compare the IRF of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with `β = 0.99` and `τ = 0` to the IRF with `β = 0.95` and `τ = 0.5` using custom labels `String` input:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -1180,7 +1180,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or encounter issues with the default solver.
 
-### Quadratic Matrix Equation Solver
+### Quadratic `Matrix` Equation Solver
 
 The `quadratic_matrix_equation_algorithm` argument (default: `:schur`, type: `Symbol`) specifies the algorithm to solve quadratic matrix equation (`A * X ^ 2 + B * X + C = 0`). Available algorithms: `:schur`, `:doubling`
 The quadratic matrix equation solver is used internally when solving the model to first order. Different algorithms are available. The `:schur` algorithm is generally faster and more reliable, while `:doubling` can be more precise in some cases (this example also changes parameters to force recomputation):
@@ -1208,7 +1208,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     verbose = true)
 ```
 
-For third-order solutions, different algorithms can be specified for the second- and third-order Sylvester equations using a Tuple:
+For third-order solutions, different algorithms can be specified for the second- and third-order Sylvester equations using a `Tuple`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
