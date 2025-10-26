@@ -1141,18 +1141,18 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 Both models now appear in the plot with consistent, readable labels, making comparison straightforward.
 
-The `rename_dictionary` also works with shocks. For example, if `eps_a` and `ea` represent the same shock in different models, or `nu` and `em` are equivalent:
+The `rename_dictionary` also works with shocks. For example, Gali_2015_chapter_3_nonlinear has shocks `eps_a` and `nu`, while FS2000 has `e_a` and `e_m`. To compare these with consistent labels:
 
 ```julia
-# Model 1 with shocks eps_a and nu
-plot_irf(model1,
+# Gali model with shocks eps_a and nu
+plot_irf(Gali_2015_chapter_3_nonlinear,
     shocks = [:eps_a, :nu],
     rename_dictionary = Dict(:eps_a => "Technology Shock", :nu => "Monetary Policy Shock"))
 
-# Model 2 with equivalent shocks ea and em
-plot_irf!(model2,
-    shocks = [:ea, :em],
-    rename_dictionary = Dict(:ea => "Technology Shock", :em => "Monetary Policy Shock"))
+# FS2000 model with shocks e_a and e_m  
+plot_irf!(FS2000,
+    shocks = [:e_a, :e_m],
+    rename_dictionary = Dict(:e_a => "Technology Shock", :e_m => "Monetary Policy Shock"))
 ```
 
 The `rename_dictionary` accepts flexible type combinations for keys and values—both `Symbol` and `String` types work interchangeably:
@@ -1163,6 +1163,18 @@ Dict(:Y => "Output")              # Symbol key, String value
 Dict("Y" => "Output")             # String key, String value
 Dict(:Y => :Output)               # Symbol key, Symbol value
 Dict("Y" => :Output)              # String key, Symbol value
+```
+
+This flexibility is particularly useful for models like Backus_Kehoe_Kydland_1992, which uses both internal symbol representations and more accessible string names with special characters:
+
+```julia
+# Backus model example showing Symbol to String mapping
+plot_irf(Backus_Kehoe_Kydland_1992,
+    shocks = Symbol("E{H}"),
+    rename_dictionary = Dict(Symbol("C{H}") => "Home Consumption", 
+                             Symbol("C{F}") => "Foreign Consumption",
+                             Symbol("Y{H}") => "Home Output",
+                             Symbol("Y{F}") => "Foreign Output"))
 ```
 
 This flexibility allows natural usage regardless of whether variables are referenced as symbols or strings in the code. Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
