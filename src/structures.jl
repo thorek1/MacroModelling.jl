@@ -390,6 +390,7 @@ mutable struct ℳ
     SS_solve_func::Function
     # SS_calib_func::Function
     SS_check_func::Function
+    quadrature_dynamic_func::Function
     ∂SS_equations_∂parameters::Tuple{AbstractMatrix{<: Real}, Function}
     ∂SS_equations_∂SS_and_pars::Tuple{AbstractMatrix{<: Real}, Function}
     # nonlinear_solution_helper

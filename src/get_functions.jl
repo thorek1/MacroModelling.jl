@@ -1487,21 +1487,33 @@ function get_steady_state(𝓂::ℳ;
     end
 
     if stochastic
-        solve!(𝓂, 
-                opts = opts, 
-                dynamics = true, 
-                algorithm = algorithm, 
-                silent = silent, 
-                obc = length(𝓂.obc_violation_equations) > 0)
-
-        if  algorithm == :third_order
-            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
-        elseif  algorithm == :pruned_third_order
-            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
-        elseif  algorithm == :pruned_second_order
-            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
+        if algorithm == :quadrature
+            # For quadrature algorithm, compute SSS directly without calling solve!
+            # The quadrature algorithm handles the solution internally
+            sss, converged, _, _, _, _, _, _ = calculate_quadrature_stochastic_steady_state(𝓂.parameter_values, 𝓂, opts = opts)
+            
+            if converged
+                SS[1:length(𝓂.var)] = sss[1:length(𝓂.var)]
+            else
+                @warn "Quadrature stochastic steady state calculation did not converge. Using NSSS instead."
+            end
         else
-            SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
+            solve!(𝓂, 
+                    opts = opts, 
+                    dynamics = true, 
+                    algorithm = algorithm, 
+                    silent = silent, 
+                    obc = length(𝓂.obc_violation_equations) > 0)
+
+            if  algorithm == :third_order
+                SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.third_order.stochastic_steady_state
+            elseif  algorithm == :pruned_third_order
+                SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_third_order.stochastic_steady_state
+            elseif  algorithm == :pruned_second_order
+                SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.pruned_second_order.stochastic_steady_state
+            else
+                SS[1:length(𝓂.var)] = 𝓂.solution.perturbation.second_order.stochastic_steady_state#[indexin(sort(union(𝓂.var,𝓂.exo_present)),sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)))]
+            end
         end
     end
 
@@ -1534,7 +1546,16 @@ function get_steady_state(𝓂::ℳ;
 
     if derivatives 
         if stochastic
-                if algorithm == :third_order
+                if algorithm == :quadrature
+                    # Calculate derivatives for quadrature algorithm using automatic differentiation
+                    dSSS = 𝒟.jacobian(x->begin 
+                                SSS = calculate_quadrature_stochastic_steady_state(x, 𝓂, opts = opts)
+                                return [collect(SSS[1])[var_idx]...,collect(SSS[3])[calib_idx]...]
+                            end, backend, 𝓂.parameter_values)[:,param_idx]
+
+                    return KeyedArray(hcat(SS[[var_idx...,calib_idx...]], dSSS);  Variables_and_calibrated_parameters = axis1, Steady_state_and_∂steady_state∂parameter = axis2)
+                
+                elseif algorithm == :third_order
 
                     # dSSS = 𝒜.jacobian(𝒷(), x->begin 
                     #             SSS = SSS_third_order_parameter_derivatives(x, param_idx, 𝓂, verbose = verbose)

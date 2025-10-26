@@ -94,6 +94,7 @@ macro model(𝓂,ex...)
     SS_solve_func = x->x
     # SS_calib_func = x->x
     SS_check_func = x->x
+    quadrature_dynamic_func = x->x
     ∂SS_equations_∂parameters = (zeros(0,0), x->x) # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0))
     ∂SS_equations_∂SS_and_pars = (zeros(0,0), x->x)  # ([], Int[], zeros(1,1))
     SS_dependencies = nothing
