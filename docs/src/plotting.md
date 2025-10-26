@@ -238,7 +238,7 @@ init_state_pruned_3rd_in_diff = get_irf(Gali_2015_chapter_3_nonlinear,
     levels = true)
 ```
 
-First- and third-order dynamics don't affect the steady state through risk, so they are zero. The second-order steady state includes the risk adjustment. Let's assemble the vectors for the third order case:
+First- and third-order dynamics don't affect the steady state through risk, so they are zero. The second-order steady state includes the risk adjustment. Assemble the vectors for the third order case:
 
 ```julia
 init_states_pruned_3rd_vec = [
@@ -369,7 +369,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - simulated shocks](../assets/simulated_irf__Gali_2015_chapter_3_nonlinear__simulation__1.png)
 
-- `:none` can be used in combination with an `initial_state` for deterministic simulations. See the section on `initial_state` for more details. Let's start by getting the initial state in levels:
+- `:none` can be used in combination with an `initial_state` for deterministic simulations. See the section on `initial_state` for more details. Start by getting the initial state in levels:
 
 ```julia
 init_state = get_irf(Gali_2015_chapter_3_nonlinear,
@@ -421,7 +421,7 @@ end
 
 All three shocks now appear overlaid in the same plot. The legend below the plot indicates which color corresponds to which shock and in the title the plot shows that all shocks are positive and includes multiple shocks.
 
-A series of shocks can be passed on using either a `Matrix{Float64}`, or a `KeyedArray{Float64}` as input with shocks (`Symbol` or `String`) in rows and periods in columns. Let's start with a `KeyedArray`:
+A series of shocks can be passed on using either a `Matrix{Float64}`, or a `KeyedArray{Float64}` as input with shocks (`Symbol` or `String`) in rows and periods in columns. Start with a `KeyedArray`:
 
 ```julia
 shocks = get_shocks(Gali_2015_chapter_3_nonlinear)
@@ -663,7 +663,7 @@ plot_irf(FS2000,
 
 Both "c" and "P" appear twice: once as the variable itself and once as an auxiliary variable with the "L(1)" superscript, representing the value of the variable in t+1 as expected in t.
 
-- `:all` plots all variables including auxiliary variables and those used to enforce occasionally binding constraints (OBC). Let's use the `Gali_2015_chapter_3` model with an effective lower bound (note the max statement in the Taylor rule):
+- `:all` plots all variables including auxiliary variables and those used to enforce occasionally binding constraints (OBC). Use the `Gali_2015_chapter_3` model with an effective lower bound (note the max statement in the Taylor rule):
 
 ```julia
 @model Gali_2015_chapter_3_obc begin
@@ -738,7 +738,7 @@ get_equations(Gali_2015_chapter_3_obc)
 
 When no parameters are provided, the solution uses the previously defined parameter values. Parameters can be provided as a Vector of values, or as a Vector or Tuple of Pairs mapping parameter Symbols or Strings to values. The solution is recalculated when new parameter values differ from the previous ones.
 
-Let's start by changing the discount factor β from 0.99 to 0.95:
+Start by changing the discount factor "β" from 0.99 to 0.95:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -890,7 +890,7 @@ The comparison reveals that the response of S is highly state-dependent and can 
 
 ### GIRF Configuration
 
-The `generalised_irf_draws` and `generalised_irf_warmup_iterations` parameters control the number of draws and warmup iterations can be adjusted using the `generalised_irf_draws` and `generalised_irf_warmup_iterations` arguments. Increasing the number of draws improves GIRF accuracy but increases computation time. Warmup iterations ensure that the starting points of individual draws adequately explore the state space and represent the model's ergodic distribution.
+The `generalised_irf_draws` and `generalised_irf_warmup_iterations` parameters control the number of draws and warmup iterations. Increasing the number of draws improves GIRF accuracy but increases computation time. Warmup iterations ensure that the starting points of individual draws adequately explore the state space and represent the model's ergodic distribution.
 
 Start with the GIRF that had the wiggly lines above:
 
