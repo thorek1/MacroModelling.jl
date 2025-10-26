@@ -1139,7 +1139,33 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
     rename_dictionary = Dict(:C => "Consumption", :Y => "Output", :R => "Interest Rate"))
 ```
 
-Both models now appear in the plot with consistent, readable labels, making comparison straightforward. Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
+Both models now appear in the plot with consistent, readable labels, making comparison straightforward.
+
+The `rename_dictionary` also works with shocks. For example, if `eps_a` and `ea` represent the same shock in different models, or `nu` and `em` are equivalent:
+
+```julia
+# Model 1 with shocks eps_a and nu
+plot_irf(model1,
+    shocks = [:eps_a, :nu],
+    rename_dictionary = Dict(:eps_a => "Technology Shock", :nu => "Monetary Policy Shock"))
+
+# Model 2 with equivalent shocks ea and em
+plot_irf!(model2,
+    shocks = [:ea, :em],
+    rename_dictionary = Dict(:ea => "Technology Shock", :em => "Monetary Policy Shock"))
+```
+
+The `rename_dictionary` accepts flexible type combinations for keys and values—both `Symbol` and `String` types work interchangeably:
+
+```julia
+# All of these are valid and equivalent:
+Dict(:Y => "Output")              # Symbol key, String value
+Dict("Y" => "Output")             # String key, String value
+Dict(:Y => :Output)               # Symbol key, Symbol value
+Dict("Y" => :Output)              # String key, Symbol value
+```
+
+This flexibility allows natural usage regardless of whether variables are referenced as symbols or strings in the code. Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
 
 ### Verbose Output
 
