@@ -890,6 +890,8 @@ macro model(𝓂,ex...)
                         $calibration_equations, 
                         $calibration_equations_parameters,
 
+                        Tuple{String, Vector{Expr}, Vector{Symbol}}[], # calibration_equations_revision_history
+
                         $bounds,
 
                         (zeros(0,0), x->x), # jacobian
