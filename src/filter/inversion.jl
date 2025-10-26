@@ -113,7 +113,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
         end
         
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac))
-        invjac = try inv(jacdecomp)
+        invjac = try ℒ.pinv(jac)
         catch
             if opts.verbose println("Inversion filter failed") end
             return on_failure_loglikelihood
@@ -206,8 +206,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         invjac = inv(jacdecomp)
     else
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac)) #' ./ precision_factor
-        jacdecomp = ℒ.svd(jac)
-        invjac = inv(jacdecomp)
+        # jacdecomp = ℒ.svd(jac)
+        invjac = ℒ.pinv(jac)
     end
 
     logabsdets *= size(data_in_deviations,2) - presample_periods
@@ -890,7 +890,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
                             inv(jacc[i])'
                         else
-                            inv(ℒ.svd(jacc[i]))'
+                            ℒ.pinv(jacc[i])'
                         end
                     catch
                         return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
@@ -1570,7 +1570,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
                             inv(jacc[i])'
                         else
-                            inv(ℒ.svd(jacc[i]))'
+                            ℒ.pinv(jacc[i])'
                         end
                     catch
                         return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
@@ -2500,7 +2500,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
                             inv(jacc[i])'
                         else
-                            inv(ℒ.svd(jacc[i]))'
+                            ℒ.pinv(jacc[i])'
                         end
                     catch
                         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
@@ -3308,7 +3308,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
                             inv(jacc[i])'
                         else
-                            inv(ℒ.svd(jacc[i]))'
+                            ℒ.pinv(jacc[i])'
                         end
                     catch
                         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()

@@ -93,9 +93,9 @@ sample_nuts = mean(samps).nt.mean
 
 
 # generate a Pigeons log potential
-Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)))
+Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10))
 
-LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)), (all_params = init_params,))
+LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10), (all_params = init_params,))
 
 if isfinite(LLH)
     const Caldara_LP = typeof(Caldara_lp)
@@ -180,7 +180,7 @@ println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 #             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
 #             n_chains = 2,
 #             n_rounds = 6,
-#             multithreaded = true)
+#             multithreaded = false)
 
 # samps = MCMCChains.Chains(Pigeons.get_sample(pt))
 

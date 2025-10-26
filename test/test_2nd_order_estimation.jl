@@ -58,11 +58,11 @@ println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 sample_nuts = mean(samps).nt.mean
 
 # generate a Pigeons log potential
-FS2000_2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order, -floatmax(Float64)))
+FS2000_2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :second_order, -floatmax(Float64)+1e10))
 
 init_params = sample_nuts
 
-LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :second_order, -floatmax(Float64)), (all_params = init_params,))
+LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :second_order, -floatmax(Float64)+1e10), (all_params = init_params,))
 
 if isfinite(LLH)
     const FS2000_2nd_LP = typeof(FS2000_2nd_lp)
@@ -102,7 +102,7 @@ pt = @time Pigeons.pigeons(target = FS2000_2nd_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
             n_rounds = 9,
-            multithreaded = true)
+            multithreaded = false)
 
 samps = MCMCChains.Chains(pt)
 
@@ -157,7 +157,7 @@ println("Mean variable values (second order): $(mean(samps).nt.mean)")
 #             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
 #             n_chains = 1,
 #             n_rounds = 6,
-#             multithreaded = true)
+#             multithreaded = false)
 
 # samps = MCMCChains.Chains(Pigeons.get_sample(pt))
 

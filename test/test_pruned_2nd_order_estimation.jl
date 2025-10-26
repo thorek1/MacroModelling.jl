@@ -33,15 +33,20 @@ dists = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_loglikelihood)
+Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_loglikelihood; verbose = false)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, 
-                                                data, 
-                                                all_params, 
-                                                algorithm = algorithm, 
-                                                on_failure_loglikelihood = on_failure_loglikelihood)
+        llh = get_loglikelihood(m, 
+                                 data, 
+                                 all_params, 
+                                 algorithm = algorithm, 
+                                 on_failure_loglikelihood = on_failure_loglikelihood)
+        if verbose
+            @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
+        end
+
+        Turing.@addlogprob! llh
     end
 end
 
@@ -58,11 +63,11 @@ println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 sample_nuts = mean(samps).nt.mean
 
 # generate a Pigeons log potential
-FS2000_pruned2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -floatmax(Float64)))
+FS2000_pruned2nd_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -floatmax(Float64)+1e10)) #, verbose = true))
 
 init_params = sample_nuts
 
-LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -floatmax(Float64)), (all_params = init_params,))
+LLH = Turing.logjoint(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -floatmax(Float64)+1e10, verbose = false), (all_params = init_params,))
 
 if isfinite(LLH)
     const FS2000_pruned2nd_LP = typeof(FS2000_pruned2nd_lp)
@@ -156,7 +161,7 @@ println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
 #             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
 #             n_chains = 1,
 #             n_rounds = 6,
-#             multithreaded = true)
+#             multithreaded = false)
 
 # samps = MCMCChains.Chains(Pigeons.get_sample(pt))
 

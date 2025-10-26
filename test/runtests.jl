@@ -50,12 +50,12 @@ include("functionality_tests.jl")
 # end
 
 if test_set == "jet"
-    if VERSION < v"1.12"
+    if VERSION < v"1.13"
         using JET
     end
     
     @testset verbose = true "Static checking (JET.jl)" begin
-        if VERSION < v"1.12"
+        if VERSION < v"1.13"
             JET.test_package(MacroModelling; target_defined_modules = true, toplevel_logger = nothing)
         end
     end
@@ -433,26 +433,26 @@ if test_set == "plots_5"
         plot_shock_decomposition(FS2000, dataFS2000_rekey2)
 
 
-        plot_model_estimates(FS2000, dataFS2000_rekey)
+        plot_model_estimates(FS2000, dataFS2000_rekey, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
         plot_model_estimates!(Smets_Wouters_2007, data_rekey)
 
 
-        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356)
+        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
         plot_model_estimates!(Smets_Wouters_2007, data_rekey)
 
-        plot_model_estimates!(FS2000, dataFS2000_rekey, parameters = :alp => 0.3)
+        plot_model_estimates!(FS2000, dataFS2000_rekey, parameters = :alp => 0.3, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
 
         plot_model_estimates!(Smets_Wouters_2007, data_rekey, parameters = :csigma => 0.3)
 
-        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, shock_decomposition = true)
+        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, shock_decomposition = true, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
 
         estims = get_estimated_variables(Smets_Wouters_2007, data)
 
-        plot_irf(Smets_Wouters_2007, shocks = :em)
+        plot_irf(Smets_Wouters_2007, shocks = :em, shock_size = 10)
 
         plot_irf!(Smets_Wouters_2007,initial_state = collect(estims[:,end]), shocks = :none, plot_type = :stack)
 
@@ -465,13 +465,18 @@ if test_set == "plots_5"
         plot_irf!(Smets_Wouters_2007, shocks = shock_mat, plot_type = :stack)
 
 
+        plot_irf(Smets_Wouters_2007, shocks = :em, periods = 5, variables = [:y, :k, :c])
+        
+        plot_irf!(FS2000, shocks = :e_m, periods = 5, plot_type = :stack, shock_size = 10, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w), variables = [:y, :k, :c])
+
+
         plot_irf(Smets_Wouters_2007, shocks = :em, periods = 5)
         
-        plot_irf!(FS2000, shocks = :e_m, periods = 5, plot_type = :stack)
+        plot_irf!(FS2000, shocks = :e_m, periods = 5, plot_type = :stack, shock_size = 10, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
-        plot_irf!(FS2000, shocks = [:e_m, :e_a])
-
-        plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea])
+        plot_irf!(FS2000, shocks = [:e_m, :e_a], shock_size = 20, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+        
+        plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea], shock_size = 0.5)
         
         
 
@@ -491,13 +496,13 @@ if test_set == "plots_5"
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
         cndtns_lvl[1,8] = 1.45
 
-        plot_conditional_forecast!(FS2000, cndtns_lvl)
+        plot_conditional_forecast!(FS2000, cndtns_lvl, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
 
 
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,4), Variables = [:y], Periods = 1:4)
         cndtns_lvl[1,4] = 2.01
 
-        plot_conditional_forecast!(FS2000, cndtns_lvl, plot_type = :stack)
+        plot_conditional_forecast!(FS2000, cndtns_lvl, plot_type = :stack, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         # conditons on #3 is nothing which makes sense since it is not showing
 
         shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
@@ -514,16 +519,33 @@ if test_set == "plots_5"
         
         shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
 
-        plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, label = "SW07 w shocks")
+        plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, label = "SW07 w shocks", variables = [:y, :k, :c])
 
-        plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl)
+        plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl, variables = [:y,:w])
 
-        plot_conditional_forecast!(FS2000, cndtns_lvl)
+        plot_conditional_forecast!(FS2000, cndtns_lvl, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
         shock_mat = sprandn(FS2000.timings.nExo, 10, .1)
 
-        plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat, label = :rand_shocks)
+        plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat, label = :rand_shocks, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
+
+        plot_solution(FS2000, :k)
+
+        plot_solution!(FS2000, :k, algorithm = :second_order)
+
+
+        plot_solution(Smets_Wouters_2007, :pinf)
+
+        plot_solution!(Smets_Wouters_2007, :pinf, algorithm = :second_order)
+
+
+        plot_solution(FS2000, :y)
+        
+        plot_solution!(Smets_Wouters_2007, :y, variables = [:y, :k, :c])
+
+        plot_solution!(Smets_Wouters_2007, :y, algorithm = :second_order, variables = [:y, :k, :c])
+
     end
 
     # multiple models
@@ -588,7 +610,7 @@ if test_set == "plots_5"
 
         plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
 
-        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_second_order, generalised_irf = true)
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_second_order, generalised_irf = true, generalised_irf_draws = 1000)
 
 
         plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)

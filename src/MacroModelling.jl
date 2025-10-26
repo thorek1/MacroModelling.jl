@@ -570,15 +570,17 @@ function process_shocks_input(shocks::Union{Symbol_input, String_input, Matrix{F
         
         shock_history = zeros(𝓂.timings.nExo, periods_extended)
         
-        shock_history[indexin(shock_input,𝓂.timings.exo),1:size(shocks)[2]] = shocks
+        shock_history[indexin(shock_input,𝓂.timings.exo), 1:size(shocks)[2]] = shocks
 
         shock_idx = 1
-    else
-        shock_history = shocks
+    elseif shocks isa Expr
+        error("Expressions are not a valid input for shocks. Please provide a Symbol, Vector of Symbols, Matrix of Float64, KeyedArray of Float64, or :none.")
+    elseif (typeof(shocks) <: Symbol_input) || (typeof(shocks) <: String_input)
+        shock_history = zeros(𝓂.timings.nExo, periods)
 
         periods_extended = periods
         
-        shock_idx = parse_shocks_input_to_index(shocks,𝓂.timings)
+        shock_idx = parse_shocks_input_to_index(shocks, 𝓂.timings)
     end
 
     if shocks isa KeyedArray{Float64} || shocks isa Matrix{Float64} || shocks == :none
@@ -2395,7 +2397,7 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    reference_steady_state = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+    reference_steady_state = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     relevant_NSSS = get_steady_state(𝓂, algorithm = :first_order, 
                                     stochastic = false, 
@@ -2406,7 +2408,7 @@ function get_relevant_steady_states(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0 : relevant_NSSS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : relevant_NSSS(s) for s in full_NSSS]
 
     SSS_delta = NSSS - reference_steady_state
 
@@ -5513,7 +5515,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     aug_state₁ = sparse([zeros(𝓂.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.timings.nExo)])
 
-    tmp = (ℒ.I - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed])
+    tmp = (ℒ.I(𝓂.timings.nPast_not_future_and_mixed) - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed])
 
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
@@ -5861,7 +5863,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     aug_state₁ = sparse([zeros(𝓂.timings.nPast_not_future_and_mixed); 1; zeros(𝓂.timings.nExo)])
     
-    tmp = (ℒ.I - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed])
+    tmp = (ℒ.I(𝓂.timings.nPast_not_future_and_mixed) - 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, 1:𝓂.timings.nPast_not_future_and_mixed])
 
     tmp̄ = @ignore_derivatives ℒ.lu(tmp, check = false)
 
@@ -7456,7 +7458,7 @@ write_parameters_input!(𝓂::ℳ, parameters::Matrix{Real}; verbose::Bool = tru
 
 function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose::Bool = true)
     if length(parameters) > length(𝓂.parameter_values)
-        println("Model has "*string(length(𝓂.parameter_values))*" parameters. "*string(length(parameters))*" were provided. The following will be ignored: "*string(parameters[length(𝓂.parameter_values)+1:end]...))
+        println("Model has $(length(𝓂.parameter_values)) parameters. $(length(parameters)) were provided. The following will be ignored: $(join(parameters[length(𝓂.parameter_values)+1:end], " "))")
 
         parameters = parameters[1:length(𝓂.parameter_values)]
     end
@@ -8619,7 +8621,7 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
 end
 
 
-function parse_shocks_input_to_index(shocks::Union{Symbol_input,String_input}, T::timings)#::Union{UnitRange{Int64}, Int64, Vector{Int64}}
+function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, T::timings)#::Union{UnitRange{Int64}, Int64, Vector{Int64}}
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks == :all

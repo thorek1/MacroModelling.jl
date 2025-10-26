@@ -2,12 +2,15 @@ using Revise
 using MacroModelling
 import StatsPlots
 using Random, Dates
+using Zygote, ForwardDiff
+import MacroModelling: clear_solution_caches!
+
 # TODO: 
-# - write tests and docs for the new functions
-# - revisit plot_solution + ! version of it
-# - check maxlog handling, info warnings
+# - write dling, info warnings
 
 # DONE:
+# - write tests and docs for the new functions
+# - revisit plot_solution + ! version of it
 # - inform user when settings have no effect (and reset them) e.g. warmup iterations is only relevant for inversion filter
 # - test across different models
 # - x axis should be Int not floats for short x axis (e.g. 10)
@@ -31,11 +34,1024 @@ ECB_palette = [
     "#5c5c5c"   # gray
 ]
 
+# include("../models/Gali_Monacelli_2005_CITR.jl")
+
+include("../models/Backus_Kehoe_Kydland_1992.jl")
+m = Backus_Kehoe_Kydland_1992
+
+include("models/Caldara_et_al_2012_estim.jl")
+m2 = Caldara_et_al_2012_estim
+
+algorithm = :first_order
+
+
+old_params = copy(m.parameter_values)
+    old_params2 = copy(m2.parameter_values)
+    
+    # options to itereate over
+    filters = [:inversion, :kalman]
+
+    sylvester_algorithms = (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+
+    qme_algorithms = [:schur, :doubling]
+
+    lyapunov_algorithms = [:doubling, :bartels_stewart, :bicgstab, :gmres]
+
+    params = [old_params, 
+                (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                m.parameters .=> old_params, 
+                (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params]
+                
+    
+    params2 = [old_params2, 
+                (m2.parameters[1] => old_params2[1] * exp(rand()*1e-4)), 
+                Tuple(m2.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
+                m2.parameters .=> old_params2, 
+                (string(m2.parameters[1]) => old_params2[1] * 1.0001), 
+                Tuple(string.(m2.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params2]
+
+    param_derivs = [:all, 
+                    m.parameters[1], 
+                    m.parameters[1:3], 
+                    Tuple(m.parameters[1:3]), 
+                    reshape(m.parameters[1:3],3,1), 
+                    string.(m.parameters[1]), 
+                    string.(m.parameters[1:2]), 
+                    string.(Tuple(m.parameters[1:3])), 
+                    string.(reshape(m.parameters[1:3],3,1))]
+
+    vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
+
+    init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
+
+    init_states = [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
+# 
+    # if plots
+        # @testset "plot_model_estimates" begin
+            sol2 = get_solution(m2) # TODO: investigate why this creates world age problems in tests
+            
+            if length(m2.exo) > 3
+                n_shocks_influence_var = vec(sum(abs.(sol2[end-length(m2.exo)+1:end,:]) .> eps(),dims = 1))
+                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m2.obc_violation_equations) > 0 ? 2 : end]]
+            else
+                var_idxs = [1]
+            end
+
+            Random.seed!(41823)
+
+            simulation = simulate(m2, algorithm = algorithm)
+
+            last_stable_col = -5
+            
+            for i in eachcol(simulation[:,:,1])
+                last_stable_col += 1
+                if any(isnan,i) break end
+            end
+
+            simulation = simulation[:,1:last_stable_col,:]
+
+            data_in_levels2 = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m2.var[var_idxs]) : m2.var[var_idxs],:,:simulate)
+            data2 = data_in_levels2 .- m2.solution.non_stochastic_steady_state[var_idxs]
+
+
+
+            sol = get_solution(m)
+            
+            if length(m.exo) > 3
+                n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+            else
+                var_idxs = [1]
+            end
+
+            Random.seed!(41823)
+
+            simulation = simulate(m, algorithm = algorithm)
+
+            last_stable_col = -5
+            
+            for i in eachcol(simulation[:,:,1])
+                last_stable_col += 1
+                if any(isnan,i) break end
+            end
+
+            simulation = simulation[:,1:last_stable_col,:]
+
+            data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+            data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
+
+            
+            # for variables in vars
+            #     plot_model_estimates(m, data, 
+            #                             variables = variables,
+            #                             algorithm = algorithm, 
+            #                             data_in_levels = false)
+            # end
+
+
+            rename_dict = Dict((m.timings.var) .=> lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}")))
+            
+            rename_dict = Dict((m.timings.exo) .=> lowercase.(replace.(String.(m.timings.exo), "_" => " ", "◖" => " {", "◗" => "}")))
+            
+            rename_dicts = [Dict((m.timings.var) .=> lowercase.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), Dict{Symbol,String}()]
+       
+
+            plot_model_estimates(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+            
+            plot_model_estimates!(m, data_in_levels,
+                                    parameters = params[1],
+                                    algorithm = algorithm,
+                                    rename_dictionary = rename_dicts[1],
+                                    data_in_levels = true)
+            
+            plot_model_estimates!(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    rename_dictionary = Dict("Y{H}" => "GDP"),
+                                    data_in_levels = true)
+            
+
+
+            plot_model_estimates(m2, data_in_levels2, 
+                                    parameters = params2[1],
+                                    algorithm = algorithm, 
+                                    shock_decomposition = false,
+                                    # rename_dictionary = Dict(:y => :GDP, :Rᵏ => :Interest_Rate),
+                                    data_in_levels = true)
+
+            plot_model_estimates!(m2, data_in_levels2,
+                                    parameters = params2[1],
+                                    algorithm = algorithm,
+                                    rename_dictionary = Dict(:y => :GDP, :Rᵏ => :Interest_Rate),
+                                    data_in_levels = true)
+            
+
+            plot_model_estimates!(m2, data_in_levels2,
+                                    parameters = params2[1],
+                                    algorithm = algorithm,
+                                    rename_dictionary = Dict(:ykk => :GDP, :Rᵏk => :Interest_Rate_),
+                                    data_in_levels = true)
+            
+
+            plot_model_estimates(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+            
+            i = 1
+
+            for rename_dict in rename_dicts
+                for variables in vars
+                    if i % 4 == 0
+                        plot_model_estimates(m, data_in_levels,
+                                                parameters = params[1],
+                                                algorithm = algorithm, 
+                                                data_in_levels = true)
+                    end
+
+                    i += 1
+
+                    plot_model_estimates!(m, data, 
+                                            variables = variables,
+                                            label = string(variables),
+                                            rename_dictionary = rename_dict,
+                                            algorithm = algorithm, 
+                                            data_in_levels = false)
+                end
+            end
+
+            plot_model_estimates(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+            
+            plot_model_estimates!(m, data, 
+                                    variables = vars[2],
+                                    label = string(vars[2]),
+                                    rename_dictionary = rename_dicts[2],
+                                    algorithm = algorithm, 
+                                    data_in_levels = false)
+
+        # end
+
+
+
+
+
+algorithm = :pruned_second_order
+
+old_params = copy(m.parameter_values)
+    # old_params2 = copy(m2.parameter_values)
+    
+    # options to itereate over
+    filters = [:inversion, :kalman]
+
+    sylvester_algorithms = (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+
+    qme_algorithms = [:schur, :doubling]
+
+    lyapunov_algorithms = [:doubling, :bartels_stewart, :bicgstab, :gmres]
+
+    params = [old_params, 
+                (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                m.parameters .=> old_params, 
+                (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params]
+                
+    
+    # params2 = [old_params2, 
+    #             (m2.parameters[1] => old_params2[1] * exp(rand()*1e-4)), 
+    #             Tuple(m2.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
+    #             m2.parameters .=> old_params2, 
+    #             (string(m2.parameters[1]) => old_params2[1] * 1.0001), 
+    #             Tuple(string.(m2.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
+    #             old_params2]
+
+    param_derivs = [:all, 
+                    m.parameters[1], 
+                    m.parameters[1:3], 
+                    Tuple(m.parameters[1:3]), 
+                    reshape(m.parameters[1:3],3,1), 
+                    string.(m.parameters[1]), 
+                    string.(m.parameters[1:2]), 
+                    string.(Tuple(m.parameters[1:3])), 
+                    string.(reshape(m.parameters[1:3],3,1))]
+
+    vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
+
+    init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
+
+    init_states = [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
+
+
+            states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
+
+            if algorithm == :first_order
+                algos = [:first_order]
+            elseif algorithm in [:second_order, :pruned_second_order]
+                algos = [:first_order, :second_order, :pruned_second_order]
+            elseif algorithm in [:third_order, :pruned_third_order]
+                algos = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+            end
+            
+            for variables in vars
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        for lyapunov_algorithm in lyapunov_algorithms
+                            for sylvester_algorithm in sylvester_algorithms
+                                clear_solution_caches!(m, algorithm)
+                    
+                                # Test single algorithm
+                                plot_solution(m, states[1], 
+                                                algorithm = algos[end],
+                                                variables = variables,
+                                                tol = tol,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                sylvester_algorithm = sylvester_algorithm)
+                            end
+                        end
+                    end
+                end
+            end
+
 
 include("../models/Gali_2015_chapter_3_nonlinear.jl")
-include("../models/Gali_Monacelli_2005_CITR.jl")
+m = Gali_2015_chapter_3_nonlinear
 
-include("../models/Ireland_2004.jl")
+include("../models/Caldara_et_al_2012.jl")
+m2 = Caldara_et_al_2012
+
+algorithm = :third_order
+
+old_params = copy(m.parameter_values)
+    old_params2 = copy(m2.parameter_values)
+    
+    # options to itereate over
+    filters = [:inversion, :kalman]
+
+    sylvester_algorithms = (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+
+    qme_algorithms = [:schur, :doubling]
+
+    lyapunov_algorithms = [:doubling, :bartels_stewart, :bicgstab, :gmres]
+
+    params = [old_params, 
+                (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                m.parameters .=> old_params, 
+                (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params]
+                
+    
+    params2 = [old_params2, 
+                (m2.parameters[1] => old_params2[1] * exp(rand()*1e-4)), 
+                Tuple(m2.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
+                m2.parameters .=> old_params2, 
+                (string(m2.parameters[1]) => old_params2[1] * 1.0001), 
+                Tuple(string.(m2.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params2]
+
+    param_derivs = [:all, 
+                    m.parameters[1], 
+                    m.parameters[1:3], 
+                    Tuple(m.parameters[1:3]), 
+                    reshape(m.parameters[1:3],3,1), 
+                    string.(m.parameters[1]), 
+                    string.(m.parameters[1:2]), 
+                    string.(Tuple(m.parameters[1:3])), 
+                    string.(reshape(m.parameters[1:3],3,1))]
+
+    vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
+
+    init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
+
+    init_states = [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
+
+
+sol = get_solution(m)
+        
+        if length(m.exo) > 3
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+        elseif length(m.var) == 17
+            var_idxs = [5]
+        else
+            var_idxs = [1]
+        end
+
+        Random.seed!(41230)
+
+        simulation = simulate(m, algorithm = algorithm)
+
+        last_stable_col = -5
+        
+        for i in eachcol(simulation[:,:,1])
+            last_stable_col += 1
+            if any(isnan,i) break end
+        end
+
+        simulation = simulation[:,1:last_stable_col,:]
+
+
+        data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
+        data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
+
+
+        if !(algorithm ∈ [:second_order, :third_order])
+            for filter in (algorithm == :first_order ? filters : [:inversion])
+                for smooth in [true, false]
+                    for verbose in [false] # [true, false]
+                        for quadratic_matrix_equation_algorithm in qme_algorithms
+                            for lyapunov_algorithm in lyapunov_algorithms
+                                for sylvester_algorithm in sylvester_algorithms
+                                    clear_solution_caches!(m, algorithm)
+
+                                    estim1 = get_shock_decomposition(m, data, 
+                                                                    algorithm = algorithm, 
+                                                                    data_in_levels = false, 
+                                                                    filter = filter,
+                                                                    smooth = smooth,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                    verbose = verbose)
+
+                                    clear_solution_caches!(m, algorithm)
+                                
+                                    estim2 = get_shock_decomposition(m, data_in_levels, 
+                                                                    algorithm = algorithm, 
+                                                                    data_in_levels = true,
+                                                                    filter = filter,
+                                                                    smooth = smooth,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                    verbose = verbose)
+                                    @test isapprox(estim1, estim2, rtol = 1e-8)
+
+                                    clear_solution_caches!(m, algorithm)
+
+                                    estim1 = get_estimated_shocks(m, data, 
+                                                                    algorithm = algorithm, 
+                                                                    data_in_levels = false, 
+                                                                    filter = filter,
+                                                                    smooth = smooth,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                    verbose = verbose)
+
+                                    clear_solution_caches!(m, algorithm)
+                                
+                                    estim2 = get_estimated_shocks(m, data_in_levels, 
+                                                                    algorithm = algorithm, 
+                                                                    data_in_levels = true,
+                                                                    filter = filter,
+                                                                    smooth = smooth,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                    verbose = verbose)
+                                    @test isapprox(estim1, estim2, rtol = 1e-8)
+
+                                    for levels in [true, false]
+                                        clear_solution_caches!(m, algorithm)
+                                    
+                                        estim1 = get_estimated_variables(m, data, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = false, 
+                                                                        levels = levels,
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm,
+                                                                        verbose = verbose)
+
+                                        clear_solution_caches!(m, algorithm)
+                                                                    
+                                        estim2 = get_estimated_variables(m, data_in_levels, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = true, 
+                                                                        levels = levels,
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm,
+                                                                        verbose = verbose)
+                                        @test isapprox(estim1, estim2, rtol = 1e-8)
+
+                                        
+                                        clear_solution_caches!(m, algorithm)
+                                    
+                                        estim1 = get_model_estimates(m, data, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = false, 
+                                                                        levels = levels,
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm,
+                                                                        verbose = verbose)
+
+                                        clear_solution_caches!(m, algorithm)
+                                                                    
+                                        estim2 = get_model_estimates(m, data_in_levels, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = true, 
+                                                                        levels = levels,
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm,
+                                                                        verbose = verbose)
+                                        @test isapprox(estim1, estim2, rtol = 1e-8)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+
+            for parameters in params
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    get_shock_decomposition(m, data, 
+                                            parameters = parameters,
+                                            algorithm = algorithm, 
+                                            tol = tol,
+                                            data_in_levels = false, 
+                                            verbose = false)
+                    get_shock_decomposition(m, data_in_levels, 
+                                            parameters = parameters,
+                                            algorithm = algorithm, 
+                                            data_in_levels = true,
+                                            verbose = false)
+
+
+                    get_estimated_shocks(m, data, 
+                                    parameters = parameters,
+                                    algorithm = algorithm, 
+                                    tol = tol,
+                                    data_in_levels = false, 
+                                    verbose = false)
+                    get_estimated_shocks(m, data_in_levels, 
+                                    parameters = parameters,
+                                    algorithm = algorithm, 
+                                    tol = tol,
+                                    data_in_levels = true,
+                                    verbose = false)
+
+                    get_model_estimates(m, data, 
+                                    parameters = parameters,
+                                    algorithm = algorithm, 
+                                    tol = tol,
+                                    data_in_levels = false, 
+                                    verbose = false)
+                    get_model_estimates(m, data_in_levels, 
+                                    parameters = parameters,
+                                    algorithm = algorithm, 
+                                    tol = tol,
+                                    data_in_levels = true,
+                                    verbose = false)
+                    
+
+                    get_estimated_variables(m, data, 
+                                            parameters = parameters,
+                                            algorithm = algorithm, 
+                                            tol = tol,
+                                            data_in_levels = false, 
+                                            verbose = false)
+                    get_estimated_variables(m, data_in_levels, 
+                                            parameters = parameters,
+                                            algorithm = algorithm, 
+                                            tol = tol,
+                                            data_in_levels = true,
+                                            verbose = false)
+                end
+            end
+        end
+
+        
+
+        if algorithm == :first_order
+            for smooth in [true, false]
+                for verbose in [false] # [true, false]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        for lyapunov_algorithm in lyapunov_algorithms
+
+                            clear_solution_caches!(m, algorithm)
+                        
+                            estim1 = get_estimated_variable_standard_deviations(m, data, 
+                                                                                data_in_levels = false, 
+                                                                                smooth = smooth,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                verbose = verbose)
+
+                            clear_solution_caches!(m, algorithm)
+                        
+                            estim2 = get_estimated_variable_standard_deviations(m, data_in_levels, 
+                                                                                data_in_levels = true,
+                                                                                smooth = smooth,
+                                                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                verbose = verbose)
+                            @test isapprox(estim1,estim2)
+                        end
+                    end
+                end
+            end
+
+            for parameters in params
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    get_estimated_variable_standard_deviations(m, data, 
+                                                                parameters = parameters,
+                                                                data_in_levels = false, 
+                                                                verbose = false)
+                    get_estimated_variable_standard_deviations(m, data_in_levels, 
+                                                                parameters = parameters,
+                                                                data_in_levels = true,
+                                                                verbose = false)
+                end
+            end
+        end
+
+get_parameters(m)
+get_variables(m)
+
+llh = get_loglikelihood(m, data_in_levels[:,1:20], old_params, algorithm = algorithm)
+
+ZYG_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels[:,1:20], x,
+                                                                # algorithm = algorithm,
+                                                                algorithm = :first_order,
+                                                                # filter = filter,
+                                                                # presample_periods = presample_periods,
+                                                                # initial_covariance = initial_covariance,
+                                                                # tol = tol,
+                                                                # quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                # lyapunov_algorithm = lyapunov_algorithm,
+                                                                # sylvester_algorithm = sylvester_algorithm,
+                                                                # verbose = verbose
+                                                                ), old_params)
+        
+
+        for filter in (algorithm == :first_order ? filters : [:inversion])
+            for presample_periods in [0, 3]
+                for initial_covariance in [:diagonal, :theoretical]
+                    for verbose in [false] # [true, false]
+                        for parameter_values in [old_params, old_params .* exp.(rand(length(old_params))*1e-4)]
+                            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                                llh = get_loglikelihood(m, data_in_levels, parameter_values,
+                                                        algorithm = algorithm,
+                                                        filter = filter,
+                                                        presample_periods = presample_periods,
+                                                        initial_covariance = initial_covariance,
+                                                        tol = tol,
+                                                        verbose = verbose)
+
+                                clear_solution_caches!(m, algorithm)
+                        
+                                zyg_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels, x,
+                                                                                                algorithm = algorithm,
+                                                                                                filter = filter,
+                                                                                                presample_periods = presample_periods,
+                                                                                                initial_covariance = initial_covariance,
+                                                                                                tol = tol,
+                                                                                                verbose = verbose), parameter_values)
+
+                                if algorithm == :first_order && filter == :kalman
+                                    for i in 1:100
+                                        local fin_grad_llh = FiniteDifferences.grad(FiniteDifferences.central_fdm(length(m.parameters) > 20 ? 3 : 4, 1, max_range = 1e-3), 
+                                                                                x -> begin 
+                                                                                        clear_solution_caches!(m, algorithm)
+    
+                                                                                        get_loglikelihood(m, data_in_levels, x,
+                                                                                                        algorithm = algorithm,
+                                                                                                        filter = filter,
+                                                                                                        presample_periods = presample_periods,
+                                                                                                        initial_covariance = initial_covariance,
+                                                                                                        tol = tol,
+                                                                                                        verbose = verbose)
+                                                                                        end, parameter_values)
+                                        if isfinite(ℒ.norm(fin_grad_llh[1]))
+                                            @test isapprox(fin_grad_llh[1], zyg_grad_llh[1], rtol = 1e-5)
+                                            break
+                                        end
+                                    end
+                                end
+                                                                  
+                                for quadratic_matrix_equation_algorithm in qme_algorithms
+                                    for lyapunov_algorithm in lyapunov_algorithms
+                                        for sylvester_algorithm in sylvester_algorithms
+                                            
+                                            clear_solution_caches!(m, algorithm)
+                                        
+                                            LLH = get_loglikelihood(m, data_in_levels, parameter_values,
+                                                                    algorithm = algorithm,
+                                                                    filter = filter,
+                                                                    presample_periods = presample_periods,
+                                                                    initial_covariance = initial_covariance,
+                                                                    tol = tol,
+                                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                                    sylvester_algorithm = sylvester_algorithm,
+                                                                    verbose = verbose)
+                                            @test isapprox(llh, LLH, rtol = 1e-8)
+
+                                            clear_solution_caches!(m, algorithm)
+                                    
+                                            ZYG_grad_llh = Zygote.gradient(x -> get_loglikelihood(m, data_in_levels, x,
+                                                                                                            algorithm = algorithm,
+                                                                                                            filter = filter,
+                                                                                                            presample_periods = presample_periods,
+                                                                                                            initial_covariance = initial_covariance,
+                                                                                                            tol = tol,
+                                                                                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                                                            lyapunov_algorithm = lyapunov_algorithm,
+                                                                                                            sylvester_algorithm = sylvester_algorithm,
+                                                                                                            verbose = verbose), parameter_values)
+            
+                                            @test isapprox(ZYG_grad_llh[1], zyg_grad_llh[1], rtol = 1e-6)    
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+
+
+algorithm = :first_order
+
+old_params = copy(m.parameter_values)
+    old_params2 = copy(m2.parameter_values)
+    
+    # options to itereate over
+    filters = [:inversion, :kalman]
+
+    sylvester_algorithms = (algorithm == :first_order ? [:doubling] : [[:doubling, :bicgstab], [:bartels_stewart, :doubling], :bicgstab, :dqgmres, (:gmres, :gmres)])
+
+    qme_algorithms = [:schur, :doubling]
+
+    lyapunov_algorithms = [:doubling, :bartels_stewart, :bicgstab, :gmres]
+
+    params = [old_params, 
+                (m.parameters[1] => old_params[1] * exp(rand()*1e-4)), 
+                Tuple(m.parameters[1:2] .=> old_params[1:2] .* 1.0001), 
+                m.parameters .=> old_params, 
+                (string(m.parameters[1]) => old_params[1] * 1.0001), 
+                Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params]
+                
+    
+    params2 = [old_params2, 
+                (m2.parameters[1] => old_params2[1] * exp(rand()*1e-4)), 
+                Tuple(m2.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
+                m2.parameters .=> old_params2, 
+                (string(m2.parameters[1]) => old_params2[1] * 1.0001), 
+                Tuple(string.(m2.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params2]
+
+
+            states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
+            states2 = vcat(get_state_variables(m2), m2.timings.past_not_future_and_mixed)
+
+            if algorithm == :first_order
+                algos = [:first_order]
+            elseif algorithm in [:second_order, :pruned_second_order]
+                algos = [:first_order, :second_order, :pruned_second_order]
+            elseif algorithm in [:third_order, :pruned_third_order]
+                algos = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+            end
+
+
+
+            
+            for variables in vars
+                for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        for lyapunov_algorithm in lyapunov_algorithms
+                            for sylvester_algorithm in sylvester_algorithms
+                                clear_solution_caches!(m, algorithm)
+                    
+                                # Test single algorithm
+                                plot_solution(m, states[1], 
+                                                algorithm = algos[end],
+                                                variables = variables,
+                                                tol = tol,
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                sylvester_algorithm = sylvester_algorithm)
+                            end
+                        end
+                    end
+                end
+            end
+
+            for plots_per_page in [1,4]
+                for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
+                    plot_solution(m, states[1], algorithm = algos[end],
+                                    plot_attributes = plot_attributes,
+                                    plots_per_page = plots_per_page)
+                end
+            end
+
+            
+            # for backend in (Sys.iswindows() ? [:gr] : [:gr, :plotlyjs])
+            #     if backend == :gr
+            #         gr_backend()
+            #     else
+            #         plotlyjs_backend()
+            #     end
+                for show_plots in [true, false] # (Sys.islinux() ? backend == :plotlyjs ? [false] : [true, false] : [true, false])
+                    for save_plots in [true, false]
+                        for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
+                            for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
+                                plot_solution(m, states[1], algorithm = algos[end],
+                                                show_plots = show_plots,
+                                                save_plots = save_plots,
+                                                save_plots_path = save_plots_path,
+                                                save_plots_format = save_plots_format)
+                            end
+                        end
+                    end
+                end
+            # end
+
+            for parameters in params
+                plot_solution(m, states[1], algorithm = algos[end],
+                                parameters = parameters)
+            end
+
+            for σ in [0.5, 5]
+                for ignore_obc in [true, false]
+                    for state in states[[1,end]]
+                        for algo in algos
+                            # Test single algorithm
+                            plot_solution(m, state,
+                                            σ = σ,
+                                            algorithm = algo,
+                                            ignore_obc = ignore_obc)
+                        end
+                    end
+                end
+            end
+
+
+            plot_solution(m2, states2[end])
+
+            # i = 1
+
+            # Test plot_solution! for combining multiple algorithms
+            for ignore_obc in [true, false]
+                for (model, stt) in [(m, states), (m2, states2)]
+                    for state in stt[[1,end]]
+                        for σ in [0.5, 5]
+                            # if i % 3 == 0
+                            #     plot_solution(m, states[2])
+                            # end
+
+                            # i += 1
+                            
+                            plot_solution!(model, state, σ = σ, ignore_obc = ignore_obc)
+                        end
+                    end
+                end
+            end
+
+             
+            plot_solution(m2, states2[1])
+
+            i = 1
+
+            # Test plot_solution! for combining multiple algorithms
+            for (model, state, pars) in [(m, states[1], params), (m2, states2[1], params2)]
+                for parameters in pars
+                    for algo in algos
+                        if i % 10 == 0
+                            plot_solution(m, states[1])
+                        end
+
+                        i += 1
+                        
+                        plot_solution!(model, state, algorithm = algo, parameters = parameters)
+                    end
+                end
+            end                               
+
+            # plotlyjs_backend()
+
+            # plot_solution(m, states[1], algorithm = algos[end])
+
+            # gr_backend()
+
+
+
+
+# test conditional forecasting
+            new_sub_irfs_all  = get_irf(m2,  verbose = false, variables = :all, shocks = :all)
+            varnames = axiskeys(new_sub_irfs_all,1)
+            shocknames = axiskeys(new_sub_irfs_all,3)
+            sol = get_solution(m2)
+            # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m2.exo)+1:end,:]) .> eps(),dims = 1))
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m2.obc_violation_equations) > 0 ? 2 : end]]
+
+
+            stst  = get_irf(m2, variables = :all, shocks = :none, periods = 1, levels = true) |> vec
+
+            conditions2 = []
+
+            cndtns = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .01
+            cndtns[var_idxs[2],2] = .02
+
+            push!(conditions2, cndtns)
+
+            cndtns = spzeros(size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .011
+            cndtns[var_idxs[2],2] = .024
+
+            push!(conditions2, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns[1,1] = .014
+            cndtns[2,2] = .0207
+
+            push!(conditions2, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns[1,1] = .014
+            cndtns[2,2] = .025
+
+            push!(conditions2, cndtns)
+
+            conditions_lvl2 = []
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns_lvl[1,1] = .017 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+
+            push!(conditions_lvl2, cndtns_lvl)
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .027 + stst[var_idxs[2]]
+        
+            push!(conditions_lvl2, cndtns_lvl)
+
+
+
+            # test conditional forecasting
+            new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
+            varnames = axiskeys(new_sub_irfs_all,1)
+            shocknames = axiskeys(new_sub_irfs_all,3)
+            sol = get_solution(m)
+            # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m.exo)+1:end,:]) .> eps(),dims = 1))
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m.obc_violation_equations) > 0 ? 2 : end]]
+
+
+            stst  = get_irf(m, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
+
+            conditions = []
+
+            cndtns = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .01
+            cndtns[var_idxs[2],2] = .02
+
+            push!(conditions, cndtns)
+
+            cndtns = spzeros(size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .011
+            cndtns[var_idxs[2],2] = .024
+
+            push!(conditions, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns[1,1] = .014
+            cndtns[2,2] = .0207
+
+            push!(conditions, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns[1,1] = .014
+            cndtns[2,2] = .025
+
+            push!(conditions, cndtns)
+
+            conditions_lvl = []
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns_lvl[1,1] = .017 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+
+            push!(conditions_lvl, cndtns_lvl)
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .027 + stst[var_idxs[2]]
+        
+            push!(conditions_lvl, cndtns_lvl)
+
+
+            shocks = []
+
+            push!(shocks, nothing)
+
+            if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
+                shcks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
+                shcks[1,1] = .13
+
+                push!(shocks, shcks)
+
+                shcks = spzeros(size(new_sub_irfs_all,3),1)
+                shcks[1,1] = .18
+                
+                push!(shocks, shcks)
+
+                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
+                shcks[1,1] = .12
+
+                push!(shocks, shcks)
+
+                shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
+                shcks[1,1] = .19
+
+                push!(shocks, shcks)
+            end
+
+
+
+
+            for variables in vars
+                println("Variables: $variables")
+                plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm, 
+                                            variables = variables)
+            end
+
+get_variables(m)
+
 
 include("../models/Ascari_Sbordone_2014.jl")
 

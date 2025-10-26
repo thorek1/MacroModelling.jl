@@ -2,6 +2,12 @@ name: CI
 on:
   - push
 #   - pull_request
+
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   test:
     env: 
@@ -117,7 +123,7 @@ jobs:
             arch: x64
             test_set: "jet"
             allow_failure: true
-          - version: '1'
+          - version: '1.11'
             os: ubuntu-latest
             arch: x64
             test_set: "jet"
@@ -126,19 +132,30 @@ jobs:
             arch: x64
             test_set: "jet"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
-      # On the Julia “pre” matrix entries, drop the unsupported test-only package
-      - name: Remove Pigeons from targets on pre Julia
-        if: matrix.version == 'pre'
+      - name: Remove Pigeons from non estimation runs
+        if: contains(matrix.test_set, 'estimat') == false
+        shell: bash
         run: |
-          sed -i \
-            -e '/^\[targets\]/,$s/,[[:space:]]*"Pigeons"//g' \
-            -e '/^\[targets\]/,$s/"Pigeons",[[:space:]]*//g' \
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"Pigeons"//g' \
+            -e '/^\[targets\]/,$ s/"Pigeons",[[:space:]]*//g' \
             Project.toml
+          rm -f Project.toml.bak
+
+      - name: Remove JET from estimation runs
+        if: contains(matrix.test_set, 'estimat') == true
+        shell: bash
+        run: |
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"JET"//g' \
+            -e '/^\[targets\]/,$ s/"JET",[[:space:]]*//g' \
+            Project.toml
+          rm -f Project.toml.bak 
       - name: Set Custom Test Environment Variable (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
@@ -148,16 +165,7 @@ jobs:
       - name: Set JULIA_NUM_THREADS for estimation tests
         if: (matrix.version == '1' && (matrix.test_set == 'estimation' || matrix.test_set == 'estimate_sw07' || matrix.test_set == '1st_order_inversion_estimation'))
         run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
-      - uses: actions/cache@v4
-        env:
-          cache-name: cache-artifacts
-        with:
-          path: ~/.julia/artifacts
-          key: ${{ runner.os }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-test-${{ env.cache-name }}-
-            ${{ runner.os }}-test-
-            ${{ runner.os }}-
+      - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
         with:

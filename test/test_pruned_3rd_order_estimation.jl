@@ -45,15 +45,20 @@ dists = [
     Beta(0.75, 0.02, μσ = true)             # ρ
 ]
 
-Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood)
+Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood; verbose = false)
     all_params ~ Turing.arraydist(dists)
 
     if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, 
-                                                data, 
-                                                all_params, 
-                                                algorithm = :pruned_third_order, 
-                                                on_failure_loglikelihood = on_failure_loglikelihood)
+        llh = get_loglikelihood(m, 
+                                 data, 
+                                 all_params, 
+                                 algorithm = :pruned_third_order, 
+                                 on_failure_loglikelihood = on_failure_loglikelihood)
+        if verbose
+            @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
+        end
+
+        Turing.@addlogprob! llh
     end
 end
 
@@ -97,9 +102,9 @@ sample_nuts = mean(samps).nt.mean
 
 
 # generate a Pigeons log potential
-Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)))
+Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10)) #, verbose = true))
 
-LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)), (all_params = init_params,))
+LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10, verbose = false), (all_params = init_params,))
 
 if isfinite(LLH)
     const Caldara_LP = typeof(Caldara_lp)
@@ -184,7 +189,7 @@ println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
 #             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
 #             n_chains = 2,
 #             n_rounds = 6,
-#             multithreaded = true)
+#             multithreaded = false)
 
 # samps = MCMCChains.Chains(Pigeons.get_sample(pt))
 

@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
 import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -24,6 +24,73 @@ import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_sim
 import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!, plot_solution!
 
 @stable default_mode = "disable" begin
+
+const SUPERSCRIPT_MAP = (
+    '⁰' => '0', '¹' => '1', '²' => '2', '³' => '3', '⁴' => '4',
+    '⁵' => '5', '⁶' => '6', '⁷' => '7', '⁸' => '8', '⁹' => '9'
+)
+
+
+# A function to replace all superscripts in a symbol's string representation
+function normalize_superscript(s::Symbol)
+    # The 's => SUPERSCRIPT_MAP[s]' part creates a pair for replacement
+    # The final argument specifies which characters to look for
+    return replace(string(s), SUPERSCRIPT_MAP...)
+end
+
+function normalize_superscript(s::String)
+    # The 's => SUPERSCRIPT_MAP[s]' part creates a pair for replacement
+    # The final argument specifies which characters to look for
+    return replace(s, SUPERSCRIPT_MAP...)
+end
+
+"""
+    apply_custom_name(symbol::Symbol, custom_names::Dict{Symbol, String})
+
+Apply custom name from dictionary if available, otherwise use default name.
+"""
+function apply_custom_name(symbol::R, custom_names::AbstractDict{S, T})::R where {R <: Union{Symbol, String}, S, T}
+    # First, check for an exact match with the original symbol
+    if haskey(custom_names, symbol)
+        return R(custom_names[symbol])
+    end
+    
+    # Handle cross-type check for exact match (String vs Symbol)
+    if symbol isa Symbol && haskey(custom_names, String(replace_indices_in_symbol(symbol)))
+        return R(custom_names[String(replace_indices_in_symbol(symbol))])
+    elseif symbol isa String && haskey(custom_names, Symbol(symbol))
+        return R(custom_names[Symbol(symbol)])
+    end
+
+    # If no exact match, strip lag operators and compare base names.
+    s_str = string(symbol)
+    lag_regex = r"^(.*)(ᴸ⁽.*⁾)$"
+    m = match(lag_regex, s_str)
+
+    base_symbol_str, lag_part = if m !== nothing
+        (m.captures[1], m.captures[2])
+    else
+        (s_str, "")
+    end
+
+    for (key, value) in custom_names
+        key_str = string(key)
+        key_m = match(lag_regex, key_str)
+        
+        base_key_str = if key_m !== nothing
+            key_m.captures[1]
+        else
+            key_str
+        end
+
+        if base_key_str == base_symbol_str
+            return R(string(value) * lag_part)
+        end
+    end
+
+    return symbol
+end
+
 """
     gr_backend()
 Renaming and reexport of StatsPlots function `gr()` to define GR.jl as backend.
@@ -80,6 +147,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
 - $LABEL®
+- $RENAME_DICTIONARY®
 - $PLOT_ATTRIBUTES®
 - $QME®
 - $SYLVESTER®
@@ -144,6 +212,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 transparency::Float64 = DEFAULT_TRANSPARENCY,
                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
+                                rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                                 plot_attributes::Dict = Dict(),
                                 verbose::Bool = DEFAULT_VERBOSE,
                                 tol::Tolerances = Tolerances(),
@@ -195,10 +264,29 @@ function plot_model_estimates(𝓂::ℳ,
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
     shock_idx   = shocks == :none ? [] : parse_shocks_input_to_index(shocks, 𝓂.timings)
 
-    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
+    # Create display names and sort alphabetically
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.var[v], rename_dictionary)) for v in var_idx]
+    @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
+    var_idx = var_idx[var_sort_perm]
+    variable_names_display = variable_names_display[var_sort_perm]
     
-    shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx]) .* "₍ₓ₎"
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.exo[s], rename_dictionary)) * "₍ₓ₎" for s in shock_idx]
+    @assert length(shock_names_display) == length(unique(shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+    if length(shock_idx) > 1
+        shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
+        shock_idx = shock_idx[shock_sort_perm]
+        shock_names_display = shock_names_display[shock_sort_perm]
+    end
     
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
+
     legend_columns = 1
 
     legend_items = length(shock_idx) + 3 + pruning
@@ -288,13 +376,14 @@ function plot_model_estimates(𝓂::ℳ,
                            :lyapunov_algorithm => lyapunov_algorithm,
                            
                            :decomposition => decomposition,
-                           :variables_to_plot => variables_to_plot,
+                           :variables_to_plot => variables_to_plot[var_idx, :],
                            :data_in_deviations => data_in_deviations,
                            :shocks_to_plot => shocks_to_plot,
                            :reference_steady_state => reference_steady_state[var_idx],
-                           :variable_names => variable_names,
-                           :shock_names => shock_names,
-                           :x_axis => x_axis
+                           :variable_names => variable_names_display,
+                           :shock_names => shock_names_display,
+                           :x_axis => x_axis,
+                           :rename_dictionary => processed_rename_dictionary
                            )
 
     push!(model_estimates_active_plot_container, args_and_kwargs)
@@ -320,7 +409,7 @@ function plot_model_estimates(𝓂::ℳ,
             n_subplots -= 1
         elseif length(shock_idx) > 0
             push!(non_zero_shock_idx, s)
-            push!(non_zero_shock_names, shock_names[i])
+            push!(non_zero_shock_names, shock_names_display[i])
         end
     end
     
@@ -342,20 +431,13 @@ function plot_model_estimates(𝓂::ℳ,
             if !(all(isapprox.(variables_to_plot[var_idx[i],periods], 0, atol = eps(Float32))))
                 SS = reference_steady_state[var_idx[i]]
 
-                p = standard_subplot(variables_to_plot[var_idx[i],periods], 
-                                    SS, 
-                                    variable_names[i], 
-                                    gr_back,
-                                    pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
-                                    xvals = x_axis)
-
                 if shock_decomposition
                     additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
 
                     p = standard_subplot(Val(:stack),
                                         [decomposition[var_idx[i],k,periods] for k in vcat(additional_indices, non_zero_shock_idx)], 
                                         [SS for k in vcat(additional_indices, non_zero_shock_idx)], 
-                                        variable_names[i], 
+                                        variable_names_display[i], 
                                         gr_back,
                                         true, # same_ss,
                                         transparency = transparency,
@@ -363,7 +445,7 @@ function plot_model_estimates(𝓂::ℳ,
                                         pal = pal,
                                         color_total = estimate_color)
                                         
-                    if var_idx[i] ∈ obs_idx 
+                    if var_idx[i] ∈ obs_idx
                         StatsPlots.plot!(p,
                             # x_axis,
                             shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
@@ -371,7 +453,14 @@ function plot_model_estimates(𝓂::ℳ,
                             color = shock_decomposition ? data_color : pal[2])
                     end
                 else
-                    if var_idx[i] ∈ obs_idx 
+                    p = standard_subplot(variables_to_plot[var_idx[i],periods], 
+                                        SS, 
+                                        variable_names_display[i], 
+                                        gr_back,
+                                        pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
+                                        xvals = x_axis)
+
+                    if var_idx[i] ∈ obs_idx
                         StatsPlots.plot!(p,
                             x_axis,
                             shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
@@ -410,7 +499,7 @@ function plot_model_estimates(𝓂::ℳ,
             if shock_decomposition
                 additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
 
-                lbls = reshape(vcat(additional_labels, string.(replace_indices_in_symbol.(𝓂.exo[non_zero_shock_idx]))), 1, length(non_zero_shock_idx) + 1 + pruning)
+                lbls = reshape(vcat(additional_labels, string.(non_zero_shock_names)), 1, length(non_zero_shock_idx) + 1 + pruning)
 
                 StatsPlots.bar!(pl,
                                 fill(NaN, 1, length(non_zero_shock_idx) + 1 + pruning), 
@@ -464,7 +553,7 @@ function plot_model_estimates(𝓂::ℳ,
         if shock_decomposition
             additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
 
-            lbls = reshape(vcat(additional_labels, string.(replace_indices_in_symbol.(𝓂.exo[non_zero_shock_idx]))), 1, length(non_zero_shock_idx) + 1 + pruning)
+            lbls = reshape(vcat(additional_labels, string.(non_zero_shock_names)), 1, length(non_zero_shock_idx) + 1 + pruning)
 
             StatsPlots.bar!(pl,
                             fill(NaN, 1, length(non_zero_shock_idx) + 1 + pruning), 
@@ -529,6 +618,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
 - $DATA_IN_LEVELS®
 - $LABEL®
+- $RENAME_DICTIONARY®
 - $SMOOTH®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
@@ -620,6 +710,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
+                                rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                                 plot_attributes::Dict = Dict(),
                                 verbose::Bool = DEFAULT_VERBOSE,
                                 tol::Tolerances = Tolerances(),
@@ -671,10 +762,29 @@ function plot_model_estimates!(𝓂::ℳ,
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
     shock_idx   = parse_shocks_input_to_index(shocks, 𝓂.timings)
 
-    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
+    # Create display names and sort alphabetically
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.var[v], rename_dictionary)) for v in var_idx]
+    @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
+    var_idx = var_idx[var_sort_perm]
+    variable_names_display = variable_names_display[var_sort_perm]
     
-    shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx]) .* "₍ₓ₎"
-    
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.exo[s], rename_dictionary)) * "₍ₓ₎" for s in shock_idx]
+    @assert length(shock_names_display) == length(unique(shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+    if length(shock_idx) > 1
+        shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
+        shock_idx = shock_idx[shock_sort_perm]
+        shock_names_display = shock_names_display[shock_sort_perm]
+    end
+
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
+
     legend_columns = 1
 
     legend_items = length(shock_idx) + 3 + pruning
@@ -725,7 +835,7 @@ function plot_model_estimates!(𝓂::ℳ,
     estimate_color = :navy
 
     data_color = :orangered
-
+    
     args_and_kwargs = Dict(:run_id => length(model_estimates_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
                            :label => label,
@@ -760,20 +870,20 @@ function plot_model_estimates!(𝓂::ℳ,
                            :lyapunov_algorithm => lyapunov_algorithm,
                            
                            :decomposition => decomposition,
-                           :variables_to_plot => variables_to_plot,
+                           :variables_to_plot => variables_to_plot[var_idx, :],
                            :data_in_deviations => data_in_deviations,
                            :shocks_to_plot => shocks_to_plot,
                            :reference_steady_state => reference_steady_state[var_idx],
-                           :variable_names => variable_names,
-                           :shock_names => shock_names,
-                           :x_axis => x_axis
+                           :variable_names => variable_names_display,
+                           :shock_names => shock_names_display,
+                           :x_axis => x_axis,
+                           :rename_dictionary => processed_rename_dictionary
                            )
 
     no_duplicate = all(
         !(all((
             get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
-            # get(dict, :data, nothing) == args_and_kwargs[:data],
-            # get(dict, :filter, nothing) == args_and_kwargs[:filter],
+            get(dict, :rename_dictionary, nothing) == args_and_kwargs[:rename_dictionary],
             # get(dict, :warmup_iterations, nothing) == args_and_kwargs[:warmup_iterations],
             # get(dict, :smooth, nothing) == args_and_kwargs[:smooth],
             all(k == :data ? collect(get(dict, k, nothing)) == collect(get(args_and_kwargs, k, nothing)) : get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
@@ -819,7 +929,6 @@ function plot_model_estimates!(𝓂::ℳ,
         end
     end
 
-
     annotate_ss = Vector{Pair{String, Any}}[]
 
     annotate_ss_page = Pair{String,Any}[]
@@ -857,6 +966,29 @@ function plot_model_estimates!(𝓂::ℳ,
         push!(annotate_diff_input, "Data" => ["#$i" for i in data_idx])
     end
 
+    rename_idx = Int[]
+
+    if haskey(diffdict, :rename_dictionary)
+        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
+        unique_dicts = unique(non_nothing_dicts)
+
+        for init in diffdict[:rename_dictionary]
+            if isnothing(init) || length(init) == 0
+                push!(rename_idx, 0)
+                continue
+            end
+
+            for (i,u) in enumerate(unique_dicts)
+                if u == init
+                    push!(rename_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
+    end
+
     common_axis = mapreduce(k -> k[:x_axis], intersect, model_estimates_active_plot_container)
 
     if length(common_axis) > 0
@@ -872,6 +1004,7 @@ function plot_model_estimates!(𝓂::ℳ,
                             :tol, :label, #:presample_periods,
                             :shocks, :shock_names,
                             :variables, :variable_names,
+                            :rename_dictionary,
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
                         ]
                     )
@@ -894,7 +1027,7 @@ function plot_model_estimates!(𝓂::ℳ,
     
     joint_shocks = OrderedSet{String}()
     joint_variables = OrderedSet{String}()
-
+    
     for (i,k) in enumerate(model_estimates_active_plot_container)
         StatsPlots.plot!(legend_plot,
                         [NaN],
@@ -902,10 +1035,10 @@ function plot_model_estimates!(𝓂::ℳ,
                         legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
                         label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
 
-        foreach(n -> push!(joint_variables, String(n)), k[:variable_names] isa AbstractVector ? k[:variable_names] : (k[:variable_names],))
-        foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractVector ? k[:shock_names] : (k[:shock_names],))
+        foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
+        foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
     end
-    
+
     if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
         for (i,k) in enumerate(model_estimates_active_plot_container)
             if length(data_idx) > 0
@@ -1087,9 +1220,11 @@ function plot_model_estimates!(𝓂::ℳ,
 
                 obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-                var_idx = findfirst(==(var), k[:variable_names])
+                obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
 
-                if var ∈ string.(obs_symbols)
+                var_indx = findfirst(==(var), k[:variable_names])
+
+                if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
                     if common_axis == []
                         idx = 1:length(k[:x_axis])
                     else
@@ -1097,39 +1232,40 @@ function plot_model_estimates!(𝓂::ℳ,
                     end
 
                     data_in_deviations = fill(NaN, length(combined_x_axis))
-                    data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols)), periods]
+                    data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)), periods]
                     # data_in_deviations[idx][1:k[:presample_periods]] .= NaN
 
                     StatsPlots.plot!(p,
                         combined_x_axis,
-                        data_in_deviations .+ k[:reference_steady_state][var_idx],
+                        data_in_deviations .+ k[:reference_steady_state][var_indx],
                         label = "",
                         color = pal[length(model_estimates_active_plot_container) + i]
                         )
                 end
             end
         else
-            k = model_estimates_active_plot_container[1]
+            for k in model_estimates_active_plot_container
+                periods = min_presample_periods + 1:size(k[:data], 2)
 
-            periods = min_presample_periods + 1:size(k[:data], 2)
+                obs_axis = collect(axiskeys(k[:data],1))
 
-            obs_axis = collect(axiskeys(k[:data],1))
+                obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-            obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+                obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
 
-            var_idx = findfirst(==(var), k[:variable_names]) 
+                var_indx = findfirst(==(var), k[:variable_names]) 
 
-            if var ∈ string.(obs_symbols)
-                data_in_deviations = k[:data_in_deviations][indexin([var], string.(obs_symbols)),:]
-                data_in_deviations[1:k[:presample_periods]] .= NaN
-                
-                StatsPlots.plot!(p,
-                    combined_x_axis,
-                    data_in_deviations[periods] .+ k[:reference_steady_state][var_idx],
-                    label = "",
-                    color = data_color
+                if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
+                    data_in_deviations = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)),:]
+                    data_in_deviations[1:k[:presample_periods]] .= NaN
+                    
+                    StatsPlots.plot!(p,
+                        combined_x_axis,
+                        data_in_deviations[periods] .+ k[:reference_steady_state][var_indx],
+                        label = "",
+                        color = data_color
                     )
-
+                end
             end
         end
 
@@ -1310,6 +1446,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $PLOTS_PER_PAGE®
 - $PLOT_ATTRIBUTES®
 - $LABEL®
+- $RENAME_DICTIONARY®
 - $QME®
 - $SYLVESTER®
 - $TOLERANCES®
@@ -1360,6 +1497,7 @@ function plot_irf(𝓂::ℳ;
                     generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
+                    rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                     plot_attributes::Dict = Dict(),
                     verbose::Bool = DEFAULT_VERBOSE,
                     tol::Tolerances = Tolerances(),
@@ -1473,16 +1611,37 @@ function plot_irf(𝓂::ℳ;
     end
 
     if shocks == :simulate
-        shock_names = ["simulation"]
+        shock_names_display = ["simulation"]
     elseif shocks == :none
-        shock_names = ["no_shock"]
+        shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
-        shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx])
+        shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.exo[s], rename_dictionary)) for s in shock_idx]
+        @assert length(shock_names_display) == length(unique(shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+        # Sort shocks alphabetically by display name
+        if length(shock_idx) > 1
+            shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
+            shock_idx = shock_idx[shock_sort_perm]
+            shock_names_display = shock_names_display[shock_sort_perm]
+        end
     else
-        shock_names = ["shock_matrix"]
+        shock_names_display = ["shock_matrix"]
     end
     
-    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
+    # Create display names and sort alphabetically
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.var[v], rename_dictionary)) for v in var_idx]
+    @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
+    var_idx = var_idx[var_sort_perm]
+    variable_names_display = variable_names_display[var_sort_perm]
+    
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+    Y = Y[var_sort_perm, :, :]
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
 
     while length(irf_active_plot_container) > 0
         pop!(irf_active_plot_container)
@@ -1521,8 +1680,9 @@ function plot_irf(𝓂::ℳ;
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state[var_idx],
-                           :variable_names => variable_names,
-                           :shock_names => shock_names
+                           :variable_names => variable_names_display,
+                           :shock_names => shock_names_display,
+                           :rename_dictionary => processed_rename_dictionary
                            )
     
     push!(irf_active_plot_container, args_and_kwargs)
@@ -1553,7 +1713,7 @@ function plot_irf(𝓂::ℳ;
             SS = reference_steady_state[v]
 
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
-                variable_name = variable_names[i]
+                variable_name = variable_names_display[i]
 
                 push!(pp, standard_subplot(Y[i,:,shock], SS, variable_name, gr_back, pal = pal))
 
@@ -1569,8 +1729,8 @@ function plot_irf(𝓂::ℳ;
                         shock_string = ""
                         shock_name = "no_shock"
                     elseif shocks isa Union{Symbol_input,String_input}
-                        shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                        shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                        shock_string = ": " * shock_names_display[shock]
+                        shock_name = shock_names_display[shock]
                     else
                         shock_string = "Series of shocks"
                         shock_name = "shock_matrix"
@@ -1605,8 +1765,8 @@ function plot_irf(𝓂::ℳ;
                 shock_string = ""
                 shock_name = "no_shock"
             elseif shocks isa Union{Symbol_input,String_input}
-                shock_string = ": " * replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
-                shock_name = replace_indices_in_symbol(𝓂.timings.exo[shock_idx[shock]])
+                shock_string = ": " * shock_names_display[shock]
+                shock_name = shock_names_display[shock]
             else
                 shock_string = "Series of shocks"
                 shock_name = "shock_matrix"
@@ -1634,10 +1794,10 @@ end
 
 function standard_subplot(irf_data::AbstractVector{S}, 
                             steady_state::S, 
-                            variable_name::String, 
+                            variable_name::R, 
                             gr_back::Bool;
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
-                            xvals = 1:length(irf_data)) where S <: AbstractFloat
+                            xvals = 1:length(irf_data)) where {S <: AbstractFloat, R <: Union{String, Symbol}}
     can_dual_axis = gr_back && all((irf_data .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
     
     xrotation = length(string(xvals[1])) > 5 ? 30 : 0
@@ -1683,12 +1843,12 @@ end
 function standard_subplot(::Val{:compare}, 
                             irf_data::Vector{<:AbstractVector{S}}, 
                             steady_state::Vector{S}, 
-                            variable_name::String, 
+                            variable_name::R, 
                             gr_back::Bool, 
                             same_ss::Bool; 
                             xvals = 1:maximum(length.(irf_data)),
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
-                            transparency::Float64 = DEFAULT_TRANSPARENCY) where S <: AbstractFloat
+                            transparency::Float64 = DEFAULT_TRANSPARENCY) where {S <: AbstractFloat, R <: Union{String, Symbol}}
     plot_dat = []
     plot_ss = 0
     
@@ -1817,8 +1977,8 @@ function standard_subplot(::Val{:stack},
                     sum(x -> isfinite(x) ? x : 0.0, plot_data, dims = 2), 
                     color = color_total, 
                     label = "",
-                        xrotation = xrotation)
-
+                    xrotation = xrotation)
+                        
     chosen_xticks = StatsPlots.xticks(p)
 
     p = StatsPlots.groupedbar(typeof(plot_data) <: AbstractVector ? hcat(plot_data) : plot_data,
@@ -1841,7 +2001,13 @@ function standard_subplot(::Val{:stack},
     else
         idxs = indexin(chosen_xticks[1][2], string.(xvals))
 
-        replace!(idxs, nothing => 0)
+        if isnothing(idxs[1])
+            idxs[1] = 0
+        end
+
+        if isnothing(idxs[end])
+            idxs[end] = idxs[end-1] + (idxs[end-1] - idxs[end-2])
+        end
 
         StatsPlots.xticks!(p, Int.(idxs), chosen_xticks[1][2])
         # StatsPlots.xticks!(p, chosen_xticks_bar[1][1], chosen_xticks_bar[1][2])
@@ -1917,6 +2083,7 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 - $INITIAL_STATE®
 - $IGNORE_OBC®
 - $LABEL®
+- $RENAME_DICTIONARY®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -2003,6 +2170,7 @@ function plot_irf!(𝓂::ℳ;
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                     plot_type::Symbol = DEFAULT_PLOT_TYPE,
+                    rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                     plot_attributes::Dict = Dict(),
                     transparency::Float64 = DEFAULT_TRANSPARENCY,
                     verbose::Bool = DEFAULT_VERBOSE,
@@ -2115,16 +2283,36 @@ function plot_irf!(𝓂::ℳ;
     end
 
     if shocks == :simulate
-        shock_names = ["simulation"]
+        shock_names_display = ["simulation"]
     elseif shocks == :none
-        shock_names = ["no_shock"]
+        shock_names_display = ["no_shock"]
     elseif shocks isa Union{Symbol_input,String_input}
-        shock_names = replace_indices_in_symbol.(𝓂.timings.exo[shock_idx])
+        shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.exo[s], rename_dictionary)) for s in shock_idx]
+        # Sort shocks alphabetically by display name
+        if length(shock_idx) > 1
+            shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
+            shock_idx = shock_idx[shock_sort_perm]
+            shock_names_display = shock_names_display[shock_sort_perm]
+        end
     else
-        shock_names = ["shock_matrix"]
+        shock_names_display = ["shock_matrix"]
     end
     
-    variable_names = replace_indices_in_symbol.(𝓂.timings.var[var_idx])
+    # Create display names and sort alphabetically
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.var[v], rename_dictionary)) for v in var_idx]
+    @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
+    var_idx = var_idx[var_sort_perm]
+    variable_names_display = variable_names_display[var_sort_perm]
+    Y = Y[var_sort_perm, :, :]
+
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
 
     args_and_kwargs = Dict(:run_id => length(irf_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
@@ -2158,14 +2346,16 @@ function plot_irf!(𝓂::ℳ;
                            :sylvester_algorithm => sylvester_algorithm,
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state[var_idx],
-                           :variable_names => variable_names,
-                           :shock_names => shock_names
+                           :variable_names => variable_names_display,
+                           :shock_names => shock_names_display,
+                           :rename_dictionary => processed_rename_dictionary
                            )
 
     no_duplicate = all(
         !(all((
             get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
             get(dict, :shock_names, nothing) == args_and_kwargs[:shock_names],
+            get(dict, :rename_dictionary, nothing) == args_and_kwargs[:rename_dictionary],
             get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
             get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
             all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES),[:label]))
@@ -2239,7 +2429,7 @@ function plot_irf!(𝓂::ℳ;
         seen     = [] # distinct non-trivial normalised matrices
         next_idx = 0
 
-        for x in shcks
+        for (i,x) in enumerate(shcks)
             if x === nothing
                 push!(labels, "")
             elseif typeof(x) <: AbstractMatrix
@@ -2253,12 +2443,12 @@ function plot_irf!(𝓂::ℳ;
                 
                 push!(labels, "Shock Matrix #$(idx)")
 
-            elseif x isa AbstractVector
+            elseif x isa AbstractVector || x isa Tuple
                 # Pass through vector entries, flatten into labels
-                push!(labels, "[" * join(string.(x), ", ") * "]")
+                push!(labels, "[" * join(string.(apply_custom_name.(x, Ref(Dict(irf_active_plot_container[i][:rename_dictionary])))), ", ") * "]")
             else
                 # Pass through scalar names
-                push!(labels, string(x))
+                push!(labels, string(apply_custom_name(x, Dict(irf_active_plot_container[i][:rename_dictionary]))))
             end
         end
         
@@ -2298,6 +2488,29 @@ function plot_irf!(𝓂::ℳ;
         push!(annotate_diff_input, "Initial state" => labels)
     end
     
+    rename_idx = Int[]
+
+    if haskey(diffdict, :rename_dictionary)
+        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
+        unique_dicts = unique(non_nothing_dicts)
+
+        for init in diffdict[:rename_dictionary]
+            if isnothing(init) || length(init) == 0
+                push!(rename_idx, 0)
+                continue
+            end
+
+            for (i,u) in enumerate(unique_dicts)
+                if u == init
+                    push!(rename_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
+    end
+
     same_shock_direction = true
     
     for k in setdiff(keys(args_and_kwargs), 
@@ -2305,6 +2518,7 @@ function plot_irf!(𝓂::ℳ;
                             :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :label,
                             :shocks, :shock_names,
                             :variables, :variable_names,
+                            :rename_dictionary,
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
                         ]
                     )
@@ -2318,11 +2532,7 @@ function plot_irf!(𝓂::ℳ;
         end
     end
 
-    # if haskey(diffdict, :shock_names)
-    #     if !all(length.(diffdict[:shock_names]) .== 1)
-    #         push!(annotate_diff_input, "Shock name" => map(x->x[1], diffdict[:shock_names]))
-    #     end
-    # end
+
 
     legend_plot = StatsPlots.plot(framestyle = :none, 
                                     legend = :inside, 
@@ -2351,8 +2561,8 @@ function plot_irf!(𝓂::ℳ;
                             label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
 
-        foreach(n -> push!(joint_variables, String(n)), k[:variable_names] isa AbstractVector ? k[:variable_names] : (k[:variable_names],))
-        foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractVector ? k[:shock_names] : (k[:shock_names],))
+        foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
+        foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
 
         single_shock_per_irf = single_shock_per_irf && length(k[:shock_names]) == 1
 
@@ -2379,8 +2589,8 @@ function plot_irf!(𝓂::ℳ;
             not_zero_anywhere = false
 
             for k in irf_active_plot_container
-                var_idx = findfirst(==(var), k[:variable_names])
-                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), k[:shock_names])
+                var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
+                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), apply_custom_name.(k[:shock_names], Ref(Dict(k[:rename_dictionary]))))
                 
                 if isnothing(var_idx) || isnothing(shock_idx)
                     # If the variable or shock is not present in the current irf_active_plot_container,
@@ -2407,8 +2617,8 @@ function plot_irf!(𝓂::ℳ;
             Ys = AbstractVector{eltype(irf_active_plot_container[1][:plot_data])}[]
 
             for k in irf_active_plot_container
-                var_idx = findfirst(==(var), k[:variable_names])
-                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), k[:shock_names])
+                var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
+                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), apply_custom_name.(k[:shock_names], Ref(Dict(k[:rename_dictionary]))))
 
                 if isnothing(var_idx) || isnothing(shock_idx)
                     # If the variable or shock is not present in the current irf_active_plot_container,
@@ -2948,6 +3158,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PLOT_ATTRIBUTES®
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
+- $RENAME_DICTIONARY®
 - $QME®
 - $LYAPUNOV®
 - $TOLERANCES®
@@ -2995,6 +3206,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 save_plots_name::Union{String, Symbol} = "fevd",
                                                 save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                                 plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE, 
+                                                rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                                                 plot_attributes::Dict = Dict(),
                                                 max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
                                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
@@ -3040,7 +3252,19 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
 
     vars_to_plot = intersect(axiskeys(fevds)[1],𝓂.timings.var[var_idx])
     
+    # Sort variables alphabetically by display name
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in vars_to_plot]
+    @assert length(variable_names_display) == length(unique(variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    vars_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
+    vars_to_plot = vars_to_plot[vars_sort_perm]
+    
     shocks_to_plot = axiskeys(fevds)[2]
+    
+    # Sort shocks alphabetically by display name
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in shocks_to_plot]
+    @assert length(shock_names_display) == length(unique(shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+    shocks_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
+    shocks_to_plot = shocks_to_plot[shocks_sort_perm]
 
     legend_columns = 1
 
@@ -3073,18 +3297,18 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     for k in vars_to_plot
         if gr_back
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
-            title = replace_indices_in_symbol(k), 
+            title = apply_custom_name(k, rename_dictionary), 
             bar_position = :stack,
             color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
             linecolor = :transparent,
             legend = :none))
         else
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
-            title = replace_indices_in_symbol(k), 
+            title = apply_custom_name(k, rename_dictionary), 
             bar_position = :stack, 
             color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
             linecolor = :transparent,
-            label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot))))
+            label = reshape(string.([apply_custom_name(s, rename_dictionary) for s in shocks_to_plot]),1,length(shocks_to_plot))))
         end
 
         if !(plot_count % plots_per_page == 0)
@@ -3095,7 +3319,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             ppp = StatsPlots.plot(pp...; attributes...)
             
             pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
-                                label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
+                                label = reshape(string.([apply_custom_name(s, rename_dictionary) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
                                 linewidth = 0 , 
                                 linecolor = :transparent,
                                 framestyle = :none, 
@@ -3128,12 +3352,12 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         ppp = StatsPlots.plot(pp...; attributes...)
 
         pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
-                            label = reshape(string.(replace_indices_in_symbol.(shocks_to_plot)),1,length(shocks_to_plot)), 
+                            label = reshape(string.([apply_custom_name(s, rename_dictionary) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
                             linewidth = 0 , 
                             linecolor = :transparent,
                             framestyle = :none, 
                             color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
-                            legend = :inside, 
+                            legend = :inside,
                             legend_columns = legend_columns)
 
         p = StatsPlots.plot(ppp,pp, 
@@ -3199,6 +3423,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - `save_plots_name` [Default: `"solution"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
 - $PLOT_ATTRIBUTES®
+- $RENAME_DICTIONARY®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -3251,6 +3476,7 @@ function plot_solution(𝓂::ℳ,
                         save_plots_name::Union{String, Symbol} = "solution",
                         save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                         plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
+                        rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                         plot_attributes::Dict = Dict(),
                         verbose::Bool = DEFAULT_VERBOSE,
                         tol::Tolerances = Tolerances(),
@@ -3307,13 +3533,26 @@ function plot_solution(𝓂::ℳ,
 
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
-    full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
+    full_SS = [s ∈ 𝓂.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
+
+    # Sort variables alphabetically by display name
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in vars_to_plot]
+    vars_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
+    vars_to_plot = vars_to_plot[vars_sort_perm]
+
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
@@ -3336,7 +3575,7 @@ function plot_solution(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    full_SS_current = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+    full_SS_current = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     # Get NSSS (first order steady state) for reference
     NSSS_SS = algorithm == :first_order ? relevant_SS : get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
@@ -3345,7 +3584,7 @@ function plot_solution(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0 : NSSS_SS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
     SSS_delta = collect(NSSS - full_SS_current)
 
@@ -3397,9 +3636,10 @@ function plot_solution(𝓂::ℳ,
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
-                           :full_SS_current => full_SS_current,
+                           :full_SS_current => full_SS_current[indexin(vars_to_plot, 𝓂.var)],
                            :algorithm_label => labels[algorithm][1],
-                           :ss_label => labels[algorithm][2])
+                           :ss_label => labels[algorithm][2],
+                           :rename_dictionary => processed_rename_dictionary)
 
     push!(solution_active_plot_container, args_and_kwargs)
 
@@ -3494,7 +3734,7 @@ function _plot_solution_from_container(;
             # 2. Group the original vector by :model_name
             grouped_by_model = Dict{Any, Vector{Dict}}()
 
-            for d in solution_active_plot_container[1:end-1]
+            for d in solution_active_plot_container#[1:end-1]
                 model = d[:model_name]
                 d_sub = Dict(k => d[k] for k in setdiff(keys(solution_active_plot_container[end]), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
                 push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
@@ -3549,7 +3789,30 @@ function _plot_solution_from_container(;
             push!(annotate_diff_input, String(param) => result)
         end
     end
-    
+   
+    rename_idx = Int[]
+
+    if haskey(diffdict, :rename_dictionary)
+        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
+        unique_dicts = unique(non_nothing_dicts)
+
+        for init in diffdict[:rename_dictionary]
+            if isnothing(init) || length(init) == 0
+                push!(rename_idx, 0)
+                continue
+            end
+
+            for (i,u) in enumerate(unique_dicts)
+                if u == init
+                    push!(rename_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
+    end 
+
     # Add ignore_obc if different
     if haskey(diffdict, :ignore_obc)
         push!(annotate_diff_input, "Ignore OBC" => reduce(vcat, diffdict[:ignore_obc]))
@@ -3649,7 +3912,7 @@ function _plot_solution_from_container(;
             
             # Plot line for each container with this state
             for (i, container) in enumerate(solution_active_plot_container)
-                if container[:state] == state && haskey(container[:variable_output], k)
+                if container[:state] == state && haskey(container[:variable_output], k) && container[:has_impact][k]
                     # Find state index in vars_to_plot
                     state_idx = findfirst(==(state), container[:vars_to_plot])
                     if !isnothing(state_idx)
@@ -3669,7 +3932,7 @@ function _plot_solution_from_container(;
             
             # Plot SS markers for each container with this state
             for (i, container) in enumerate(solution_active_plot_container)
-                if container[:state] == state && haskey(container[:variable_output], k)
+                if container[:state] == state && haskey(container[:variable_output], k) && container[:has_impact][k]
                     # Get state and variable indices
                     state_idx = findfirst(==(state), container[:vars_to_plot])
                     var_idx = findfirst(==(k), container[:vars_to_plot])
@@ -3808,6 +4071,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - `save_plots_name` [Default: `"solution"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
 - $PLOT_ATTRIBUTES®
+- $RENAME_DICTIONARY®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -3862,6 +4126,7 @@ function plot_solution!(𝓂::ℳ,
                         save_plots_name::Union{String, Symbol} = "solution",
                         save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                         plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
+                        rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                         plot_attributes::Dict = Dict(),
                         verbose::Bool = DEFAULT_VERBOSE,
                         tol::Tolerances = Tolerances(),
@@ -3920,13 +4185,26 @@ function plot_solution!(𝓂::ℳ,
 
     full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
 
-    full_SS = [s ∈ 𝓂.exo_present ? 0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
+    full_SS = [s ∈ 𝓂.exo_present ? 0.0 : SS_and_std[:non_stochastic_steady_state](s) for s in full_NSSS]
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
+
+    # Sort variables alphabetically by display name
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in vars_to_plot]
+    vars_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
+    vars_to_plot = vars_to_plot[vars_sort_perm]
+
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
 
     state_range = collect(range(-SS_and_std[:standard_deviation](state), SS_and_std[:standard_deviation](state), 100)) * σ
     
@@ -3944,7 +4222,7 @@ function plot_solution!(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    full_SS_current = [s ∈ 𝓂.exo_present ? 0 : relevant_SS(s) for s in full_NSSS]
+    full_SS_current = [s ∈ 𝓂.exo_present ? 0.0 : relevant_SS(s) for s in full_NSSS]
 
     # Get NSSS (first order steady state) for reference
     NSSS_SS = algorithm == :first_order ? relevant_SS : get_steady_state(𝓂, algorithm = :first_order, return_variables_only = true, derivatives = false,
@@ -3953,7 +4231,7 @@ function plot_solution!(𝓂::ℳ,
                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm = [opts.sylvester_algorithm², opts.sylvester_algorithm³])
 
-    NSSS = [s ∈ 𝓂.exo_present ? 0 : NSSS_SS(s) for s in full_NSSS]
+    NSSS = [s ∈ 𝓂.exo_present ? 0.0 : NSSS_SS(s) for s in full_NSSS]
 
     SSS_delta = collect(NSSS - full_SS_current)
 
@@ -4005,9 +4283,10 @@ function plot_solution!(𝓂::ℳ,
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
-                           :full_SS_current => full_SS_current,
+                           :full_SS_current => full_SS_current[indexin(vars_to_plot, 𝓂.var)],
                            :algorithm_label => labels[algorithm][1],
-                           :ss_label => labels[algorithm][2])
+                           :ss_label => labels[algorithm][2],
+                           :rename_dictionary => processed_rename_dictionary)
 
     push!(solution_active_plot_container, args_and_kwargs)
 
@@ -4049,6 +4328,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SAVE_PLOTS_PATH®
 - `save_plots_name` [Default: `"conditional_forecast"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
 - $PLOTS_PER_PAGE®
+- $RENAME_DICTIONARY®
 - $PLOT_ATTRIBUTES®
 - $LABEL®
 - $QME®
@@ -4130,6 +4410,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     save_plots_name::Union{String, Symbol} = "conditional_forecast",
                                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE,
+                                    rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                                     plot_attributes::Dict = Dict(),
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
@@ -4178,6 +4459,8 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
 
+    full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : full_SS
+
     var_names = axiskeys(Y,1)   
 
     var_names = var_names isa Vector{String} ? var_names .|> replace_indices : var_names
@@ -4202,12 +4485,22 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
-    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in var_names]
+    if length(intersect(𝓂.aux,full_var_SS)) > 0
+        for v in 𝓂.aux
+            idx = indexin([v],full_var_SS)
+            if !isnothing(idx[1])
+                full_var_SS[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+            end
+        end
+        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    end
+
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS]
 
     var_length = length(full_SS) - 𝓂.timings.nExo
-
+    
     if conditions isa SparseMatrixCSC{Float64}
-        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(full_var_SS)
 
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
         nzs = findnz(conditions)
@@ -4216,7 +4509,7 @@ function plot_conditional_forecast(𝓂::ℳ,
         end
         conditions = cond_tmp
     elseif conditions isa Matrix{Union{Nothing,Float64}}
-        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
+        @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(full_var_SS)
 
         cond_tmp = Matrix{Union{Nothing,Float64}}(undef,var_length,periods)
         cond_tmp[:,axes(conditions,2)] = conditions
@@ -4257,7 +4550,49 @@ function plot_conditional_forecast(𝓂::ℳ,
     while length(conditional_forecast_active_plot_container) > 0
         pop!(conditional_forecast_active_plot_container)
     end
-    
+
+    # Create display names for variables and shocks
+    full_variable_names_display = [(apply_custom_name(v, rename_dictionary)) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    full_shock_names_display = [(apply_custom_name(s, rename_dictionary)) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+
+    @assert length(unique([v for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)])) == length(unique(full_variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    @assert length(unique([v for v in full_var_SS if v ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)])) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+
+    # Get sorting permutations for variables and shocks separately
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
+    shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
+
+    # Get sorting permutations for variables and shocks separately
+    full_var_sort_perm = sortperm(full_variable_names_display, by = normalize_superscript)
+    full_shock_sort_perm = sortperm(full_shock_names_display, by = normalize_superscript)
+
+    # Process rename dictionary to only include relevant keys in sorted order
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
+
+    # Combine sorted indices
+    combined_sort_perm = vcat(var_sort_perm, (length(variable_names_display) .+ (1:length(shock_names_display)))[shock_sort_perm])
+    full_combined_sort_perm = vcat(full_var_sort_perm, (length(full_variable_names_display) .+ (1:length(full_shock_names_display)))[full_shock_sort_perm])
+
+    # Apply the combined permutation to all relevant arrays
+    Y = Y[combined_sort_perm, :]
+    conditions = conditions[full_var_sort_perm, :]
+    shocks = shocks[full_shock_sort_perm, :]
+    reference_steady_state = reference_steady_state[full_combined_sort_perm]
+    var_idx = var_idx[combined_sort_perm]
+
+    # Get the sorted display names
+    sorted_variable_names_display = sort(variable_names_display)
+    sorted_shock_names_display = sort(shock_names_display)
+
     args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
                            :label => label,
@@ -4269,6 +4604,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                            :periods => periods_input,
                            :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
                            :variables => variables,
+                           :var_idx => var_idx,
                            :algorithm => algorithm,
 
                            :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
@@ -4287,8 +4623,9 @@ function plot_conditional_forecast(𝓂::ℳ,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
-                           :variable_names => var_names[1:end - 𝓂.timings.nExo],
-                           :shock_names => var_names[end - 𝓂.timings.nExo + 1:end]
+                           :variable_names => sorted_variable_names_display, # Use the new sorted variable names
+                           :shock_names => sorted_shock_names_display,       # Use the new sorted shock names
+                           :rename_dictionary => processed_rename_dictionary
                            )
     
     push!(conditional_forecast_active_plot_container, args_and_kwargs)
@@ -4315,13 +4652,13 @@ function plot_conditional_forecast(𝓂::ℳ,
     end
 
     for (i,v) in enumerate(var_idx)
-        SS = reference_steady_state[i]
+        SS = reference_steady_state[v]
 
         if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[v,:] .!= nothing)) > 0
-         
+
             cond_idx = findall(vcat(conditions,shocks)[v,:] .!= nothing)
                 
-            p = standard_subplot(Y[i,:], SS, replace_indices_in_symbol(full_SS[v]), gr_back, pal = pal)
+            p = standard_subplot(Y[i,:], SS, apply_custom_name(full_SS[v], rename_dictionary), gr_back, pal = pal)
             
             if length(cond_idx) > 0
                 StatsPlots.scatter!(p,
@@ -4429,6 +4766,7 @@ This function shares most of the signature and functionality of [`plot_condition
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
 - $ALGORITHM®
 - $LABEL®
+- $RENAME_DICTIONARY®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -4521,6 +4859,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     plot_attributes::Dict = Dict(),
                                     plot_type::Symbol = DEFAULT_PLOT_TYPE,
                                     transparency::Float64 = DEFAULT_TRANSPARENCY,
+                                    rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
@@ -4570,6 +4909,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
 
+    full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : full_SS
+
     var_names = axiskeys(Y,1)   
 
     var_names = var_names isa Vector{String} ? var_names .|> replace_indices : var_names
@@ -4594,10 +4935,20 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
-    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in var_names]
+    if length(intersect(𝓂.aux,full_var_SS)) > 0
+        for v in 𝓂.aux
+            idx = indexin([v],full_var_SS)
+            if !isnothing(idx[1])
+                full_var_SS[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+            end
+        end
+        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    end
+
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS]
 
     var_length = length(full_SS) - 𝓂.timings.nExo
-
+    
     if conditions isa SparseMatrixCSC{Float64}
         @assert var_length == size(conditions,1) "Number of rows of condition argument and number of model variables must match. Input to conditions has " * repr(size(conditions,1)) * " rows but the model has " * repr(var_length) * " variables (including auxiliary variables): " * repr(var_names)
 
@@ -4646,6 +4997,48 @@ function plot_conditional_forecast!(𝓂::ℳ,
         shocks = Matrix{Union{Nothing,Float64}}(undef,length(𝓂.exo),periods)
     end
 
+    # Create display names for variables and shocks
+    full_variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    full_shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in full_var_SS if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+
+    @assert length(unique([v for v in full_var_SS if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)])) == length(unique(full_variable_names_display)) "Renaming variables resulted in non-unique names. Please check the `rename_dictionary`."
+    @assert length(unique([v for v in full_var_SS if v ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)])) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
+
+    variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(Symbol(replace(string(s), "₍ₓ₎"=>"")), rename_dictionary)) * "₍ₓ₎" for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+
+    # Get sorting permutations for variables and shocks separately
+    var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
+    shock_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
+
+    # Get sorting permutations for variables and shocks separately
+    full_var_sort_perm = sortperm(full_variable_names_display, by = normalize_superscript)
+    full_shock_sort_perm = sortperm(full_shock_names_display, by = normalize_superscript)
+
+    # Process rename dictionary to only include relevant keys in sorted order
+    relevant_keys = [k for k in keys(rename_dictionary) if (k isa String ? replace_indices(k) : k) in vcat(𝓂.timings.var, 𝓂.timings.exo)] |> sort
+
+    processed_rename_dictionary = Any[]
+
+    for k in relevant_keys
+        push!(processed_rename_dictionary, k => rename_dictionary[k])
+    end
+
+    # Combine sorted indices
+    combined_sort_perm = vcat(var_sort_perm, (length(variable_names_display) .+ (1:length(shock_names_display)))[shock_sort_perm])
+    full_combined_sort_perm = vcat(full_var_sort_perm, (length(full_variable_names_display) .+ (1:length(full_shock_names_display)))[full_shock_sort_perm])
+
+    # Apply the combined permutation to all relevant arrays
+    Y = Y[combined_sort_perm, :]
+    conditions = conditions[full_var_sort_perm, :]
+    shocks = shocks[full_shock_sort_perm, :]
+    reference_steady_state = reference_steady_state[full_combined_sort_perm]
+    var_idx = var_idx[combined_sort_perm]
+
+    # Get the sorted display names
+    sorted_variable_names_display = sort(variable_names_display)
+    sorted_shock_names_display = sort(shock_names_display)
+
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
     total_pal_len = 100
@@ -4665,6 +5058,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                            :periods => periods_input,
                            :parameters => Dict(𝓂.parameters .=> 𝓂.parameter_values),
                            :variables => variables,
+                           :var_idx => var_idx,
                            :algorithm => algorithm,
 
                            :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
@@ -4683,13 +5077,15 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
-                           :variable_names => var_names[1:end - 𝓂.timings.nExo],
-                           :shock_names => var_names[end - 𝓂.timings.nExo + 1:end]
+                           :variable_names => sorted_variable_names_display, # Use the new sorted variable names
+                           :shock_names => sorted_shock_names_display,       # Use the new sorted shock names
+                           :rename_dictionary => processed_rename_dictionary
                            )
                            
     no_duplicate = all(
         !(all((
             get(dict, :parameters, nothing) == args_and_kwargs[:parameters],
+            get(dict, :rename_dictionary, nothing) == args_and_kwargs[:rename_dictionary],
             get(dict, :conditions, nothing) == args_and_kwargs[:conditions],
             get(dict, :shocks, nothing) == args_and_kwargs[:shocks],
             get(dict, :initial_state, nothing) == args_and_kwargs[:initial_state],
@@ -4879,13 +5275,37 @@ function plot_conditional_forecast!(𝓂::ℳ,
         push!(annotate_diff_input, "Initial state" => labels)
     end
 
+    rename_idx = Int[]
+
+    if haskey(diffdict, :rename_dictionary)
+        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
+        unique_dicts = unique(non_nothing_dicts)
+
+        for init in diffdict[:rename_dictionary]
+            if isnothing(init) || length(init) == 0
+                push!(rename_idx, 0)
+                continue
+            end
+
+            for (i,u) in enumerate(unique_dicts)
+                if u == init
+                    push!(rename_idx,i)
+                    continue
+                end
+            end
+        end
+
+        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
+    end
+
     same_shock_direction = true
     
     for k in setdiff(keys(args_and_kwargs), 
                         [
                             :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :conditions, :conditions_in_levels, :label,
                             :shocks, :shock_names,
-                            :variables, :variable_names,
+                            :variables, :variable_names, :var_idx,
+                            :rename_dictionary,
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
                         ]
                     )
@@ -4933,9 +5353,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
                             label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
 
-        foreach(n -> push!(joint_variables, String(n)), k[:variable_names] isa AbstractVector ? k[:variable_names] : (k[:variable_names],))
-        foreach(n -> push!(joint_shocks, String(n)), k[:shock_names] isa AbstractVector ? k[:shock_names] : (k[:shock_names],))
-        
+        foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
+        foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
+
         max_periods = max(max_periods, size(k[:plot_data],2))
     end
     
@@ -4967,13 +5387,13 @@ function plot_conditional_forecast!(𝓂::ℳ,
         not_zero_in_any_cond_fcst = false
 
         for k in conditional_forecast_active_plot_container
-            var_idx = findfirst(==(var), String.(vcat(k[:variable_names], k[:shock_names])))
+            var_idx = findfirst(==(var), String.(apply_custom_name.(vcat(k[:variable_names], k[:shock_names]), Ref(Dict(k[:rename_dictionary])))))
             if isnothing(var_idx)
                 # If the variable or shock is not present in the current conditional_forecast_active_plot_container,
                 # we skip this iteration.
                 continue
             else
-                if any(.!isapprox.(k[:plot_data][var_idx,:], 0, atol = eps(Float32))) || any(!=(nothing), vcat(k[:conditions], k[:shocks])[var_idx, :])
+                if any(.!isapprox.(k[:plot_data][var_idx,:], 0, atol = eps(Float32))) || any(!=(nothing), vcat(k[:conditions], k[:shocks])[k[:var_idx][var_idx], :])
                     not_zero_in_any_cond_fcst = not_zero_in_any_cond_fcst || true
                     # break # If any cond_fcst data is not approximately zero, we set the flag to true.
                 end
@@ -4987,13 +5407,13 @@ function plot_conditional_forecast!(𝓂::ℳ,
             n_subplots -= 1
         end
     end
-
+    
     for var in joint_non_zero_variables
         SSs = eltype(conditional_forecast_active_plot_container[1][:reference_steady_state])[]
         Ys = AbstractVector{eltype(conditional_forecast_active_plot_container[1][:plot_data])}[]
 
         for k in conditional_forecast_active_plot_container
-            var_idx = findfirst(==(var), String.(vcat(k[:variable_names], k[:shock_names])))
+            var_idx = findfirst(==(var), String.(apply_custom_name.(vcat(k[:variable_names], k[:shock_names]), Ref(Dict(k[:rename_dictionary])))))
             if isnothing(var_idx)
                 # If the variable is not present in the current conditional_forecast_active_plot_container,
                 # we skip this iteration.
@@ -5002,7 +5422,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             else
                 dat = fill(NaN, max_periods)
                 dat[1:length(k[:plot_data][var_idx,:])] .= k[:plot_data][var_idx,:]
-                push!(SSs, k[:reference_steady_state][var_idx])
+                push!(SSs, k[:reference_steady_state][k[:var_idx][var_idx]])
                 push!(Ys, dat) # k[:plot_data][var_idx,:])
             end
         end
@@ -5025,16 +5445,15 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
         if plot_type == :compare
             for (i,k) in enumerate(conditional_forecast_active_plot_container)   
-                var_idx = findfirst(==(var), String.(vcat(k[:variable_names], k[:shock_names])))
-                
-                if isnothing(var_idx) continue end
+                var_idx = findfirst(==(var), String.(apply_custom_name.(vcat(k[:variable_names], k[:shock_names]), Ref(Dict(k[:rename_dictionary])))))
 
-                cond_idx = findall(vcat(k[:conditions], k[:shocks])[var_idx,:] .!= nothing)
+                if isnothing(var_idx) continue end
+                cond_idx = findall(vcat(k[:conditions], k[:shocks])[k[:var_idx][var_idx],:] .!= nothing)
                 
                 if length(cond_idx) > 0
-                    SS = k[:reference_steady_state][var_idx]
+                    SS = k[:reference_steady_state][k[:var_idx][var_idx]]
 
-                    vals = vcat(k[:conditions], k[:shocks])[var_idx, cond_idx]
+                    vals = vcat(k[:conditions], k[:shocks])[k[:var_idx][var_idx], cond_idx]
 
                     if k[:conditions_in_levels]
                         vals .-= SS

@@ -1214,7 +1214,7 @@ function get_irf(𝓂::ℳ;
                 generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
                 generalised_irf_warmup_iterations::Int = DEFAULT_GENERALISED_IRF_WARMUP,
                 generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
-                initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
+                initial_state::Union{Vector{Vector{R}},Vector{R}} = DEFAULT_INITIAL_STATE,
                 levels::Bool = false,
                 shock_size::Real = DEFAULT_SHOCK_SIZE,
                 ignore_obc::Bool = DEFAULT_IGNORE_OBC,
@@ -1223,7 +1223,7 @@ function get_irf(𝓂::ℳ;
                 tol::Tolerances = Tolerances(),
                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
+                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray where R <: Real
     # @nospecialize # reduce compile time            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -3062,33 +3062,49 @@ function get_moments(𝓂::ℳ;
         end
 
         if derivatives
-            # Reshape the flattened derivatives back to n x n x p structure
-            n_vars = length(var_idx)
-            n_params = length(param_idx)
-            
-            # Create array to hold covariance and derivatives: n x n x (1 + p)
-            covar_with_derivs = zeros(n_vars, n_vars, 1 + n_params)
-            
-            # First slice is the covariance matrix
+            # Determine dimensions
+            n_full_vars = size(covar_dcmp, 1)        # Full number of variables (n)
+            n_reduced_vars = length(var_idx)         # Reduced number of variables (k)
+            n_params = length(param_idx)             # Number of parameters (p)
+
+            # Pre-allocate array to hold reduced covariance and derivatives: k x k x (1 + p)
+            covar_with_derivs = zeros(n_reduced_vars, n_reduced_vars, 1 + n_params)
+
+            # First slice is the reduced covariance matrix
+            # Take the slice of the covariance matrix
             covar_with_derivs[:, :, 1] = covar_dcmp[var_idx, var_idx]
-            
-            # Subsequent slices are derivatives wrt each parameter
+
+            # Subsequent slices are reduced derivatives wrt each parameter
+            # The key is to reshape the full n_full_vars x n_full_vars derivative
+            # and then take the slice [var_idx, var_idx]
             for i in 1:n_params
-                # dcovariance[:,i] is vectorized, need to reshape to n x n
-                covar_with_derivs[:, :, i+1] = reshape(dcovariance[:, i], n_vars, n_vars)
+                # dcovariance[:,i] is the vectorized full derivative (n_full_vars^2 length)
+                # 1. Reshape to the full n_full_vars x n_full_vars derivative matrix
+                full_deriv_matrix = reshape(dcovariance[:, i], n_full_vars, n_full_vars)
+
+                # 2. Take the reduced slice [var_idx, var_idx] and assign to the pre-allocated array
+                covar_with_derivs[:, :, i+1] = full_deriv_matrix[var_idx, var_idx]
             end
-            
-            # Create axis names
+
+            # ---
+            # Create axis names (unchanged from original)
             if !@isdefined axis3
                 axis3 = vcat(:Covariance, 𝓂.parameters[param_idx])
-            
+
                 if any(x -> contains(string(x), "◖"), axis3)
                     axis3_decomposed = decompose_name.(axis3)
                     axis3 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis3_decomposed]
                 end
             end
-            
-            ret[:covariance] = KeyedArray(covar_with_derivs; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1, Covariance_and_∂covariance∂parameter = axis3)
+            # ---
+
+            # Assign the result
+            # The array is already sliced, so no need for covar_with_derivs[var_idx, var_idx, :]
+            ret[:covariance] = KeyedArray(covar_with_derivs;
+                Variables = axis1,         # Assuming axis1 holds the full variable names
+                𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1,
+                Covariance_and_∂covariance∂parameter = axis3
+            )
         else
             # push!(ret,KeyedArray(covar_dcmp[var_idx, var_idx]; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1))
             ret[:covariance] = KeyedArray(covar_dcmp[var_idx, var_idx]; Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)

@@ -3,6 +3,9 @@
 ## High priority
 
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
+- [ ] make sympy optional (maybe even an extension) and use Symbolics where possible
+- [ ] collect helper function only used in statsplots extension in that script
+- [ ] make package mooncake compatible. write custom pullback functions where necessary (all in one for llh)
 - [ ] print out th OCB shocks as auxilliary shocks
 - [ ] generalised higher order IRF is around mean not SSS. plot mean line?
 - [ ] set irrelevant arguments back to default and inform user
@@ -45,7 +48,6 @@
 - [ ] switch from sympy to Symbolics
 - [ ] optimize second order estim with SW07 or NAWM
 - [ ] optimize third order with smaller model
-- [ ] add argument to plotting functions to replace names in plots (e.g. input a dictionary: Dict(:dinve => "Investment growth"))
 - [ ] programmatic model writing: accept {i}[0] as definition for variable
 - [ ] fix higher order shock finder (3rd order) and check results for pruned second order. are the right state values taken for 1st and second order subprocesses?
 - [ ] take analytical derivatives of NSSS funcs to reduce allocation and speed up the NSSS solver
@@ -137,6 +139,7 @@
 - [ ] weed out SS solver and saved objects
 
 - [x] add to the doc/strings that KeyedArrays are part of the `AxisKeys` package so people can look up how to access elements there. otherwise they might confuse it for a format provided by the package and wouldnt know how to access elements from it
+- [x] add argument to plotting functions to replace names in plots (e.g. input a dictionary: Dict(:dinve => "Investment growth"))
 - [x] implement benchmarks
 - [x] write non allocating version of steady state functions
 - [x] do SVD on matrices before solving first order. idea to solve in lower dimensional subspace. doesn't work as that is the whole point of the solution. what breaks is the X^2 as any transformation of X would have a term in the middle remaining
