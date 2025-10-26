@@ -3678,3 +3678,83 @@ get_residuals = get_non_stochastic_steady_state_residuals
 See [`get_non_stochastic_steady_state_residuals`](@ref)
 """
 check_residuals = get_non_stochastic_steady_state_residuals
+
+
+"""
+$(SIGNATURES)
+Evaluate the dynamic equations of the model and fill the pre-allocated residual vector.
+
+This function provides a convenient interface to evaluate the model's dynamic equations
+at any point in the state space. It is particularly useful for:
+- Verifying that the steady state satisfies the dynamic equations
+- Debugging model specifications
+- Custom solution algorithms
+
+# Arguments
+- `residual`: Pre-allocated vector to store the residuals (modified in-place)
+- `parameters`: Vector of parameter values
+- `calibration_parameters`: Vector of calibration parameter values
+- `past`: Vector of past variable values (t-1)
+- `present`: Vector of present variable values (t)
+- `future`: Vector of future variable values (t+1)
+- `steady_state`: Vector of steady state values
+- `shocks`: Vector of shock values (exogenous variables)
+- `𝓂`: Model object
+
+# Returns
+- Nothing (residuals are filled in the `residual` vector)
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+# Solve and get steady state
+solve!(RBC)
+SS = get_steady_state(RBC)
+
+# Get steady state values for the SS argument
+aux_idx = RBC.solution.perturbation.auxiliary_indices
+SS_for_func = SS[aux_idx.dyn_ss_idx]
+
+# Allocate residual vector (includes both dynamic and calibration equations)
+residual = zeros(length(RBC.dyn_equations) + length(RBC.calibration_equations))
+
+# Calibration parameters (typically zeros if none defined)
+calib_params = zeros(length(RBC.calibration_equations_parameters))
+
+# Evaluate at steady state with zero shocks
+get_dynamic_residuals(residual, RBC.parameter_values, calib_params, SS, SS, SS, SS_for_func, zeros(length(RBC.exo)), RBC)
+
+# Residuals should be near zero at steady state
+maximum(abs.(residual))
+# output
+3.552713678800501e-15
+```
+"""
+function get_dynamic_residuals(residual::Vector{<:Number},
+                               parameters::Vector{<:Number},
+                               calibration_parameters::Vector{<:Number},
+                               past::Vector{<:Number},
+                               present::Vector{<:Number},
+                               future::Vector{<:Number},
+                               steady_state::Vector{<:Number},
+                               shocks::Vector{<:Number},
+                               𝓂::ℳ)
+    𝓂.dyn_equations_func(residual, parameters, calibration_parameters, steady_state, future, present, past, shocks)
+    return nothing
+end
