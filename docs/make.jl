@@ -1,3 +1,18 @@
+# To build loacally:
+# julia> using Pkg
+
+# Activate the docs environment
+# julia> Pkg.activate("docs/")
+
+# Ensure the current branch of the package is used
+# julia> Pkg.develop(path=".")
+
+# Install and resolve all dependencies
+# julia> Pkg.instantiate()
+
+# Build the documentation
+# julia> include("make.jl")
+
 using Documenter
 using MacroModelling
 import Turing, StatsPlots
