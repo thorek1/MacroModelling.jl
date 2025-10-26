@@ -1114,6 +1114,33 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file with a name reflecting the model, the shock, and a sequential index when the number of variables exceeds the plots per page.
 
+### Variable and Shock Renaming
+
+The `rename_dictionary` argument (default: `Dict()`, type: `Dict{Symbol, String}`) maps variable or shock symbols to custom display names in plots. This is particularly useful when comparing models with different variable naming conventions, allowing them to be displayed with consistent labels.
+
+For example, to rename variables for clearer display:
+
+```julia
+plot_irf(Gali_2015_chapter_3_nonlinear,
+    rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"))
+```
+
+This feature is especially valuable when overlaying IRFs from different models. Consider two models with different naming conventions - one using `c` for consumption and another using `C`. The `rename_dictionary` allows harmonizing these names when plotting them together:
+
+```julia
+# First model with lowercase variable names
+plot_irf(model1,
+    shocks = :eps_a,
+    rename_dictionary = Dict(:c => "Consumption", :y => "Output", :r => "Interest Rate"))
+
+# Overlay second model with different naming, mapped to same display names
+plot_irf!(model2,
+    shocks = :e_a,
+    rename_dictionary = Dict(:C => "Consumption", :Y => "Output", :R => "Interest Rate"))
+```
+
+Both models now appear in the plot with consistent, readable labels, making comparison straightforward. Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
+
 ### Verbose Output
 
 The `verbose` argument (default: `false`, type: `Bool`), when `true`, enables verbose output related to solving the model
