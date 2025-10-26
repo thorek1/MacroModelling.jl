@@ -85,7 +85,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock (second order)](../assets/second_order_irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
 
-The most notable difference is that at second order, dynamics are observed for "S", which remains constant at first order (under certainty equivalence). Additionally, the steady state levels change because the stochastic steady state incorporates precautionary behavior (see horizontal lines).
+The most notable difference is that at second order, dynamics are observed for `S`, which remains constant at first order (under certainty equivalence). Additionally, the steady state levels change because the stochastic steady state incorporates precautionary behavior (see horizontal lines).
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -107,7 +107,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock (first vs second order)](../assets/compare_orders_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-The plots now show both solution methods overlaid. The first-order solution is shown in blue, the second-order solution in orange, as indicated in the legend below the plot. Note that the steady state levels can be different for the two solution methods. For variables where the relevant steady state is the same for both methods (e.g., `A`), the level appears on the left axis and percentage deviations on the right axis. For variables where the steady state differs between methods (e.g., "C"), only absolute level deviations (`abs. Δ`) appear on the left axis. The relevant steady state levels are shown in a table below the plot for reference (rounded to help identify differences).
+The plots now show both solution methods overlaid. The first-order solution is shown in blue, the second-order solution in orange, as indicated in the legend below the plot. Note that the steady state levels can be different for the two solution methods. For variables where the relevant steady state is the same for both methods (e.g., `A`), the level appears on the left axis and percentage deviations on the right axis. For variables where the steady state differs between methods (e.g., `C`), only absolute level deviations (`abs. Δ`) appear on the left axis. The relevant steady state levels are shown in a table below the plot for reference (rounded to help identify differences).
 
 Additional solution methods can be added to the same plot:
 
@@ -119,7 +119,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock (multiple orders)](../assets/multiple_orders_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-Note that the pruned third-order solution incorporates time-varying risk and reverses the sign of the response for "MC" and "N". The additional solution appears as another colored line with corresponding entries in both the legend and the steady state table below.
+Note that the pruned third-order solution incorporates time-varying risk and reverses the sign of the response for `MC` and `N`. The additional solution appears as another colored line with corresponding entries in both the legend and the steady state table below.
 
 ### Initial State
 
@@ -141,7 +141,7 @@ Only state variables will have an impact on the IRF. To check which variables ar
 get_state_variables(Gali_2015_chapter_3_nonlinear)
 ```
 
-Now modify the initial state and set "nu" to 0.1:
+Now modify the initial state and set `nu` to 0.1:
 
 ```julia
 init_state(:nu,:,:) .= 0.1
@@ -157,7 +157,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock with custom initial state](../assets/custom_init_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-Note that the example also defines the shock `eps_a` to show how the model reacts to a shock to "A". For more details on the `shocks` argument see the corresponding section.
+Note that the example also defines the shock `eps_a` to show how the model reacts to a shock to `A`. For more details on the `shocks` argument see the corresponding section.
 This shows the difference in the IRF compared to starting from the non-stochastic steady state. Setting `nu` to a higher level effectively combines the effects of shocks to both `nu` and `A`. Since this uses a linear solution, these effects can be separated by stacking the components. Start with the IRF from the initial state as defined above:
 
 ```julia
@@ -178,7 +178,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - stacked initial state and eps_a shock](../assets/stacked_init_irf__Gali_2015_chapter_3_nonlinear__multiple_shocks__1.png)
 
-The two components are shown with labels explained in the table below. The blue line represents the first input (no shock, non-zero initial state), while the red line corresponds to the second input (starting from the steady state with an `eps_a` shock). Both components add up to the solid line that is the same as in the case of combining the "eps_a" shock with the initial state.
+The two components are shown with labels explained in the table below. The blue line represents the first input (no shock, non-zero initial state), while the red line corresponds to the second input (starting from the steady state with an `eps_a` shock). Both components add up to the solid line that is the same as in the case of combining the `eps_a` shock with the initial state.
 
 The same approach works for higher order solutions. Start with the second order solution. First, obtain the initial state in levels from the second order solution:
 
@@ -191,7 +191,7 @@ init_state_2nd = get_irf(Gali_2015_chapter_3_nonlinear,
     algorithm = :second_order)
 ```
 
-Then set "nu" to 0.1:
+Then set `nu` to 0.1:
 
 ```julia
 init_state_2nd(:nu, :, :) .= 0.1
@@ -221,7 +221,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock with initial state (multiple solutions)](../assets/multi_sol_init_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-The legend shows two lines, with their input differences detailed in the table below. The first line corresponds to the initial state used for the first order solution as well as the IRF using the first order solution and the second line corresponds to the initial state used for the second order solution and using the second order solution. Note that the steady states differ between the two solution methods, which also affects the initial states (except for "nu", which is set to 0.1 in both cases). A second table below the first one shows the relevant steady states for both solution methods. Since the relevant steady state of "A" is the same for both methods, the corresponding subplot shows the level on the left axis and percentage deviations on the right axis. For all other variables, the relevant steady state differs between methods, so only absolute level deviations appear (`abs. Δ`) on the left axis, with steady states listed in the table at the bottom.
+The legend shows two lines, with their input differences detailed in the table below. The first line corresponds to the initial state used for the first order solution as well as the IRF using the first order solution and the second line corresponds to the initial state used for the second order solution and using the second order solution. Note that the steady states differ between the two solution methods, which also affects the initial states (except for `nu`, which is set to 0.1 in both cases). A second table below the first one shows the relevant steady states for both solution methods. Since the relevant steady state of `A` is the same for both methods, the corresponding subplot shows the level on the left axis and percentage deviations on the right axis. For all other variables, the relevant steady state differs between methods, so only absolute level deviations appear (`abs. Δ`) on the left axis, with steady states listed in the table at the bottom.
 
 For pruned solution methods the initial state can also be given as multiple state vectors (Vector{Vector{Float64}}). When providing a vector of vectors, values must be specified as differences from the non-stochastic steady state. When providing only one vector, values must be in levels, with the initial state having its full nonlinear effect in the first period. Using a vector of vectors allows setting the pruned higher-order auxiliary state vectors. While this can be useful in some cases, note that these higher-order auxiliary state vectors have only a linear impact on the dynamics. Start by assembling the vector of vectors:
 
@@ -248,7 +248,7 @@ init_states_pruned_3rd_vec = [
 ]
 ```
 
-Then set "nu" to 0.1 in the first order terms. Inspecting `init_state_pruned_3rd_in_diff` shows that "nu" is the 18th variable in the vector:
+Then set `nu` to 0.1 in the first order terms. Inspecting `init_state_pruned_3rd_in_diff` shows that `nu` is the 18th variable in the vector:
 
 ```julia
 init_states_pruned_3rd_vec[1][18] = 0.1
@@ -385,7 +385,7 @@ Only state variables will have an impact on the IRF. To check which variables ar
 get_state_variables(Gali_2015_chapter_3_nonlinear)
 ```
 
-Now modify the initial state and set "nu" to 0.1:
+Now modify the initial state and set `nu` to 0.1:
 
 ```julia
 init_state(:nu, :, :) .= 0.1
@@ -401,7 +401,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - deterministic simulation from initial state](../assets/deterministic_irf__Gali_2015_chapter_3_nonlinear__no_shock__1.png)
 
-Note how this is similar to a shock to "eps_nu" but instead `nu` is set to 0.1 in the initial state and the model evolves deterministically from there. In the title the reference to the shock disappeared as it was set to `:none`.
+Note how this is similar to a shock to `eps_nu` but instead `nu` is set to 0.1 in the initial state and the model evolves deterministically from there. In the title the reference to the shock disappeared as it was set to `:none`.
 
 Shocks can also be compared:
 
@@ -448,7 +448,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - shock series from KeyedArray](../assets/shock_series_irf__Gali_2015_chapter_3_nonlinear__shock_matrix__2.png)
 
-In the title it is now mentioned that the input is a series of shocks and the values of the shock processes Z and `nu` move with the shifted timing and note that the impact of the "eps_z" shock has a - in front of it in the model definition, which is why they both move in the same direction. Note also that the number of periods is prolonged by the number of periods in the shock input. This example defines 3 periods of shocks and the default number of periods is 40, so the result shows 43 periods in total.
+In the title it is now mentioned that the input is a series of shocks and the values of the shock processes Z and `nu` move with the shifted timing and note that the impact of the `eps_z` shock has a - in front of it in the model definition, which is why they both move in the same direction. Note also that the number of periods is prolonged by the number of periods in the shock input. This example defines 3 periods of shocks and the default number of periods is 40, so the result shows 43 periods in total.
 
 The same can be done with a Matrix:
 
@@ -498,7 +498,7 @@ The blue bars correspond to the first shock matrix and the red to the second sho
 ### Simulation Periods
 
 The `periods` parameter specifies the number of periods for which to calculate the output. When a matrix of shocks is provided, this defines how many periods to continue after the shock series.
-To set the number of periods to 10 (for the "eps_a" shock):
+To set the number of periods to 10 (for the `eps_a` shock):
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -562,7 +562,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 The `variables` parameter specifies which variables to show results (default: `:all_excluding_obc`). Variable names can be specified as either a `Symbol` or `String` (e.g. `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). `:all_excluding_obc` includes all variables except those related to occasionally binding constraints. `:all` includes all variables.
 
-Specific variables can be selected to plot. The following example selects only output ("Y") and inflation ("Pi") using a `Vector` of `Symbol`:
+Specific variables can be selected to plot. The following example selects only output (`Y`) and inflation (`Pi`) using a `Vector` of `Symbol`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -661,7 +661,7 @@ plot_irf(FS2000,
 
 ![FS2000 IRF - e_a shock with auxiliary variables](../assets/with_aux_vars_irf__FS2000__e_a__1.png)
 
-Both "c" and "P" appear twice: once as the variable itself and once as an auxiliary variable with the "L(1)" superscript, representing the value of the variable in t+1 as expected in t.
+Both `c` and `P` appear twice: once as the variable itself and once as an auxiliary variable with the `L(1)` superscript, representing the value of the variable in t+1 as expected in t.
 
 - `:all` plots all variables including auxiliary variables and those used to enforce occasionally binding constraints (OBC). Use the `Gali_2015_chapter_3` model with an effective lower bound (note the max statement in the Taylor rule):
 
@@ -724,7 +724,7 @@ plot_irf(Gali_2015_chapter_3_obc,
 ![Gali 2015 OBC IRF - eps_z shock with OBC variables](../assets/with_obc_vars_irf__Gali_2015_chapter_3_obc__eps_z__3.png)
 
 The OBC-related variables appear in the last subplot.
-Note that with the "eps_z" shock, the interest rate "R" hits the effective lower bound in period 1:
+Note that with the `eps_z` shock, the interest rate `R` hits the effective lower bound in period 1:
 
 ![Gali 2015 OBC IRF - eps_z shock hitting lower bound](../assets/with_obc_vars_irf__Gali_2015_chapter_3_obc__eps_z__2.png)
 
@@ -738,7 +738,7 @@ get_equations(Gali_2015_chapter_3_obc)
 
 When no parameters are provided, the solution uses the previously defined parameter values. Parameters can be provided as a Vector of values, or as a Vector or Tuple of Pairs mapping parameter Symbols or Strings to values. The solution is recalculated when new parameter values differ from the previous ones.
 
-Start by changing the discount factor "β" from 0.99 to 0.95:
+Start by changing the discount factor `β` from 0.99 to 0.95:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -748,7 +748,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock (β=0.95)](../assets/beta_095_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-The steady states and dynamics changed as a result of changing the discount factor. To better visualize the differences between "β = 0.99" and "β = 0.95", the two IRFs can be overlaid. Since parameter changes are permanent, first reset "β = 0.99" before overlaying the IRF with "β = 0.95" on top of it:
+The steady states and dynamics changed as a result of changing the discount factor. To better visualize the differences between `β = 0.99` and `β = 0.95`, the two IRFs can be overlaid. Since parameter changes are permanent, first reset `β = 0.99` before overlaying the IRF with `β = 0.95` on top of it:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -762,9 +762,9 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock comparing β values](../assets/compare_beta_irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
 
-The legend below the plot indicates which color corresponds to each "β" value, with the table underneath showing the relevant steady states. Note that both the steady states and dynamics differ across the two "β" values, even when the steady state remains the same (e.g., for "Y").
+The legend below the plot indicates which color corresponds to each `β` value, with the table underneath showing the relevant steady states. Note that both the steady states and dynamics differ across the two `β` values, even when the steady state remains the same (e.g., for `Y`).
 
-Multiple parameters can also be changed simultaneously to compare the results to previous plots. This example changes "β" to 0.97 and "τ" to 0.5 using a Tuple of Pairs and define the variables with Symbols:
+Multiple parameters can also be changed simultaneously to compare the results to previous plots. This example changes `β` to 0.97 and `τ` to 0.5 using a Tuple of Pairs and define the variables with Symbols:
 
 ```julia
 plot_irf!(Gali_2015_chapter_3_nonlinear,
@@ -820,7 +820,7 @@ plot_irf!(Gali_2015_chapter_3_obc,
 
 ![Gali 2015 OBC IRF - eps_z shock comparing with and without OBC](../assets/compare_obc_irf__Gali_2015_chapter_3_obc__eps_z__1.png)
 
-The legend indicates which color corresponds to each `ignore_obc` value. Note how the interest rate "R" hits the effective lower bound in periods 1-3 when OBC is enforced (blue line) but not when OBC is ignored (orange line). The dynamics of other variables also change when OBC is enforced. Enforcing the OBC results in a deeper and longer recession. The length of the lower bound period depends on the size of the shock.
+The legend indicates which color corresponds to each `ignore_obc` value. Note how the interest rate `R` hits the effective lower bound in periods 1-3 when OBC is enforced (blue line) but not when OBC is ignored (orange line). The dynamics of other variables also change when OBC is enforced. Enforcing the OBC results in a deeper and longer recession. The length of the lower bound period depends on the size of the shock.
 
 ### Generalized Impulse Response Functions
 
@@ -849,7 +849,7 @@ plot_irf!(Gali_2015_chapter_3_obc,
 
 ![Gali 2015 OBC IRF - eps_z shock comparing GIRF vs standard](../assets/obc_girf_compare_irf__Gali_2015_chapter_3_obc__eps_z__1.png)
 
-The legend indicates which color corresponds to each `generalised_irf` value. Note how the interest rate "R" hits the effective lower bound in periods 1-3 when using the standard IRF (orange line). This suggests that the GIRF's accepted draws include many cases where the OBC is not binding. This can be confirmed by also overlaying the IRF ignoring the OBC.
+The legend indicates which color corresponds to each `generalised_irf` value. Note how the interest rate `R` hits the effective lower bound in periods 1-3 when using the standard IRF (orange line). This suggests that the GIRF's accepted draws include many cases where the OBC is not binding. This can be confirmed by also overlaying the IRF ignoring the OBC.
 
 ```julia
 plot_irf!(Gali_2015_chapter_3_obc,
@@ -861,7 +861,7 @@ plot_irf!(Gali_2015_chapter_3_obc,
 
 ![Gali 2015 OBC IRF - eps_z shock GIRF vs standard vs no OBC](../assets/obc_all_compare_irf__Gali_2015_chapter_3_obc__eps_z__1.png)
 
-The IRF ignoring the OBC shows "R" falling more, confirming that the GIRF draws include cases where the OBC is binding. Enforcing the OBC results in a deeper and longer recession. The length of the lower bound period depends on the size of the shock.
+The IRF ignoring the OBC shows `R` falling more, confirming that the GIRF draws include cases where the OBC is binding. Enforcing the OBC results in a deeper and longer recession. The length of the lower bound period depends on the size of the shock.
 
 Another use case for GIRFs is examining the IRF of a model with a higher-order solution. The following example examines the IRF of the `Gali_2015_chapter_3_nonlinear` model solved with pruned second-order perturbation for a 1-standard-deviation `eps_a` shock with and without using `generalised_irf`. First, examine the GIRF:
 
@@ -886,7 +886,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock GIRF vs standard (pruned 2nd order)](../assets/girf_compare_irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
 
-The comparison reveals that the response of S is highly state-dependent and can go either way depending on the economy's state when the shock occurs. The same applies to "W_real", while other variables are less state-dependent, making the GIRF and standard IRF more similar.
+The comparison reveals that the response of S is highly state-dependent and can go either way depending on the economy's state when the shock occurs. The same applies to `W_real`, while other variables are less state-dependent, making the GIRF and standard IRF more similar.
 
 ### GIRF Configuration
 
@@ -953,7 +953,7 @@ With this configuration, the difference between the GIRF and standard IRF is min
 The `label` parameter controls labels that appear in plots when using the `plot_irf!` function to overlay multiple IRFs. By default, labels are sequential numbers, but custom labels can be provided using this argument. Acceptable inputs are a String, Symbol, or a Real.
 
 Custom labels are particularly useful when inputs differ in complex ways (e.g., shock matrices or multiple input changes).
-For example, let's compare the IRF of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with β = 0.99 and τ = 0 to the IRF with "β = 0.95" and τ = 0.5 using custom labels String input:
+For example, let's compare the IRF of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with β = 0.99 and τ = 0 to the IRF with `β = 0.95` and τ = 0.5 using custom labels String input:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
