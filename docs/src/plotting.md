@@ -893,7 +893,7 @@ The comparison reveals that the response of `S` is highly state-dependent and ca
 
 ### GIRF Configuration
 
-The `generalised_irf_draws` (default: `100`, type: `Int`) and `generalised_irf_warmup_iterations` (default: `100`, type: `Int`) arguments control the number of draws and warmup iterations. Increasing the number of draws improves GIRF accuracy but increases computation time. Warmup iterations ensure that the starting points of individual draws adequately explore the state space and represent the model's ergodic distribution.
+The `generalised_irf_draws` (default: `50`, type: `Int`) and `generalised_irf_warmup_iterations` (default: `100`, type: `Int`) arguments control the number of draws and warmup iterations. Increasing the number of draws improves GIRF accuracy but increases computation time. Warmup iterations ensure that the starting points of individual draws adequately explore the state space and represent the model's ergodic distribution.
 
 Start with the GIRF that had the wiggly lines above:
 
