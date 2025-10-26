@@ -74,7 +74,7 @@ The plot displays every endogenous variable affected by each exogenous shock. Th
 
 ### Solution Algorithm
 
-The `algorithm` parameter specifies which algorithm to solve for the dynamics of the model (default: `:first_order`). Available algorithms: `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`.
+The `algorithm` argument (default: `:first_order`, type: `Symbol`) specifies which algorithm to solve for the dynamics of the model. Available algorithms: `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`.
 IRFs can be plotted using different solution algorithms. The following example uses a second-order perturbation solution:
 
 ```julia
@@ -123,7 +123,7 @@ Note that the pruned third-order solution incorporates time-varying risk and rev
 
 ### Initial State
 
-The `initial_state` parameter defines the starting point for the model. For pruned solution algorithms, the initial state can be provided as multiple state vectors (Vector{Vector{Float64}}). In this case, the initial state must be specified in deviations from the non-stochastic steady state. For all other cases, specify the initial state in levels. For pruned solution algorithms with a `Vector{Float64}` initial state, only the first-order initial state vector is affected. The state includes all variables as well as exogenous variables in leads or lags if present. `get_irf(𝓂, shocks = :none, variables = :all, periods = 1)` returns a `KeyedArray` with all variables. The `KeyedArray` type is provided by the AxisKeys package.
+The `initial_state` argument (default: `[0.0]`, type: `Union{Vector{Vector{Float64}},Vector{Float64}}`) defines the starting point for the model. For pruned solution algorithms, the initial state can be provided as multiple state vectors (Vector{Vector{Float64}}). In this case, the initial state must be specified in deviations from the non-stochastic steady state. For all other cases, specify the initial state in levels. For pruned solution algorithms with a `Vector{Float64}` initial state, only the first-order initial state vector is affected. The state includes all variables as well as exogenous variables in leads or lags if present. `get_irf(𝓂, shocks = :none, variables = :all, periods = 1)` returns a `KeyedArray` with all variables. The `KeyedArray` type is provided by the AxisKeys package.
 
 The initial state defines the starting point for the IRF and must contain all model variables, including any leads or lags. To obtain the correct ordering and number of variables, call `get_irf(𝓂, shocks = :none, variables = :all, periods = 1)`, which returns a `KeyedArray` with all variables in the correct order. The `KeyedArray` type is provided by the AxisKeys package. For example:
 
@@ -298,7 +298,7 @@ This shows that the pruned third-order solution changes the dynamics while maint
 
 ### Shocks
 
-The `shocks` parameter determines which IRFs to calculate. Shock names can be specified as either a Symbol or String (e.g. :y, or "y"), or Tuple, Matrix or Vector of String or Symbol. `:simulate` triggers random draws of all shocks (excluding those related to occasionally binding constraints). `:all_excluding_obc` includes all shocks except OBC-related ones. `:all` also includes the OBC related shocks. A series of shocks can be passed using either a `Matrix{Float64}` or a `KeyedArray{Float64}`, with shocks (Symbol or String) in rows and periods in columns. The `KeyedArray` type is provided by the AxisKeys package. The simulation length equals the input length in the period dimension plus the number of periods specified in the `periods` argument. When using a `KeyedArray{Float64}`, ensure that rows are named with valid shock names of type Symbol. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
+The `shocks` argument (default: `:all_excluding_obc`) determines which IRFs to calculate. Shock names can be specified as either a Symbol or String (e.g. :y, or "y"), or Tuple, Matrix or Vector of String or Symbol. `:simulate` triggers random draws of all shocks (excluding those related to occasionally binding constraints). `:all_excluding_obc` includes all shocks except OBC-related ones. `:all` also includes the OBC related shocks. A series of shocks can be passed using either a `Matrix{Float64}` or a `KeyedArray{Float64}`, with shocks (Symbol or String) in rows and periods in columns. The `KeyedArray` type is provided by the AxisKeys package. The simulation length equals the input length in the period dimension plus the number of periods specified in the `periods` argument. When using a `KeyedArray{Float64}`, ensure that rows are named with valid shock names of type Symbol. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
 
 Individual shocks can be called by name:
 
@@ -497,7 +497,7 @@ The blue bars correspond to the first shock matrix and the red to the second sho
 
 ### Simulation Periods
 
-The `periods` parameter specifies the number of periods for which to calculate the output. When a matrix of shocks is provided, this defines how many periods to continue after the shock series.
+The `periods` argument (default: `40`, type: `Int`) specifies the number of periods for which to calculate the output. When a matrix of shocks is provided, this defines how many periods to continue after the shock series.
 To set the number of periods to 10 (for the `eps_a` shock):
 
 ```julia
@@ -530,8 +530,8 @@ The x-axis adjusts to 35 periods, with the first plot ending after 10 periods an
 
 ### Shock Size
 
-Affects the size of shocks when they are not set to `:none` or provided as a shock matrix.
-Size of the shocks in standard deviations (default: 1.0). Only affects shocks not provided as a matrix or `KeyedArray` or set to `:none`. Negative values flip the sign of the shock.
+The `shock_size` argument (default: `1.0`, type: `Real`) controls the size of the shocks in standard deviations. Only affects shocks not provided as a matrix or `KeyedArray` or set to `:none`. Negative values flip the sign of the shock.
+
 The shock size can be set using the `shock_size` argument. The following example sets it to -2 standard deviations:
 
 ```julia
@@ -546,8 +546,8 @@ Note how the shock's sign is flipped and the response magnitude is increased.
 
 ### Negative Shocks
 
-Calculate IRFs for a negative shock.
-When `true`, calculates IRFs for a negative shock (default: `false`). Only affects shocks not provided as a matrix or `KeyedArray` or set to `:none`.
+The `negative_shock` argument (default: `false`, type: `Bool`), when `true`, calculates IRFs for a negative shock. Only affects shocks not provided as a matrix or `KeyedArray` or set to `:none`.
+
 
 Alternatively, set `negative_shock` to `true` to obtain the IRF for a negative one-standard-deviation shock:
 
@@ -560,7 +560,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ### Variables to Plot
 
-The `variables` parameter specifies which variables to show results (default: `:all_excluding_obc`). Variable names can be specified as either a `Symbol` or `String` (e.g. `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). `:all_excluding_obc` includes all variables except those related to occasionally binding constraints. `:all` includes all variables.
+The `variables` argument (default: `:all_excluding_obc`) specifies which variables to show results. Variable names can be specified as either a `Symbol` or `String` (e.g. `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). `:all_excluding_obc` includes all variables except those related to occasionally binding constraints. `:all` includes all variables.
 
 Specific variables can be selected to plot. The following example selects only output (`Y`) and inflation (`Pi`) using a `Vector` of `Symbol`:
 
@@ -798,7 +798,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ### Ignoring Occasionally Binding Constraints
 
-The `ignore_obc` parameter, when `true`, ignores occasionally binding constraints (default: `false`) (OBC) even if they are part of the model. This is useful for comparing dynamics with and without OBC.
+The `ignore_obc` argument (default: `false`, type: `Bool`), when `true`, ignores occasionally binding constraints (OBC) even if they are part of the model. This is useful for comparing dynamics with and without OBC.
 For models with defined OBC, use the `ignore_obc` argument to ignore them. The following example compares the IRF of the `Gali_2015_chapter_3_obc` model with and without OBC. First, examine the IRF for a 3-standard-deviation `eps_z` shock with OBC enforced. See the `shock_size` and `variables` sections for more details on these input arguments. Since OBC is enforced by default, call:
 
 ```julia
@@ -824,7 +824,7 @@ The legend indicates which color corresponds to each `ignore_obc` value. Note ho
 
 ### Generalized Impulse Response Functions
 
-The `generalised_irf` parameter, when `true`, calculates generalized IRFs (default: `false`) (GIRFs) instead of standard IRFs. GIRFs are computed by simulating the model with and without the shock, taking the difference, and averaging over multiple draws. GIRFs are particularly useful for models with non-linearities or state-dependent dynamics, such as higher-order solutions or models with occasionally binding constraints (OBC).
+The `generalised_irf` argument (default: `false`, type: `Bool`), when `true`, calculates generalized IRFs (GIRFs) instead of standard IRFs. GIRFs are computed by simulating the model with and without the shock, taking the difference, and averaging over multiple draws. GIRFs are particularly useful for models with non-linearities or state-dependent dynamics, such as higher-order solutions or models with occasionally binding constraints (OBC).
 
 The following example compares the IRF of the `Gali_2015_chapter_3_obc` model for a 3-standard-deviation `eps_z` shock with and without using `generalised_irf`. First, examine the GIRF:
 
@@ -890,7 +890,7 @@ The comparison reveals that the response of S is highly state-dependent and can 
 
 ### GIRF Configuration
 
-The `generalised_irf_draws` and `generalised_irf_warmup_iterations` parameters control the number of draws and warmup iterations. Increasing the number of draws improves GIRF accuracy but increases computation time. Warmup iterations ensure that the starting points of individual draws adequately explore the state space and represent the model's ergodic distribution.
+The `generalised_irf_draws` (default: `100`, type: `Int`) and `generalised_irf_warmup_iterations` (default: `100`, type: `Int`) arguments control the number of draws and warmup iterations. Increasing the number of draws improves GIRF accuracy but increases computation time. Warmup iterations ensure that the starting points of individual draws adequately explore the state space and represent the model's ergodic distribution.
 
 Start with the GIRF that had the wiggly lines above:
 
@@ -950,7 +950,7 @@ With this configuration, the difference between the GIRF and standard IRF is min
 
 ### Plot Labels
 
-The `label` parameter controls labels that appear in plots when using the `plot_irf!` function to overlay multiple IRFs. By default, labels are sequential numbers, but custom labels can be provided using this argument. Acceptable inputs are a String, Symbol, or a Real.
+The `label` argument (type: `Union{String,Symbol,Real}`) controls labels that appear in plots when using the `plot_irf!` function to overlay multiple IRFs. By default, labels are sequential numbers, but custom labels can be provided using this argument. Acceptable inputs are a String, Symbol, or a Real.
 
 Custom labels are particularly useful when inputs differ in complex ways (e.g., shock matrices or multiple input changes).
 For example, let's compare the IRF of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with β = 0.99 and τ = 0 to the IRF with `β = 0.95` and τ = 0.5 using custom labels String input:
@@ -1003,7 +1003,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ### Plot Attributes
 
-The `plot_attributes` parameter accepts a dictionary of attributes passed on to the plotting function (default: empty dictionary). See the Plots.jl documentation for details.
+The `plot_attributes` argument (default: `Dict()`, type: `Dict`) accepts a dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.
 
 The color palette can be customized using the `plot_attributes` argument. The following example defines a custom color palette (inspired by the European Commission's economic reports) to plot and stack all IRFs for the `Gali_2015_chapter_3_nonlinear` model:
 First, define the custom color palette using hex color codes:
@@ -1064,7 +1064,7 @@ All text in the plot now uses the Computer Modern font. Note that font rendering
 
 ### Plots Per Page
 
-The `plots_per_page` parameter controls the number of subplots per page (default: 6). When the number of variables exceeds this value, multiple pages are created.
+The `plots_per_page` argument (default: `6`, type: `Int`) controls the number of subplots per page. When the number of variables exceeds this value, multiple pages are created.
 The following example selects 9 variables and sets `plots_per_page` to 2:
 
 ```julia
@@ -1080,7 +1080,7 @@ The first page displays the first two variables (sorted alphabetically) with two
 
 ### Display Plots
 
-The `show_plots` parameter, when `true`, displays the plots (default: `true`); otherwise, they are only returned as an object.
+The `show_plots` argument (default: `true`, type: `Bool`), when `true`, displays the plots; otherwise, they are only returned as an object.
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -1090,7 +1090,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ### Saving Plots
 
-The `save_plots` parameter, when `true`, saves the plots to disk (default: `false`); otherwise, they are only displayed and returned as an object. Plots are saved in the format specified by `save_plots_format` and in the path specified by `save_plots_path` (folders are created if they don't exist). Each plot is saved as a separate file with a name indicating the model name, shocks, and a sequential number for multiple plots. The default path is the current working directory (`pwd()`) and the default format is `:pdf`. Acceptable formats are those supported by the Plots.jl package ([input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats)).
+The `save_plots` argument (default: `false`, type: `Bool`), when `true`, saves the plots to disk; otherwise, they are only displayed and returned as an object. Plots are saved in the format specified by `save_plots_format` and in the path specified by `save_plots_path` (folders are created if they don't exist). Each plot is saved as a separate file with a name indicating the model name, shocks, and a sequential number for multiple plots. The default path is the current working directory (`pwd()`) and the default format is `:pdf`. Acceptable formats are those supported by the Plots.jl package ([input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats)).
 
 The following example saves all IRFs for the `Gali_2015_chapter_3_nonlinear` model as PNG files in the `../plots` directory with the filename prefix `:impulse_response`:
 
@@ -1106,7 +1106,7 @@ The plots appear in the specified folder with the specified prefix. Each plot is
 
 ### Verbose Output
 
-The `verbose` parameter, when `true`, enables verbose output (default: `false`) related to solving the model
+The `verbose` argument (default: `false`, type: `Bool`), when `true`, enables verbose output related to solving the model
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -1126,7 +1126,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ### Numerical Tolerances
 
-The `tol` parameter defines various tolerances (default: `Tolerances()`) for the algorithm used to solve the model. See the Tolerances documentation for more details: `?Tolerances`
+The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: `?Tolerances`
 The tolerances used by the numerical solvers can be adjusted. The Tolerances object allows setting tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (QME). For example, to set tighter tolerances (this example also changes parameters to force recomputation):
 
 ```julia
@@ -1145,7 +1145,7 @@ This is useful when higher precision is needed or when the default tolerances ar
 
 ### Quadratic Matrix Equation Solver
 
-The `quadratic_matrix_equation_algorithm` parameter specifies the algorithm to solve quadratic matrix equation (default: `:schur`) (`A * X ^ 2 + B * X + C = 0`). Available algorithms: `:schur`, `:doubling`
+The `quadratic_matrix_equation_algorithm` argument (default: `:schur`, type: `Symbol`) specifies the algorithm to solve quadratic matrix equation (`A * X ^ 2 + B * X + C = 0`). Available algorithms: `:schur`, `:doubling`
 The quadratic matrix equation solver is used internally when solving the model to first order. Different algorithms are available. The `:schur` algorithm is generally faster and more reliable, while `:doubling` can be more precise in some cases (this example also changes parameters to force recomputation):
 
 ```julia
