@@ -134,11 +134,19 @@ The parameter vector must match the model's parameter order and length.
 
 ### Occasionally Binding Constraints
 
-The `ignore_obc` argument (default: `false`, type: `Bool`) determines whether to ignore occasionally binding constraints when solving the model.
+The `ignore_obc` argument (default: `false`, type: `Bool`) determines whether to ignore occasionally binding constraints when solving the model. This can be used to compare how policy functions differ with and without OBC:
 
 ```julia
+# Plot policy function with OBC
 plot_solution(model_with_obc, :state,
-    ignore_obc = true)
+    variables = [:Y, :C],
+    label = "With OBC")
+
+# Add policy function without OBC for comparison
+plot_solution!(model_with_obc, :state,
+    variables = [:Y, :C],
+    ignore_obc = true,
+    label = "Without OBC")
 ```
 
 ### Plot Labels
