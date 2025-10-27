@@ -1165,13 +1165,13 @@ end
     rho{F}{H} = rho{H}{F}
 end
 
-# Backus model example showing Symbol to String mapping
+# Backus model example showing String to String mapping
 plot_irf(Backus_Kehoe_Kydland_1992,
-    shocks = Symbol("E{H}"),
-    rename_dictionary = Dict(Symbol("C{H}") => "Home Consumption", 
-                             Symbol("C{F}") => "Foreign Consumption",
-                             Symbol("Y{H}") => "Home Output",
-                             Symbol("Y{F}") => "Foreign Output"))
+    shocks = "E{H}",
+    rename_dictionary = Dict("C{H}" => "Home Consumption", 
+                             "C{F}" => "Foreign Consumption",
+                             "Y{H}" => "Home Output",
+                             "Y{F}" => "Foreign Output"))
 ```
 
 This flexibility allows natural usage regardless of whether variables are referenced as symbols or strings in the code. Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
