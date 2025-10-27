@@ -42,7 +42,7 @@ jobs:
         mkdir -p plots
         benchpkgplot ${{ steps.extract-package-name.outputs.package_name }} --rev="v0.1.39,v0.1.40,$GITHUB_SHA" --npart=10 --format=png --input-dir=results/ --output-dir=plots/
     - name: Upload plot as artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: plots
         path: plots
