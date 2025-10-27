@@ -143,7 +143,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 # Overlay with different discount factor to compare
 plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     variables = [:Y, :C],
-    parameters = [1, 5, 1.5, 0.125, 0.75, 0.5, 0.5, 0.9, 0.95, 3.77, 0.25, 9, 0.5, 0.01, 0.05, 0.0025],
+    parameters = :β => 0.95,
     label = "β=0.95")
 ```
 
@@ -157,6 +157,7 @@ The `ignore_obc` argument (default: `false`, type: `Bool`) determines whether to
 # Plot policy function with OBC
 plot_solution(model_with_obc, :state,
     variables = [:Y, :C],
+    parameters = :β => 0.99,
     label = "With OBC")
 
 # Add policy function without OBC for comparison
@@ -189,8 +190,8 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
 plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     variables = [:Y, :C],
     algorithm = :second_order,
-    parameters = [1, 5, 1.5, 0.125, 0.75, 0.5, 0.5, 0.9, 0.95, 3.77, 0.25, 9, 0.5, 0.01, 0.05, 0.0025],
-    label = "2nd Order with β=0.95")
+    parameters = :β => 0.95,
+    label = "2nd Order with OBC and β=0.95")
 ```
 
 This demonstrates comparing policy functions across multiple dimensions: solution algorithms, occasionally binding constraints, and parameter values, revealing how different model specifications affect the dynamics.
@@ -266,6 +267,40 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 This feature is particularly useful when comparing models with different variable naming conventions. For example, when overlaying policy functions from FS2000 (which uses lowercase `c` for consumption) and Gali_2015_chapter_3_nonlinear (which uses uppercase `C`):
 
+
+```julia
+@model FS2000 begin
+    dA[0] = exp(gam + z_e_a  *  e_a[x])
+    log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+    - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+    W[0] = l[0] / n[0]
+    - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+    R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+    1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+    c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+    P[0] * c[0] = m[0]
+    m[0] - 1 + d[0] = l[0]
+    e[0] = exp(z_e_a  *  e_a[x])
+    y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+    gy_obs[0] = dA[0] * y[0] / y[-1]
+    gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+    log_gy_obs[0] = log(gy_obs[0])
+    log_gp_obs[0] = log(gp_obs[0])
+end
+
+@parameters FS2000 begin
+    alp     = 0.356
+    bet     = 0.993
+    gam     = 0.0085
+    mst     = 1.0002
+    rho     = 0.129
+    psi     = 0.65
+    del     = 0.01
+    z_e_a   = 0.035449
+    z_e_m   = 0.008862
+end
+```
+
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     variables = [:C, :Y],
@@ -297,8 +332,8 @@ For models with special characters in variable names (like the Backus_Kehoe_Kydl
 ```julia
 plot_solution(Backus_Kehoe_Kydland_1992, :K,
     rename_dictionary = Dict(
-        Symbol("C{H}") => "Home Consumption",
-        Symbol("C{F}") => "Foreign Consumption"))
+        "C{H}" => "Home Consumption",
+        "C{F}" => "Foreign Consumption"))
 ```
 
 The renaming applies to all plot elements: legends, axis labels, and tables.
