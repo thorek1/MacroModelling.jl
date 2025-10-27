@@ -97,8 +97,17 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 The `algorithm` argument (default: `:first_order`, type: `Symbol`) specifies which algorithm to solve for the dynamics of the model. Available algorithms: `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`.
 
 ```julia
+# Plot first-order policy function
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    algorithm = :second_order)
+    variables = [:Y, :C],
+    algorithm = :first_order,
+    label = "First Order")
+
+# Overlay second-order to compare
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    variables = [:Y, :C],
+    algorithm = :second_order,
+    label = "Second Order")
 ```
 
 At higher orders, policy functions become nonlinear, showing how the response varies across different states.
@@ -126,11 +135,19 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 The `parameters` argument (default: `nothing`, type: `Union{Nothing, Vector{Float64}, Vector{Int64}}`) allows plotting with different parameter values without modifying the model.
 
 ```julia
+# Plot with default parameters
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    parameters = [1, 5, 1.5, 0.125, 0.75, 0.5, 0.5, 0.9, 0.99, 3.77, 0.25, 9, 0.5, 0.01, 0.05, 0.0025])
+    variables = [:Y, :C],
+    label = "Default β=0.99")
+
+# Overlay with different discount factor to compare
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    variables = [:Y, :C],
+    parameters = [1, 5, 1.5, 0.125, 0.75, 0.5, 0.5, 0.9, 0.95, 3.77, 0.25, 9, 0.5, 0.01, 0.05, 0.0025],
+    label = "β=0.95")
 ```
 
-The parameter vector must match the model's parameter order and length.
+The parameter vector must match the model's parameter order and length. This example demonstrates how the policy functions change with different parameter values.
 
 ### Occasionally Binding Constraints
 
@@ -154,25 +171,29 @@ plot_solution!(model_with_obc, :state,
 The `label` argument (default: `""`, type: `Union{Real, String, Symbol}`) adds custom labels to the plot legend. This is useful when comparing multiple solutions using `plot_solution!` to overlay plots:
 
 ```julia
-# Plot first-order solution
+# Compare policy functions with different settings
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    variables = [:Y, :C, :Pi],
-    label = "First Order")
-
-# Add second-order solution
-plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
-    variables = [:Y, :C, :Pi],
+    variables = [:Y, :C],
     algorithm = :second_order,
-    label = "Second Order")
+    ignore_obc = false,
+    label = "2nd Order with OBC")
 
-# Add third-order solution
+# Add solution without OBC
 plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
-    variables = [:Y, :C, :Pi],
-    algorithm = :third_order,
-    label = "Third Order")
+    variables = [:Y, :C],
+    algorithm = :second_order,
+    ignore_obc = true,
+    label = "2nd Order without OBC")
+
+# Add different parameter setting
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    variables = [:Y, :C],
+    algorithm = :second_order,
+    parameters = [1, 5, 1.5, 0.125, 0.75, 0.5, 0.5, 0.9, 0.95, 3.77, 0.25, 9, 0.5, 0.01, 0.05, 0.0025],
+    label = "2nd Order with β=0.95")
 ```
 
-This allows direct comparison of how policy functions differ across solution methods, revealing the importance of nonlinearities in the model.
+This demonstrates comparing policy functions across multiple dimensions: solution algorithms, occasionally binding constraints, and parameter values, revealing how different model specifications affect the dynamics.
 
 ### Display Control
 
