@@ -258,9 +258,9 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     shocks = [:eps_a, :eps_z])
 ```
 
-![Gali 2015 IRF - eps_a shock](../assets/multi_shocks_irf__Gali_2015_chapter_3_nonlinear__eps_a__3.png)
+![Gali 2015 IRF - eps_a shock](../assets/multi_shocks_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-![Gali 2015 IRF - eps_z shock](../assets/multi_shocks_irf__Gali_2015_chapter_3_nonlinear__eps_z__3.png)
+![Gali 2015 IRF - eps_z shock](../assets/multi_shocks_irf__Gali_2015_chapter_3_nonlinear__eps_z__1.png)
 
 Multiple shocks can also be input as a `Tuple`:
 
