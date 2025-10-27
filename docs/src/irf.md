@@ -1061,6 +1061,9 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"))
 ```
 
+![Gali 2015 IRF - eps_z shock rename dictionary](../assets/rename_dict_irf__Gali_2015_chapter_3_nonlinear__eps_z__1.png)
+
+
 This feature is especially valuable when overlaying IRFs from different models. Consider comparing FS2000 (which uses lowercase variable names like `c`) with Gali_2015_chapter_3_nonlinear (which uses uppercase like `C`). The `rename_dictionary` allows harmonizing these names when plotting them together:
 
 ```julia
@@ -1074,6 +1077,8 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
     shocks = :eps_a,
     rename_dictionary = Dict(:C => "Consumption", :Y => "Output", :R => "Interest Rate"))
 ```
+
+![FS2000 and Gali 2015 IRF - multiple models with rename dictionary](../assets/rename_dict_irf__multiple_models__multiple_shocks__1.png)
 
 Both models now appear in the plot with consistent, readable labels, making comparison straightforward.
 
@@ -1090,6 +1095,8 @@ plot_irf!(FS2000,
     shocks = [:e_a, :e_m],
     rename_dictionary = Dict(:e_a => "Technology Shock", :e_m => "Monetary Policy Shock"))
 ```
+
+![FS2000 and Gali 2015 IRF - multiple models with shock rename dictionary](../assets/rename_dict_shock_irf__multiple_models__Technology Shock__2.png)
 
 The `rename_dictionary` accepts flexible type combinations for keys and values—both `Symbol` and `String` types work interchangeably:
 
@@ -1173,6 +1180,8 @@ plot_irf(Backus_Kehoe_Kydland_1992,
                              "Y{H}" => "Home Output",
                              "Y{F}" => "Foreign Output"))
 ```
+
+![Backus IRF - E{H} shock with rename dictionary](../assets/rename_dict_irf__Backus_Kehoe_Kydland_1992__E{H}__1.png)
 
 This flexibility allows natural usage regardless of whether variables are referenced as symbols or strings in the code. Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
 
