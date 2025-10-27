@@ -1104,6 +1104,15 @@ Dict("Y" => :Output)              # String key, Symbol value
 This flexibility is particularly useful for models like Backus_Kehoe_Kydland_1992, which uses both internal symbol representations and more accessible string names with special characters:
 
 ```julia
+# Define the Backus model (abbreviated for clarity)
+@model Backus_Kehoe_Kydland_1992 begin
+    # ... (model equations)
+end
+
+@parameters Backus_Kehoe_Kydland_1992 begin
+    # ... (parameter values)
+end
+
 # Backus model example showing Symbol to String mapping
 plot_irf(Backus_Kehoe_Kydland_1992,
     shocks = Symbol("E{H}"),
