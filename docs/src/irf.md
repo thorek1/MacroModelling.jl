@@ -959,9 +959,11 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 # Add second shock to show cumulative effect
 plot_irf!(Gali_2015_chapter_3_nonlinear,
-    shocks = :nu,
+    shocks = :eps_nu,
     plot_type = :stack)
 ```
+
+![Gali 2015 IRF - stacked shocks (eps_a and eps_nu)](../assets/stack__Gali_2015_chapter_3_nonlinear__multiple_shocks__2.png)
 
 The `:stack` visualization shows how each shock contributes to the total response, with the second shock's effect layered on top of the first.
 
@@ -973,16 +975,16 @@ When comparing IRFs across different parameter values, `:compare` displays the r
 # Baseline parameterization
 plot_irf(Gali_2015_chapter_3_nonlinear,
     parameters = (:β => 0.99,),
-    shocks = :eps_a,
-    label = "β = 0.99")
+    shocks = :eps_a)
 
 # Alternative parameterization for comparison
 plot_irf!(Gali_2015_chapter_3_nonlinear,
     parameters = (:β => 0.95,),
     shocks = :eps_a,
-    label = "β = 0.95",
     plot_type = :compare)
 ```
+
+![Gali 2015 IRF - comparing β values](../assets/compare__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
 
 The `:compare` option (the default) makes it easy to see how parameter changes affect the IRF magnitude and persistence.
 
@@ -1132,10 +1134,10 @@ Both models now appear in the plot with consistent, readable labels, making comp
 The `rename_dictionary` also works with shocks. For example, Gali_2015_chapter_3_nonlinear has shocks `eps_a` and `nu`, while FS2000 has `e_a` and `e_m`. To compare these with consistent labels:
 
 ```julia
-# Gali model with shocks eps_a and nu
+# Gali model with shocks eps_a and eps_nu
 plot_irf(Gali_2015_chapter_3_nonlinear,
-    shocks = [:eps_a, :nu],
-    rename_dictionary = Dict(:eps_a => "Technology Shock", :nu => "Monetary Policy Shock"))
+    shocks = [:eps_a, :eps_nu],
+    rename_dictionary = Dict(:eps_a => "Technology Shock", :eps_nu => "Monetary Policy Shock"))
 
 # FS2000 model with shocks e_a and e_m  
 plot_irf!(FS2000,
