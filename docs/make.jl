@@ -36,7 +36,11 @@ makedocs(
         "How-to guides" => [
             "Programmatic model writing using for-loops" => "how-to/loops.md",
             "Occasionally binding constraints" => "how-to/obc.md",
-            "Plotting" => "plotting.md",
+            "Plotting" => [
+                "Overview" => "plotting.md",
+                "Impulse Response Functions" => "irf.md",
+                "Policy Functions" => "plot_solution.md",
+            ],
             # "how_to.md"
             ],
         # "Model syntax" => "dsl.md",
