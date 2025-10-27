@@ -1031,6 +1031,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 The `save_plots` argument (default: `false`, type: `Bool`), when `true`, saves the plots to disk; otherwise, they are only displayed and returned as an object. 
 
 Related arguments control the saving behavior:
+
 - `save_plots_format` (default: `:pdf`, type: `Symbol`): output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` (default: `"."`, type: `String`): path where plots are saved. If the path does not exist, it will be created automatically.
 - `save_plots_name` (default: `"irf"`, type: `Union{String, Symbol}`): prefix prepended to the filename when saving plots to disk.
