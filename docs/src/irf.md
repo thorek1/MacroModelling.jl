@@ -939,6 +939,53 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
     save_plots_format = :svg)
 ```
 
+### Plot Type
+
+The `plot_type` argument (default: `:compare`, type: `Symbol`) determines how IRFs are visualized when multiple scenarios are displayed. Two options are available:
+
+- `:compare` - Displays IRFs as separate lines for comparison across scenarios
+- `:stack` - Stacks IRFs on top of each other to show cumulative effects
+
+The `:stack` option is particularly useful when analyzing scenarios composed of multiple shock series, as it shows how different shocks contribute to the overall response. The `:compare` option is better suited for comparing IRFs across different parameter values or model specifications.
+
+#### Using `:stack` for Layered Shock Scenarios
+
+When analyzing a scenario composed of multiple shocks, `:stack` visualizes the cumulative impact. For example, plot the combined effect of `eps_a` and `nu` shocks:
+
+```julia
+# First shock in the scenario
+plot_irf(Gali_2015_chapter_3_nonlinear,
+    shocks = :eps_a)
+
+# Add second shock to show cumulative effect
+plot_irf!(Gali_2015_chapter_3_nonlinear,
+    shocks = :nu,
+    plot_type = :stack)
+```
+
+The `:stack` visualization shows how each shock contributes to the total response, with the second shock's effect layered on top of the first.
+
+#### Using `:compare` for Parameter Comparisons
+
+When comparing IRFs across different parameter values, `:compare` displays the responses as separate lines:
+
+```julia
+# Baseline parameterization
+plot_irf(Gali_2015_chapter_3_nonlinear,
+    parameters = (:β => 0.99,),
+    shocks = :eps_a,
+    label = "β = 0.99")
+
+# Alternative parameterization for comparison
+plot_irf!(Gali_2015_chapter_3_nonlinear,
+    parameters = (:β => 0.95,),
+    shocks = :eps_a,
+    label = "β = 0.95",
+    plot_type = :compare)
+```
+
+The `:compare` option (the default) makes it easy to see how parameter changes affect the IRF magnitude and persistence.
+
 ### Plot Attributes
 
 The `plot_attributes` argument (default: `Dict()`, type: `Dict`) accepts a dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.
