@@ -94,16 +94,28 @@ plot_solution(model_with_obc, :state,
 
 ### Plot Labels
 
-The `label` argument (default: `""`, type: `Union{Real, String, Symbol}`) adds custom labels to the plot legend. This is useful when comparing multiple solutions.
+The `label` argument (default: `""`, type: `Union{Real, String, Symbol}`) adds custom labels to the plot legend. This is useful when comparing multiple solutions using `plot_solution!` to overlay plots:
 
 ```julia
+# Plot first-order solution
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    label = "Baseline")
+    variables = [:Y, :C, :Pi],
+    label = "First Order")
 
+# Add second-order solution
 plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    variables = [:Y, :C, :Pi],
     algorithm = :second_order,
     label = "Second Order")
+
+# Add third-order solution
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    variables = [:Y, :C, :Pi],
+    algorithm = :third_order,
+    label = "Third Order")
 ```
+
+This allows direct comparison of how policy functions differ across solution methods, revealing the importance of nonlinearities in the model.
 
 ### Display Control
 
@@ -287,28 +299,3 @@ Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`, `:
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     lyapunov_algorithm = :bartels_stewart)
 ```
-
-## Comparing Solutions
-
-Use `plot_solution!` to overlay multiple solutions on the same plot:
-
-```julia
-# Plot first-order solution
-plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    variables = [:Y, :C, :Pi],
-    label = "First Order")
-
-# Add second-order solution
-plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
-    variables = [:Y, :C, :Pi],
-    algorithm = :second_order,
-    label = "Second Order")
-
-# Add third-order solution
-plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
-    variables = [:Y, :C, :Pi],
-    algorithm = :third_order,
-    label = "Third Order")
-```
-
-This allows direct comparison of how policy functions differ across solution methods, revealing the importance of nonlinearities in the model.
