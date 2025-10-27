@@ -74,6 +74,11 @@ Only state variables will have an impact on the IRF. To check which variables ar
 
 ```julia
 get_state_variables(Gali_2015_chapter_3_nonlinear)
+# 4-element Vector{String}:
+#  "A"
+#  "S"
+#  "Z"
+#  "nu"
 ```
 
 Now modify the initial state and set `nu` to 0.1:
@@ -82,7 +87,7 @@ Now modify the initial state and set `nu` to 0.1:
 init_state(:nu,:,:) .= 0.1
 ```
 
-The modified initial state can now be input into the `plot_irf` function as a vector:
+The modified initial state can now be input into the `plot_irf` function as a `Vector`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -158,7 +163,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 The legend shows two lines, with their input differences detailed in the table below. The first line corresponds to the initial state used for the first order solution as well as the IRF using the first order solution and the second line corresponds to the initial state used for the second order solution and using the second order solution. Note that the steady states differ between the two solution methods, which also affects the initial states (except for `nu`, which is set to 0.1 in both cases). A second table below the first one shows the relevant steady states for both solution methods. Since the relevant steady state of `A` is the same for both methods, the corresponding subplot shows the level on the left axis and percentage deviations on the right axis. For all other variables, the relevant steady state differs between methods, so only absolute level deviations appear (`abs. Δ`) on the left axis, with steady states listed in the table at the bottom.
 
-For pruned solution methods the initial state can also be given as multiple state vectors (Vector{Vector{Float64}}). When providing a vector of vectors, values must be specified as differences from the non-stochastic steady state. When providing only one vector, values must be in levels, with the initial state having its full nonlinear effect in the first period. Using a vector of vectors allows setting the pruned higher-order auxiliary state vectors. While this can be useful in some cases, note that these higher-order auxiliary state vectors have only a linear impact on the dynamics. Start by assembling the vector of vectors:
+For pruned solution methods the initial state can also be given as multiple state vectors (Vector{Vector{Float64}}). When providing a vector of vectors, values must be specified as differences from the non-stochastic steady state. When providing only one vector, values must be in levels, with the initial state having its full nonlinear effect in the first period. Using a vector of vectors allows setting the pruned higher-order auxiliary state vectors. While this can be useful in some cases, note that these higher-order auxiliary state vectors have only a linear impact in the first period. Start by assembling the vector of vectors:
 
 ```julia
 init_state_pruned_3rd_in_diff = get_irf(Gali_2015_chapter_3_nonlinear,
@@ -171,6 +176,36 @@ init_state_pruned_3rd_in_diff = get_irf(Gali_2015_chapter_3_nonlinear,
     periods = 1,
     algorithm = :pruned_third_order,
     levels = true)
+# 3-dimensional KeyedArray(NamedDimsArray(...)) with keys:
+# ↓   Variables ∈ 23-element Vector{Symbol}
+# →   Periods ∈ 1-element UnitRange{Int64}
+# ◪   Shocks ∈ 1-element Vector{Symbol}
+# And data, 23×1×1 Array{Float64, 3}:
+# [:, :, 1] ~ (:, :, :none):
+#                    (1)
+#   (:A)               0.0
+#   (:C)               0.01899564383140051
+#   (:MC)              0.26061783703451824
+#   (:M_real)          0.014844948179111417
+#   (:N)               0.0256329467464953
+#   (:Pi)             -0.0013592503942323475
+#   (:Pi_star)        -0.0040777511826968205
+#   (:Q)              -0.00023912532361458627
+#   (:R)               0.0002649588073291298
+#   (:S)               3.3306690738754696e-16
+#   (:W_real)          0.18508712654020898
+#   (:Y)               0.01899564383140051
+#   (:Z)               0.0
+#   (:i_ann)           0.0010068434678508487
+#   (:log_N)           0.024432922221986165
+#   (:log_W_real)      0.1404893027764202
+#   (:log_y)           0.018324691666489368
+#   (:nu)             -1.3404049553225972e-17
+#   (:pi_ann)         -0.005437001576929203
+#   (:r_real_ann)      0.008306969164175088
+#   (:realinterest)    0.002186044516888197
+#   (:x_aux_1)        -0.7618262640813329
+#   (:x_aux_2)        -0.371793344047362
 ```
 
 First- and third-order dynamics don't affect the steady state through risk, so they are zero. The second-order steady state includes the risk adjustment. Assemble the vectors for the third order case:
@@ -233,7 +268,7 @@ This shows that the pruned third-order solution changes the dynamics while maint
 
 ### Shocks
 
-The `shocks` argument (default: `:all_excluding_obc`) determines which IRFs to calculate. Shock names can be specified as either a `Symbol` or `String` (e.g., `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:simulate` triggers random draws of all shocks (excluding those related to occasionally binding constraints). `:all_excluding_obc` includes all shocks except OBC-related ones. `:all` also includes the OBC related shocks. A series of shocks can be passed using either a `Matrix{Float64}` or a `KeyedArray{Float64}`, with shocks (`Symbol` or `String`) in rows and periods in columns. The `KeyedArray` type is provided by the AxisKeys package. The simulation length equals the input length in the period dimension plus the number of periods specified in the `periods` argument. When using a `KeyedArray{Float64}`, ensure that rows are named with valid shock names of type `Symbol`. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
+The `shocks` argument (default: `:all_excluding_obc`) determines which IRFs to calculate. Shock names can be specified as either a `Symbol` or `String` (e.g., `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:simulate` triggers random draws of all shocks (excluding those related to occasionally binding constraints). `:all_excluding_obc` includes all shocks except OBC-related ones. `:all` also includes the OBC related shocks. A series of shocks can be passed using either a `Matrix{Float64}` or a `KeyedArray{Float64}`, with shocks (`Symbol` or `String`) in rows and periods in columns. The `KeyedArray` type is provided by the AxisKeys package. The simulation length equals the input length in the period dimension plus the number of periods specified in the `periods` argument. When using a `KeyedArray{Float64}`, ensure that rows are named with valid shock names of type `Symbol` or `String`. Any shocks not part of the model will trigger a warning. `:none` in combination with an `initial_state` can be used for deterministic simulations.
 
 Individual shocks can be called by name:
 
@@ -244,14 +279,14 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock](../assets/single_shock_irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
 
-The same works if the shock name is input as a string:
+The same works if the shock name is input as a `String`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
     shocks = "eps_a")
 ```
 
-or multiple shocks at once (as strings or symbols):
+or multiple shocks at once (as `String` or `Symbol`):
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -266,11 +301,10 @@ Multiple shocks can also be input as a `Tuple`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
-    shocks = (:eps_a,
-    :eps_z))
+    shocks = (:eps_a, :eps_z))
 ```
 
-or a matrix:
+or a `Matrix`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -318,6 +352,11 @@ Only state variables will have an impact on the IRF. To check which variables ar
 
 ```julia
 get_state_variables(Gali_2015_chapter_3_nonlinear)
+# 4-element Vector{String}:
+#  "A"
+#  "S"
+#  "Z"
+#  "nu"
 ```
 
 Now modify the initial state and set `nu` to 0.1:
@@ -326,7 +365,7 @@ Now modify the initial state and set `nu` to 0.1:
 init_state(:nu, :, :) .= 0.1
 ```
 
-Now input the modified initial state into the `plot_irf` function as a vector and set `shocks` to `:none`:
+Now input the modified initial state into the `plot_irf` function as a `Vector` and set `shocks` to `:none`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -383,7 +422,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - shock series from KeyedArray](../assets/shock_series_irf__Gali_2015_chapter_3_nonlinear__shock_matrix__2.png)
 
-In the title it is now mentioned that the input is a series of shocks and the values of the shock processes Z and `nu` move with the shifted timing and note that the impact of the `eps_z` shock has a - in front of it in the model definition, which is why they both move in the same direction. Note also that the number of periods is prolonged by the number of periods in the shock input. This example defines 3 periods of shocks and the default number of periods is 40, so the result shows 43 periods in total.
+In the title it is now mentioned that the input is a series of shocks and the values of the shock processes `Z` and `nu` move with the shifted timing and note that the impact of the `eps_z` shock has a - in front of it in the model definition, which is why they both move in the same direction. Note also that the number of periods is prolonged by the number of periods in the shock input. This example defines 3 periods of shocks and the default number of periods is 40, so the result shows 43 periods in total.
 
 The same can be done with a `Matrix`:
 
@@ -415,7 +454,7 @@ shock_matrix_2[3, 5] = 1/2
 shock_matrix_2[2, 6] = -1/3
 ```
 
-Plot them on top of each other using the :stack option:
+Plot them on top of each other using the :stack option for the `plot_type` argument:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -495,9 +534,9 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ### Variables to Plot
 
-The `variables` argument (default: `:all_excluding_obc`) specifies which variables to show results. Variable names can be specified as either a `Symbol` or `String` (e.g. `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). `:all_excluding_obc` includes all variables except those related to occasionally binding constraints. `:all` includes all variables.
+The `variables` argument (default: `:all_excluding_obc`) specifies for which variables to show results. Variable names can be specified as either a `Symbol` or `String` (e.g. `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). `:all_excluding_obc` includes all variables except those related to occasionally binding constraints. `:all` includes all variables.
 
-Specific variables can be selected to plot. The following example selects only output (`Y`) and inflation (`Pi`) using a `Vector` of `Symbol`:
+Specific variables can be selected to plot. The following example selects only output (`Y`) and inflation (`Pi`) using a `Vector` of `Symbol`s:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -521,7 +560,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     variables = [:Y :Pi])
 ```
 
-or providing the variable names as strings:
+or providing the variable names as `String`s:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -535,7 +574,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     variables = :Y)
 ```
 
-or as a string:
+or as a `String`:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -552,6 +591,11 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 ```
 
 `:all_excluding_obc` plots all variables except those used to enforce occasionally binding constraints (OBC).
+
+```julia
+plot_irf(Gali_2015_chapter_3_nonlinear,
+    variables = :all_excluding_obc)
+```
 
 To see auxiliary variables, use a model that defines them. The FS2000 model can be used:
 
@@ -597,11 +641,11 @@ plot_irf(FS2000,
 
 ![FS2000 IRF - e_a shock with auxiliary variables](../assets/with_aux_vars_irf__FS2000__e_a__1.png)
 
-Both `c` and `P` appear twice: once as the variable itself and once as an auxiliary variable with the `L(1)` superscript, representing the value of the variable in t+1 as expected in t.
+Both `c` and `P` appear twice: once as the variable itself and once as an auxiliary variable with the `ᴸ⁽¹⁾` superscript, representing the value of the variable in t+1 as expected in t.
 
 `:all` plots all variables including auxiliary variables and those used to enforce occasionally binding constraints (OBC).
 
-Use the `Gali_2015_chapter_3` model with an effective lower bound (note the max statement in the Taylor rule):
+Use the `Gali_2015_chapter_3` model with an effective lower bound (note the use of the `max` function in the Taylor rule):
 
 ```julia
 @model Gali_2015_chapter_3_obc begin
@@ -666,15 +710,28 @@ Note that with the `eps_z` shock, the interest rate `R` hits the effective lower
 
 ![Gali 2015 OBC IRF - eps_z shock hitting lower bound](../assets/with_obc_vars_irf__Gali_2015_chapter_3_obc__eps_z__2.png)
 
-The effective lower bound is enforced using shocks to the equation containing the max statement. See the documentation for details on constructing occasionally binding constraints. For this specific model, examine the equations the parser generated to enforce the OBC:
+The effective lower bound is enforced using shocks to the equation containing the `max` statement. See the documentation for details on constructing occasionally binding constraints. For this specific model, examine the equations the parser generated to enforce the OBC:
 
 ```julia
 get_equations(Gali_2015_chapter_3_obc)
+# 68-element Vector{String}:
+#  "W_real[0] = C[0] ^ σ * N[0] ^ φ"
+#  "Q[0] = ((β * (C[1] / C[0]) ^ -σ * Z[1]) / Z[0]) / Pi[1]"
+#  "R[0] = 1 / Q[0]"
+#  "Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)"
+#  "R[0] = Pi[1] * realinterest[0]"
+#  "χᵒᵇᶜ⁺ꜝ¹ꜝˡ[0] = R̄ - R[0]"
+#  ⋮
+#  "ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁶⁾[0] = ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁵⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁴⁾[x]"
+#  "ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁷⁾[0] = ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁶⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽³⁾[x]"
+#  "ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁸⁾[0] = ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁷⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽²⁾[x]"
+#  "ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁹⁾[0] = ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁸⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽¹⁾[x]"
+#  "ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁴⁰⁾[0] = ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁹⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁰⁾[x]"
 ```
 
 ### Parameter Values
 
-When no parameters are provided, the solution uses the previously defined parameter values. Parameters can be provided as a `Vector` of values, or as a `Vector` or `Tuple` of Pairs mapping parameter Symbols or Strings to values. The solution is recalculated when new parameter values differ from the previous ones.
+When no parameters are provided, the solution uses the previously defined parameter values. Parameters can be provided as a `Vector` of values, or as a `Vector` or `Tuple` of `Pair`s mapping parameter `Symbol`s or `String`s to values. The solution is recalculated when new parameter values differ from the previous ones.
 
 Start by changing the discount factor `β` from 0.99 to 0.95:
 
@@ -686,7 +743,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock (`β = 0.95`)](../assets/beta_095_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-The steady states and dynamics changed as a result of changing the discount factor. To better visualize the differences between `β = 0.99` and `β = 0.95`, the two IRFs can be overlaid. Since parameter changes are permanent, first reset `β = 0.99` before overlaying the IRF with `β = 0.95` on top of it:
+The steady states and dynamics changed as a result of changing the discount factor. To better visualize the differences between `β = 0.99` and `β = 0.95`, the two IRFs can be overlaid (compared). Since parameter changes are permanent, first reset `β = 0.99` before overlaying the IRF with `β = 0.95` on top of it:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -702,7 +759,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 The legend below the plot indicates which color corresponds to each `β` value, with the table underneath showing the relevant steady states. Note that both the steady states and dynamics differ across the two `β` values, even when the steady state remains the same (e.g., for `Y`).
 
-Multiple parameters can also be changed simultaneously to compare the results to previous plots. This example changes `β` to 0.97 and `τ` to 0.5 using a `Tuple` of Pairs and define the variables with Symbols:
+Multiple parameters can also be changed simultaneously to compare the results to previous plots. This example changes `β` to 0.97 and `τ` to 0.5 using a `Tuple` of `Pair`s and define the variables with `Symbol`s:
 
 ```julia
 plot_irf!(Gali_2015_chapter_3_nonlinear,
@@ -714,7 +771,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to each input combination, with the table showing steady states for all three combinations.
 
-A `Vector` of Pairs can also be used:
+A `Vector` of `Pair`s can also be used:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -726,8 +783,42 @@ Alternatively, use a `Vector` of parameter values in the order they were defined
 
 ```julia
 params = get_parameters(Gali_2015_chapter_3_nonlinear, values = true)
+# 16-element Vector{Pair{String, Float64}}:
+#       "σ" => 1.0
+#       "φ" => 5.0
+#     "ϕᵖⁱ" => 1.5
+#      "ϕʸ" => 0.125
+#       "θ" => 0.75
+#     "ρ_ν" => 0.5
+#     "ρ_z" => 0.5
+#     "ρ_a" => 0.9
+#       "β" => 0.95
+#       "η" => 3.77
+#       "α" => 0.25
+#       "ϵ" => 9.0
+#       "τ" => 0.5
+#   "std_a" => 0.01
+#   "std_z" => 0.05
+#  "std_nu" => 0.0025
 
 param_vals = [p[2] for p in params]
+# 16-element Vector{Float64}:
+#  1.0
+#  5.0
+#  1.5
+#  0.125
+#  0.75
+#  0.5
+#  0.5
+#  0.9
+#  0.95
+#  3.77
+#  0.25
+#  9.0
+#  0.5
+#  0.01
+#  0.05
+#  0.0025
 
 plot_irf(Gali_2015_chapter_3_nonlinear,
     parameters = param_vals,
@@ -746,6 +837,8 @@ plot_irf(Gali_2015_chapter_3_obc,
     shock_size = 3)
 ```
 
+![Gali 2015 OBC IRF - eps_z shock with OBC](../assets/obc_irf__Gali_2015_chapter_3_obc__eps_z__1.png)
+
 Then overlay the IRF ignoring the OBC:
 
 ```julia
@@ -762,7 +855,7 @@ The legend indicates which color corresponds to each `ignore_obc` value. Note ho
 
 ### Generalized Impulse Response Functions
 
-The `generalised_irf` argument (default: `false`, type: `Bool`), when `true`, calculates generalized IRFs (GIRFs) instead of standard IRFs. GIRFs are computed by simulating the model with and without the shock, taking the difference, and averaging over multiple draws. GIRFs are particularly useful for models with non-linearities or state-dependent dynamics, such as higher-order solutions or models with occasionally binding constraints (OBC).
+The `generalised_irf` argument (default: `false`, type: `Bool`), when `true`, calculates generalized IRFs (GIRFs) instead of standard IRFs. GIRFs are computed by simulating the model with and without the shock, taking the difference, and averaging over multiple draws. GIRFs are particularly insightful for models solved to higher-order or models with occasionally binding constraints (OBC), because these non-linearities make them state-dependent. GIRFs then average out the state dependence and give an average IRF over the ergodic set of the model.
 
 The following example compares the IRF of the `Gali_2015_chapter_3_obc` model for a 3-standard-deviation `eps_z` shock with and without using `generalised_irf`. First, examine the GIRF:
 
@@ -812,7 +905,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock GIRF (pruned 2nd order)](../assets/girf_2nd_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-Some lines are quite jittery, highlighting the state-dependent nature of the GIRF and the dominant effect of randomness (e.g., `N` or `MC`).
+Some lines are quite jittery, highlighting the state-dependent nature of the GIRF and the dominant effect of the randomness of the draws (e.g., `N` or `MC`).
 
 Now overlay the standard IRF for the pruned second order solution:
 
@@ -826,7 +919,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 The comparison reveals that the response of `S` is highly state-dependent and can go either way depending on the economy's state when the shock occurs. The same applies to `W_real`, while other variables are less state-dependent, making the GIRF and standard IRF more similar.
 
-### GIRF Configuration
+### Generalized Impulse Response Function Options
 
 The `generalised_irf_draws` (default: `50`, type: `Int`) and `generalised_irf_warmup_iterations` (default: `100`, type: `Int`) arguments control the number of draws and warmup iterations. Increasing the number of draws improves GIRF accuracy but increases computation time. Warmup iterations ensure that the starting points of individual draws adequately explore the state space and represent the model's ergodic distribution.
 
@@ -884,11 +977,11 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock GIRF with 5000 draws and 500 warmup](../assets/girf_5000_500_irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
 
-With this configuration, the difference between the GIRF and standard IRF is minimal. This suggests minimal state dependence in the model with a second-order pruned solution for a one-standard-deviation `eps_a` shock. The apparent insight from the GIRF with 100 draws and 50 warmup iterations was primarily driven by randomness.
+With this configuration, the difference between the GIRF and standard IRF is minimal. This suggests the average IRF (using suffiecient amount of draws and warmup) is similar to the standard IRF but there is substantial state dependence in the model with a second-order pruned solution for a one-standard-deviation `eps_a` shock.
 
 ### Plot Labels
 
-The `label` argument (type: `Union{String,Symbol,Real}`) controls labels that appear in plots when using the `plot_irf!` function to overlay multiple IRFs. By default, labels are sequential numbers, but custom labels can be provided using this argument. Acceptable inputs are a `String`, `Symbol`, or a Real.
+The `label` argument (type: `Union{String,Symbol,Real}`) controls labels that appear in plots when using the `plot_irf!` function to overlay multiple IRFs. By default, labels take on the values of the one dimensional input that differs and are sequential numbers in case the input differs along more than one dimension. Furthermore, custom labels can be provided using this argument. Acceptable inputs are a `String`, `Symbol`, or a `Real`.
 
 Custom labels are particularly useful when inputs differ in complex ways (e.g., shock matrices or multiple input changes).
 For example, let's compare the IRF of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with `β = 0.99` and `τ = 0` to the IRF with `β = 0.95` and `τ = 0.5` using custom labels `String` input:
@@ -909,7 +1002,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 The legend now displays the custom label names instead of sequential numbers (1 and 2). Additionally, the tables showing input differences and steady states use the custom labels in the first column instead of sequential numbers.
 
-The same result can be achieved using Symbols (though they are less expressive):
+The same result can be achieved using `Symbol`s (though they are less expressive):
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -934,9 +1027,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 plot_irf!(Gali_2015_chapter_3_nonlinear,
     parameters = (:β => 0.95, :τ => 0.5),
     shocks = :eps_a,
-    label = 0.95,
-    save_plots = true,
-    save_plots_format = :svg)
+    label = 0.95)
 ```
 
 ### Plot Type
@@ -992,7 +1083,7 @@ The `:compare` option (the default) makes it easy to see how parameter changes a
 
 The `plot_attributes` argument (default: `Dict()`, type: `Dict`) accepts a dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.
 
-The color palette can be customized using the `plot_attributes` argument. The following example defines a custom color palette (inspired by the European Commission's economic reports) to plot and stack all IRFs for the `Gali_2015_chapter_3_nonlinear` model:
+The color palette can be customized using the `plot_attributes` argument. The following example defines a custom color palette (inspired by the European Commission's economic reports) to plot and stack all IRFs for the `Gali_2015_chapter_3_nonlinear` model.
 First, define the custom color palette using hex color codes:
 
 ```julia
@@ -1013,6 +1104,10 @@ Next, retrieve all shocks defined in the model:
 
 ```julia
 shocks = get_shocks(Gali_2015_chapter_3_nonlinear)
+# 3-element Vector{String}:
+#  "eps_a"
+#  "eps_nu"
+#  "eps_z"
 ```
 
 Then plot the IRF for the first shock:
@@ -1047,11 +1142,11 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock with custom font](../assets/custom_font_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case)—for example, the superscript + is not rendered properly for this font.
+All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case)—for example, the superscript `⁺` is not rendered properly for this font.
 
 ### Plots Per Page
 
-The `plots_per_page` argument (default: `6`, type: `Int`) controls the number of subplots per page. When the number of variables exceeds this value, multiple pages are created.
+The `plots_per_page` argument (default: `9`, type: `Int`) controls the number of subplots per page. When the number of variables exceeds this value, multiple pages are created.
 The following example selects 9 variables and sets `plots_per_page` to 2:
 
 ```julia
@@ -1077,17 +1172,17 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ### Saving Plots
 
-The `save_plots` argument (default: `false`, type: `Bool`), when `true`, saves the plots to disk; otherwise, they are only displayed and returned as an object. 
+The `save_plots` argument (default: `false`, type: `Bool`), when `true`, saves the plots to disk; otherwise, they are only displayed and returned as an object.
 
 Related arguments control the saving behavior:
 
 - `save_plots_format` (default: `:pdf`, type: `Symbol`): output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` (default: `"."`, type: `String`): path where plots are saved. If the path does not exist, it will be created automatically.
-- `save_plots_name` (default: `"irf"`, type: `Union{String, Symbol}`): prefix prepended to the filename when saving plots to disk.
+- `save_plots_name` (default: `"irf"`, type: `Union{String, Symbol}`): prefix prepended to the filename when saving plots.
 
 Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., `irf__ModelName__shock__1.pdf`).
 
-The following example saves all IRFs for the `Gali_2015_chapter_3_nonlinear` model as PNG files in the `../plots` directory with the filename prefix `:impulse_response`:
+The following example saves all IRFs for the `Gali_2015_chapter_3_nonlinear` model as PNG files in the `../plots` directory with `impulse_response` as the filename prefix:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
@@ -1112,8 +1207,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_z shock rename dictionary](../assets/rename_dict_irf__Gali_2015_chapter_3_nonlinear__eps_z__1.png)
 
-
-This feature is especially valuable when overlaying IRFs from different models. Consider comparing FS2000 (which uses lowercase variable names like `c`) with Gali_2015_chapter_3_nonlinear (which uses uppercase like `C`). The `rename_dictionary` allows harmonizing these names when plotting them together:
+This feature is especially valuable when overlaying IRFs from different models. Consider comparing FS2000 (which uses lowercase variable names like `c`) with `Gali_2015_chapter_3_nonlinear` (which uses uppercase like `C`). The `rename_dictionary` allows harmonizing these names when plotting them together:
 
 ```julia
 # First model (FS2000) with lowercase variable names
@@ -1131,7 +1225,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 Both models now appear in the plot with consistent, readable labels, making comparison straightforward.
 
-The `rename_dictionary` also works with shocks. For example, Gali_2015_chapter_3_nonlinear has shocks `eps_a` and `nu`, while FS2000 has `e_a` and `e_m`. To compare these with consistent labels:
+The `rename_dictionary` also works with shocks. For example, `Gali_2015_chapter_3_nonlinear` has shocks `eps_a` and `eps_nu`, while FS2000 has `e_a` and `e_m`. To compare these with consistent labels:
 
 ```julia
 # Gali model with shocks eps_a and eps_nu
@@ -1157,26 +1251,19 @@ Dict(:Y => :Output)               # Symbol key, Symbol value
 Dict("Y" => :Output)              # String key, Symbol value
 ```
 
-This flexibility is particularly useful for models like Backus_Kehoe_Kydland_1992, which uses both internal symbol representations and more accessible string names with special characters:
+This flexibility is particularly useful for models like `Backus_Kehoe_Kydland_1992`, which uses `String` representations of variable and shock names (because of `{}`):
 
 ```julia
 # Define the Backus model (abbreviated for clarity)
 @model Backus_Kehoe_Kydland_1992 begin
     for co in [H, F]
         Y{co}[0] = ((LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1-theta{co}))^(-nu{co}) + sigma{co} * Z{co}[-1]^(-nu{co}))^(-1/nu{co})
-
         K{co}[0] = (1-delta{co})*K{co}[-1] + S{co}[0]
-
         X{co}[0] = for lag in (-4+1):0 phi{co} * S{co}[lag] end
-
         A{co}[0] = (1-eta{co}) * A{co}[-1] + N{co}[0]
-
         L{co}[0] = 1 - alpha{co} * N{co}[0] - (1-alpha{co})*eta{co} * A{co}[-1]
-
         U{co}[0] = (C{co}[0]^mu{co}*L{co}[0]^(1-mu{co}))^gamma{co}
-
         psi{co} * mu{co} / C{co}[0]*U{co}[0] = LGM[0]
-
         psi{co} * (1-mu{co}) / L{co}[0] * U{co}[0] * (-alpha{co}) = - LGM[0] * (1-theta{co}) / N{co}[0] * (LAMBDA{co}[0] * K{co}[-4]^theta{co}*N{co}[0]^(1-theta{co}))^(-nu{co})*Y{co}[0]^(1+nu{co})
 
         for lag in 0:(4-1)  
@@ -1187,12 +1274,10 @@ This flexibility is particularly useful for models like Backus_Kehoe_Kydland_199
         end = beta{co}^4 * LGM[+4] * theta{co} / K{co}[0] * (LAMBDA{co}[+4] * K{co}[0]^theta{co} * N{co}[+4]^(1-theta{co})) ^ (-nu{co})* Y{co}[+4]^(1+nu{co})
 
         LGM[0] = beta{co} * LGM[+1] * (1+sigma{co} * Z{co}[0]^(-nu{co}-1)*Y{co}[+1]^(1+nu{co}))
-
         NX{co}[0] = (Y{co}[0] - (C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1]))/Y{co}[0]
     end
 
     (LAMBDA{H}[0]-1) = rho{H}{H}*(LAMBDA{H}[-1]-1) + rho{H}{F}*(LAMBDA{F}[-1]-1) + Z_E{H} * E{H}[x]
-
     (LAMBDA{F}[0]-1) = rho{F}{F}*(LAMBDA{F}[-1]-1) + rho{F}{H}*(LAMBDA{H}[-1]-1) + Z_E{F} * E{F}[x]
 
     for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
@@ -1232,7 +1317,7 @@ plot_irf(Backus_Kehoe_Kydland_1992,
 
 ![Backus IRF - E{H} shock with rename dictionary](../assets/rename_dict_irf__Backus_Kehoe_Kydland_1992__E{H}__1.png)
 
-This flexibility allows natural usage regardless of whether variables are referenced as symbols or strings in the code. Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
+Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
 
 ### Verbose Output
 
@@ -1252,6 +1337,16 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     shocks = :eps_a,
     parameters = :β => 0.955,
     verbose = true)
+# Parameter changes: 
+#         β       from 0.95       to 0.955
+# New parameters changed the steady state.
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.438959822042073e-16
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 4.3825585462666584e-15
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.438959822042073e-16
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.438959822042073e-16
 ```
 
 ### Numerical Tolerances
@@ -1269,6 +1364,20 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     algorithm = :second_order,
     parameters = :β => 0.9555,
     verbose = true)
+# Parameter changes: 
+#         β       from 0.955      to 0.9555
+# New parameters changed the steady state.
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 7.021666937153402e-16
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 3.692979383228777e-15
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 7.021666937153402e-16
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 3.692979383228777e-15
+# Sylvester equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 6.494758134185766e-17; algorithm: doubling
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 7.021666937153402e-16
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 7.021666937153402e-16
 ```
 
 This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or encounter issues with the default solver.
@@ -1284,6 +1393,16 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     quadratic_matrix_equation_algorithm = :doubling,
     parameters = :β => 0.95555,
     verbose = true)
+# Parameter changes: 
+#         β       from 0.9555     to 0.95555
+# New parameters changed the steady state.
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Quadratic matrix equation solver: doubling - converged: true in 8 iterations to tolerance: 1.517007008035588e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
 ```
 
 For most use cases, the default `:schur` algorithm is recommended. Use this argument for specific needs or encounter issues with the default solver.
@@ -1299,6 +1418,15 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     algorithm = :second_order,
     sylvester_algorithm = :bartels_stewart,
     verbose = true)
+# Quadratic matrix equation solver previous solution has tolerance: 1.517007008035588e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 1.517007008035588e-16
+# Sylvester equation - converged to tol 1.0e-10: true; iterations: -1; reached tol: 6.19336731775721e-17; algorithm: bartels_stewart
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
 ```
 
 For third-order solutions, different algorithms can be specified for the second- and third-order Sylvester equations using a `Tuple`:
@@ -1309,6 +1437,20 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
     algorithm = :third_order,
     sylvester_algorithm = (:doubling, :bicgstab),
     verbose = true)
+# Quadratic matrix equation solver previous solution has tolerance: 1.517007008035588e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 1.517007008035588e-16
+# Sylvester equation - previous solution achieves relative tol of 3.838708060339852e-17
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 1.517007008035588e-16
+# Sylvester equation - previous solution achieves relative tol of 3.838708060339852e-17
+# Sylvester equation - converged to tol 1.0e-10: true; iterations: 23; reached tol: 8.328904812714592e-17; algorithm: bicgstab
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
 ```
 
 The choice of algorithm affects both speed and precision: `:doubling` and `:bartels_stewart` are generally faster, while `:bicgstab`, `:dqgmres`, and `:gmres` are better for large sparse problems. Use this argument for specific needs or encounter issues with the default solver.
