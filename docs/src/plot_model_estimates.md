@@ -70,25 +70,22 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear, data_matrix)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, data_keyed)
 ```
 
-### Estimation Type
+### Smoothing and Shock Decomposition
 
-The `type` argument (default: `:filter`, type: `Symbol`) specifies what to plot. Options include:
-- `:filter` - Filtered state estimates (forward pass)
-- `:smoother` - Smoothed state estimates (forward-backward pass)
-- `:shock_decomposition` - Contribution of each shock to variables over time
-- `:historical_decomposition` - Historical contribution of shocks to deviations from steady state
+The `smooth` argument (default: depends on filter, type: `Bool`) determines whether to use the smoother (forward-backward pass) instead of just the filter (forward pass). The `shock_decomposition` argument (default: depends on algorithm, type: `Bool`) enables decomposition of variable movements into shock contributions.
 
 ```julia
 # Plot smoothed estimates
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data, type = :smoother)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, data, smooth = true)
 
 # Show shock decomposition
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, data, 
-    type = :shock_decomposition)
+    shock_decomposition = true)
 
-# Display historical decomposition
+# Combine smoothing with shock decomposition
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, data, 
-    type = :historical_decomposition)
+    smooth = true,
+    shock_decomposition = true)
 ```
 
 ### Variables Selection

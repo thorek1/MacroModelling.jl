@@ -40,6 +40,9 @@ makedocs(
                 "Overview" => "plotting.md",
                 "Impulse Response Functions" => "irf.md",
                 "Policy Functions" => "plot_solution.md",
+                "Conditional Forecasts" => "plot_conditional_forecast.md",
+                "Variance Decomposition" => "plot_conditional_variance_decomposition.md",
+                "Model Estimates" => "plot_model_estimates.md",
             ],
             # "how_to.md"
             ],

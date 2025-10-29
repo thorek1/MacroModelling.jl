@@ -100,14 +100,12 @@ The `algorithm` argument (default: `:first_order`, type: `Symbol`) specifies whi
 # Plot first-order policy function
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     variables = [:Y, :C],
-    algorithm = :first_order,
-    label = "First Order")
+    algorithm = :first_order)
 
 # Overlay second-order to compare
 plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     variables = [:Y, :C],
-    algorithm = :second_order,
-    label = "Second Order")
+    algorithm = :second_order)
 ```
 
 At higher orders, policy functions become nonlinear, showing how the response varies across different states.
@@ -143,8 +141,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 # Overlay with different discount factor to compare
 plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     variables = [:Y, :C],
-    parameters = :β => 0.95,
-    label = "β=0.95")
+    parameters = :β => 0.95)
 ```
 
 The parameter vector must match the model's parameter order and length. This example demonstrates how the policy functions change with different parameter values.
@@ -163,8 +160,7 @@ plot_solution(model_with_obc, :state,
 # Add policy function without OBC for comparison
 plot_solution!(model_with_obc, :state,
     variables = [:Y, :C],
-    ignore_obc = true,
-    label = "Without OBC")
+    ignore_obc = true)
 ```
 
 ### Plot Labels
@@ -302,11 +298,11 @@ end
 ```
 
 ```julia
-plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+plot_solution(Gali_2015_chapter_3_nonlinear, :k,
     variables = [:C, :Y],
     rename_dictionary = Dict(:C => "Consumption", :Y => "Output"))
 
-plot_solution!(FS2000, :e_a,
+plot_solution!(FS2000, :k,
     variables = [:c, :y],
     rename_dictionary = Dict(:c => "Consumption", :y => "Output"))
 ```
