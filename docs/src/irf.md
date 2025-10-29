@@ -331,9 +331,14 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 `:simulate` triggers random draws of all shocks (excluding OBC-related shocks). The seed can be set to get reproducible results (e.g. `import Random; Random.seed!(10)`).
 
+Alternatively, the `plot_simulation` function can be used as a convenient wrapper. This is equivalent to calling `plot_irf` with `shocks = :simulate` and `periods = 100`.
+
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,
     shocks = :simulate)
+
+# Equivalent to:
+plot_simulation(Gali_2015_chapter_3_nonlinear)
 ```
 
 ![Gali 2015 IRF - simulated shocks](../assets/simulated_irf__Gali_2015_chapter_3_nonlinear__simulation__1.png)
@@ -856,6 +861,8 @@ The legend indicates which color corresponds to each `ignore_obc` value. Note ho
 ### Generalized Impulse Response Functions
 
 The `generalised_irf` argument (default: `false`, type: `Bool`), when `true`, calculates generalized IRFs (GIRFs) instead of standard IRFs. GIRFs are computed by simulating the model with and without the shock, taking the difference, and averaging over multiple draws. GIRFs are particularly insightful for models solved to higher-order or models with occasionally binding constraints (OBC), because these non-linearities make them state-dependent. GIRFs then average out the state dependence and give an average IRF over the ergodic set of the model.
+
+Alternatively, the `plot_girf` function can be used as a convenient wrapper. This is equivalent to calling `plot_irf` with `generalised_irf = true`.
 
 The following example compares the IRF of the `Gali_2015_chapter_3_obc` model for a 3-standard-deviation `eps_z` shock with and without using `generalised_irf`. First, examine the GIRF:
 
