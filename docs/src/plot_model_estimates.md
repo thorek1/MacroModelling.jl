@@ -70,9 +70,18 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear, data_matrix)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, data_keyed)
 ```
 
-### Smoothing and Shock Decomposition
+### Filter Type
 
-The `smooth` argument (default: depends on filter, type: `Bool`) determines whether to use the smoother (forward-backward pass) instead of just the filter (forward pass). The `shock_decomposition` argument (default: depends on algorithm, type: `Bool`) enables decomposition of variable movements into shock contributions.
+The `filter` argument (default: depends on algorithm, type: `Symbol`) selects the Kalman filter type to use for estimation. Common options include `:kalman` for the standard Kalman filter.
+
+```julia
+# Use specific filter
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, data, filter = :kalman)
+```
+
+### Smoothing
+
+The `smooth` argument (default: depends on filter, type: `Bool`) determines whether to use the smoother (forward-backward pass) instead of just the filter (forward pass).
 
 ```julia
 # Plot smoothed estimates
