@@ -131,7 +131,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PARAMETERS®
 - $ALGORITHM®
 - $FILTER®
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
 - $DATA_IN_LEVELS®
@@ -613,7 +613,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $PARAMETERS®
 - $ALGORITHM®
 - $FILTER®
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
 - $DATA_IN_LEVELS®
@@ -1427,7 +1427,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 # Keyword Arguments
 - $PERIODS®
 - $SHOCKS®
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC))
 - $PARAMETERS®
 - $ALGORITHM®
 - $SHOCK_SIZE®
@@ -2072,7 +2072,7 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 # Keyword Arguments
 - $PERIODS®
 - $SHOCKS®
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC))
 - $PARAMETERS®
 - $ALGORITHM®
 - $SHOCK_SIZE®
@@ -3147,7 +3147,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MODEL®
 # Keyword Arguments
 - $PERIODS®
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLE_SELECTION))
 - $PARAMETERS®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
@@ -3411,7 +3411,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $MODEL®
 - `state` [Type: `Union{Symbol,String}`]: state variable to be shown on x-axis.
 # Keyword Arguments
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLE_SELECTION))
 - $ALGORITHM®
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS®
@@ -4059,7 +4059,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $MODEL®
 - `state` [Type: `Union{Symbol,String}`]: state variable to be shown on x-axis.
 # Keyword Arguments
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLE_SELECTION))
 - $ALGORITHM®
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS®
@@ -4318,7 +4318,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
 - $ALGORITHM®
 - `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
@@ -4762,7 +4762,7 @@ This function shares most of the signature and functionality of [`plot_condition
 - $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
 - $ALGORITHM®
 - $LABEL®
