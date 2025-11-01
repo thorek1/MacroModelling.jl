@@ -1687,107 +1687,501 @@ function plot_irf(𝓂::ℳ;
     
     push!(irf_active_plot_container, args_and_kwargs)
 
+    # Generate plots from container
+    return _plot_irf_from_container(show_plots = show_plots,
+                                     save_plots = save_plots,
+                                     save_plots_format = save_plots_format,
+                                     save_plots_name = save_plots_name,
+                                     save_plots_path = save_plots_path,
+                                     plots_per_page = plots_per_page,
+                                     negative_shock = negative_shock,
+                                     plot_attributes = plot_attributes)
+end
+
+# Helper function to generate plots from the IRF container
+function _plot_irf_from_container(;
+                                   show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                                   save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                                   save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                   save_plots_name::Union{String, Symbol} = "irf",
+                                   save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                                   plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE,
+                                   plot_type::Symbol = DEFAULT_PLOT_TYPE,
+                                   transparency::Float64 = DEFAULT_TRANSPARENCY,
+                                   negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK,
+                                   plot_attributes::Dict = Dict())
+    
+    if length(irf_active_plot_container) == 0
+        @warn "No IRF data to plot. Call plot_irf first."
+        return []
+    end
+    
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    
+    if !gr_back
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box))
+    else
+        attrbts = merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
+    end
+    
+    attributes = merge(attrbts, plot_attributes)
+    attributes_redux = copy(attributes)
+    delete!(attributes_redux, :framestyle)
+    
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
-
     total_pal_len = 100
-
     alpha_reduction_factor = 0.7
-
     pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
-
+    
     return_plots = []
-
-    for shock in 1:length(shock_idx)
-        n_subplots = length(var_idx)
-        pp = []
-        pane = 1
-        plot_count = 1
-
-        for i in 1:length(var_idx)
-            if all(isapprox.(Y[i,:,shock], 0, atol = eps(Float32)))
-                n_subplots -= 1
+    
+    # Build diffdict for difference detection (works for single or multiple containers)
+    if length(irf_active_plot_container) > 1
+        @assert plot_type ∈ [:compare, :stack] "plot_type must be either :compare or :stack"
+        
+        # Create comparison of containers to detect differences
+        reduced_vector = [
+            Dict(k => d[k] for k in vcat(:run_id, :label, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
+            for d in irf_active_plot_container
+        ]
+        
+        diffdict = compare_args_and_kwargs(reduced_vector)
+        
+        # Group by model
+        grouped_by_model = Dict{Any, Vector{Dict}}()
+        for d in irf_active_plot_container
+            model = d[:model_name]
+            d_sub = Dict(k => d[k] for k in setdiff(keys(irf_active_plot_container[end]), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
+            push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
+        end
+        
+        model_names = unique([d[:model_name] for d in irf_active_plot_container])
+        
+        for model in model_names
+            if length(grouped_by_model[model]) > 1
+                diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
+                diffdict = merge_by_runid(diffdict, diffdict_grouped)
             end
         end
-
-        for (i,v) in enumerate(var_idx)
-            SS = reference_steady_state[v]
-
-            if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
-                variable_name = variable_names_display[i]
-
-                push!(pp, standard_subplot(Y[i,:,shock], SS, variable_name, gr_back, pal = pal))
-
+        
+        # Build annotation data
+        annotate_ss = Vector{Pair{String, Any}}[]
+        annotate_ss_page = Pair{String,Any}[]
+        annotate_diff_input = Pair{String,Any}[]
+        
+        push!(annotate_diff_input, "Plot label" => reduce(vcat, diffdict[:label]))
+        
+        if haskey(diffdict, :parameters)
+            param_nms = diffdict[:parameters] |> keys |> collect |> sort
+            for param in param_nms
+                result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
+                push!(annotate_diff_input, String(param) => result)
+            end
+        end
+        
+        if haskey(diffdict, :shocks)
+            shcks = diffdict[:shocks]
+            labels = String[]
+            seen = []
+            next_idx = 0
+            
+            for (i,x) in enumerate(shcks)
+                if x === nothing
+                    push!(labels, "")
+                elseif typeof(x) <: AbstractMatrix
+                    idx = findfirst(M -> M == x, seen)
+                    if idx === nothing
+                        push!(seen, copy(x))
+                        next_idx += 1
+                        idx = next_idx
+                    end
+                    push!(labels, "Shock Matrix #$(idx)")
+                elseif x isa AbstractVector || x isa Tuple
+                    push!(labels, "[" * join(string.(apply_custom_name.(x, Ref(Dict(irf_active_plot_container[i][:rename_dictionary])))), ", ") * "]")
+                else
+                    push!(labels, string(apply_custom_name(x, Dict(irf_active_plot_container[i][:rename_dictionary]))))
+                end
+            end
+            
+            if haskey(diffdict, :shock_names)
+                push!(annotate_diff_input, "Shock" => labels)
+            else
+                push!(annotate_diff_input, "Shock" => labels)
+            end
+        end
+        
+        if haskey(diffdict, :initial_state)
+            vals = diffdict[:initial_state]
+            labels = String[]
+            seen = []
+            next_idx = 0
+            
+            for v in vals
+                if v === nothing
+                    push!(labels, "")
+                elseif v == [0.0]
+                    push!(labels, "nothing")
+                else
+                    idx = findfirst(==(v), seen)
+                    if idx === nothing
+                        push!(seen, copy(v))
+                        next_idx += 1
+                        idx = next_idx
+                    end
+                    push!(labels, "#$(idx)")
+                end
+            end
+            
+            push!(annotate_diff_input, "Initial state" => labels)
+        end
+        
+        if haskey(diffdict, :rename_dictionary)
+            rename_idx = Int[]
+            non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
+            unique_dicts = unique(non_nothing_dicts)
+            
+            for init in diffdict[:rename_dictionary]
+                if isnothing(init) || length(init) == 0
+                    push!(rename_idx, 0)
+                    continue
+                end
+                
+                for (i,u) in enumerate(unique_dicts)
+                    if u == init
+                        push!(rename_idx, i)
+                        continue
+                    end
+                end
+            end
+            
+            push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
+        end
+        
+        same_shock_direction = true
+        
+        for k in setdiff(keys(irf_active_plot_container[end]), 
+                            [:run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :label,
+                             :shocks, :shock_names, :variables, :variable_names, :rename_dictionary])
+            if haskey(diffdict, k)
+                push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat, diffdict[k]))
+                if k == :negative_shock
+                    same_shock_direction = false
+                end
+            end
+        end
+    else
+        # Single container case - create minimal diffdict
+        diffdict = Dict{Symbol,Any}()
+        diffdict[:label] = [irf_active_plot_container[1][:label]]
+        
+        # No annotations needed for single plot
+        annotate_ss = Vector{Pair{String, Any}}[]
+        annotate_ss_page = Pair{String,Any}[]
+        annotate_diff_input = Pair{String,Any}[]
+        push!(annotate_diff_input, "Plot label" => [irf_active_plot_container[1][:label] isa Symbol ? string(irf_active_plot_container[1][:label]) : irf_active_plot_container[1][:label]])
+        
+        same_shock_direction = true
+    end
+    
+    # Unified plotting logic (works for both single and multiple containers)
+    # Create legend (for single container, legend won't be used in final plot)
+    legend_plot = StatsPlots.plot(framestyle = :none, 
+                                    legend = :inside, 
+                                    legend_columns = length(irf_active_plot_container))
+    
+    joint_shocks = OrderedSet{String}()
+    joint_variables = OrderedSet{String}()
+    single_shock_per_irf = true
+    
+    max_periods = 0
+    for (i,k) in enumerate(irf_active_plot_container)
+        # Build legend for comparison (skip for single container)
+        if length(irf_active_plot_container) > 1
+            if plot_type == :stack
+                StatsPlots.bar!(legend_plot,
+                                [NaN], 
+                                legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                                alpha = transparency,
+                                lw = 0,
+                                linecolor = :transparent,
+                                color = pal[mod1.(i, length(pal))]',
+                                label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+            elseif plot_type == :compare
+                StatsPlots.plot!(legend_plot,
+                                [NaN], 
+                                color = pal[mod1.(i, length(pal))]',
+                                legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                                label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+            end
+        end
+        
+        foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
+        foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
+        
+        single_shock_per_irf = single_shock_per_irf && length(k[:shock_names]) == 1
+        max_periods = max(max_periods, size(k[:plot_data], 2))
+    end
+    
+    sort!(joint_shocks)
+    sort!(joint_variables)
+    
+    if single_shock_per_irf && length(joint_shocks) > 1
+        joint_shocks = [:single_shock_per_irf]
+    end
+    
+    # Unified plotting loop (works for both single and multiple containers)
+    for shock in joint_shocks
+            n_subplots = length(joint_variables)
+            pp = []
+            pane = 1
+            plot_count = 1
+            joint_non_zero_variables = []
+            
+            # Identify non-zero variables
+            for var in joint_variables
+                not_zero_anywhere = false
+                
+                for k in irf_active_plot_container
+                    var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
+                    shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), apply_custom_name.(k[:shock_names], Ref(Dict(k[:rename_dictionary]))))
+                    
+                    if isnothing(var_idx) || isnothing(shock_idx)
+                        continue
+                    else
+                        if any(.!isapprox.(k[:plot_data][var_idx,:,shock_idx], 0, atol = eps(Float32)))
+                            not_zero_anywhere = not_zero_anywhere || true
+                        end
+                    end
+                end
+                
+                if not_zero_anywhere
+                    push!(joint_non_zero_variables, var)
+                else
+                    n_subplots -= 1
+                end
+            end
+            
+            # Create plots for each variable
+            for var in joint_non_zero_variables
+                SSs = eltype(irf_active_plot_container[1][:reference_steady_state])[]
+                Ys = AbstractVector{eltype(irf_active_plot_container[1][:plot_data])}[]
+                
+                for k in irf_active_plot_container
+                    var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
+                    shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), apply_custom_name.(k[:shock_names], Ref(Dict(k[:rename_dictionary]))))
+                    
+                    if isnothing(var_idx) || isnothing(shock_idx)
+                        push!(SSs, NaN)
+                        push!(Ys, zeros(max_periods))
+                    else
+                        dat = fill(NaN, max_periods)
+                        dat[1:length(k[:plot_data][var_idx,:,shock_idx])] .= k[:plot_data][var_idx,:,shock_idx]
+                        push!(SSs, k[:reference_steady_state][var_idx])
+                        push!(Ys, dat)
+                    end
+                end
+                
+                # For single container, use simple subplot; for multiple, use comparison subplot
+                if length(irf_active_plot_container) == 1
+                    # Simple plot (single container)
+                    push!(pp, standard_subplot(Ys[1], SSs[1], var, gr_back, pal = pal))
+                else
+                    # Comparison/stacking plot (multiple containers)
+                    same_ss = true
+                    if maximum(filter(!isnan, SSs)) - minimum(filter(!isnan, SSs)) > 1e-10
+                        push!(annotate_ss_page, var => minimal_sigfig_strings(SSs))
+                        same_ss = false
+                    end
+                    
+                    push!(pp, standard_subplot(Val(plot_type),
+                                            Ys, 
+                                            SSs, 
+                                            var, 
+                                            gr_back,
+                                            same_ss,
+                                            pal = pal,
+                                            transparency = transparency))
+                end
+                
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
                 else
                     plot_count = 1
-
-                    if shocks == :simulate
+                    
+                    shock_dir = same_shock_direction ? negative_shock ? "Shock⁻" : "Shock⁺" : "Shock"
+                    
+                    if shock == :single_shock_per_irf
+                        shock_string = ": multiple shocks"
+                        shock_name = "multiple_shocks"
+                    elseif shock == "simulation"
+                        shock_dir = "Shocks"
                         shock_string = ": simulate all"
                         shock_name = "simulation"
-                    elseif shocks == :none
+                    elseif shock == "no_shock"
+                        shock_dir = ""
                         shock_string = ""
                         shock_name = "no_shock"
-                    elseif shocks isa Union{Symbol_input,String_input}
-                        shock_string = ": " * shock_names_display[shock]
-                        shock_name = shock_names_display[shock]
-                    else
+                    elseif shock == "shock_matrix"
                         shock_string = "Series of shocks"
                         shock_name = "shock_matrix"
+                        shock_dir = ""
+                    elseif shock isa Union{Symbol_input,String_input}
+                        shock_string = ": " * shock
+                        shock_name = shock
                     end
-
-                    p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
-
-                    push!(return_plots,p)
-
+                    
+                    if haskey(diffdict, :model_name)
+                        model_string = "multiple models"
+                        model_string_filename = "multiple_models"
+                    else
+                        model_string = irf_active_plot_container[1][:model_name]
+                        model_string_filename = irf_active_plot_container[1][:model_name]
+                    end
+                    
+                    plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+                    
+                    # For single container, create simple plot without legend/annotations
+                    # For multiple containers, include legend and annotations
+                    if length(irf_active_plot_container) == 1
+                        # Simple plot without legend and annotations
+                        p = StatsPlots.plot(pp..., plot_title = plot_title; attributes_redux...)
+                    else
+                        # Comparison plot with legend and annotations
+                        ppp = StatsPlots.plot(pp...; attributes...)
+                        
+                        plot_elements = [ppp, legend_plot]
+                        layout_heights = [15,1]
+                        
+                        if length(annotate_diff_input) > 2
+                            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
+                            ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+                            push!(plot_elements, ppp_input_diff)
+                            push!(layout_heights, 5)
+                            pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
+                        else
+                            pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
+                        end
+                        
+                        push!(annotate_ss, annotate_ss_page)
+                        
+                        if length(annotate_ss[pane]) > 1
+                            annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
+                            ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
+                            push!(plot_elements, ppp_ss)
+                            push!(layout_heights, 5)
+                        end
+                        
+                        p = StatsPlots.plot(plot_elements...,
+                                            layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                                            plot_title = plot_title; 
+                                            attributes_redux...)
+                    end
+                    
+                    push!(return_plots, p)
+                    
                     if show_plots
                         display(p)
                     end
-
+                    
                     if save_plots
                         if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                        StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                        StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
                     end
-
+                    
                     pane += 1
-
+                    annotate_ss_page = Pair{String,Any}[]
                     pp = []
                 end
             end
-        end
-        
-        if length(pp) > 0
-            if shocks == :simulate
-                shock_string = ": simulate all"
-                shock_name = "simulation"
-            elseif shocks == :none
-                shock_string = ""
-                shock_name = "no_shock"
-            elseif shocks isa Union{Symbol_input,String_input}
-                shock_string = ": " * shock_names_display[shock]
-                shock_name = shock_names_display[shock]
-            else
-                shock_string = "Series of shocks"
-                shock_name = "shock_matrix"
+            
+            # Handle remaining plots
+            if length(pp) > 0
+                shock_dir = same_shock_direction ? negative_shock ? "Shock⁻" : "Shock⁺" : "Shock"
+                
+                if shock == :single_shock_per_irf
+                    shock_string = ": multiple shocks"
+                    shock_name = "multiple_shocks"
+                elseif shock == "simulation"
+                    shock_dir = "Shocks"
+                    shock_string = ": simulate all"
+                    shock_name = "simulation"
+                elseif shock == "no_shock"
+                    shock_dir = ""
+                    shock_string = ""
+                    shock_name = "no_shock"
+                elseif shock == "shock_matrix"
+                    shock_string = "Series of shocks"
+                    shock_name = "shock_matrix"
+                    shock_dir = ""
+                elseif shock isa Union{Symbol_input,String_input}
+                    shock_string = ": " * shock
+                    shock_name = shock
+                end
+                
+                if haskey(diffdict, :model_name)
+                    model_string = "multiple models"
+                    model_string_filename = "multiple_models"
+                else
+                    model_string = irf_active_plot_container[1][:model_name]
+                    model_string_filename = irf_active_plot_container[1][:model_name]
+                end
+                
+                plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+                
+                # For single container, create simple plot without legend/annotations
+                # For multiple containers, include legend and annotations
+                if length(irf_active_plot_container) == 1
+                    # Simple plot without legend and annotations
+                    p = StatsPlots.plot(pp..., plot_title = plot_title; attributes_redux...)
+                else
+                    # Comparison plot with legend and annotations
+                    ppp = StatsPlots.plot(pp...; attributes...)
+                    
+                    plot_elements = [ppp, legend_plot]
+                    layout_heights = [15,1]
+                    
+                    if length(annotate_diff_input) > 2
+                        annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
+                        ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+                        push!(plot_elements, ppp_input_diff)
+                        push!(layout_heights, 5)
+                        pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
+                    else
+                        pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
+                    end
+                    
+                    push!(annotate_ss, annotate_ss_page)
+                    
+                    if length(annotate_ss[pane]) > 1
+                        annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
+                        ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
+                        push!(plot_elements, ppp_ss)
+                        push!(layout_heights, 5)
+                    end
+                
+                    p = StatsPlots.plot(plot_elements...,
+                                        layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
+                                        plot_title = plot_title; 
+                                        attributes_redux...)
+                end
+                
+                push!(return_plots, p)
+                
+                if show_plots
+                    display(p)
+                end
+                
+                if save_plots
+                    if !isdir(save_plots_path) mkpath(save_plots_path) end
+                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
+                end
             end
-
-            p = StatsPlots.plot(pp..., plot_title = "Model: "*𝓂.model_name*"        " * shock_dir *  shock_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page)))*")"; attributes_redux...)
-
-            push!(return_plots,p)
-
-            if show_plots
-                display(p)
-            end
-
-            if save_plots
-                if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
-            end
+            
+            annotate_ss = Vector{Pair{String, Any}}[]
+            annotate_ss_page = Pair{String,Any}[]
         end
     end
-
+    
     return return_plots
 end
 
@@ -2369,470 +2763,17 @@ function plot_irf!(𝓂::ℳ;
         @info "Plot with same parameters already exists. Using previous plot data to create plot."
     end
 
-    # 1. Keep only certain keys from each dictionary
-    reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, :label, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
-        for d in irf_active_plot_container
-    ]
-
-    diffdict = compare_args_and_kwargs(reduced_vector)
-
-    # 2. Group the original vector by :model_name
-    grouped_by_model = Dict{Any, Vector{Dict}}()
-
-    for d in irf_active_plot_container
-        model = d[:model_name]
-        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
-        push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
-    end
-
-    model_names = []
-
-    for d in irf_active_plot_container
-        push!(model_names, d[:model_name])
-    end
-
-    model_names = unique(model_names)
-
-    for model in model_names
-        if length(grouped_by_model[model]) > 1
-            diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
-            diffdict = merge_by_runid(diffdict, diffdict_grouped)
-        end
-    end
-
-    # @assert haskey(diffdict, :parameters) || haskey(diffdict, :shock_names) || haskey(diffdict, :initial_state) || any(haskey.(Ref(diffdict), keys(DEFAULT_ARGS_AND_KWARGS_NAMES))) "New plot must be different from previous plot. Use the version without ! to plot."
-    
-    annotate_ss = Vector{Pair{String, Any}}[]
-
-    annotate_ss_page = Pair{String,Any}[]
-
-    annotate_diff_input = Pair{String,Any}[]
-
-    push!(annotate_diff_input, "Plot label" => reduce(vcat, diffdict[:label]))
-
-    len_diff = length(irf_active_plot_container)
-
-    if haskey(diffdict, :parameters)
-        param_nms = diffdict[:parameters] |> keys |> collect |> sort
-        for param in param_nms
-            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
-            push!(annotate_diff_input, String(param) => result)
-        end
-    end
-
-    if haskey(diffdict, :shocks)
-        # Build labels where matrices receive stable indices by content
-        shcks = diffdict[:shocks]
-
-        labels   = String[]                  # "" for trivial matrices, names pass through, "#k" for indexed matrices
-        seen     = [] # distinct non-trivial normalised matrices
-        next_idx = 0
-
-        for (i,x) in enumerate(shcks)
-            if x === nothing
-                push!(labels, "")
-            elseif typeof(x) <: AbstractMatrix
-                # Assign running index by first appearance
-                idx = findfirst(M -> M == x, seen)
-                if idx === nothing
-                    push!(seen, copy(x))
-                    next_idx += 1
-                    idx = next_idx
-                end
-                
-                push!(labels, "Shock Matrix #$(idx)")
-
-            elseif x isa AbstractVector || x isa Tuple
-                # Pass through vector entries, flatten into labels
-                push!(labels, "[" * join(string.(apply_custom_name.(x, Ref(Dict(irf_active_plot_container[i][:rename_dictionary])))), ", ") * "]")
-            else
-                # Pass through scalar names
-                push!(labels, string(apply_custom_name(x, Dict(irf_active_plot_container[i][:rename_dictionary]))))
-            end
-        end
-        
-        # Respect existing shock_names logic: only add when no simple one-to-one names are present
-        if haskey(diffdict, :shock_names)
-            # if !all(length.(diffdict[:shock_names]) .== 1)
-                push!(annotate_diff_input, "Shock" => labels)
-            # end
-        else
-            push!(annotate_diff_input, "Shock" => labels)
-        end
-    end
-
-    if haskey(diffdict, :initial_state)
-        vals = diffdict[:initial_state]
-
-        labels = String[]                                # "" for [0.0], "#k" otherwise
-        seen   = []           # store distinct non-[0.0] values by content
-        next_idx = 0
-
-        for v in vals
-            if v === nothing
-                push!(labels, "")
-            elseif v == [0.0]
-                push!(labels, "nothing")
-            else
-                idx = findfirst(==(v), seen)             # content based lookup
-                if idx === nothing
-                    push!(seen, copy(v))                 # store by value
-                    next_idx += 1
-                    idx = next_idx
-                end
-                push!(labels, "#$(idx)")
-            end
-        end
-
-        push!(annotate_diff_input, "Initial state" => labels)
-    end
-    
-    rename_idx = Int[]
-
-    if haskey(diffdict, :rename_dictionary)
-        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
-        unique_dicts = unique(non_nothing_dicts)
-
-        for init in diffdict[:rename_dictionary]
-            if isnothing(init) || length(init) == 0
-                push!(rename_idx, 0)
-                continue
-            end
-
-            for (i,u) in enumerate(unique_dicts)
-                if u == init
-                    push!(rename_idx,i)
-                    continue
-                end
-            end
-        end
-
-        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
-    end
-
-    same_shock_direction = true
-    
-    for k in setdiff(keys(args_and_kwargs), 
-                        [
-                            :run_id, :parameters, :plot_data, :tol, :reference_steady_state, :initial_state, :label,
-                            :shocks, :shock_names,
-                            :variables, :variable_names,
-                            :rename_dictionary,
-                            # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
-                        ]
-                    )
-
-        if haskey(diffdict, k)
-            push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat,diffdict[k]))
-            
-            if k == :negative_shock
-                same_shock_direction = false
-            end
-        end
-    end
-
-
-
-    legend_plot = StatsPlots.plot(framestyle = :none, 
-                                    legend = :inside, 
-                                    legend_columns = length(irf_active_plot_container)) 
-    
-    joint_shocks = OrderedSet{String}()
-    joint_variables = OrderedSet{String}()
-    single_shock_per_irf = true
-    
-    max_periods = 0
-    for (i,k) in enumerate(irf_active_plot_container)
-        if plot_type == :stack
-            StatsPlots.bar!(legend_plot,
-                            [NaN], 
-                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                            alpha = transparency,
-                            lw = 0,  # This removes the lines around the bars
-                            linecolor = :transparent,
-                            color = pal[mod1.(i, length(pal))]',
-                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
-        elseif plot_type == :compare
-            StatsPlots.plot!(legend_plot,
-                            [NaN], 
-                            color = pal[mod1.(i, length(pal))]',
-                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
-        end
-
-        foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
-        foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
-
-        single_shock_per_irf = single_shock_per_irf && length(k[:shock_names]) == 1
-
-        max_periods = max(max_periods, size(k[:plot_data],2))
-    end
-    
-    sort!(joint_shocks)
-    sort!(joint_variables)
-
-    if single_shock_per_irf && length(joint_shocks) > 1
-        joint_shocks = [:single_shock_per_irf]
-    end
-
-    return_plots = []
-
-    for shock in joint_shocks
-        n_subplots = length(joint_variables)
-        pp = []
-        pane = 1
-        plot_count = 1
-        joint_non_zero_variables = []
-
-        for var in joint_variables
-            not_zero_anywhere = false
-
-            for k in irf_active_plot_container
-                var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
-                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), apply_custom_name.(k[:shock_names], Ref(Dict(k[:rename_dictionary]))))
-                
-                if isnothing(var_idx) || isnothing(shock_idx)
-                    # If the variable or shock is not present in the current irf_active_plot_container,
-                    # we skip this iteration.
-                    continue
-                else
-                    if any(.!isapprox.(k[:plot_data][var_idx,:,shock_idx], 0, atol = eps(Float32)))
-                        not_zero_anywhere = not_zero_anywhere || true
-                        # break # If any irf data is not approximately zero, we set the flag to true.
-                    end
-                end
-            end
-
-            if not_zero_anywhere 
-                push!(joint_non_zero_variables, var)
-            else
-                # If all irf data for this variable and shock is approximately zero, we skip this subplot.
-                n_subplots -= 1
-            end
-        end
-
-        for var in joint_non_zero_variables
-            SSs = eltype(irf_active_plot_container[1][:reference_steady_state])[]
-            Ys = AbstractVector{eltype(irf_active_plot_container[1][:plot_data])}[]
-
-            for k in irf_active_plot_container
-                var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
-                shock_idx = shock == :single_shock_per_irf ? 1 : findfirst(==(shock), apply_custom_name.(k[:shock_names], Ref(Dict(k[:rename_dictionary]))))
-
-                if isnothing(var_idx) || isnothing(shock_idx)
-                    # If the variable or shock is not present in the current irf_active_plot_container,
-                    # we skip this iteration.
-                    push!(SSs, NaN)
-                    push!(Ys, zeros(max_periods))
-                else
-                    dat = fill(NaN, max_periods)
-                    dat[1:length(k[:plot_data][var_idx,:,shock_idx])] .= k[:plot_data][var_idx,:,shock_idx]
-                    push!(SSs, k[:reference_steady_state][var_idx])
-                    push!(Ys, dat) # k[:plot_data][var_idx,:,shock_idx])
-                end
-            end
-            
-            same_ss = true
-
-            if maximum(filter(!isnan, SSs)) - minimum(filter(!isnan, SSs)) > 1e-10
-                push!(annotate_ss_page, var => minimal_sigfig_strings(SSs))
-                same_ss = false
-            end
-
-            push!(pp, standard_subplot(Val(plot_type),
-                                    Ys, 
-                                    SSs, 
-                                    var, 
-                                    gr_back,
-                                    same_ss,
-                                    pal = pal,
-                                    transparency = transparency))
-            
-            if !(plot_count % plots_per_page == 0)
-                plot_count += 1
-            else
-                plot_count = 1
-
-                shock_dir = same_shock_direction ? negative_shock ? "Shock⁻" : "Shock⁺" : "Shock"
-
-                if shock == :single_shock_per_irf
-                    shock_string = ": multiple shocks"
-                    shock_name = "multiple_shocks"
-                elseif shock == "simulation"
-                    shock_dir = "Shocks"
-                    shock_string = ": simulate all"
-                    shock_name = "simulation"
-                elseif shock == "no_shock"
-                    shock_dir = ""
-                    shock_string = ""
-                    shock_name = "no_shock"
-                elseif shock == "shock_matrix"
-                    shock_string = "Series of shocks"
-                    shock_name = "shock_matrix"
-                    shock_dir = ""
-                elseif shock isa Union{Symbol_input,String_input}
-                    shock_string = ": " * shock
-                    shock_name = shock
-                end
-
-                ppp = StatsPlots.plot(pp...; attributes...)
-                
-                if haskey(diffdict, :model_name)
-                    model_string = "multiple models"
-                    model_string_filename = "multiple_models"
-                else
-                    model_string = 𝓂.model_name
-                    model_string_filename = 𝓂.model_name
-                end
-
-                plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
-
-                plot_elements = [ppp, legend_plot]
-
-                layout_heights = [15,1]
-                
-                if length(annotate_diff_input) > 2
-                    annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-                    ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-                    push!(plot_elements, ppp_input_diff)
-
-                    push!(layout_heights, 5)
-
-                    pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
-                else
-                    pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
-                end
-
-                push!(annotate_ss, annotate_ss_page)
-
-                if length(annotate_ss[pane]) > 1
-                    annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
-
-                    ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
-
-                    push!(plot_elements, ppp_ss)
-                    
-                    push!(layout_heights, 5)
-                end
-
-                p = StatsPlots.plot(plot_elements...,
-                                    layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                                    plot_title = plot_title; 
-                                    attributes_redux...)
-
-                push!(return_plots,p)
-
-                if show_plots
-                    display(p)
-                end
-
-                if save_plots
-                    if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
-                end
-
-                pane += 1
-
-                annotate_ss_page = Pair{String,Any}[]
-
-                pp = []
-            end
-        end
-
-
-        if length(pp) > 0
-            shock_dir = same_shock_direction ? negative_shock ? "Shock⁻" : "Shock⁺" : "Shock"
-
-            if shock == :single_shock_per_irf
-                shock_string = ": multiple shocks"
-                shock_name = "multiple_shocks"
-            elseif shock == "simulation"
-                shock_dir = "Shocks"
-                shock_string = ": simulate all"
-                shock_name = "simulation"
-            elseif shock == "no_shock"
-                shock_dir = ""
-                shock_string = ""
-                shock_name = "no_shock"
-            elseif shock == "shock_matrix"
-                shock_string = "Series of shocks"
-                shock_name = "shock_matrix"
-                shock_dir = ""
-            elseif shock isa Union{Symbol_input,String_input}
-                shock_string = ": " * shock
-                shock_name = shock
-            end
-
-            ppp = StatsPlots.plot(pp...; attributes...)
-            
-            if haskey(diffdict, :model_name)
-                model_string = "multiple models"
-                model_string_filename = "multiple_models"
-            else
-                model_string = 𝓂.model_name
-                model_string_filename = 𝓂.model_name
-            end
-
-            plot_title = "Model: "*model_string*"        " * shock_dir *  shock_string *"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
-
-            plot_elements = [ppp, legend_plot]
-
-            layout_heights = [15,1]
-
-            if length(annotate_diff_input) > 2
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-                push!(plot_elements, ppp_input_diff)
-
-                push!(layout_heights, 5)
-                
-                pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
-            else
-                pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
-            end
-
-            push!(annotate_ss, annotate_ss_page)
-
-            if length(annotate_ss[pane]) > 1
-                annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
-
-                ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
-
-                push!(plot_elements, ppp_ss)
-                
-                push!(layout_heights, 5)
-            end
-
-            p = StatsPlots.plot(plot_elements...,
-                                layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                                plot_title = plot_title; 
-                                attributes_redux...)
-
-            push!(return_plots,p)
-
-            if show_plots
-                display(p)
-            end
-
-            if save_plots
-                if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * shock_name * "__" * string(pane) * "." * string(save_plots_format))
-            end
-        end
-
-        annotate_ss = Vector{Pair{String, Any}}[]
-
-        annotate_ss_page = Pair{String,Any}[]
-    end
-
-    return return_plots
+    # Generate plots from container
+    return _plot_irf_from_container(show_plots = show_plots,
+                                     save_plots = save_plots,
+                                     save_plots_format = save_plots_format,
+                                     save_plots_name = save_plots_name,
+                                     save_plots_path = save_plots_path,
+                                     plots_per_page = plots_per_page,
+                                     plot_type = plot_type,
+                                     transparency = transparency,
+                                     negative_shock = negative_shock,
+                                     plot_attributes = plot_attributes)
 end
 
 
