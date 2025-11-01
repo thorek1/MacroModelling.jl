@@ -3817,18 +3817,20 @@ function _plot_solution_from_container(;
     if haskey(diffdict, :ignore_obc)
         push!(annotate_diff_input, "Ignore OBC" => reduce(vcat, diffdict[:ignore_obc]))
     end
-    
+
     # Determine legend labels based on what differs
     # If more than one input differs (besides label), use custom labels from diffdict
     len_diff = length(solution_active_plot_container)
     
+    any_custom_label = any([i != v[:label] for (i,v) in enumerate(solution_active_plot_container)])
+
     # Create legend with 2 columns so dynamics and steady state entries are side by side
     legend_plot = StatsPlots.plot(framestyle = :none, legend = :inside, legend_columns = 2) 
     
     if length(annotate_diff_input) > 2
         # Multiple differences - use custom labels or plot labels
         for (i, container) in enumerate(solution_active_plot_container)
-            label_text = container[:label] isa Symbol ? string(container[:label]) : container[:label]
+            label_text = container[:label] isa String ? container[:label] : string(container[:label])
             
             StatsPlots.plot!([NaN], 
                             color = pal[mod1(i, length(pal))],
@@ -3841,12 +3843,14 @@ function _plot_solution_from_container(;
     else
         # Single difference (or just labels differ) - use the relevant input difference in legend
         # Get the legend title and labels from the second entry in annotate_diff_input
-        legend_title_dynamics = length(annotate_diff_input) > 1 ? annotate_diff_input[2][1] : nothing
+        legend_title_dynamics = any_custom_label ? nothing : length(annotate_diff_input) > 1 ? annotate_diff_input[2][1] : nothing
         legend_title_ss = legend_title_dynamics
         
         for (i, container) in enumerate(solution_active_plot_container)
             # For single difference, use the value of that difference as the label
-            label_text = if length(annotate_diff_input) > 1
+            label_text = if any_custom_label
+                container[:label] isa String ? container[:label] : string(container[:label])
+            elseif length(annotate_diff_input) > 1
                 val = annotate_diff_input[2][2][i]
                 val isa String ? val : String(Symbol(val))
             else
@@ -3859,7 +3863,9 @@ function _plot_solution_from_container(;
                             label = label_text)
 
             # For single difference, use the value of that difference as the label
-            label_text = if length(annotate_diff_input) > 1
+            label_text = if any_custom_label
+                container[:label] isa String ? container[:label] : string(container[:label])
+            elseif length(annotate_diff_input) > 1
                 val = annotate_diff_input[2][2][i]
                 val isa String ? val : String(Symbol(val))
             else
@@ -3962,7 +3968,7 @@ function _plot_solution_from_container(;
                 layout_heights = [15, length(annotate_diff_input)]
                 
                 # Add relevant input differences table if multiple inputs differ
-                if length(annotate_diff_input) > 2
+                if length(annotate_diff_input) > 2 || (any_custom_label  && len_diff > 1)
                     annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
                     ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
                     push!(plot_elements, ppp_input_diff)
@@ -4006,7 +4012,7 @@ function _plot_solution_from_container(;
             layout_heights = [15, length(annotate_diff_input)]
             
             # Add relevant input differences table if multiple inputs differ
-            if length(annotate_diff_input) > 2
+            if length(annotate_diff_input) > 2 || (any_custom_label  && len_diff > 1)
                 annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
                 push!(plot_elements, ppp_input_diff)
