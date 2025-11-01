@@ -4024,7 +4024,7 @@ function _plot_solution_from_container(;
                 end
                 
                 # Create plot title including state info
-                state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(state) : ""
+                state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(Symbol(state)) : ""
                 plot_title = "Model: "*model_name*state_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
                 
                 # Create final plot with appropriate layout
@@ -4042,7 +4042,7 @@ function _plot_solution_from_container(;
                 
                 if save_plots
                     if !isdir(save_plots_path) mkpath(save_plots_path) end
-                    state_name = replace_indices_in_symbol(state)
+                    state_name = replace_indices_in_symbol(Symbol(state))
                     StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_name * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
                 end
                 
@@ -4068,7 +4068,7 @@ function _plot_solution_from_container(;
             end
             
             # Create plot title including state info
-            state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(state) : ""
+            state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(Symbol(state)) : ""
             plot_title = "Model: "*model_name*state_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
             
             # Create final plot with appropriate layout
@@ -4086,7 +4086,7 @@ function _plot_solution_from_container(;
             
             if save_plots
                 if !isdir(save_plots_path) mkpath(save_plots_path) end
-                state_name = replace_indices_in_symbol(state)
+                state_name = replace_indices_in_symbol(Symbol(state))
                 StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_name * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
