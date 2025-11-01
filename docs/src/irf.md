@@ -10,6 +10,8 @@ plot_irf(Gali_2015_chapter_3_nonlinear)
 
 The plot displays every endogenous variable affected by each exogenous shock. The title includes the model name, shock identifier, sign of the impulse (positive by default), and the page indicator (e.g., `(1/3)`). Each subplot shows the steady state as a horizontal reference line (non-stochastic for first-order solutions, stochastic for higher orders). For strictly positive variables, a secondary axis displays percentage deviations.
 
+### Solution Algorithm
+
 IRFs can be plotted using different solution algorithms. The following example uses a second-order perturbation solution:
 
 ```julia
