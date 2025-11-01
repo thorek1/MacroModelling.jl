@@ -3605,8 +3605,8 @@ function plot_solution(𝓂::ℳ,
 
     var_state_range = hcat(var_state_range...)
 
-    variable_output = Dict()
-    has_impact = Dict()
+    variable_output = []
+    has_impact = []
 
     for k in vars_to_plot
         idx = indexin([k], 𝓂.var)
@@ -3636,7 +3636,7 @@ function plot_solution(𝓂::ℳ,
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
-                           :full_SS_current => full_SS_current[indexin(vars_to_plot, 𝓂.var)],
+                           :full_SS_current => full_SS_current[indexin(sort(vcat(state, vars_to_plot)), 𝓂.var)],
                            :algorithm_label => labels[algorithm][1],
                            :ss_label => labels[algorithm][2],
                            :rename_dictionary => processed_rename_dictionary)
@@ -3675,9 +3675,9 @@ function _plot_solution_from_container(;
     model_name = first_container[:model_name]
     
     # Collect all unique states from containers
-    joint_states = OrderedSet{Symbol}()
+    joint_states = OrderedSet{String}()
     for container in solution_active_plot_container
-        push!(joint_states, container[:state])
+        push!(joint_states, string(apply_custom_name.(container[:state], Ref(Dict(container[:rename_dictionary])))))
     end
     
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
@@ -3749,6 +3749,8 @@ function _plot_solution_from_container(;
             model_names = unique(model_names)
 
             for model in model_names
+                # println(grouped_by_model[model])
+                # println(typeof(grouped_by_model[model][:has_impact]))
                 if length(grouped_by_model[model]) > 1
                     diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
                     diffdict = merge_by_runid(diffdict, diffdict_grouped)
@@ -3880,9 +3882,9 @@ function _plot_solution_from_container(;
     end
     
     # Collect all variables to plot across all containers
-    all_vars = OrderedSet{Symbol}()
+    all_vars = OrderedSet{String}()
     for container in solution_active_plot_container
-        foreach(v -> push!(all_vars, v), container[:vars_to_plot])
+        foreach(v -> push!(all_vars, v), string.(apply_custom_name.(container[:vars_to_plot], Ref(Dict(container[:rename_dictionary])))))
     end
     
     return_plots = []
@@ -3890,16 +3892,19 @@ function _plot_solution_from_container(;
     # Loop over each state (similar to how plot_irf loops over shocks)
     for state in joint_states
         # Filter containers for this state
-        state_containers = [c for c in solution_active_plot_container if c[:state] == state]
+        state_containers = [c for c in solution_active_plot_container if string(apply_custom_name.(c[:state], Ref(Dict(c[:rename_dictionary])))) == state]
         
         # Determine which variables have impact in at least one container for this state
         vars_with_impact = []
-        for var in all_vars
+        for var in setdiff(all_vars, joint_states)
             has_any_impact = false
             for container in state_containers
-                if haskey(container[:has_impact], var) && container[:has_impact][var]
-                    has_any_impact = true
-                    break
+                for (k,v) in Dict(container[:has_impact])
+                    k_trans = string(apply_custom_name(k, (Dict(container[:rename_dictionary]))))
+                    if k_trans == var && v
+                        has_any_impact = true
+                        break
+                    end
                 end
             end
             if has_any_impact
@@ -3915,22 +3920,44 @@ function _plot_solution_from_container(;
         # Plot each variable for this state
         for k in vars_with_impact
             Pl = StatsPlots.plot()
-            
+    
+
             # Plot line for each container with this state
             for (i, container) in enumerate(solution_active_plot_container)
-                if container[:state] == state && haskey(container[:variable_output], k) && container[:has_impact][k]
+                # return the key that corresponds to k in the original variable_output dictionary
+                original_k_variable_output = nothing
+                for key in keys(Dict(container[:variable_output]))
+                    if string(apply_custom_name(key, (Dict(container[:rename_dictionary])))) == k
+                        original_k_variable_output = key
+                        break
+                    end
+                end
+
+                # return the key that corresponds to k in the original has_impact dictionary
+                original_k_has_impact = nothing
+                for key in keys(Dict(container[:has_impact]))
+                    if string(apply_custom_name(key, (Dict(container[:rename_dictionary])))) == k
+                        original_k_has_impact = key
+                        break
+                    end
+                end
+
+                if string(apply_custom_name.(container[:state], Ref(Dict(container[:rename_dictionary])))) == state && !isnothing(original_k_variable_output) && !isnothing(original_k_has_impact)
+                    # Create concatenated transformed variable names for indexing
+                    concat_trans_vars = string.(apply_custom_name.(sort(vcat(container[:vars_to_plot], container[:state])), Ref(Dict(container[:rename_dictionary]))))
+
                     # Find state index in vars_to_plot
-                    state_idx = findfirst(==(state), container[:vars_to_plot])
+                    state_idx = findfirst(==(state), concat_trans_vars)
                     if !isnothing(state_idx)
                         state_ss = container[:full_SS_current][state_idx]
                     else
                         state_ss = 0.0  # fallback
                     end
-                    
+
                     StatsPlots.plot!(container[:state_range] .+ state_ss, 
-                        container[:variable_output][k][1,:], 
-                        ylabel = replace_indices_in_symbol(k)*"₍₀₎", 
-                        xlabel = replace_indices_in_symbol(state)*"₍₋₁₎", 
+                        Dict(container[:variable_output])[original_k_variable_output][1,:], 
+                        ylabel = replace_indices_in_symbol(Symbol(k))*"₍₀₎", 
+                        xlabel = replace_indices_in_symbol(Symbol(state))*"₍₋₁₎", 
                         color = pal[mod1(i, length(pal))],
                         label = "")
                 end
@@ -3938,10 +3965,31 @@ function _plot_solution_from_container(;
             
             # Plot SS markers for each container with this state
             for (i, container) in enumerate(solution_active_plot_container)
-                if container[:state] == state && haskey(container[:variable_output], k) && container[:has_impact][k]
+                # return the key that corresponds to k in the original variable_output dictionary
+                original_k_variable_output = nothing
+                for key in keys(Dict(container[:variable_output]))
+                    if string(apply_custom_name(key, (Dict(container[:rename_dictionary])))) == k
+                        original_k_variable_output = key
+                        break
+                    end
+                end
+
+                # return the key that corresponds to k in the original has_impact dictionary
+                original_k_has_impact = nothing
+                for key in keys(Dict(container[:has_impact]))
+                    if string(apply_custom_name(key, (Dict(container[:rename_dictionary])))) == k
+                        original_k_has_impact = key
+                        break
+                    end
+                end
+
+                if string(apply_custom_name.(container[:state], Ref(Dict(container[:rename_dictionary])))) == state && !isnothing(original_k_variable_output) && !isnothing(original_k_has_impact)
+                    # Create concatenated transformed variable names for indexing
+                    concat_trans_vars = string.(apply_custom_name.(sort(vcat(container[:vars_to_plot], container[:state])), Ref(Dict(container[:rename_dictionary]))))
+
                     # Get state and variable indices
-                    state_idx = findfirst(==(state), container[:vars_to_plot])
-                    var_idx = findfirst(==(k), container[:vars_to_plot])
+                    state_idx = findfirst(==(state), concat_trans_vars)
+                    var_idx = findfirst(==(k), concat_trans_vars)
                     
                     if !isnothing(state_idx) && !isnothing(var_idx)
                         state_ss = container[:full_SS_current][state_idx]
@@ -4258,8 +4306,8 @@ function plot_solution!(𝓂::ℳ,
 
     var_state_range = hcat(var_state_range...)
 
-    variable_output = Dict()
-    has_impact = Dict()
+    variable_output = []
+    has_impact = []
 
     for k in vars_to_plot
         idx = indexin([k], 𝓂.var)
@@ -4289,7 +4337,7 @@ function plot_solution!(𝓂::ℳ,
                            :variable_output => variable_output,
                            :has_impact => has_impact,
                            :vars_to_plot => vars_to_plot,
-                           :full_SS_current => full_SS_current[indexin(vars_to_plot, 𝓂.var)],
+                           :full_SS_current => full_SS_current[indexin(sort(vcat(state, vars_to_plot)), 𝓂.var)],
                            :algorithm_label => labels[algorithm][1],
                            :ss_label => labels[algorithm][2],
                            :rename_dictionary => processed_rename_dictionary)
