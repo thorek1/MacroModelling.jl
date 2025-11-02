@@ -146,7 +146,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `shock_decomposition` is `true`.
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
-- $LABEL®
+- `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $RENAME_DICTIONARY®
 - $PLOT_ATTRIBUTES®
 - $QME®
@@ -3424,6 +3424,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
 - $PLOT_ATTRIBUTES®
 - $RENAME_DICTIONARY®
+- `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -3866,10 +3867,10 @@ function _plot_solution_from_container(;
 
             # For single difference, use the value of that difference as the label
             label_text = if any_custom_label
-                container[:label] isa String ? container[:label] : string(container[:label])
+                (container[:label] isa String ? container[:label] : string(container[:label])) * " (relevant SS)"
             elseif length(annotate_diff_input) > 1
                 val = annotate_diff_input[2][2][i]
-                val isa String ? val : String(Symbol(val))
+                (val isa String ? val : String(Symbol(val))) * " (relevant SS)"
             else
                 container[:ss_label]
             end
@@ -3877,7 +3878,7 @@ function _plot_solution_from_container(;
             StatsPlots.scatter!([NaN], 
                                 color = pal[mod1(i, length(pal))],
                                 legend_title = legend_title_ss,
-                                label = label_text * " (relevant SS)")
+                                label = label_text)
         end
     end
     
@@ -4142,6 +4143,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
 - $PLOT_ATTRIBUTES®
 - $RENAME_DICTIONARY®
+- $LABEL®
 - $QME®
 - $SYLVESTER®
 - $LYAPUNOV®
@@ -4400,7 +4402,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $(PLOTS_PER_PAGE®(DEFAULT_PLOTS_PER_PAGE_LARGE))
 - $RENAME_DICTIONARY®
 - $PLOT_ATTRIBUTES®
-- $LABEL®
+- `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $QME®
 - $SYLVESTER®
 - $TOLERANCES®
