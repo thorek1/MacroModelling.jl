@@ -3304,7 +3304,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             bar_position = :stack, 
             color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
             linecolor = :transparent,
-            label = reshape(string.([apply_custom_name(s, rename_dictionary) for s in shocks_to_plot]),1,length(shocks_to_plot))))
+            label = reshape(string.([replace_indices_in_symbol(apply_custom_name(s, rename_dictionary)) for s in shocks_to_plot]),1,length(shocks_to_plot))))
         end
 
         if !(plot_count % plots_per_page == 0)
@@ -3315,7 +3315,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
             ppp = StatsPlots.plot(pp...; attributes...)
             
             pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
-                                label = reshape(string.([apply_custom_name(s, rename_dictionary) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
+                                label = reshape(string.([replace_indices_in_symbol(apply_custom_name(s, rename_dictionary)) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
                                 linewidth = 0 , 
                                 linecolor = :transparent,
                                 framestyle = :none, 
@@ -3348,7 +3348,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
         ppp = StatsPlots.plot(pp...; attributes...)
 
         pp = StatsPlots.bar(fill(NaN,1,length(shocks_to_plot)), 
-                            label = reshape(string.([apply_custom_name(s, rename_dictionary) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
+                            label = reshape(string.([replace_indices_in_symbol(apply_custom_name(s, rename_dictionary)) for s in shocks_to_plot]),1,length(shocks_to_plot)), 
                             linewidth = 0 , 
                             linecolor = :transparent,
                             framestyle = :none, 
