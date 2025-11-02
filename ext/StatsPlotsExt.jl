@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
 import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -4007,6 +4007,14 @@ function _plot_solution_from_container(;
             if !(plot_count % plots_per_page == 0)
                 plot_count += 1
             else
+                if haskey(diffdict, :model_name)
+                    model_string = "multiple models"
+                    model_string_filename = "multiple_models"
+                else
+                    model_string = solution_active_plot_container[1][:model_name]
+                    model_string_filename = solution_active_plot_container[1][:model_name]
+                end
+
                 plot_count = 1
                 
                 ppp = StatsPlots.plot(pp...; attributes...)
@@ -4025,7 +4033,7 @@ function _plot_solution_from_container(;
                 
                 # Create plot title including state info
                 state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(Symbol(state)) : ""
-                plot_title = "Model: "*model_name*state_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+                plot_title = "Model: " * model_string * state_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page))) * ")"
                 
                 # Create final plot with appropriate layout
                 p = StatsPlots.plot(plot_elements...,
@@ -4043,7 +4051,7 @@ function _plot_solution_from_container(;
                 if save_plots
                     if !isdir(save_plots_path) mkpath(save_plots_path) end
                     state_name = replace_indices_in_symbol(Symbol(state))
-                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_name * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
+                    StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
                 end
                 
                 pane += 1
@@ -4067,9 +4075,17 @@ function _plot_solution_from_container(;
                 push!(layout_heights, 5)
             end
             
+            if haskey(diffdict, :model_name)
+                model_string = "multiple models"
+                model_string_filename = "multiple_models"
+            else
+                model_string = solution_active_plot_container[1][:model_name]
+                model_string_filename = solution_active_plot_container[1][:model_name]
+            end
+
             # Create plot title including state info
             state_string = length(joint_states) > 1 ? " State: " * replace_indices_in_symbol(Symbol(state)) : ""
-            plot_title = "Model: "*model_name*state_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
+            plot_title = "Model: " * model_string * state_string * "  (" * string(pane) * "/" * string(Int(ceil(n_subplots/plots_per_page))) * ")"
             
             # Create final plot with appropriate layout
             p = StatsPlots.plot(plot_elements...,
@@ -4087,7 +4103,7 @@ function _plot_solution_from_container(;
             if save_plots
                 if !isdir(save_plots_path) mkpath(save_plots_path) end
                 state_name = replace_indices_in_symbol(Symbol(state))
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_name * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
+                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * state_name * "__" * string(pane) * "." * string(save_plots_format))
             end
         end
     end  # End of state loop
