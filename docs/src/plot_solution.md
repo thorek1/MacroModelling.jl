@@ -711,10 +711,10 @@ end
 
 # Backus model example showing String to String mapping
 plot_solution(Backus_Kehoe_Kydland_1992, "K{H}",
-    rename_dictionary = Dict("C{H}" => "Home Consumption", 
-                             "C{F}" => "Foreign Consumption",
-                             "Y{H}" => "Home Output",
-                             "Y{F}" => "Foreign Output"))
+    rename_dictionary = Dict("K{H}" => "Capital (Home)", 
+                             "K{F}" => "Capital (Foreign)",
+                             "Y{H}" => "Output (Home)",
+                             "Y{F}" => "Output (Foreign)"))
 ```
 
 ![Backus, Kehoe, Kydland 1992 solution - rename dictionary](../assets/rename_dict_string__Backus_Kehoe_Kydland_1992__K{H}__1.png)
