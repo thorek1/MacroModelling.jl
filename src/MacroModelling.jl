@@ -2648,6 +2648,10 @@ function replace_indices(exxpr::Expr)::Union{Expr,Symbol}
         x isa Expr ?
             x.head == :curly ?
                 Symbol(string(x.args[1]) * "◖" * string(x.args[2]) * "◗") :
+            x.head == :call ?
+                x.args[1] == :(*) ?
+                    Symbol(string(x.args[2]), string(x.args[3])) :
+                x :
             x :
         x
     end, exxpr)
