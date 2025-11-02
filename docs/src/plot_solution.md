@@ -65,6 +65,8 @@ Calling `plot_solution` requires specifying a state variable. By default, it plo
 plot_solution(Gali_2015_chapter_3_nonlinear, :A)
 ```
 
+![Gali 2015 solution](../assets/solution__Gali_2015_chapter_3_nonlinear__A__1.png)
+
 The function plots each endogenous variable in period `t` against the state variable `A` in `t-1`. Each subplot shows how the variable changes on the y-axis as `A` varies within the specified range over the x-axis. The relevant steady state is indicated by a circle of the same color as the line. The title of each subplot indicates the variable name and the title of the overall plot indicates the model name, and page number (if multiple pages are needed). The legend below the plots indicate the solution algorithm used and the nature of the steady state (stochastic or non-stochastic).
 
 ## Function Arguments
@@ -80,7 +82,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, "A") # Using String
 
 ### Variables to Plot
 
-The `variables` argument (default: `:all_excluding_obc`) specifies for which variables to show results. Variable names can be specified as either a `Symbol` or `String` (e.g. `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). `:all_excluding_obc` includes all variables except those related to occasionally binding constraints. `:all` includes all variables.
+The `variables` argument (default: `:all`) specifies for which variables to show results. Variable names can be specified as either a `Symbol` or `String` (e.g. `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). `:all_excluding_obc` includes all variables except those related to occasionally binding constraints. `:all` includes all variables.
 
 Specific variables can be selected to plot. The following example selects only output (`Y`) and inflation (`Pi`) using a `Vector` of `Symbol`s:
 
@@ -89,7 +91,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     variables = [:Y, :Pi])
 ```
 
-![Gali 2015 solution - selected variables (Y, Pi)](../assets/.png)
+![Gali 2015 solution - selected variables (Y, Pi)](../assets/selection__Gali_2015_chapter_3_nonlinear__A__1.png)
 
 The plot now displays only the two selected variables (sorted alphabetically), with two subplots for each shock.
 The same can be done using a `Tuple`:
@@ -178,14 +180,14 @@ end
 end
 ```
 
-Since both `c` and `P` appear in t+2, they generate auxiliary variables in the model. Plotting the IRF for all variables excluding OBC-related ones reveals the auxiliary variables:
+Since both `c` and `P` appear in t+2, they generate auxiliary variables in the model. Plotting the policy functions for all variables excluding OBC-related ones reveals the auxiliary variables (same for the default `:all` option since there are no OBCs in this model):
 
 ```julia
 plot_solution(FS2000, :k,
 	variables = :all_excluding_obc)
 ```
 
-![FS2000 solution - e_a shock with auxiliary variables](../assets/.png)
+![FS2000 solution - including auxiliary variables](../assets/aux__FS2000__k__1.png)
 
 Both `c` and `P` appear twice: once as the variable itself and once as an auxiliary variable with the `ᴸ⁽¹⁾` superscript, representing the value of the variable in t+1 as expected in t.
 
@@ -242,19 +244,18 @@ end
 end
 ```
 
-Plotting the IRF for all variables including OBC-related ones reveals the OBC-related auxiliary variables:
+Plotting the policy functions for all variables including OBC-related ones reveals the OBC-related auxiliary variables:
 
 ```julia
-plot_solution(Gali_2015_chapter_3_obc, :A,
-    variables = :all)
+plot_solution(Gali_2015_chapter_3_obc, :A)
 ```
 
-![Gali 2015 OBC solution - eps_z shock with OBC variables](../assets/.png)
+![Gali 2015 OBC solution - including auxilliary and OBC variables](../assets/obc_variables__Gali_2015_chapter_3_obc__A__2.png)
 
 The OBC-related variables appear in the last subplot.
-Note that with the `eps_z` shock, the interest rate `R` hits the effective lower bound in period 1:
+Note that high values of `A` in the previous period lead to low values of the nominal interest rate `R` in the current period, hitting the lower bound (indicated by the flat section of the policy function). For values of `A` where the constraint is binding the OBC-related variables also vary with `A`:
 
-![Gali 2015 OBC solution - eps_z shock hitting lower bound](../assets/.png)
+![Gali 2015 OBC solution - OBC-related variables](../assets/obc_variables__Gali_2015_chapter_3_obc__A__4.png)
 
 The effective lower bound is enforced using shocks to the equation containing the `max` statement. See the documentation for details on constructing occasionally binding constraints. For this specific model, examine the equations the parser generated to enforce the OBC:
 
@@ -291,7 +292,7 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     algorithm = :second_order)
 ```
 
-![Gali 2015 solution - multiple solution methods](../assets/compare_orders_solution__Gali_2015_chapter_3_nonlinear__2.png)
+![Gali 2015 solution - multiple solution methods](../assets/mult_algorithms__Gali_2015_chapter_3_nonlinear__A__2.png)
 
 The plot now features both policy functions overlaid. The first-order solution is shown in blue, the second-order solution is shown in orange, as indicated in the legend below the plot. The lines correspond to the policy functions at different orders and the circles indicate the relevant steady state for each solution method. Higher order solutions may have different steady states due to the inclusion of risk effects (see e.g. `W_real`) and their policy functions may differ due to non-linearities captured at higher orders (see e.g. `S` which has only higher order dynamics).
 
@@ -302,7 +303,7 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     algorithm = :pruned_third_order)
 ```
 
-![Gali 2015 IRF - eps_a shock (multiple orders)](../assets/multiple_orders_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
+![Gali 2015 solution - multiple solution methods (up to 3rd order)](../assets/mult_algorithms_third_order__Gali_2015_chapter_3_nonlinear__A__1.png)
 
 Note that the pruned third-order solution incorporates time-varying risk and reverses the sign of the response for `MC` and `N`. The additional solution appears as another colored line with corresponding entries in the legend.
 
@@ -318,7 +319,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     algorithm = :pruned_third_order)
 ```
 
-![Gali 2015 IRF - eps_a shock (multiple orders)](../assets/multiple_orders_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
+![Gali 2015 solution - 5 standard deviations](../assets/range__Gali_2015_chapter_3_nonlinear__A__3.png)
 
 This expands the x-axis range, showing how the policy functions behave further from the steady state.
 
@@ -333,9 +334,9 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     parameters = :β => 0.95)
 ```
 
-![Gali 2015 solution - different parameter values](../assets/different_parameters_solution__Gali_2015_chapter_3_nonlinear__1.png)
+![Gali 2015 solution - different parameter values](../assets/params__Gali_2015_chapter_3_nonlinear__A__1.png)
 
-The steady states and dynamics changed as a result of changing the discount factor. To better visualize the differences between `β = 0.99` and `β = 0.95`, the two policy functions can be overlaid (compared). Since parameter changes are permanent, first reset `β = 0.99` before overlaying the IRF with `β = 0.95` on top of it:
+The steady states and dynamics changed as a result of changing the discount factor. To better visualize the differences between `β = 0.99` and `β = 0.95`, the two policy functions can be overlaid (compared). Since parameter changes are permanent, first reset `β = 0.99` before overlaying the policy function with `β = 0.95` on top of it:
 
 ```julia
 # Plot with default parameters
@@ -347,7 +348,7 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     parameters = :β => 0.95)
 ```
 
-![Gali 2015 IRF - eps_a shock comparing β values](../assets/compare_beta_irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
+![Gali 2015 solution - comparing β values](../assets/docs/src/assets/params_compare__Gali_2015_chapter_3_nonlinear__A__1.png)
 
 The legend below the plot indicates which color corresponds to each `β` value. Note that both the steady states and dynamics differ across the two `β` values.
 
@@ -358,7 +359,7 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     parameters = (:β => 0.97, :τ => 0.5))
 ```
 
-![Gali 2015 IRF - eps_a shock with multiple parameter changes](../assets/multi_params_irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
+![Gali 2015 solution - multiple parameter changes](../assets/mult_params_compare__Gali_2015_chapter_3_nonlinear__A__1.png)
 
 Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to each input combination, with the table showing relevant input combinations.
 
@@ -423,7 +424,7 @@ For models with defined OBC, use the `ignore_obc` argument to ignore them. The f
 plot_solution(Gali_2015_chapter_3_obc, :A)
 ```
 
-![Gali 2015 OBC IRF - eps_z shock with OBC](../assets/obc_irf__Gali_2015_chapter_3_obc__eps_z__1.png)
+![Gali 2015 OBC solution - OBC](../assets/obc_variables__Gali_2015_chapter_3_obc__A__2.png)
 
 Then overlay the policy function ignoring the OBC:
 
@@ -432,7 +433,7 @@ plot_solution!(Gali_2015_chapter_3_obc, :A,
     ignore_obc = true)
 ```
 
-![Gali 2015 OBC IRF - eps_z shock comparing with and without OBC](../assets/compare_obc_irf__Gali_2015_chapter_3_obc__eps_z__1.png)
+![Gali 2015 OBC solution - comparing with and without OBC](../assets/obc_ignore__Gali_2015_chapter_3_obc__A__2.png)
 
 The legend indicates which color corresponds to each `ignore_obc` value. The difference between the two can be noticed at the effective lower bound for `R`. For values of `A` where the effective lower bound is reached the shocks enforcing the lower bound act on the economy and the policy function changes for most other variables as well.
 
@@ -443,227 +444,399 @@ The `label` argument (default: `""`, type: `Union{Real, String, Symbol}`) adds c
 ```julia
 # Compare policy functions with different settings
 plot_solution(Gali_2015_chapter_3_obc, :A,
-    variables = [:Y, :C, :R],
-    algorithm = :second_order,
-    # ignore_obc = false,
+    algorithm = :pruned_second_order,
     parameters = :β => 0.99,
-    # label = "2nd Order with OBC"
+    label = "2nd Order with OBC"
     )
 
 # Add solution without OBC
 plot_solution!(Gali_2015_chapter_3_obc, :A,
-    # variables = [:Y, :C],
-    algorithm = :second_order,
+    algorithm = :pruned_second_order,
     ignore_obc = true,
-    # label = "2nd Order without OBC"
+    label = "2nd Order without OBC"
     )
 
 # Add different parameter setting
 plot_solution!(Gali_2015_chapter_3_obc, :A,
-    variables = [:Y, :C, :R],
-    algorithm = :second_order,
-    parameters = :β => 0.95,
-    # label = "2nd Order with OBC and β=0.95"
+    algorithm = :pruned_second_order,
+    parameters = :β => 0.9925,
+    label = "2nd Order with OBC and β=0.9925"
     )
 ```
 
+![Gali 2015 OBC solution - custom labels](../assets/labels__Gali_2015_chapter_3_obc__A__2.png)
+
 This demonstrates comparing policy functions across multiple dimensions: solution algorithms, occasionally binding constraints, and parameter values, revealing how different model specifications affect the dynamics.
 
-### Display Control
+### Plot Attributes
 
-The `show_plots` argument (default: `true`, type: `Bool`) controls whether plots are displayed in the plotting pane.
+The `plot_attributes` argument (default: `Dict()`, type: `Dict`) accepts a dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.
+
+The color palette can be customized using the `plot_attributes` argument. The following example defines a custom color palette (inspired by the European Commission's economic reports) to plot policy functions for multiple solution algorithms using the `Gali_2015_chapter_3_nonlinear` model.
+First, define the custom color palette using hex color codes:
+
+```julia
+ec_color_palette =
+[
+	"#FFD724", 	# "Sunflower Yellow"
+	"#353B73", 	# "Navy Blue"
+	"#2F9AFB", 	# "Sky Blue"
+	"#B8AAA2", 	# "Taupe Grey"
+	"#E75118", 	# "Vermilion"
+	"#6DC7A9", 	# "Mint Green"
+	"#F09874", 	# "Coral"
+	"#907800"  	# "Olive"
+]
+```
+
+Next, plot the policy function for the first solution algorithm using the custom color palette:
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    show_plots = false)  # Generate plots without displaying
+    plot_attributes = Dict(:palette => ec_color_palette))
+```
+
+Finally, overlay the policy functions for the second and third order solution algorithms using the custom color palette:
+
+```julia
+for a in [:second_order, :third_order]
+    plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+        algorithm = a,
+        plot_attributes = Dict(:palette => ec_color_palette))
+end
+```
+
+![Gali 2015 solution - different solution algorithms custom color palette](../assets/attr__Gali_2015_chapter_3_nonlinear__A__1.png)
+
+The colors of the policy functions and steady state markers now follow the custom color palette.
+
+Other attributes such as the font family can also be modified (see [here](https://github.com/JuliaPlots/Plots.jl/blob/v1.41.1/src/backends/gr.jl#L61) for font options):
+
+```julia
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    plot_attributes = Dict(:fontfamily => "computer modern"))
+```
+
+![Gali 2015 solution - custom font](../assets/attr_font__Gali_2015_chapter_3_nonlinear__A__1.png)
+
+All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case)—for example, the superscript `⁺` is not rendered properly for this font.
+
+Here is another example that customizes the line style and width:
+
+```julia
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    plot_attributes = Dict(:linestyle => :dashdot, :linewidth => 2))
+```
+
+![Gali 2015 solution - custom linestyle and width](../assets/attr_line__Gali_2015_chapter_3_nonlinear__A__1.png)
+
+### Plots Per Page
+
+The `plots_per_page` argument (default: `6`, type: `Int`) controls the number of subplots per page. When the number of variables exceeds this value, multiple pages are created.
+The following example selects 4 variables and sets `plots_per_page` to 2, resulting in 2 pages with 2 subplots each:
+
+```julia
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    variables = [:Y, :Pi, :R, :C],
+    plots_per_page = 2)
+```
+
+![Gali 2015 solution - 2 plots per page](../assets/two_per_page__Gali_2015_chapter_3_nonlinear__A__1.png)
+
+The first page displays the first two variables (sorted alphabetically) with two subplots for each shock. The title indicates this is page 1 of 2.
+
+### Display Plots
+
+The `show_plots` argument (default: `true`, type: `Bool`), when `true`, displays the plots; otherwise, they are only returned as an object.
+
+```julia
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    show_plots = false)
 ```
 
 ### Saving Plots
 
-The `save_plots` argument (default: `false`, type: `Bool`) determines whether to save plots to disk.
+The `save_plots` argument (default: `false`, type: `Bool`), when `true`, saves the plots to disk; otherwise, they are only displayed and returned as an object.
 
-```julia
-plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    save_plots = true)
-```
+Related arguments control the saving behavior:
 
-#### Save Plot Format
+- `save_plots_format` (default: `:pdf`, type: `Symbol`): output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
+- `save_plots_path` (default: `"."`, type: `String`): path where plots are saved. If the path does not exist, it will be created automatically.
+- `save_plots_name` (default: `"solution"`, type: `Union{String, Symbol}`): prefix prepended to the filename when saving plots.
 
-The `save_plots_format` argument (default: `:pdf`, type: `Symbol`) specifies the file format for saved plots. Common formats: `:pdf`, `:png`, `:svg`.
+Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., `solution__ModelName__shock__1.pdf`).
 
-```julia
-plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    save_plots = true,
-    save_plots_format = :png)
-```
-
-#### Save Plot Name
-
-The `save_plots_name` argument (default: `"solution"`, type: `Union{String, Symbol}`) specifies the prefix for saved plot filenames. The filename format is: `prefix__ModelName__state__page.format`.
+The following example saves all policy functions for the `Gali_2015_chapter_3_nonlinear` model as PNG files in the `../plots` directory with `policy_function` as the filename prefix:
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     save_plots = true,
-    save_plots_name = "policy_A")
-# Creates: policy_A__Gali_2015_chapter_3_nonlinear__A__1.pdf
+    save_plots_format = :png,
+    save_plots_path = "./../plots",
+    save_plots_name = :policy_function)
 ```
 
-#### Save Plot Path
-
-The `save_plots_path` argument (default: `"."`, type: `String`) specifies the directory where plots are saved.
-
-```julia
-plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    save_plots = true,
-    save_plots_path = "plots/policy_functions")
-```
-
-### Plots Per Page
-
-The `plots_per_page` argument (default: `6`, type: `Int`) controls how many subplots appear on each page. Useful for managing large numbers of variables.
-
-```julia
-plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    plots_per_page = 9)  # 3x3 grid
-```
+The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file with a name reflecting the model, the shock, and a sequential index when the number of variables exceeds the plots per page.
 
 ### Variable and Shock Renaming
 
-The `rename_dictionary` argument (default: `Dict()`, type: `AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}}`) allows renaming variables and shocks in plot labels for clearer display.
+The `rename_dictionary` argument (default: `Dict()`, type: `AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}}`) maps variable or shock symbols to custom display names in plots. This is particularly useful when comparing models with different variable naming conventions, allowing them to be displayed with consistent labels.
 
-Basic renaming for readable labels:
+For example, to rename variables for clearer display:
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    rename_dictionary = Dict(:Y => "Output", :C => "Consumption", :Pi => "Inflation"))
+    rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"))
 ```
 
-This feature is particularly useful when comparing models with different variable naming conventions. For example, when overlaying policy functions from FS2000 (which uses lowercase `c` for consumption) and Gali_2015_chapter_3_nonlinear (which uses uppercase `C`):
+![Gali 2015 solution - rename dictionary](../assets/rename_dict__Gali_2015_chapter_3_nonlinear__A__1.png)
 
+This feature is especially valuable when plotting policy functions from different models. Consider comparing FS2000 (which uses `R` for the interest rate) with `Caldara_et_al_2012` (which uses `gross_r` for the interest rate expressed as a gross return). The `rename_dictionary` allows harmonizing these names when plotting them together.
+
+Let's first parse the `Caldara_et_al_2012` model:
 
 ```julia
-@model FS2000 begin
-    dA[0] = exp(gam + z_e_a  *  e_a[x])
-    log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
-    - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
-    W[0] = l[0] / n[0]
-    - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
-    R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
-    1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
-    c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
-    P[0] * c[0] = m[0]
-    m[0] - 1 + d[0] = l[0]
-    e[0] = exp(z_e_a  *  e_a[x])
-    y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
-    gy_obs[0] = dA[0] * y[0] / y[-1]
-    gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
-    log_gy_obs[0] = log(gy_obs[0])
-    log_gp_obs[0] = log(gp_obs[0])
+@model Caldara_et_al_2012 begin
+	V[0] = ((1 - β) * (c[0] ^ ν * (1 - l[0]) ^ (1 - ν)) ^ (1 - 1 / ψ) + β * V[1] ^ (1 - 1 / ψ)) ^ (1 / (1 - 1 / ψ))
+	exp(s[0]) = V[1] ^ (1 - γ)
+	1 = (1 + ζ * exp(z[1]) * k[0] ^ (ζ - 1) * l[1] ^ (1 - ζ) - δ) * c[0] * β * (((1 - l[1]) / (1 - l[0])) ^ (1 - ν) * (c[1] / c[0]) ^ ν) ^ (1 - 1 / ψ) / c[1]
+	Rᵏ[0] = ζ * exp(z[1]) * k[0] ^ (ζ - 1) * l[1] ^ (1 - ζ) - δ
+	SDF⁺¹[0] = c[0] * β * (((1 - l[1]) / (1 - l[0])) ^ (1 - ν) * (c[1] / c[0]) ^ ν) ^ (1 - 1 / ψ) / c[1]
+	1 + Rᶠ[0] = 1 / SDF⁺¹[0]
+	(1 - ν) / ν * c[0] / (1 - l[0]) = (1 - ζ) * exp(z[0]) * k[-1] ^ ζ * l[0] ^ (-ζ)
+	c[0] + i[0] = exp(z[0]) * k[-1] ^ ζ * l[0] ^ (1 - ζ)
+	k[0] = i[0] + k[-1] * (1 - δ)
+	z[0] = λ * z[-1] + σ[0] * ϵᶻ[x]
+	y[0] = exp(z[0]) * k[-1] ^ ζ * l[0] ^ (1 - ζ)
+	log(σ[0]) = (1 - ρ) * log(σ̄) + ρ * log(σ[-1]) + η * ω[x]
+    gross_r[0] = 1 + Rᶠ[0]
 end
 
-@parameters FS2000 begin
-    alp     = 0.356
-    bet     = 0.993
-    gam     = 0.0085
-    mst     = 1.0002
-    rho     = 0.129
-    psi     = 0.65
-    del     = 0.01
-    z_e_a   = 0.035449
-    z_e_m   = 0.008862
+@parameters Caldara_et_al_2012 begin
+	β = 0.991
+	l[ss] = 1/3 | ν
+	ζ = 0.3
+	δ = 0.0196
+	λ = 0.95
+	ψ = 0.5
+	γ = 40
+	σ̄ = 0.021
+	η = 0.1
+	ρ = 0.9
 end
 ```
 
-```julia
-plot_solution(Gali_2015_chapter_3_nonlinear, :k,
-    variables = [:C, :Y],
-    rename_dictionary = Dict(:C => "Consumption", :Y => "Output"))
-
-plot_solution!(FS2000, :k,
-    variables = [:c, :y],
-    rename_dictionary = Dict(:c => "Consumption", :y => "Output"))
-```
-
-The `rename_dictionary` accepts flexible type combinations for keys and values. The following are all equivalent:
+and then plot the solutions from both models with consistent variable names using `rename_dictionary`:
 
 ```julia
-# Symbol keys, String values
-rename_dictionary = Dict(:Y => "Output")
+# First model (FS2000) with lowercase variable names
+plot_solution(FS2000, :k,
+    variables = [:c, :y, :R],
+    rename_dictionary = Dict(:c => "Consumption", :y => "Output", :R => "Interest Rate"))
 
-# String keys, String values
-rename_dictionary = Dict("Y" => "Output")
-
-# Symbol keys, Symbol values
-rename_dictionary = Dict(:Y => :Output)
-
-# String keys, Symbol values
-rename_dictionary = Dict("Y" => :Output)
+# Overlay second model (Caldara_et_al_2012) with different naming, mapped to same display names
+plot_solution!(Caldara_et_al_2012, :k,
+    variables = [:c, :y, :gross_r],
+    rename_dictionary = Dict(:c => "Consumption", :y => "Output", :gross_r => "Interest Rate"))
 ```
 
-For models with special characters in variable names (like the Backus_Kehoe_Kydland_1992 model which uses symbols like `Symbol("C{H}")`):
+![FS2000 and Gali 2015 solution - multiple models with rename dictionary](../assets/rename_dict_combine__multiple_models__k__1.png)
+
+As you can see the steady states and dynamics around it differ across states and variables for the two models but they are shown in the same subplots with consistent labels.
+
+The `rename_dictionary` accepts flexible type combinations for keys and values—both `Symbol` and `String` types work interchangeably:
 
 ```julia
-plot_solution(Backus_Kehoe_Kydland_1992, :K,
-    rename_dictionary = Dict(
-        "C{H}" => "Home Consumption",
-        "C{F}" => "Foreign Consumption"))
+# All of these are valid and equivalent:
+Dict(:y => "Output")              # Symbol key, String value
+Dict("y" => "Output")             # String key, String value
+Dict(:y => :Output)               # Symbol key, Symbol value
+Dict("y" => :Output)              # String key, Symbol value
 ```
 
-The renaming applies to all plot elements: legends, axis labels, and tables.
+This flexibility is particularly useful for models like `Backus_Kehoe_Kydland_1992`, which uses `String` representations of variable and shock names (because of `{}`):
 
-### Custom Plot Attributes
+```julia
+# Define the Backus model (abbreviated for clarity)
+@model Backus_Kehoe_Kydland_1992 begin
+    for co in [H, F]
+        Y{co}[0] = ((LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1-theta{co}))^(-nu{co}) + sigma{co} * Z{co}[-1]^(-nu{co}))^(-1/nu{co})
+        K{co}[0] = (1-delta{co})*K{co}[-1] + S{co}[0]
+        X{co}[0] = for lag in (-4+1):0 phi{co} * S{co}[lag] end
+        A{co}[0] = (1-eta{co}) * A{co}[-1] + N{co}[0]
+        L{co}[0] = 1 - alpha{co} * N{co}[0] - (1-alpha{co})*eta{co} * A{co}[-1]
+        U{co}[0] = (C{co}[0]^mu{co}*L{co}[0]^(1-mu{co}))^gamma{co}
+        psi{co} * mu{co} / C{co}[0]*U{co}[0] = LGM[0]
+        psi{co} * (1-mu{co}) / L{co}[0] * U{co}[0] * (-alpha{co}) = - LGM[0] * (1-theta{co}) / N{co}[0] * (LAMBDA{co}[0] * K{co}[-4]^theta{co}*N{co}[0]^(1-theta{co}))^(-nu{co})*Y{co}[0]^(1+nu{co})
 
-The `plot_attributes` argument (default: `Dict()`, type: `Dict`) allows passing additional styling attributes to the plotting backend.
+        for lag in 0:(4-1)  
+            beta{co}^lag * LGM[lag]*phi{co}
+        end +
+        for lag in 1:4
+            -beta{co}^lag * LGM[lag] * phi{co} * (1-delta{co})
+        end = beta{co}^4 * LGM[+4] * theta{co} / K{co}[0] * (LAMBDA{co}[+4] * K{co}[0]^theta{co} * N{co}[+4]^(1-theta{co})) ^ (-nu{co})* Y{co}[+4]^(1+nu{co})
+
+        LGM[0] = beta{co} * LGM[+1] * (1+sigma{co} * Z{co}[0]^(-nu{co}-1)*Y{co}[+1]^(1+nu{co}))
+        NX{co}[0] = (Y{co}[0] - (C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1]))/Y{co}[0]
+    end
+
+    (LAMBDA{H}[0]-1) = rho{H}{H}*(LAMBDA{H}[-1]-1) + rho{H}{F}*(LAMBDA{F}[-1]-1) + Z_E{H} * E{H}[x]
+    (LAMBDA{F}[0]-1) = rho{F}{F}*(LAMBDA{F}[-1]-1) + rho{F}{H}*(LAMBDA{H}[-1]-1) + Z_E{F} * E{F}[x]
+
+    for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
+end
+
+@parameters Backus_Kehoe_Kydland_1992 begin
+    K_ss = 11
+    K[ss] = K_ss | beta
+    
+    mu      =    0.34
+    gamma   =    -1.0
+    alpha   =    1
+    eta     =    0.5
+    theta   =    0.36
+    nu      =    3
+    sigma   =    0.01
+    delta   =    0.025
+    phi     =    1/4
+    psi     =    0.5
+
+    Z_E = 0.00852
+    
+    rho{H}{H} = 0.906
+    rho{F}{F} = rho{H}{H}
+    rho{H}{F} = 0.088
+    rho{F}{H} = rho{H}{F}
+end
+
+# Backus model example showing String to String mapping
+plot_solution(Backus_Kehoe_Kydland_1992, "K{H}",
+    rename_dictionary = Dict("C{H}" => "Home Consumption", 
+                             "C{F}" => "Foreign Consumption",
+                             "Y{H}" => "Home Output",
+                             "Y{F}" => "Foreign Output"))
+```
+
+![Backus, Kehoe, Kydland (1992) solution - rename dictionary](../assets/rename_dict_string__Backus_Kehoe_Kydland_1992__K{H}__1.png)
+
+Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
+
+### Verbose Output
+
+The `verbose` argument (default: `false`, type: `Bool`), when `true`, enables verbose output related to solving the model
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    plot_attributes = Dict(
-        :linewidth => 3,
-        :linestyle => :dash))
+    verbose = true)
 ```
 
-### Verbosity
-
-The `verbose` argument (default: `true`, type: `Bool`) controls whether to print progress messages during computation.
+The code outputs information about solving the steady state blocks.
+When parameters change, the first-order solution is recomputed; otherwise, it uses the cached solution:
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    verbose = false)  # Suppress output
+    parameters = :β => 0.955,
+    verbose = true)
+# Parameter changes: 
+#         β       from 0.99       to 0.955
+# New parameters changed the steady state.
+# Block: 1, - Solved with newton using previous solution - 1.1102230246251565e-16 - 4.2410519540681003e-16 - [6, 6]
+# Block: 2, - Solved with newton using previous solution - 1.1102230246251565e-16 - 5.691489219773501e-16 - [3, 3]
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 3.138740904769479e-15
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 1.1102230246251565e-16
+# Quadratic matrix equation solver previous solution has tolerance: 3.138740904769479e-15
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 1.3848825622828143e-16; algorithm: doubling
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 1.1102230246251565e-16
 ```
 
-### Numerical Tolerance
+### Numerical Tolerances
 
-The `tol` argument (default: `Tolerances()`, type: `Tolerances`) specifies numerical tolerance settings for the solver.
+The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: `?Tolerances`
+The tolerances used by the numerical solvers can be adjusted. The Tolerances object allows setting tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (QME). For example, to set tighter tolerances (this example also changes parameters to force recomputation):
 
 ```julia
+custom_tol = Tolerances(qme_acceptance_tol = 1e-12,
+    sylvester_acceptance_tol = 1e-12)
+
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    tol = Tolerances(tol = 1e-12))
+    tol = custom_tol,
+    algorithm = :second_order,
+    parameters = :β => 0.9555,
+    verbose = true)
+# Parameter changes: 
+#         β       from 0.955      to 0.9555
+# New parameters changed the steady state.
+# Take symbolic derivatives up to second order:                           0.695 seconds
+# Block: 1, - Solved with newton using previous solution - 3.1401849173675503e-16 - 3.4746121346743126e-13 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 5.20740757162067e-16 - 4.1252659916132045e-16 - [3, 3]
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 4.98829092574606e-15
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.551115123125783e-16
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 4.98829092574606e-15
+# Sylvester equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 8.152041655449966e-17; algorithm: doubling
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.551115123125783e-16
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 4.98829092574606e-15
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 1.5026261035607414e-16; algorithm: doubling
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.551115123125783e-16
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.551115123125783e-16
 ```
+
+This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or encounter issues with the default solver.
 
 ### Quadratic Matrix Equation Solver
 
-The `quadratic_matrix_equation_algorithm` argument (default: `:bicgstab`, type: `Symbol`) specifies which algorithm to use for solving quadratic matrix equations in higher-order solutions.
-
-Available algorithms: `:bicgstab`, `:gmres`, `:dqgmres`.
+The `quadratic_matrix_equation_algorithm` argument (default: `:schur`, type: `Symbol`) specifies the algorithm to solve quadratic matrix equation (`A * X ^ 2 + B * X + C = 0`). Available algorithms: `:schur`, `:doubling`
+The quadratic matrix equation solver is used internally when solving the model to first order. Different algorithms are available. The `:schur` algorithm is generally faster and more reliable, while `:doubling` can be more precise in some cases (this example also changes parameters to force recomputation):
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    algorithm = :second_order,
-    quadratic_matrix_equation_algorithm = :gmres)
+    quadratic_matrix_equation_algorithm = :doubling,
+    parameters = :β => 0.95555,
+    verbose = true)
+# Parameter changes: 
+#         β       from 0.9555     to 0.95555
+# New parameters changed the steady state.
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver: doubling - converged: true in 8 iterations to tolerance: 2.5226767989622104e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 8.580119223206854e-17; algorithm: doubling
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
 ```
+
+For most use cases, the default `:schur` algorithm is recommended. Use this argument for specific needs or encounter issues with the default solver.
 
 ### Sylvester Equation Solver
 
-The `sylvester_algorithm` argument (default: depends on model size, type: `Union{Symbol, Vector{Symbol}, Tuple{Symbol, Vararg{Symbol}}}`) specifies which algorithm to use for solving Sylvester equations.
-
-Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`, `:dqgmres`.
-
-For second-order solutions, specify a single algorithm:
+[Default: selector that uses `:doubling` for smaller problems and switches to `:bicgstab` for larger problems, Type: `Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}}`]: Algorithm to solve the Sylvester equation (`A * X * B + C = X`). Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:dqgmres`, `:gmres`. The input argument can contain up to two elements in a `Vector` or `Tuple`. The first (second) element corresponds to the second (third) order perturbation solution's Sylvester equation. When only one element is provided, it corresponds to the second-order perturbation solution's Sylvester equation.
+The algorithm to use can be specified for solving Sylvester equations in higher-order solutions. For example, select the `:bartels_stewart` algorithm for solving the second-order perturbation problem:
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     algorithm = :second_order,
-    sylvester_algorithm = :bartels_stewart)
+    sylvester_algorithm = :bartels_stewart,
+    verbose = true)
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Sylvester equation - converged to tol 1.0e-10: true; iterations: -1; reached tol: 8.857092101472476e-17; algorithm: bartels_stewart
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 8.580119223206854e-17; algorithm: doubling
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
 ```
 
 For third-order solutions, different algorithms can be specified for the second- and third-order Sylvester equations using a `Tuple`:
@@ -671,16 +844,46 @@ For third-order solutions, different algorithms can be specified for the second-
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     algorithm = :third_order,
-    sylvester_algorithm = (:doubling, :bicgstab))
+    sylvester_algorithm = (:doubling, :bicgstab),
+    verbose = true)
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Sylvester equation - previous solution achieves relative tol of 8.646717716454426e-17
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Sylvester equation - previous solution achieves relative tol of 8.646717716454426e-17
+# Sylvester equation - converged to tol 1.0e-10: true; iterations: 20; reached tol: 2.246045342648752e-16; algorithm: bicgstab
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 8.580119223206854e-17; algorithm: doubling
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
 ```
+
+The choice of algorithm affects both speed and precision: `:doubling` and `:bartels_stewart` are generally faster, while `:bicgstab`, `:dqgmres`, and `:gmres` are better for large sparse problems. Use this argument for specific needs or encounter issues with the default solver.
 
 ### Lyapunov Equation Solver
 
-The `lyapunov_algorithm` argument (default: `:doubling`, type: `Symbol`) specifies which algorithm to use for solving Lyapunov equations.
+[Default: `:doubling`, Type: `Symbol`]: Algorithm to solve the Lyapunov equation (`A * X * A' + C = X`). Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`.
 
-Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`, `:dqgmres`.
+The algorithm is used to calculate the first order standard deviation used to determine the range for the state variable. You can specify a different algorithm for solving the Lyapunov equation. For example, select the `:bartels_stewart` algorithm:
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    lyapunov_algorithm = :bartels_stewart)
+    lyapunov_algorithm = :bartels_stewart,
+    verbose = true)
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 0; reached tol: 6.174299026893289e-17; algorithm: bartels_stewart
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
 ```
+
+The choice of algorithm affects both speed and precision: `:doubling` and `:bartels_stewart` are generally faster, while `:bicgstab`, and `:gmres` are better for large sparse problems. Use this argument for specific needs or when encountering issues with the default solver.
