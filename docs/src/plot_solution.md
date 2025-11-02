@@ -2,7 +2,7 @@
 
 The `plot_solution` function visualizes the solution of the model (mapping of past states to present variables) around the relevant steady state (e.g. higher order perturbation algorithms are centred around the stochastic steady state).
 
-The relevant steady state is plotted along with the mapping from the chosen past state to one present variable per plot. All other (non-chosen) states remain in the relevant steady state.
+The relevant steady state is plotted along with the mapping from the chosen past state to one present variable per subplot. All other (non-chosen) states remain in the relevant steady state.
 
 In the case of pruned higher order solutions there are as many (latent) state vectors as the perturbation order. The first and third order baseline state vectors are the non-stochastic steady state and the second order baseline state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order baseline state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non-stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of infinitely many possible mappings.
 
@@ -131,7 +131,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 Then there are some predefined options:
 
-`:all_excluding_auxiliary_and_obc` (default) plots all variables except auxiliary variables and those used to enforce occasionally binding constraints (OBC).
+`:all_excluding_auxiliary_and_obc` plots all variables except auxiliary variables and those used to enforce occasionally binding constraints (OBC).
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
@@ -145,7 +145,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     variables = :all_excluding_obc)
 ```
 
-To see auxiliary variables, use a model that defines them. The FS2000 model can be used:
+To see auxiliary variables, use a model that defines them. The `FS2000` model can be used:
 
 ```julia
 @model FS2000 begin
@@ -180,7 +180,7 @@ end
 end
 ```
 
-Since both `c` and `P` appear in t+2, they generate auxiliary variables in the model. Plotting the policy functions for all variables excluding OBC-related ones reveals the auxiliary variables (same for the default `:all` option since there are no OBCs in this model):
+Since both `c` and `P` appear in `t+2`, they generate auxiliary variables in the model. Plotting the policy functions for all variables excluding OBC-related ones reveals the auxiliary variables (same for the default `:all` option since there are no OBCs in this model):
 
 ```julia
 plot_solution(FS2000, :k,
@@ -189,7 +189,7 @@ plot_solution(FS2000, :k,
 
 ![FS2000 solution - including auxiliary variables](../assets/aux__FS2000__k__1.png)
 
-Both `c` and `P` appear twice: once as the variable itself and once as an auxiliary variable with the `ᴸ⁽¹⁾` superscript, representing the value of the variable in t+1 as expected in t.
+Both `c` and `P` appear twice: once as the variable itself and once as an auxiliary variable with the `ᴸ⁽¹⁾` superscript, representing the value of the variable in `t+1` as expected in `t`.
 
 `:all` plots all variables including auxiliary variables and those used to enforce occasionally binding constraints (OBC).
 
@@ -197,46 +197,46 @@ Use the `Gali_2015_chapter_3` model with an effective lower bound (note the use 
 
 ```julia
 @model Gali_2015_chapter_3_obc begin
-	W_real[0] = C[0] ^ σ * N[0] ^ φ
-	Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
-	R[0] = 1 / Q[0]
-	Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
-	R[0] = Pi[1] * realinterest[0]
-	R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
-	C[0] = Y[0]
-	log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
-	log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
-	nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
-	MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
-	1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
-	S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
-	Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
-	x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
-	x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
-	log_y[0] = log(Y[0])
-	log_W_real[0] = log(W_real[0])
-	log_N[0] = log(N[0])
-	pi_ann[0] = 4 * log(Pi[0])
-	i_ann[0] = 4 * log(R[0])
-	r_real_ann[0] = 4 * log(realinterest[0])
-	M_real[0] = Y[0] / R[0] ^ η
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    R[0] = 1 / Q[0]
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+    R[0] = Pi[1] * realinterest[0]
+    R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+    C[0] = Y[0]
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+    log_y[0] = log(Y[0])
+    log_W_real[0] = log(W_real[0])
+    log_N[0] = log(N[0])
+    pi_ann[0] = 4 * log(Pi[0])
+    i_ann[0] = 4 * log(R[0])
+    r_real_ann[0] = 4 * log(realinterest[0])
+    M_real[0] = Y[0] / R[0] ^ η
 end
 
 @parameters Gali_2015_chapter_3_obc begin
     R̄ = 1.0
-	σ = 1
-	φ = 5
-	ϕᵖⁱ = 1.5
-	ϕʸ = 0.125
-	θ = 0.75
-	ρ_ν = 0.5
-	ρ_z = 0.5
-	ρ_a = 0.9
-	β = 0.99
-	η = 3.77
-	α = 0.25
-	ϵ = 9
-	τ = 0
+    σ = 1
+    φ = 5
+    ϕᵖⁱ = 1.5
+    ϕʸ = 0.125
+    θ = 0.75
+    ρ_ν = 0.5
+    ρ_z = 0.5
+    ρ_a = 0.9
+    β = 0.99
+    η = 3.77
+    α = 0.25
+    ϵ = 9
+    τ = 0
     std_a = .01
     std_z = .05
     std_nu = .0025
@@ -252,7 +252,7 @@ plot_solution(Gali_2015_chapter_3_obc, :A)
 
 ![Gali 2015 OBC solution - including auxilliary and OBC variables](../assets/obc_variables__Gali_2015_chapter_3_obc__A__2.png)
 
-The OBC-related variables appear in the last subplot.
+The OBC-related variables appear in the last two subplots.
 Note that high values of `A` in the previous period lead to low values of the nominal interest rate `R` in the current period, hitting the lower bound (indicated by the flat section of the policy function). For values of `A` where the constraint is binding the OBC-related variables also vary with `A`:
 
 ![Gali 2015 OBC solution - OBC-related variables](../assets/obc_variables__Gali_2015_chapter_3_obc__A__4.png)
@@ -278,7 +278,7 @@ get_equations(Gali_2015_chapter_3_obc)
 
 ### Solution Algorithm
 
-The `algorithm` argument (default: `:first_order`, type: `Symbol`) specifies which algorithm to solve for the dynamics of the model. Available algorithms: `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`.
+The `algorithm` argument (default: `:first_order`, type: `Symbol`) specifies which algorithm to use to solve for the dynamics of the model. Available algorithms: `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`.
 
 You can compare different solution algorithms by overlaying plots using `plot_solution!`. The following example first plots the first-order solution and then overlays the second-order solution for comparison:
 
@@ -305,13 +305,13 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
 
 ![Gali 2015 solution - multiple solution methods (up to 3rd order)](../assets/mult_algorithms_third_order__Gali_2015_chapter_3_nonlinear__A__1.png)
 
-Note that the pruned third-order solution incorporates time-varying risk and reverses the sign of the response for `MC` and `N`. The additional solution appears as another colored line with corresponding entries in the legend.
+The additional solution appears as another colored line with corresponding entries in the legend. Note that the pruned third-order solution incorporates time-varying risk and reverses the sign of the response for `MC` and `N`.
 
 ### State Variable Range
 
 The `σ` argument (default: `2`, type: `Union{Int64, Float64}`) specifies the range of the state variable as a multiple of its standard deviation. The state variable varies from `-σ * std(state)` to `+σ * std(state)`.
 
-Plot over a wider range (±5 standard deviations) uing the pruned third-order solution:
+Plot over a wider range (±5 standard deviations) using the pruned third-order solution:
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
@@ -348,7 +348,7 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     parameters = :β => 0.95)
 ```
 
-![Gali 2015 solution - comparing β values](../assets/docs/src/assets/params_compare__Gali_2015_chapter_3_nonlinear__A__1.png)
+![Gali 2015 solution - comparing β values](../assets/params_compare__Gali_2015_chapter_3_nonlinear__A__1.png)
 
 The legend below the plot indicates which color corresponds to each `β` value. Note that both the steady states and dynamics differ across the two `β` values.
 
@@ -439,7 +439,7 @@ The legend indicates which color corresponds to each `ignore_obc` value. The dif
 
 ### Plot Labels
 
-The `label` argument (default: `""`, type: `Union{Real, String, Symbol}`) adds custom labels to the plot legend. This is useful when comparing multiple solutions using `plot_solution!` to overlay plots:
+The `label` argument (type: `Union{Real, String, Symbol}`) adds custom labels to the plot legend. This is useful when comparing multiple solutions using `plot_solution!` to overlay plots. By default, labels take on the values of the one dimensional input that differs and are sequential numbers in case the input differs along more than one dimension. Furthermore, custom labels can be provided using this argument. Acceptable inputs are a `String`, `Symbol`, or a `Real`.
 
 ```julia
 # Compare policy functions with different settings
@@ -466,7 +466,7 @@ plot_solution!(Gali_2015_chapter_3_obc, :A,
 
 ![Gali 2015 OBC solution - custom labels](../assets/labels__Gali_2015_chapter_3_obc__A__2.png)
 
-This demonstrates comparing policy functions across multiple dimensions: solution algorithms, occasionally binding constraints, and parameter values, revealing how different model specifications affect the dynamics.
+The plot demonstrates how to use labels to describe complex inputs. Here variations in multiple input dimensions are compared: solution algorithms, occasionally binding constraints, and parameter values.
 
 ### Plot Attributes
 
@@ -489,7 +489,7 @@ ec_color_palette =
 ]
 ```
 
-Next, plot the policy function for the first solution algorithm using the custom color palette:
+Next, plot the policy function for the first order solution algorithm using the custom color palette:
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
@@ -519,7 +519,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 ![Gali 2015 solution - custom font](../assets/attr_font__Gali_2015_chapter_3_nonlinear__A__1.png)
 
-All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case)—for example, the superscript `⁺` is not rendered properly for this font.
+All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case)—for example, the subscripts (e.g. `₍₀₎`) are not rendered properly for this font.
 
 Here is another example that customizes the line style and width:
 
@@ -597,32 +597,32 @@ Let's first parse the `Caldara_et_al_2012` model:
 
 ```julia
 @model Caldara_et_al_2012 begin
-	V[0] = ((1 - β) * (c[0] ^ ν * (1 - l[0]) ^ (1 - ν)) ^ (1 - 1 / ψ) + β * V[1] ^ (1 - 1 / ψ)) ^ (1 / (1 - 1 / ψ))
-	exp(s[0]) = V[1] ^ (1 - γ)
-	1 = (1 + ζ * exp(z[1]) * k[0] ^ (ζ - 1) * l[1] ^ (1 - ζ) - δ) * c[0] * β * (((1 - l[1]) / (1 - l[0])) ^ (1 - ν) * (c[1] / c[0]) ^ ν) ^ (1 - 1 / ψ) / c[1]
-	Rᵏ[0] = ζ * exp(z[1]) * k[0] ^ (ζ - 1) * l[1] ^ (1 - ζ) - δ
-	SDF⁺¹[0] = c[0] * β * (((1 - l[1]) / (1 - l[0])) ^ (1 - ν) * (c[1] / c[0]) ^ ν) ^ (1 - 1 / ψ) / c[1]
-	1 + Rᶠ[0] = 1 / SDF⁺¹[0]
-	(1 - ν) / ν * c[0] / (1 - l[0]) = (1 - ζ) * exp(z[0]) * k[-1] ^ ζ * l[0] ^ (-ζ)
-	c[0] + i[0] = exp(z[0]) * k[-1] ^ ζ * l[0] ^ (1 - ζ)
-	k[0] = i[0] + k[-1] * (1 - δ)
-	z[0] = λ * z[-1] + σ[0] * ϵᶻ[x]
-	y[0] = exp(z[0]) * k[-1] ^ ζ * l[0] ^ (1 - ζ)
-	log(σ[0]) = (1 - ρ) * log(σ̄) + ρ * log(σ[-1]) + η * ω[x]
+    V[0] = ((1 - β) * (c[0] ^ ν * (1 - l[0]) ^ (1 - ν)) ^ (1 - 1 / ψ) + β * V[1] ^ (1 - 1 / ψ)) ^ (1 / (1 - 1 / ψ))
+    exp(s[0]) = V[1] ^ (1 - γ)
+    1 = (1 + ζ * exp(z[1]) * k[0] ^ (ζ - 1) * l[1] ^ (1 - ζ) - δ) * c[0] * β * (((1 - l[1]) / (1 - l[0])) ^ (1 - ν) * (c[1] / c[0]) ^ ν) ^ (1 - 1 / ψ) / c[1]
+    Rᵏ[0] = ζ * exp(z[1]) * k[0] ^ (ζ - 1) * l[1] ^ (1 - ζ) - δ
+    SDF⁺¹[0] = c[0] * β * (((1 - l[1]) / (1 - l[0])) ^ (1 - ν) * (c[1] / c[0]) ^ ν) ^ (1 - 1 / ψ) / c[1]
+    1 + Rᶠ[0] = 1 / SDF⁺¹[0]
+    (1 - ν) / ν * c[0] / (1 - l[0]) = (1 - ζ) * exp(z[0]) * k[-1] ^ ζ * l[0] ^ (-ζ)
+    c[0] + i[0] = exp(z[0]) * k[-1] ^ ζ * l[0] ^ (1 - ζ)
+    k[0] = i[0] + k[-1] * (1 - δ)
+    z[0] = λ * z[-1] + σ[0] * ϵᶻ[x]
+    y[0] = exp(z[0]) * k[-1] ^ ζ * l[0] ^ (1 - ζ)
+    log(σ[0]) = (1 - ρ) * log(σ̄) + ρ * log(σ[-1]) + η * ω[x]
     gross_r[0] = 1 + Rᶠ[0]
 end
 
 @parameters Caldara_et_al_2012 begin
-	β = 0.991
-	l[ss] = 1/3 | ν
-	ζ = 0.3
-	δ = 0.0196
-	λ = 0.95
-	ψ = 0.5
-	γ = 40
-	σ̄ = 0.021
-	η = 0.1
-	ρ = 0.9
+    β = 0.991
+    l[ss] = 1/3 | ν
+    ζ = 0.3
+    δ = 0.0196
+    λ = 0.95
+    ψ = 0.5
+    γ = 40
+    σ̄ = 0.021
+    η = 0.1
+    ρ = 0.9
 end
 ```
 
@@ -642,7 +642,7 @@ plot_solution!(Caldara_et_al_2012, :k,
 
 ![FS2000 and Gali 2015 solution - multiple models with rename dictionary](../assets/rename_dict_combine__multiple_models__k__1.png)
 
-As you can see the steady states and dynamics around it differ across states and variables for the two models but they are shown in the same subplots with consistent labels.
+As you can see the steady states and dynamics around the respective steady states differ across states and variables for the two models but they are shown in the same subplots with consistent labels.
 
 The `rename_dictionary` accepts flexible type combinations for keys and values—both `Symbol` and `String` types work interchangeably:
 
