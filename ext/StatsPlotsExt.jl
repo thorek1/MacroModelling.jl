@@ -3190,7 +3190,7 @@ end
     rhoz = .9
     std_eps = .0068
     rho_z_delta = .9
-    std_z_delta = .005
+    std_z_delta = .075
 end
 
 plot_conditional_variance_decomposition(RBC_CME)
@@ -3250,7 +3250,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
 
     fevds = fevds isa KeyedArray ? axiskeys(fevds,2) isa Vector{String} ? rekey(fevds, 2 => axiskeys(fevds,2) .|> Meta.parse .|> replace_indices) : fevds : fevds
 
-    vars_to_plot = intersect(axiskeys(fevds)[1],𝓂.timings.var[var_idx])
+    vars_to_plot = intersect(axiskeys(fevds)[1], 𝓂.timings.var[var_idx])
     
     # Sort variables alphabetically by display name
     variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in vars_to_plot]
