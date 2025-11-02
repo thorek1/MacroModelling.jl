@@ -1324,7 +1324,7 @@ plot_irf(Backus_Kehoe_Kydland_1992,
                              "Y{F}" => "Foreign Output"))
 ```
 
-![Backus, Kehoe, Kydland (1992) IRF - E{H} shock with rename dictionary](../assets/rename_dict_irf__Backus_Kehoe_Kydland_1992__E{H}__1.png)
+![Backus, Kehoe, Kydland 1992 IRF - E{H} shock with rename dictionary](../assets/rename_dict_irf__Backus_Kehoe_Kydland_1992__E{H}__1.png)
 
 Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
 
