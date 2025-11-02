@@ -2637,11 +2637,25 @@ end
 
 replace_indices(x::Symbol) = x
 
+replace_indices_special(x::Symbol) = x
+
 replace_indices(x::String) = Symbol(replace(x, "{" => "◖", "}" => "◗"))
 
 replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{", "◗" => "}")
 
 function replace_indices(exxpr::Expr)::Union{Expr,Symbol}
+    postwalk(x -> begin
+        x isa Symbol ?
+            replace_indices(string(x)) :
+        x isa Expr ?
+            x.head == :curly ?
+                Symbol(string(x.args[1]) * "◖" * string(x.args[2]) * "◗") :
+            x :
+        x
+    end, exxpr)
+end
+
+function replace_indices_special(exxpr::Expr)::Union{Expr,Symbol}
     postwalk(x -> begin
         x isa Symbol ?
             replace_indices(string(x)) :

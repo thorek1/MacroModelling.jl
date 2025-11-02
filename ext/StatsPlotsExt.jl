@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
 import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -3160,7 +3160,6 @@ If occasionally binding constraints are present in the model, they are not taken
 - $EXTRA_LEGEND_SPACE®
 - $RENAME_DICTIONARY®
 - $QME®
-- $LYAPUNOV®
 - $TOLERANCES®
 - $VERBOSE®
 
@@ -3212,13 +3211,11 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
                                                 verbose::Bool = DEFAULT_VERBOSE,
                                                 tol::Tolerances = Tolerances(),
-                                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                                quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM)
     # @nospecialize # reduce compile time                                            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
-                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                lyapunov_algorithm = lyapunov_algorithm)
+                                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
 
     gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
 
@@ -3239,16 +3236,15 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                     parameters = parameters,
                                                     verbose = verbose,
                                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                    lyapunov_algorithm = lyapunov_algorithm,
                                                     tol = tol)
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
-    fevds = fevds isa KeyedArray ? axiskeys(fevds,1) isa Vector{String} ? rekey(fevds, 1 => axiskeys(fevds,1) .|> Meta.parse .|> replace_indices) : fevds : fevds
+    fevds = fevds isa KeyedArray ? axiskeys(fevds,1) isa Vector{String} ? rekey(fevds, 1 => axiskeys(fevds,1) .|> Meta.parse .|> replace_indices_special) : fevds : fevds
 
-    fevds = fevds isa KeyedArray ? axiskeys(fevds,2) isa Vector{String} ? rekey(fevds, 2 => axiskeys(fevds,2) .|> Meta.parse .|> replace_indices) : fevds : fevds
+    fevds = fevds isa KeyedArray ? axiskeys(fevds,2) isa Vector{String} ? rekey(fevds, 2 => axiskeys(fevds,2) .|> Meta.parse .|> replace_indices_special) : fevds : fevds
 
     vars_to_plot = intersect(axiskeys(fevds)[1], 𝓂.timings.var[var_idx])
     
