@@ -1324,7 +1324,7 @@ plot_irf(Backus_Kehoe_Kydland_1992,
                              "Y{F}" => "Foreign Output"))
 ```
 
-![Backus IRF - E{H} shock with rename dictionary](../assets/rename_dict_irf__Backus_Kehoe_Kydland_1992__E{H}__1.png)
+![Backus, Kehoe, Kydland (1992) IRF - E{H} shock with rename dictionary](../assets/rename_dict_irf__Backus_Kehoe_Kydland_1992__E{H}__1.png)
 
 Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
 
@@ -1462,4 +1462,4 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 # Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
 ```
 
-The choice of algorithm affects both speed and precision: `:doubling` and `:bartels_stewart` are generally faster, while `:bicgstab`, `:dqgmres`, and `:gmres` are better for large sparse problems. Use this argument for specific needs or encounter issues with the default solver.
+The choice of algorithm affects both speed and precision: `:doubling` and `:bartels_stewart` are generally faster, while `:bicgstab`, `:dqgmres`, and `:gmres` are better for large sparse problems. Use this argument for specific needs or when encountering issues with the default solver.
