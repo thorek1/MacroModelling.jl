@@ -141,8 +141,8 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
-- `save_plots_name` [Default: `"estimation"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
-- $PLOTS_PER_PAGE®
+- $(SAVE_PLOTS_NAME®("estimation"))
+- $(PLOTS_PER_PAGE®(DEFAULT_PLOTS_PER_PAGE_SMALL))
 - `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `shock_decomposition` is `true`.
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
@@ -624,8 +624,8 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
-- `save_plots_name` [Default: `"estimation"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
-- $PLOTS_PER_PAGE®
+- $(SAVE_PLOTS_NAME®("estimation"))
+- $(PLOTS_PER_PAGE®(DEFAULT_PLOTS_PER_PAGE_SMALL))
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
 - $PLOT_ATTRIBUTES®
@@ -1442,8 +1442,8 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
-- `save_plots_name` [Default: `"irf"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
-- $PLOTS_PER_PAGE®
+- $(SAVE_PLOTS_NAME®("irf"))
+- $(PLOTS_PER_PAGE®(DEFAULT_PLOTS_PER_PAGE_LARGE))
 - $PLOT_ATTRIBUTES®
 - $LABEL®
 - $RENAME_DICTIONARY®
@@ -2088,8 +2088,8 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
-- `save_plots_name` [Default: `"irf"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
-- $PLOTS_PER_PAGE®
+- $(SAVE_PLOTS_NAME®("irf"))
+- $(PLOTS_PER_PAGE®(DEFAULT_PLOTS_PER_PAGE_SMALL))
 - $PLOT_ATTRIBUTES®
 - `plot_type` [Default: `:compare`, Type: `Symbol`]: plot type used to represent results. `:compare` means results are shown as separate lines. `:stack` means results are stacked.
 - `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
@@ -3153,8 +3153,8 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
-- `save_plots_name` [Default: `"fevd"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
-- $PLOTS_PER_PAGE®
+- $(SAVE_PLOTS_NAME®("fevd"))
+- $(PLOTS_PER_PAGE®(DEFAULT_PLOTS_PER_PAGE_LARGE))
 - $PLOT_ATTRIBUTES®
 - $MAX_ELEMENTS_PER_LEGENDS_ROW®
 - $EXTRA_LEGEND_SPACE®
@@ -3420,7 +3420,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
-- `save_plots_name` [Default: `"solution"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
+- $(SAVE_PLOTS_NAME®("solution"))
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
 - $PLOT_ATTRIBUTES®
 - $RENAME_DICTIONARY®
@@ -4122,7 +4122,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
-- `save_plots_name` [Default: `"solution"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
+- $(SAVE_PLOTS_NAME®("solution"))
 - `plots_per_page` [Default: `6`, Type: `Int`]: how many plots to show per page
 - $PLOT_ATTRIBUTES®
 - $RENAME_DICTIONARY®
@@ -4380,8 +4380,8 @@ If occasionally binding constraints are present in the model, they are not taken
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
-- `save_plots_name` [Default: `"conditional_forecast"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
-- $PLOTS_PER_PAGE®
+- $(SAVE_PLOTS_NAME®("conditional_forecast"))
+- $(PLOTS_PER_PAGE®(DEFAULT_PLOTS_PER_PAGE_LARGE))
 - $RENAME_DICTIONARY®
 - $PLOT_ATTRIBUTES®
 - $LABEL®
@@ -4825,8 +4825,8 @@ This function shares most of the signature and functionality of [`plot_condition
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
 - $SAVE_PLOTS_PATH®
-- `save_plots_name` [Default: `"conditional_forecast"`, Type: `Union{String, Symbol}`]: prefix used when saving plots to disk.
-- $PLOTS_PER_PAGE®
+- $(SAVE_PLOTS_NAME®("conditional_forecast"))
+- $(PLOTS_PER_PAGE®(DEFAULT_PLOTS_PER_PAGE_SMALL))
 - $PLOT_ATTRIBUTES®
 - `plot_type` [Default: `:compare`, Type: `Symbol`]: plot type used to represent results. `:compare` means results are shown as separate lines. `:stack` means results are stacked.
 - `transparency` [Default: `$DEFAULT_TRANSPARENCY`, Type: `Float64`]: transparency of stacked bars. Only relevant if `plot_type` is `:stack`.
