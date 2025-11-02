@@ -70,6 +70,15 @@ Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
 
+# Isolated namespace for model symbols
+# This module provides an isolated namespace where variable and parameter symbols
+# are created when parsing models, preventing naming conflicts with function names,
+# constants, and other objects in the MacroModelling module namespace.
+module ModelSymbols
+    # This module intentionally left minimal - symbols are created dynamically as needed
+end
+
+
 # Type definitions
 const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
 const String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
@@ -471,15 +480,15 @@ function transform_obc(ex::Expr; avoid_solve::Bool = false)
     transformed_expr, reverse_dict = transform_expression(ex)
 
     for symbs in get_symbols(transformed_expr)
-        eval(:($symbs = SPyPyC.symbols($(string(symbs)), real = true, finite = true)))
+        Core.eval(ModelSymbols, :($symbs = SPyPyC.symbols($(string(symbs)), real = true, finite = true)))
     end
 
-    eq = eval(transformed_expr)
+    eq = Core.eval(ModelSymbols, transformed_expr)
 
     if avoid_solve || count_ops(Meta.parse(string(eq))) > 15
         soll = nothing
     else
-        soll = solve_symbolically(eq, eval(:minmax__P))
+        soll = solve_symbolically(eq, Core.eval(ModelSymbols, :minmax__P))
     end
 
     if !isempty(soll)
@@ -2161,10 +2170,10 @@ function simplify(ex::Expr)::Union{Expr,Symbol,Int}
     ex_ss = convert_to_ss_equation(ex)
 
     for x in get_symbols(ex_ss)
-	    eval(:($x = SPyPyC.symbols($(string(x)), real = true, finite = true)))
+	    Core.eval(ModelSymbols, :($x = SPyPyC.symbols($(string(x)), real = true, finite = true)))
     end
 
-	parsed = ex_ss |> eval |> string |> Meta.parse
+	parsed = ex_ss |> x -> Core.eval(ModelSymbols, x) |> string |> Meta.parse
 
     postwalk(x ->   x isa Expr ? 
                         x.args[1] == :conjugate ? 
@@ -2674,8 +2683,11 @@ end
 
 
 
+# Helper function to evaluate expressions in the isolated ModelSymbols namespace
+eval_in_symbols(ex) = Core.eval(ModelSymbols, ex)
+
 function create_symbols_eqs!(𝓂::ℳ)::symbolics
-    # create symbols in module scope
+    # create symbols in isolated ModelSymbols namespace
     symbols_in_dynamic_equations = reduce(union,get_symbols.(𝓂.dyn_equations))
 
     symbols_in_dynamic_equations_wo_subscripts = Symbol.(replace.(string.(symbols_in_dynamic_equations),r"₍₋?(₀|₁|ₛₛ|ₓ)₎$"=>""))
@@ -2703,62 +2715,62 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
     end
 
     for pos in symbols_pos
-        eval(:($pos = SPyPyC.symbols($(string(pos)), real = true, finite = true, positive = true)))
+        Core.eval(ModelSymbols, :($pos = SPyPyC.symbols($(string(pos)), real = true, finite = true, positive = true)))
     end
     for neg in symbols_neg
-        eval(:($neg = SPyPyC.symbols($(string(neg)), real = true, finite = true, negative = true)))
+        Core.eval(ModelSymbols, :($neg = SPyPyC.symbols($(string(neg)), real = true, finite = true, negative = true)))
     end
     for none in symbols_none
-        eval(:($none = SPyPyC.symbols($(string(none)), real = true, finite = true)))
+        Core.eval(ModelSymbols, :($none = SPyPyC.symbols($(string(none)), real = true, finite = true)))
     end
 
-    symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
-                map(x->eval(:($x)),𝓂.dyn_equations),
-                # map(x->eval(:($x)),𝓂.dyn_equations_future),
+    symbolics(map(x->eval_in_symbols(:($x)),𝓂.ss_aux_equations),
+                map(x->eval_in_symbols(:($x)),𝓂.dyn_equations),
+                # map(x->eval_in_symbols(:($x)),𝓂.dyn_equations_future),
 
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_present_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_past_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_future_list),
+                # map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_shift_var_present_list),
+                # map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_shift_var_past_list),
+                # map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_shift_var_future_list),
 
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift2_var_past_list),
+                # map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_shift2_var_past_list),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_present_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_past_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_future_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_ss_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_list),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_var_present_list),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_var_past_list),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_var_future_list),
+                # map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_ss_list),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_exo_list),
 
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_future_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_present_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_past_list),
+                # map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_exo_future_list),
+                # map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_exo_present_list),
+                # map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_exo_past_list),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_future_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_present_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_past_list),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_future_list),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_present_list),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dyn_past_list),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_present_list_aux_SS),
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_past_list_aux_SS),
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_future_list_aux_SS),
-                map(x->Set(eval(:([$(x...)]))),𝓂.ss_list_aux_SS),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.var_present_list_aux_SS),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.var_past_list_aux_SS),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.var_future_list_aux_SS),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.ss_list_aux_SS),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_list_aux_SS),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_future_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.par_list_aux_SS),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.var_list_aux_SS),
+                # map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dynamic_variables_list),
+                # map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.dynamic_variables_future_list),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.par_list_aux_SS),
 
-                map(x->eval(:($x)),𝓂.calibration_equations),
-                map(x->eval(:($x)),𝓂.calibration_equations_parameters),
-                # map(x->eval(:($x)),𝓂.parameters),
+                map(x->eval_in_symbols(:($x)),𝓂.calibration_equations),
+                map(x->eval_in_symbols(:($x)),𝓂.calibration_equations_parameters),
+                # map(x->eval_in_symbols(:($x)),𝓂.parameters),
 
-                # Set(eval(:([$(𝓂.var_present...)]))),
-                # Set(eval(:([$(𝓂.var_past...)]))),
-                # Set(eval(:([$(𝓂.var_future...)]))),
-                Set(eval(:([$(𝓂.vars_in_ss_equations...)]))),
-                Set(eval(:([$(𝓂.var...)]))),
-                Set(eval(:([$(𝓂.➕_vars...)]))),
+                # Set(eval_in_symbols(:([$(𝓂.var_present...)]))),
+                # Set(eval_in_symbols(:([$(𝓂.var_past...)]))),
+                # Set(eval_in_symbols(:([$(𝓂.var_future...)]))),
+                Set(eval_in_symbols(:([$(𝓂.vars_in_ss_equations...)]))),
+                Set(eval_in_symbols(:([$(𝓂.var...)]))),
+                Set(eval_in_symbols(:([$(𝓂.➕_vars...)]))),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.ss_calib_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.par_calib_list),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.ss_calib_list),
+                map(x->Set(eval_in_symbols(:([$(x...)]))),𝓂.par_calib_list),
 
                 [Set() for _ in 1:length(𝓂.ss_aux_equations)],
                 # [Set() for _ in 1:length(𝓂.calibration_equations)],
