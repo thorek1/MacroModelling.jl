@@ -107,14 +107,6 @@ MacroModelling.jl/
 - Source files are in `docs/src/`
 - Build documentation locally: `julia --project=docs docs/make.jl`
 
-### Dependencies
-
-- **R packages:** Try installing with micromamba first, then fall back to `install.packages()`
-- **Micromamba installation:**
-  ```bash
-  curl -Ls https://micro.mamba.pm/install.sh | MAMBA_NO_BANNER=1 MAMBA_NO_PROMPT=1 bash -s -- -b -u -p ~/micromamba
-  ```
-
 ## Code Style and Conventions
 
 ### General Principles
