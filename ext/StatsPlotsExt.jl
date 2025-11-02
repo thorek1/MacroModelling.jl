@@ -3261,7 +3261,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     shocks_to_plot = axiskeys(fevds)[2]
     
     # Sort shocks alphabetically by display name
-    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in shocks_to_plot]
+    shock_names_display = [replace_indices_in_symbol(apply_custom_name(s, rename_dictionary)) for s in shocks_to_plot]
     @assert length(shock_names_display) == length(unique(shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
     shocks_sort_perm = sortperm(shock_names_display, by = normalize_superscript)
     shocks_to_plot = shocks_to_plot[shocks_sort_perm]
@@ -3297,14 +3297,14 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     for k in vars_to_plot
         if gr_back
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
-            title = apply_custom_name(k, rename_dictionary), 
+            title = replace_indices_in_symbol(apply_custom_name(k, rename_dictionary)), 
             bar_position = :stack,
             color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
             linecolor = :transparent,
             legend = :none))
         else
             push!(pp,StatsPlots.groupedbar(fevds(k,:,:)', 
-            title = apply_custom_name(k, rename_dictionary), 
+            title = replace_indices_in_symbol(apply_custom_name(k, rename_dictionary)), 
             bar_position = :stack, 
             color = pal[mod1.(1:length(shocks_to_plot), length(pal))]',
             linecolor = :transparent,
