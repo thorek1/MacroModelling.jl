@@ -180,7 +180,7 @@ end
 end
 ```
 
-Since both `c` and `P` appear in `t+2`, they generate auxiliary variables in the model. Plotting the policy functions for all variables excluding OBC-related ones reveals the auxiliary variables (same for the default `:all` option since there are no OBCs in this model):
+Since both `c` and `P` appear in `t+2`, they generate auxiliary variables in the model. Plotting the policy functions for all variables excluding OBC-related ones means auxiliary variables are shown (same for the default `:all` option since there are no OBCs in this model):
 
 ```julia
 plot_solution(FS2000, :k,

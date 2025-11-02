@@ -639,11 +639,11 @@ end
 end
 ```
 
-Since both `c` and `P` appear in t+2, they generate auxiliary variables in the model. Plotting the IRF for all variables excluding OBC-related ones reveals the auxiliary variables:
+Since both `c` and `P` appear in t+2, they generate auxiliary variables in the model. Plotting the IRF for all variables excluding OBC-related ones means auxiliary variables are shown:
 
 ```julia
 plot_irf(FS2000, 
-	variables = :all_excluding_obc)
+    variables = :all_excluding_obc)
 ```
 
 ![FS2000 IRF - e_a shock with auxiliary variables](../assets/with_aux_vars_irf__FS2000__e_a__1.png)
