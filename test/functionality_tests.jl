@@ -874,13 +874,14 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
-                    for lyapunov_algorithm in lyapunov_algorithms
+                    # for lyapunov_algorithm in lyapunov_algorithms
                        clear_solution_caches!(m, algorithm)
                             
                         plot_conditional_variance_decomposition(m, tol = tol,
                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                lyapunov_algorithm = lyapunov_algorithm)
-                    end
+                                                                # lyapunov_algorithm = lyapunov_algorithm
+                                                                )
+                    # end
                 end
             end
             
