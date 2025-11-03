@@ -177,7 +177,7 @@ function levenberg_marquardt(
         # sol_cache.A = X
         sol_cache.A = ∇̂
         sol_cache.b = guess_update
-        𝒮.solve!(sol_cache, verbose = false)#, 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()))
+        𝒮.solve!(sol_cache, verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
         copy!(guess_update, sol_cache.u)
 
         if !isfinite(sum(guess_update))
@@ -477,7 +477,7 @@ function newton(
             if ∇ isa SparseMatrixCSC
                 sol_cache.A = ∇
                 sol_cache.b = new_residuals
-                𝒮.solve!(sol_cache, verbose = false)#, 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()))
+                𝒮.solve!(sol_cache, verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
                 guess_update .= sol_cache.u
                 new_residuals .= guess_update
             else
@@ -531,7 +531,7 @@ function newton(
         if ∇ isa SparseMatrixCSC
             sol_cache.A = ∇
             sol_cache.b = new_residuals
-            𝒮.solve!(sol_cache, verbose = false)#, 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()))
+            𝒮.solve!(sol_cache, verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
             guess_update .= sol_cache.u
             new_residuals .= guess_update
         else
