@@ -388,203 +388,656 @@ function plot_model_estimates(𝓂::ℳ,
 
     push!(model_estimates_active_plot_container, args_and_kwargs)
 
-    return_plots = []
+    # Generate plots from container
+    return _plot_model_estimates_from_container(;
+                                                show_plots = show_plots,
+                                                save_plots = save_plots,
+                                                save_plots_format = save_plots_format,
+                                                save_plots_name = save_plots_name,
+                                                save_plots_path = save_plots_path,
+                                                plots_per_page = plots_per_page,
+                                                transparency = transparency,
+                                                max_elements_per_legend_row = max_elements_per_legend_row,
+                                                extra_legend_space = extra_legend_space,
+                                                plot_attributes = plot_attributes)
+end
 
-    n_subplots = length(var_idx) + length(shock_idx)
-    pp = []
-    pane = 1
-    plot_count = 1
-
-    for v in var_idx
-        if all(isapprox.(variables_to_plot[v, periods], 0, atol = eps(Float32)))
-            n_subplots -= 1
-        end
+function _plot_model_estimates_from_container(;
+                                              show_plots::Bool = DEFAULT_SHOW_PLOTS,
+                                              save_plots::Bool = DEFAULT_SAVE_PLOTS,
+                                              save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
+                                              save_plots_name::Union{String, Symbol} = "estimation",
+                                              save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
+                                              plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL,
+                                              transparency::Float64 = DEFAULT_TRANSPARENCY,
+                                              max_elements_per_legend_row::Int = DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW,
+                                              extra_legend_space::Float64 = DEFAULT_EXTRA_LEGEND_SPACE,
+                                              plot_attributes::Dict = Dict())
+    
+    if length(model_estimates_active_plot_container) == 0
+        @warn "No model estimates data to plot. Call plot_model_estimates first."
+        return []
     end
+    
+    # Setup common attributes and palette
+    gr_back = StatsPlots.backend() == StatsPlots.Plots.GRBackend()
+    
+    attrbts = !gr_back ? merge(DEFAULT_PLOT_ATTRIBUTES, Dict(:framestyle => :box)) : merge(DEFAULT_PLOT_ATTRIBUTES, Dict())
+    
+    attributes = merge(attrbts, plot_attributes)
+    attributes_redux = copy(attributes)
+    delete!(attributes_redux, :framestyle)
+    
+    orig_pal = StatsPlots.palette(attributes_redux[:palette])
+    total_pal_len = 100
+    alpha_reduction_factor = 0.7
+    pal = mapreduce(x -> StatsPlots.coloralpha.(orig_pal, alpha_reduction_factor ^ x), vcat, 0:(total_pal_len ÷ length(orig_pal)) - 1) |> StatsPlots.palette
+    
+    estimate_color = :navy
+    data_color = :orangered
+    
+    # Branch based on single vs comparison mode
+    if length(model_estimates_active_plot_container) == 1
+        # Single model estimation plot
+        return _generate_single_model_estimate_plots(model_estimates_active_plot_container[1], gr_back, attributes, attributes_redux, pal, 
+                                                     estimate_color, data_color, show_plots, save_plots, save_plots_format, 
+                                                     save_plots_name, save_plots_path, plots_per_page, transparency, 
+                                                     max_elements_per_legend_row, extra_legend_space)
+    else
+        # Comparison mode
+        return _generate_comparison_model_estimate_plots(model_estimates_active_plot_container, gr_back, attributes, attributes_redux, pal,
+                                                         estimate_color, data_color, show_plots, save_plots, save_plots_format,
+                                                         save_plots_name, save_plots_path, plots_per_page, transparency,
+                                                         max_elements_per_legend_row, extra_legend_space)
+    end
+end
 
-    non_zero_shock_names = String[]
-    non_zero_shock_idx = Int[]
-
-    for (i,s) in enumerate(shock_idx)
-        if all(isapprox.(shocks_to_plot[s, periods], 0, atol = eps(Float32)))
-            n_subplots -= 1
-        elseif length(shock_idx) > 0
-            push!(non_zero_shock_idx, s)
-            push!(non_zero_shock_names, shock_names_display[i])
+function _generate_single_model_estimate_plots(container, gr_back, attributes, attributes_redux, pal, 
+                                               estimate_color, data_color, show_plots, save_plots, save_plots_format,
+                                               save_plots_name, save_plots_path, plots_per_page, transparency,
+                                               max_elements_per_legend_row, extra_legend_space)
+    # Extract data from container
+    var_idx = 1:length(container[:variable_names])
+    shock_idx = 1:length(container[:shock_names])
+    periods = 1:length(container[:x_axis])
+    
+    # Determine if shock decomposition is enabled
+    shock_decomposition = haskey(container, :decomposition) && !isnothing(container[:decomposition])
+    pruning = shock_decomposition && size(container[:decomposition], 2) > length(container[:shock_names]) + 2
+    
+    # Calculate legend configuration
+    legend_columns = 1
+    legend_items = length(container[:shock_names]) + 3 + (pruning ? 1 : 0)
+    max_columns = min(legend_items, max_elements_per_legend_row)
+    
+    for cols in max_columns:-1:1
+        if legend_items % cols == 0 || legend_items % cols <= max_elements_per_legend_row
+            legend_columns = cols
+            break
         end
     end
     
-    for i in 1:length(var_idx) + length(non_zero_shock_idx)
-        if i > length(var_idx) # Shock decomposition
-            if !(all(isapprox.(shocks_to_plot[non_zero_shock_idx[i - length(var_idx)],periods], 0, atol = eps(Float32))))
-                push!(pp,begin
-                        p = standard_subplot(shocks_to_plot[non_zero_shock_idx[i - length(var_idx)],periods],
-                                            0.0, 
-                                            non_zero_shock_names[i - length(var_idx)], 
-                                            gr_back,
-                                            pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
-                                            xvals = x_axis)         
-                end)
-            else
-                continue
-            end
-        else
-            if !(all(isapprox.(variables_to_plot[var_idx[i],periods], 0, atol = eps(Float32))))
-                SS = reference_steady_state[var_idx[i]]
-
-                if shock_decomposition
-                    additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
-
-                    p = standard_subplot(Val(:stack),
-                                        [decomposition[var_idx[i],k,periods] for k in vcat(additional_indices, non_zero_shock_idx)], 
-                                        [SS for k in vcat(additional_indices, non_zero_shock_idx)], 
-                                        variable_names_display[i], 
-                                        gr_back,
-                                        true, # same_ss,
-                                        transparency = transparency,
-                                        xvals = x_axis,
-                                        pal = pal,
-                                        color_total = estimate_color)
-                                        
-                    if var_idx[i] ∈ obs_idx
-                        StatsPlots.plot!(p,
-                            # x_axis,
-                            shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
-                            label = "",
-                            color = shock_decomposition ? data_color : pal[2])
-                    end
-                else
-                    p = standard_subplot(variables_to_plot[var_idx[i],periods], 
-                                        SS, 
-                                        variable_names_display[i], 
-                                        gr_back,
-                                        pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
-                                        xvals = x_axis)
-
-                    if var_idx[i] ∈ obs_idx
-                        StatsPlots.plot!(p,
-                            x_axis,
-                            shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
-                            label = "",
-                            color = shock_decomposition ? data_color : pal[2])
-                    end
-                end
-                        
-                push!(pp, p)
-            else
-                continue
-            end
-        end
-
-        if !(plot_count % plots_per_page == 0)
-            plot_count += 1
-        else
-            plot_count = 1
-
-            ppp = StatsPlots.plot(pp...; attributes...)
-
-            pl = StatsPlots.plot(framestyle = :none,
-                                legend = :inside, 
-                                legend_columns = 2)
-
-            StatsPlots.plot!(pl,
-                            [NaN], 
-                            label = "Estimate", 
-                            color = shock_decomposition ? estimate_color : pal[1])
-
-            StatsPlots.plot!(pl,
-                            [NaN], 
-                            label = "Data", 
-                            color = shock_decomposition ? data_color : pal[2])
-
-            if shock_decomposition
-                additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
-
-                lbls = reshape(vcat(additional_labels, string.(non_zero_shock_names)), 1, length(non_zero_shock_idx) + 1 + pruning)
-
-                StatsPlots.bar!(pl,
-                                fill(NaN, 1, length(non_zero_shock_idx) + 1 + pruning), 
-                                label = lbls, 
-                                linewidth = 0,
-                                alpha = transparency,
-                                color = pal[mod1.(1:length(lbls), length(pal))]', 
-                                legend_columns = legend_columns)
-            end
-            
-            # Legend
-            p = StatsPlots.plot(ppp,pl, 
-                                    layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
-                                    plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                    attributes_redux...)
-
-            push!(return_plots,p)
-
-            if show_plots
-                display(p)
-            end
-
-            if save_plots
-                if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
-            end
-
-            pane += 1
-            pp = []
+    # Filter non-zero variables and shocks
+    non_zero_var_idx = Int[]
+    non_zero_shock_idx = Int[]
+    n_subplots = 0
+    
+    for v in var_idx
+        if !all(isapprox.(container[:variables_to_plot][v, periods], 0, atol = eps(Float32)))
+            push!(non_zero_var_idx, v)
+            n_subplots += 1
         end
     end
-
-    if length(pp) > 0
-        ppp = StatsPlots.plot(pp...; attributes...)
-
-        pl = StatsPlots.plot(framestyle = :none,
-                            legend = :inside, 
-                            legend_columns = 2)
-
-        StatsPlots.plot!(pl,
-                        [NaN], 
-                        label = "Estimate", 
-                        color = shock_decomposition ? estimate_color : pal[1])
-
-        StatsPlots.plot!(pl,
-                        [NaN], 
-                        label = "Data", 
-                        color = shock_decomposition ? data_color : pal[2])
-
-        if shock_decomposition
-            additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
-
-            lbls = reshape(vcat(additional_labels, string.(non_zero_shock_names)), 1, length(non_zero_shock_idx) + 1 + pruning)
-
-            StatsPlots.bar!(pl,
-                            fill(NaN, 1, length(non_zero_shock_idx) + 1 + pruning), 
-                            label = lbls, 
-                            linewidth = 0,
-                            alpha = transparency,
-                            color = pal[mod1.(1:length(lbls), length(pal))]', 
-                                legend_columns = legend_columns)
+    
+    for s in shock_idx
+        if !all(isapprox.(container[:shocks_to_plot][s, periods], 0, atol = eps(Float32)))
+            push!(non_zero_shock_idx, s)
+            n_subplots += 1
+        end
+    end
+    
+    # Generate plots
+    return_plots = []
+    pp = []
+    pane = 1
+    plot_count = 1
+    
+    for i in 1:(length(non_zero_var_idx) + length(non_zero_shock_idx))
+        local p
+        
+        if i > length(non_zero_var_idx)
+            # Shock plot
+            shock_idx_val = non_zero_shock_idx[i - length(non_zero_var_idx)]
+            p = standard_subplot(container[:shocks_to_plot][shock_idx_val, periods],
+                                0.0,
+                                container[:shock_names][shock_idx_val],
+                                gr_back,
+                                pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
+                                xvals = container[:x_axis])
+        else
+            # Variable plot
+            var_idx_val = non_zero_var_idx[i]
+            SS = container[:reference_steady_state][var_idx_val]
+            
+            if shock_decomposition
+                additional_indices = pruning ? [size(container[:decomposition], 2) - 1, size(container[:decomposition], 2) - 2] : 
+                                              [size(container[:decomposition], 2) - 1]
+                
+                p = standard_subplot(Val(:stack),
+                                    [container[:decomposition][var_idx_val, k, periods] for k in vcat(additional_indices, non_zero_shock_idx)],
+                                    [SS for k in vcat(additional_indices, non_zero_shock_idx)],
+                                    container[:variable_names][var_idx_val],
+                                    gr_back,
+                                    true,
+                                    transparency = transparency,
+                                    xvals = container[:x_axis],
+                                    pal = pal,
+                                    color_total = estimate_color)
+                
+                # Overlay data if variable is observed
+                _add_data_overlay!(p, container, var_idx_val, periods, shock_decomposition, SS, estimate_color, data_color, pal)
+            else
+                p = standard_subplot(container[:variables_to_plot][var_idx_val, periods],
+                                    SS,
+                                    container[:variable_names][var_idx_val],
+                                    gr_back,
+                                    pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
+                                    xvals = container[:x_axis])
+                
+                # Overlay data if variable is observed
+                _add_data_overlay!(p, container, var_idx_val, periods, shock_decomposition, SS, estimate_color, data_color, pal)
+            end
         end
         
-        # Legend
-        p = StatsPlots.plot(ppp,pl, 
-                                layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space, legend_columns * 0.01 + extra_legend_space]),
-                                plot_title = "Model: "*𝓂.model_name*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"; 
-                                attributes_redux...)
-
-
-        push!(return_plots,p)
-
-        if show_plots
-            display(p)
-        end
-
-        if save_plots
-            if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * 𝓂.model_name * "__" * string(pane) * "." * string(save_plots_format))
+        push!(pp, p)
+        
+        # Create page when full or at end
+        if (plot_count % plots_per_page == 0) || (i == length(non_zero_var_idx) + length(non_zero_shock_idx))
+            page_plot = _create_single_estimates_page(pp, container, non_zero_shock_idx, shock_decomposition, pruning,
+                                                     pane, n_subplots, plots_per_page, legend_columns, 
+                                                     estimate_color, data_color, pal, transparency, extra_legend_space,
+                                                     attributes, attributes_redux)
+            
+            push!(return_plots, page_plot)
+            
+            if show_plots
+                display(page_plot)
+            end
+            
+            if save_plots
+                if !isdir(save_plots_path) mkpath(save_plots_path) end
+                StatsPlots.savefig(page_plot, save_plots_path * "/" * string(save_plots_name) * "__" * 
+                                  container[:model_name] * "__" * string(pane) * "." * string(save_plots_format))
+            end
+            
+            pane += 1
+            pp = []
+            plot_count = 1
+        else
+            plot_count += 1
         end
     end
-
+    
     return return_plots
+end
+
+function _add_data_overlay!(p, container, var_idx, periods, shock_decomposition, SS, estimate_color, data_color, pal)
+    # Check if variable is observed
+    obs_axis = collect(axiskeys(container[:data], 1))
+    obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+    obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(container[:rename_dictionary]))) for v in obs_symbols]
+    
+    var_in_obs = findfirst(==(container[:variable_names][var_idx]), obs_symbols_display)
+    
+    if !isnothing(var_in_obs)
+        if shock_decomposition
+            StatsPlots.plot!(p,
+                            container[:data_in_deviations][var_in_obs, periods]',
+                            label = "",
+                            color = data_color)
+        else
+            StatsPlots.plot!(p,
+                            container[:x_axis],
+                            container[:data_in_deviations][var_in_obs, periods]' .+ SS,
+                            label = "",
+                            color = pal[2])
+        end
+    end
+end
+
+function _create_single_estimates_page(pp, container, non_zero_shock_idx, shock_decomposition, pruning,
+                                      pane, n_subplots, plots_per_page, legend_columns,
+                                      estimate_color, data_color, pal, transparency, extra_legend_space,
+                                      attributes, attributes_redux)
+    ppp = StatsPlots.plot(pp...; attributes...)
+    
+    # Create legend
+    pl = StatsPlots.plot(framestyle = :none, legend = :inside, legend_columns = 2)
+    
+    StatsPlots.plot!(pl, [NaN], label = "Estimate", 
+                    color = shock_decomposition ? estimate_color : pal[1])
+    StatsPlots.plot!(pl, [NaN], label = "Data",
+                    color = shock_decomposition ? data_color : pal[2])
+    
+    if shock_decomposition
+        additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
+        shock_names = [container[:shock_names][i] for i in non_zero_shock_idx]
+        lbls = reshape(vcat(additional_labels, string.(shock_names)), 1, length(non_zero_shock_idx) + 1 + (pruning ? 1 : 0))
+        
+        StatsPlots.bar!(pl,
+                        fill(NaN, 1, length(non_zero_shock_idx) + 1 + (pruning ? 1 : 0)),
+                        label = lbls,
+                        linewidth = 0,
+                        alpha = transparency,
+                        color = pal[mod1.(1:length(lbls), length(pal))]',
+                        legend_columns = legend_columns)
+    end
+    
+    # Assemble final plot
+    p = StatsPlots.plot(ppp, pl,
+                       layout = StatsPlots.grid(2, 1, heights = [1 - legend_columns * 0.01 - extra_legend_space,
+                                                                  legend_columns * 0.01 + extra_legend_space]),
+                       plot_title = "Model: " * container[:model_name] * "  (" * string(pane) * "/" *
+                                   string(Int(ceil(n_subplots / plots_per_page))) * ")";
+                       attributes_redux...)
+    
+    return p
+end
+
+function _generate_comparison_model_estimate_plots(containers, gr_back, attributes, attributes_redux, pal,
+                                                   estimate_color, data_color, show_plots, save_plots, save_plots_format,
+                                                   save_plots_name, save_plots_path, plots_per_page, transparency,
+                                                   max_elements_per_legend_row, extra_legend_space)
+    # Build comparison metadata
+    reduced_vector = [
+        Dict(k => d[k] for k in vcat(:run_id, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
+        for d in containers
+    ]
+    
+    diffdict = compare_args_and_kwargs(reduced_vector)
+    
+    # Group by model
+    grouped_by_model = Dict{Any, Vector{Dict}}()
+    for d in containers
+        model = d[:model_name]
+        d_sub = Dict(k => d[k] for k in setdiff(keys(containers[end]), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
+        push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
+    end
+    
+    model_names = unique([d[:model_name] for d in containers])
+    
+    for model in model_names
+        if length(grouped_by_model[model]) > 1
+            diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
+            diffdict = merge_by_runid(diffdict, diffdict_grouped)
+        end
+    end
+    
+    # Build annotations
+    annotate_diff_input, data_idx, rename_idx = _build_comparison_annotations(diffdict, containers)
+    
+    # Determine axis configuration
+    common_axis = mapreduce(k -> k[:x_axis], intersect, containers)
+    combined_x_axis = length(common_axis) > 0 ? 
+                      mapreduce(k -> k[:x_axis], union, containers) |> sort :
+                      1:maximum([length(k[:x_axis]) for k in containers])
+    
+    # Create legend
+    legend_plot = _create_comparison_legend(containers, diffdict, pal, annotate_diff_input, data_idx, data_color)
+    
+    # Collect joint variables and shocks
+    joint_variables, joint_shocks = _collect_joint_variables_and_shocks(containers)
+    
+    # Determine non-zero variables and shocks
+    joint_non_zero_variables, joint_non_zero_shocks, min_presample_periods = 
+        _filter_nonzero_variables_and_shocks(joint_variables, joint_shocks, containers)
+    
+    n_subplots = length(joint_non_zero_variables) + length(joint_non_zero_shocks)
+    
+    # Generate plots
+    return_plots = []
+    pp = []
+    pane = 1
+    plot_count = 1
+    annotate_ss = Vector{Pair{String, Any}}[]
+    annotate_ss_page = Pair{String, Any}[]
+    
+    for (i, var) in enumerate(vcat(joint_non_zero_variables, joint_non_zero_shocks))
+        # Collect data across all containers
+        plot_data, SSs = _collect_comparison_plot_data(var, i, joint_non_zero_variables, containers, 
+                                                       combined_x_axis, common_axis)
+        
+        # Check if steady states differ
+        same_ss = true
+        if maximum(Base.filter(!isnan, SSs)) - minimum(Base.filter(!isnan, SSs)) > 1e-10
+            push!(annotate_ss_page, var => minimal_sigfig_strings(SSs))
+            same_ss = false
+        end
+        
+        # Create subplot
+        p = standard_subplot(Val(:compare), plot_data, SSs, var, gr_back, same_ss,
+                            pal = pal, xvals = combined_x_axis)
+        
+        # Add data overlays
+        _add_comparison_data_overlays!(p, var, containers, diffdict, combined_x_axis, common_axis, 
+                                       pal, data_color, data_idx, min_presample_periods)
+        
+        push!(pp, p)
+        
+        # Create page when full or at end
+        if (plot_count % plots_per_page == 0) || (i == length(joint_non_zero_variables) + length(joint_non_zero_shocks))
+            page_plot = _create_comparison_estimates_page(pp, legend_plot, diffdict, annotate_diff_input,
+                                                         annotate_ss_page, annotate_ss, pane, n_subplots,
+                                                         plots_per_page, attributes, attributes_redux, containers)
+            
+            push!(return_plots, page_plot)
+            
+            if show_plots
+                display(page_plot)
+            end
+            
+            if save_plots
+                model_string_filename = haskey(diffdict, :model_name) ? "multiple_models" : containers[1][:model_name]
+                if !isdir(save_plots_path) mkpath(save_plots_path) end
+                StatsPlots.savefig(page_plot, save_plots_path * "/" * string(save_plots_name) * "__" *
+                                  model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
+            end
+            
+            pane += 1
+            annotate_ss_page = Pair{String, Any}[]
+            pp = []
+            plot_count = 1
+        else
+            plot_count += 1
+        end
+    end
+    
+    return return_plots
+end
+
+# Helper functions for comparison mode
+function _build_comparison_annotations(diffdict, containers)
+    annotate_diff_input = Pair{String, Any}[]
+    push!(annotate_diff_input, "Plot label" => reduce(vcat, diffdict[:label]))
+    
+    # Parameters
+    if haskey(diffdict, :parameters)
+        param_nms = diffdict[:parameters] |> keys |> collect |> sort
+        for param in param_nms
+            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
+            push!(annotate_diff_input, String(param) => result)
+        end
+    end
+    
+    # Data
+    data_idx = Int[]
+    if haskey(diffdict, :data)
+        unique_data = unique(collect.(diffdict[:data]))
+        for init in diffdict[:data]
+            for (i, u) in enumerate(unique_data)
+                if u == init
+                    push!(data_idx, i)
+                    break
+                end
+            end
+        end
+        push!(annotate_diff_input, "Data" => ["#$i" for i in data_idx])
+    end
+    
+    # Rename dictionary
+    rename_idx = Int[]
+    if haskey(diffdict, :rename_dictionary)
+        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
+        unique_dicts = unique(non_nothing_dicts)
+        
+        for init in diffdict[:rename_dictionary]
+            if isnothing(init) || length(init) == 0
+                push!(rename_idx, 0)
+                continue
+            end
+            
+            for (i, u) in enumerate(unique_dicts)
+                if u == init
+                    push!(rename_idx, i)
+                    break
+                end
+            end
+        end
+        
+        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
+    end
+    
+    # Other differences
+    for k in setdiff(keys(containers[end]),
+                    [:run_id, :parameters, :data, :data_in_levels, :decomposition, :variables_to_plot,
+                     :data_in_deviations, :shocks_to_plot, :reference_steady_state, :x_axis, :tol, :label,
+                     :shocks, :shock_names, :variables, :variable_names, :rename_dictionary])
+        if haskey(diffdict, k)
+            push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat, diffdict[k]))
+        end
+    end
+    
+    if haskey(diffdict, :shock_names) && all(length.(diffdict[:shock_names]) .== 1)
+        push!(annotate_diff_input, "Shock name" => map(x -> x[1], diffdict[:shock_names]))
+    end
+    
+    return annotate_diff_input, data_idx, rename_idx
+end
+
+function _create_comparison_legend(containers, diffdict, pal, annotate_diff_input, data_idx, data_color)
+    legend_plot = StatsPlots.plot(framestyle = :none, legend = :inside, palette = pal,
+                                 legend_columns = length(containers))
+    
+    for (i, k) in enumerate(containers)
+        StatsPlots.plot!(legend_plot, [NaN],
+                        color = pal[mod1.(i, length(pal))]',
+                        legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                        label = length(annotate_diff_input) > 2 ? 
+                               (k[:label] isa Symbol ? string(k[:label]) : k[:label]) :
+                               (annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : 
+                                String(Symbol(annotate_diff_input[2][2][i]))))
+    end
+    
+    # Add data legend entries
+    if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
+        for (i, k) in enumerate(containers)
+            lbl = length(data_idx) > 0 ? "Data $(data_idx[i])" : "Data $(k[:label])"
+            StatsPlots.plot!(legend_plot, [NaN], label = lbl,
+                            color = pal[mod1.(length(containers) + i, length(pal))]')
+        end
+    else
+        StatsPlots.plot!(legend_plot, [NaN], label = "Data", color = data_color)
+    end
+    
+    return legend_plot
+end
+
+function _collect_joint_variables_and_shocks(containers)
+    joint_variables = OrderedSet{String}()
+    joint_shocks = OrderedSet{String}()
+    
+    for k in containers
+        foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))),
+               k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
+        foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))),
+               k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
+    end
+    
+    sort!(joint_variables)
+    sort!(joint_shocks)
+    
+    return joint_variables, joint_shocks
+end
+
+function _filter_nonzero_variables_and_shocks(joint_variables, joint_shocks, containers)
+    min_presample_periods = minimum([k[:presample_periods] for k in containers])
+    
+    joint_non_zero_variables = []
+    joint_non_zero_shocks = []
+    
+    for var in joint_variables
+        not_zero_anywhere = false
+        for k in containers
+            var_idx = findfirst(==(var), k[:variable_names])
+            periods = k[:presample_periods] + 1:size(k[:data], 2)
+            
+            if !isnothing(var_idx) && any(.!isapprox.(k[:variables_to_plot][var_idx, periods], 0, atol = eps(Float32)))
+                not_zero_anywhere = true
+                break
+            end
+        end
+        
+        if not_zero_anywhere
+            push!(joint_non_zero_variables, var)
+        end
+    end
+    
+    for shock in joint_shocks
+        not_zero_anywhere = false
+        for k in containers
+            shock_idx = findfirst(==(shock), k[:shock_names])
+            periods = k[:presample_periods] + 1:size(k[:data], 2)
+            
+            if !isnothing(shock_idx) && any(.!isapprox.(k[:shocks_to_plot][shock_idx, periods], 0, atol = eps(Float32)))
+                not_zero_anywhere = true
+                break
+            end
+        end
+        
+        if not_zero_anywhere
+            push!(joint_non_zero_shocks, shock)
+        end
+    end
+    
+    return joint_non_zero_variables, joint_non_zero_shocks, min_presample_periods
+end
+
+function _collect_comparison_plot_data(var, i, joint_non_zero_variables, containers, combined_x_axis, common_axis)
+    SSs = eltype(containers[1][:reference_steady_state])[]
+    shocks_to_plot_s = AbstractVector{eltype(containers[1][:shocks_to_plot])}[]
+    variables_to_plot_s = AbstractVector{eltype(containers[1][:variables_to_plot])}[]
+    
+    for k in containers
+        periods = (1:length(k[:x_axis])) .+ k[:presample_periods]
+        
+        if i > length(joint_non_zero_variables)
+            shock_idx = findfirst(==(var), k[:shock_names])
+            if isnothing(shock_idx)
+                push!(SSs, NaN)
+                push!(shocks_to_plot_s, zeros(0))
+            else
+                push!(SSs, 0.0)
+                
+                idx = length(common_axis) == 0 ? (1:length(k[:x_axis])) : indexin(k[:x_axis], combined_x_axis)
+                shocks_to_plot = fill(NaN, length(combined_x_axis))
+                shocks_to_plot[idx] = k[:shocks_to_plot][shock_idx, periods]
+                push!(shocks_to_plot_s, shocks_to_plot)
+            end
+        else
+            var_idx = findfirst(==(var), k[:variable_names])
+            if isnothing(var_idx)
+                push!(SSs, NaN)
+                push!(variables_to_plot_s, zeros(0))
+            else
+                push!(SSs, k[:reference_steady_state][var_idx])
+                
+                idx = length(common_axis) == 0 ? (1:length(k[:x_axis])) : indexin(k[:x_axis], combined_x_axis)
+                variables_to_plot = fill(NaN, length(combined_x_axis))
+                variables_to_plot[idx] = k[:variables_to_plot][var_idx, periods]
+                push!(variables_to_plot_s, variables_to_plot)
+            end
+        end
+    end
+    
+    plot_data = i > length(joint_non_zero_variables) ? shocks_to_plot_s : variables_to_plot_s
+    
+    return plot_data, SSs
+end
+
+function _add_comparison_data_overlays!(p, var, containers, diffdict, combined_x_axis, common_axis,
+                                        pal, data_color, data_idx, min_presample_periods)
+    if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
+        for (j, k) in enumerate(containers)
+            periods = (1:length(k[:x_axis])) .+ k[:presample_periods]
+            obs_axis = collect(axiskeys(k[:data], 1))
+            obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+            obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) 
+                                  for v in obs_symbols]
+            
+            var_indx = findfirst(==(var), k[:variable_names])
+            
+            if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
+                idx = length(common_axis) == 0 ? (1:length(k[:x_axis])) : indexin(k[:x_axis], combined_x_axis)
+                data_in_deviations = fill(NaN, length(combined_x_axis))
+                data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)), periods]
+                
+                StatsPlots.plot!(p, combined_x_axis,
+                                data_in_deviations .+ k[:reference_steady_state][var_indx],
+                                label = "", color = pal[length(containers) + j])
+            end
+        end
+    else
+        for k in containers
+            periods = min_presample_periods + 1:size(k[:data], 2)
+            obs_axis = collect(axiskeys(k[:data], 1))
+            obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+            obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) 
+                                  for v in obs_symbols]
+            
+            var_indx = findfirst(==(var), k[:variable_names])
+            
+            if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
+                data_in_deviations = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)), :]
+                data_in_deviations[1:k[:presample_periods]] .= NaN
+                
+                StatsPlots.plot!(p, combined_x_axis,
+                                data_in_deviations[periods] .+ k[:reference_steady_state][var_indx],
+                                label = "", color = data_color)
+            end
+        end
+    end
+end
+
+function _create_comparison_estimates_page(pp, legend_plot, diffdict, annotate_diff_input, annotate_ss_page,
+                                           annotate_ss, pane, n_subplots, plots_per_page, attributes, 
+                                           attributes_redux, containers)
+    ppp = StatsPlots.plot(pp...; attributes...)
+    
+    model_string = haskey(diffdict, :model_name) ? "multiple models" : containers[1][:model_name]
+    plot_title = "Model: " * model_string * "  (" * string(pane) * "/" *
+                string(Int(ceil(n_subplots / plots_per_page))) * ")"
+    
+    plot_elements = [ppp, legend_plot]
+    layout_heights = [15, 1]
+    
+    if length(annotate_diff_input) > 2
+        annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize],
+                                           title = "Relevant Input Differences")
+        ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
+        push!(plot_elements, ppp_input_diff)
+        push!(layout_heights, 5)
+        pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
+    else
+        pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
+    end
+    
+    push!(annotate_ss, annotate_ss_page)
+    
+    if length(annotate_ss[pane]) > 1
+        annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize],
+                                  title = "Relevant Steady State")
+        ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
+        push!(plot_elements, ppp_ss)
+        push!(layout_heights, 5)
+    end
+    
+    p = StatsPlots.plot(plot_elements...,
+                       layout = StatsPlots.grid(length(layout_heights), 1,
+                                               heights = layout_heights ./ sum(layout_heights)),
+                       plot_title = plot_title;
+                       attributes_redux...)
+    
+    return p
 end
 
 
@@ -897,518 +1350,18 @@ function plot_model_estimates!(𝓂::ℳ,
         @info "Plot with same parameters already exists. Using previous plot data to create plot."
     end
 
-    # 1. Keep only certain keys from each dictionary
-    reduced_vector = [
-        Dict(k => d[k] for k in vcat(:run_id, keys(DEFAULT_ARGS_AND_KWARGS_NAMES)...) if haskey(d, k))
-        for d in model_estimates_active_plot_container
-    ]
-
-    diffdict = compare_args_and_kwargs(reduced_vector)
-
-    # 2. Group the original vector by :model_name. Check difference for keys where they matter between models. Two different models might have different shocks so that difference is less important, but the same model with different shocks is a difference to highlight.
-    grouped_by_model = Dict{Any, Vector{Dict}}()
-
-    for d in model_estimates_active_plot_container
-        model = d[:model_name]
-        d_sub = Dict(k => d[k] for k in setdiff(keys(args_and_kwargs), keys(DEFAULT_ARGS_AND_KWARGS_NAMES)) if haskey(d, k))
-        push!(get!(grouped_by_model, model, Vector{Dict}()), d_sub)
-    end
-
-    model_names = []
-
-    for d in model_estimates_active_plot_container
-        push!(model_names, d[:model_name])
-    end
-
-    model_names = unique(model_names)
-
-    for model in model_names
-        if length(grouped_by_model[model]) > 1
-            diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
-            diffdict = merge_by_runid(diffdict, diffdict_grouped)
-        end
-    end
-
-    annotate_ss = Vector{Pair{String, Any}}[]
-
-    annotate_ss_page = Pair{String,Any}[]
-
-    annotate_diff_input = Pair{String,Any}[]
-
-    push!(annotate_diff_input, "Plot label" => reduce(vcat, diffdict[:label]))
-
-    len_diff = length(model_estimates_active_plot_container)
-
-    if haskey(diffdict, :parameters)
-        param_nms = diffdict[:parameters] |> keys |> collect |> sort
-        for param in param_nms
-            result = [x === nothing ? "" : x for x in diffdict[:parameters][param]]
-            push!(annotate_diff_input, String(param) => result)
-        end
-    end
-
-    common_axis = []
-
-    data_idx = Int[]
-
-    if haskey(diffdict, :data)
-        unique_data = unique(collect.(diffdict[:data]))
-
-        for init in diffdict[:data]
-            for (i,u) in enumerate(unique_data)
-                if u == init
-                    push!(data_idx,i)
-                    continue
-                end
-            end
-        end
-
-        push!(annotate_diff_input, "Data" => ["#$i" for i in data_idx])
-    end
-
-    rename_idx = Int[]
-
-    if haskey(diffdict, :rename_dictionary)
-        non_nothing_dicts = [d for d in diffdict[:rename_dictionary] if !isnothing(d) && length(d) > 0]
-        unique_dicts = unique(non_nothing_dicts)
-
-        for init in diffdict[:rename_dictionary]
-            if isnothing(init) || length(init) == 0
-                push!(rename_idx, 0)
-                continue
-            end
-
-            for (i,u) in enumerate(unique_dicts)
-                if u == init
-                    push!(rename_idx,i)
-                    continue
-                end
-            end
-        end
-
-        push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
-    end
-
-    common_axis = mapreduce(k -> k[:x_axis], intersect, model_estimates_active_plot_container)
-
-    if length(common_axis) > 0
-        combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort
-    else
-        combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container]) # model_estimates_active_plot_container[end][:x_axis]
-    end
-       
-    for k in setdiff(keys(args_and_kwargs), 
-                        [
-                            :run_id, :parameters, :data, :data_in_levels,
-                            :decomposition, :variables_to_plot, :data_in_deviations,:shocks_to_plot, :reference_steady_state, :x_axis,
-                            :tol, :label, #:presample_periods,
-                            :shocks, :shock_names,
-                            :variables, :variable_names,
-                            :rename_dictionary,
-                            # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
-                        ]
-                    )
-
-        if haskey(diffdict, k)
-            push!(annotate_diff_input, DEFAULT_ARGS_AND_KWARGS_NAMES[k] => reduce(vcat, diffdict[k]))
-        end
-    end
-    
-    if haskey(diffdict, :shock_names)
-        if all(length.(diffdict[:shock_names]) .== 1)
-            push!(annotate_diff_input, "Shock name" => map(x->x[1], diffdict[:shock_names]))
-        end
-    end
-
-    legend_plot = StatsPlots.plot(framestyle = :none, 
-                                    legend = :inside, 
-                                    palette = pal,
-                                    legend_columns = length(model_estimates_active_plot_container)) 
-    
-    joint_shocks = OrderedSet{String}()
-    joint_variables = OrderedSet{String}()
-    
-    for (i,k) in enumerate(model_estimates_active_plot_container)
-        StatsPlots.plot!(legend_plot,
-                        [NaN],
-                        color = pal[mod1.(i, length(pal))]',
-                        legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                        label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
-
-        foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
-        foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
-    end
-
-    if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
-        for (i,k) in enumerate(model_estimates_active_plot_container)
-            if length(data_idx) > 0
-                lbl = "Data $(data_idx[i])"
-            else
-                lbl = "Data $(k[:label])"
-            end
-
-            StatsPlots.plot!(legend_plot,
-                                    [NaN], 
-                                    label = lbl,
-                                    color = pal[mod1.(length(model_estimates_active_plot_container) + i, length(pal))]',
-                                    # color = pal[i]
-                                    )
-        end
-    else
-        StatsPlots.plot!(legend_plot,
-                                [NaN], 
-                                label = "Data",
-                                color = data_color)
-    end
-
-    sort!(joint_shocks)
-    sort!(joint_variables)
-
-    return_plots = []
-
-    n_subplots = length(joint_shocks) + length(joint_variables)
-    pp = []
-    pane = 1
-    plot_count = 1
-
-    joint_non_zero_variables = []
-    joint_non_zero_shocks = []
-
-    min_presample_periods = minimum([k[:presample_periods] for k in model_estimates_active_plot_container])
-
-    for var in joint_variables
-        not_zero_anywhere = false
-
-        for k in model_estimates_active_plot_container
-            var_idx = findfirst(==(var), k[:variable_names])
-            periods = k[:presample_periods] + 1:size(k[:data], 2)
-
-            if isnothing(var_idx) || not_zero_anywhere
-                # If the variable or shock is not present in the current plot_container,
-                # we skip this iteration.
-                continue
-            else
-                if any(.!isapprox.(k[:variables_to_plot][var_idx, periods], 0, atol = eps(Float32)))
-                    not_zero_anywhere = not_zero_anywhere || true
-                    # break # If any irf data is not approximately zero, we set the flag to true.
-                end
-            end
-        end
-        
-        if not_zero_anywhere 
-            push!(joint_non_zero_variables, var)
-        else
-            # If all irf data for this variable and shock is approximately zero, we skip this subplot.
-            n_subplots -= 1
-        end
-    end
-    
-    for shock in joint_shocks
-        not_zero_anywhere = false
-
-        for k in model_estimates_active_plot_container
-            shock_idx = findfirst(==(shock), k[:shock_names])
-            periods = k[:presample_periods] + 1:size(k[:data], 2)
-
-            if isnothing(shock_idx) || not_zero_anywhere
-                # If the variable or shock is not present in the current plot_container,
-                # we skip this iteration.
-                continue
-            else
-                if any(.!isapprox.(k[:shocks_to_plot][shock_idx, periods], 0, atol = eps(Float32)))
-                    not_zero_anywhere = not_zero_anywhere || true
-                    # break # If any irf data is not approximately zero, we set the flag to true.
-                end
-            end
-        end
-        
-        if not_zero_anywhere 
-            push!(joint_non_zero_shocks, shock)
-        else
-            # If all irf data for this variable and shock is approximately zero, we skip this subplot.
-            n_subplots -= 1
-        end
-    end
-    
-    for (i,var) in enumerate(vcat(joint_non_zero_variables, joint_non_zero_shocks))
-        SSs = eltype(model_estimates_active_plot_container[1][:reference_steady_state])[]
-
-        shocks_to_plot_s = AbstractVector{eltype(model_estimates_active_plot_container[1][:shocks_to_plot])}[]
-
-        variables_to_plot_s = AbstractVector{eltype(model_estimates_active_plot_container[1][:variables_to_plot])}[]
-
-        for k in model_estimates_active_plot_container
-            # periods = min_presample_periods + 1:length(combined_x_axis)
-            periods = (1:length(k[:x_axis])) .+ k[:presample_periods]
-
-            if i > length(joint_non_zero_variables)
-                shock_idx = findfirst(==(var), k[:shock_names])
-                if isnothing(shock_idx)
-                    # If the variable or shock is not present in the current plot_container,
-                    # we skip this iteration.
-                    push!(SSs, NaN)
-                    push!(shocks_to_plot_s, zeros(0))
-                else
-                    push!(SSs, 0.0)
-                    
-                    if common_axis == []
-                        idx = 1:length(k[:x_axis])
-                    else
-                        idx = indexin(k[:x_axis], combined_x_axis)
-                    end
-                    
-                    shocks_to_plot = fill(NaN, length(combined_x_axis))
-                    shocks_to_plot[idx] = k[:shocks_to_plot][shock_idx, periods]
-                    # shocks_to_plot[idx][1:k[:presample_periods]] .= NaN
-                    push!(shocks_to_plot_s, shocks_to_plot) # k[:shocks_to_plot][shock_idx, periods])
-                end
-            else
-                var_idx = findfirst(==(var), k[:variable_names])
-                if isnothing(var_idx)
-                    # If the variable or shock is not present in the current plot_container,
-                    # we skip this iteration.
-                    push!(SSs, NaN)
-                    push!(variables_to_plot_s, zeros(0))
-                else
-                    push!(SSs, k[:reference_steady_state][var_idx])
-
-                    if common_axis == []
-                        idx = 1:length(k[:x_axis])
-                    else
-                        idx = indexin(k[:x_axis], combined_x_axis)
-                    end
-                    
-                    variables_to_plot = fill(NaN, length(combined_x_axis))
-                    variables_to_plot[idx] = k[:variables_to_plot][var_idx, periods]
-                    # variables_to_plot[idx][1:k[:presample_periods]] .= NaN
-
-                    push!(variables_to_plot_s, variables_to_plot)#k[:variables_to_plot][var_idx, periods])
-                end
-            end
-        end
-
-        if i > length(joint_non_zero_variables)
-            plot_data = shocks_to_plot_s
-        else
-            plot_data = variables_to_plot_s
-        end
-
-        same_ss = true
-
-        if maximum(Base.filter(!isnan, SSs)) - minimum(Base.filter(!isnan, SSs)) > 1e-10
-            push!(annotate_ss_page, var => minimal_sigfig_strings(SSs))
-            same_ss = false
-        end
-
-        p = standard_subplot(Val(:compare),
-                                    plot_data, 
-                                    SSs, 
-                                    var, 
-                                    gr_back,
-                                    same_ss,
-                                    pal = pal,
-                                    xvals = combined_x_axis, # TODO: check different data length or presample periods. to be fixed
-                                    # transparency = transparency
-                                    )
-
-        if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
-            for (i,k) in enumerate(model_estimates_active_plot_container)
-                # periods = min_presample_periods + 1:length(combined_x_axis)
-                periods = (1:length(k[:x_axis])) .+ k[:presample_periods]
-
-                obs_axis = collect(axiskeys(k[:data],1))
-
-                obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
-
-                obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
-
-                var_indx = findfirst(==(var), k[:variable_names])
-
-                if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
-                    if common_axis == []
-                        idx = 1:length(k[:x_axis])
-                    else
-                        idx = indexin(k[:x_axis], combined_x_axis)
-                    end
-
-                    data_in_deviations = fill(NaN, length(combined_x_axis))
-                    data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)), periods]
-                    # data_in_deviations[idx][1:k[:presample_periods]] .= NaN
-
-                    StatsPlots.plot!(p,
-                        combined_x_axis,
-                        data_in_deviations .+ k[:reference_steady_state][var_indx],
-                        label = "",
-                        color = pal[length(model_estimates_active_plot_container) + i]
-                        )
-                end
-            end
-        else
-            for k in model_estimates_active_plot_container
-                periods = min_presample_periods + 1:size(k[:data], 2)
-
-                obs_axis = collect(axiskeys(k[:data],1))
-
-                obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
-
-                obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
-
-                var_indx = findfirst(==(var), k[:variable_names]) 
-
-                if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
-                    data_in_deviations = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)),:]
-                    data_in_deviations[1:k[:presample_periods]] .= NaN
-                    
-                    StatsPlots.plot!(p,
-                        combined_x_axis,
-                        data_in_deviations[periods] .+ k[:reference_steady_state][var_indx],
-                        label = "",
-                        color = data_color
-                    )
-                end
-            end
-        end
-
-        push!(pp, p)
-        
-        if !(plot_count % plots_per_page == 0)
-            plot_count += 1
-        else
-            plot_count = 1
-
-            ppp = StatsPlots.plot(pp...; attributes...)
-
-            pl = StatsPlots.plot(framestyle = :none)
-
-            if haskey(diffdict, :model_name)
-                model_string = "multiple models"
-                model_string_filename = "multiple_models"
-            else
-                model_string = 𝓂.model_name
-                model_string_filename = 𝓂.model_name
-            end
-
-            plot_title = "Model: "*model_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
-            
-            plot_elements = [ppp, legend_plot]
-
-            layout_heights = [15,1]
-            
-            if length(annotate_diff_input) > 2
-                annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-                ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-                push!(plot_elements, ppp_input_diff)
-
-                push!(layout_heights, 5)
-
-                pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
-            else
-                pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
-            end
-
-            push!(annotate_ss, annotate_ss_page)
-
-            if length(annotate_ss[pane]) > 1
-                annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady State")
-
-                ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
-
-                push!(plot_elements, ppp_ss)
-                
-                push!(layout_heights, 5)
-            end
-
-            p = StatsPlots.plot(plot_elements...,
-                                layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                                plot_title = plot_title; 
-                                attributes_redux...)
-
-            push!(return_plots,p)
-
-            if show_plots
-                display(p)
-            end
-
-            if save_plots
-                if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-                StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
-            end
-
-            pane += 1
-
-            annotate_ss_page = Pair{String,Any}[]
-
-            pp = []
-        end
-    end
-
-    if length(pp) > 0
-        ppp = StatsPlots.plot(pp...; attributes...)
-
-        pl = StatsPlots.plot(framestyle = :none)
-
-        if haskey(diffdict, :model_name)
-            model_string = "multiple models"
-            model_string_filename = "multiple_models"
-        else
-            model_string = 𝓂.model_name
-            model_string_filename = 𝓂.model_name
-        end
-
-        plot_title = "Model: "*model_string*"  ("*string(pane)*"/"*string(Int(ceil(n_subplots/plots_per_page)))*")"
-        
-        plot_elements = [ppp, legend_plot]
-
-        layout_heights = [15,1]
-        
-        if length(annotate_diff_input) > 2
-            annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
-
-            ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
-
-            push!(plot_elements, ppp_input_diff)
-
-            push!(layout_heights, 5)
-
-            pushfirst!(annotate_ss_page, "Plot label" => reduce(vcat, diffdict[:label]))
-        else
-            pushfirst!(annotate_ss_page, annotate_diff_input[2][1] => annotate_diff_input[2][2])
-        end
-
-        push!(annotate_ss, annotate_ss_page)
-
-        if length(annotate_ss[pane]) > 1
-            annotate_ss_plot = plot_df(annotate_ss[pane]; fontsize = attributes[:annotationfontsize], title = "Relevant Steady States")
-
-            ppp_ss = StatsPlots.plot(annotate_ss_plot; attributes..., framestyle = :box)
-
-            push!(plot_elements, ppp_ss)
-            
-            push!(layout_heights, 5)
-        end
-
-        p = StatsPlots.plot(plot_elements...,
-                            layout = StatsPlots.grid(length(layout_heights), 1, heights = layout_heights ./ sum(layout_heights)),
-                            plot_title = plot_title; 
-                            attributes_redux...)
-
-        push!(return_plots,p)
-
-        if show_plots
-            display(p)
-        end
-
-        if save_plots
-            if !isdir(save_plots_path) mkpath(save_plots_path) end
-
-            StatsPlots.savefig(p, save_plots_path * "/" * string(save_plots_name) * "__" * model_string_filename * "__" * string(pane) * "." * string(save_plots_format))
-        end
-    end
-
-    return return_plots
+    # Generate plots from container
+    return _plot_model_estimates_from_container(;
+                                                show_plots = show_plots,
+                                                save_plots = save_plots,
+                                                save_plots_format = save_plots_format,
+                                                save_plots_name = save_plots_name,
+                                                save_plots_path = save_plots_path,
+                                                plots_per_page = plots_per_page,
+                                                transparency = transparency,
+                                                max_elements_per_legend_row = max_elements_per_legend_row,
+                                                extra_legend_space = extra_legend_space,
+                                                plot_attributes = plot_attributes)
 end
 
 
