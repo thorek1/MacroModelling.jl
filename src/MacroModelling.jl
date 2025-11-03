@@ -3317,11 +3317,11 @@ function write_block_solution!(𝓂,
 
     prob = 𝒮.LinearProblem(chol_buff, ϵ, 𝒮.CholeskyFactorization())
 
-    chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+    chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     prob = 𝒮.LinearProblem(buffer, ϵ, 𝒮.LUFactorization())
 
-    lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+    lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
@@ -3382,11 +3382,11 @@ function write_block_solution!(𝓂,
 
     prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ, 𝒮.CholeskyFactorization())
 
-    ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+    ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ, 𝒮.LUFactorization())
 
-    ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+    ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
@@ -4731,11 +4731,11 @@ function solve_steady_state!(𝓂::ℳ;
 
         prob = 𝒮.LinearProblem(chol_buff, ϵ, 𝒮.CholeskyFactorization())
 
-        chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+        chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
         prob = 𝒮.LinearProblem(buffer, ϵ, 𝒮.LUFactorization())
 
-        lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+        lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
         if lennz > nnz_parallel_threshold
             parallel = Symbolics.ShardedForm(1500,4)
@@ -4796,11 +4796,11 @@ function solve_steady_state!(𝓂::ℳ;
 
         prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ, 𝒮.CholeskyFactorization())
 
-        ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+        ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
         prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ, 𝒮.LUFactorization())
 
-        ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+        ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
         if lennz > nnz_parallel_threshold
             parallel = Symbolics.ShardedForm(1500,4)
@@ -5352,22 +5352,25 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
     if cold_start
         guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
+        start_vals = (fail_fast_solvers_only ? [false] : Any[false, 1.206, 1.5, 0.7688, 2.0, 0.897])
 
         for g in guesses
             for p in parameters
                 for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
-                    if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
-                        if solved_yet continue end
+                    for s in start_vals
+                        if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
+                            if solved_yet continue end
 
-                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
-                        # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
-                                                            g, 
-                                                            p,
-                                                            ext,
-                                                            false)
-                                                            
-                        if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
-                            solved_yet = true
+                            sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                            # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                                g, 
+                                                                p,
+                                                                ext,
+                                                                s)
+                                                                
+                            if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
+                                solved_yet = true
+                            end
                         end
                     end
                 end
