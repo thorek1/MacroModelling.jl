@@ -260,8 +260,8 @@ function plot_model_estimates(𝓂::ℳ,
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
-    obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
-    var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
+    obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> unique |> sort
+    var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) |> unique  |> sort
     shock_idx   = shocks == :none ? [] : parse_shocks_input_to_index(shocks, 𝓂.timings)
 
     # Create display names and sort alphabetically
@@ -758,8 +758,8 @@ function plot_model_estimates!(𝓂::ℳ,
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
-    obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
-    var_idx     = parse_variables_input_to_index(variables, 𝓂.timings)  |> sort
+    obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> unique |> sort
+    var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) |> unique  |> sort
     shock_idx   = parse_shocks_input_to_index(shocks, 𝓂.timings)
 
     # Create display names and sort alphabetically
@@ -1528,7 +1528,7 @@ function plot_irf(𝓂::ℳ;
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> unique |> sort
 
     ignore_obc, occasionally_binding_constraints, obc_shocks_included = process_ignore_obc_flag(shocks, ignore_obc, 𝓂)
 
@@ -2212,7 +2212,7 @@ function plot_irf!(𝓂::ℳ;
     
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> unique |> sort
 
     ignore_obc, occasionally_binding_constraints, obc_shocks_included = process_ignore_obc_flag(shocks, ignore_obc, 𝓂)
 
@@ -3240,7 +3240,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> unique |> sort
 
     fevds = fevds isa KeyedArray ? axiskeys(fevds,1) isa Vector{String} ? rekey(fevds, 1 => axiskeys(fevds,1) .|> Meta.parse .|> replace_indices_special) : fevds : fevds
 
@@ -3534,7 +3534,7 @@ function plot_solution(𝓂::ℳ,
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> unique |> sort
 
     vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
 
@@ -3746,8 +3746,6 @@ function _plot_solution_from_container(;
             model_names = unique(model_names)
 
             for model in model_names
-                # println(grouped_by_model[model])
-                # println(typeof(grouped_by_model[model][:has_impact]))
                 if length(grouped_by_model[model]) > 1
                     diffdict_grouped = compare_args_and_kwargs(grouped_by_model[model])
                     diffdict = merge_by_runid(diffdict, diffdict_grouped)
@@ -4257,7 +4255,7 @@ function plot_solution!(𝓂::ℳ,
 
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> unique |> sort
 
     vars_to_plot = intersect(axiskeys(SS_and_std[:non_stochastic_steady_state])[1],𝓂.timings.var[var_idx])
 
