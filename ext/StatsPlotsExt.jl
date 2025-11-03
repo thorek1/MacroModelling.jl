@@ -622,10 +622,11 @@ function _create_single_estimates_page(pp, container, non_zero_shock_idx, shock_
     if shock_decomposition
         additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
         shock_names = [container[:shock_names][i] for i in non_zero_shock_idx]
-        lbls = reshape(vcat(additional_labels, string.(shock_names)), 1, length(non_zero_shock_idx) + 1 + (pruning ? 1 : 0))
+        legend_bar_count = length(non_zero_shock_idx) + 1 + (pruning ? 1 : 0)
+        lbls = reshape(vcat(additional_labels, string.(shock_names)), 1, legend_bar_count)
         
         StatsPlots.bar!(pl,
-                        fill(NaN, 1, length(non_zero_shock_idx) + 1 + (pruning ? 1 : 0)),
+                        fill(NaN, 1, legend_bar_count),
                         label = lbls,
                         linewidth = 0,
                         alpha = transparency,
