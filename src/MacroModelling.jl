@@ -2093,7 +2093,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     end
 
     for obs in observables
-        obs_in_var_idx = indexin([obs],T.var)
+        obs_in_var_idx = indexin([obs],T.var) .|> Int
         dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
 
         while dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[indexin(T.past_not_future_and_mixed, T.var),1:nˢ]) .> tol) != dependencies_in_states
@@ -2114,7 +2114,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         for covar_var in covariance_vars
             # Check if this variable's dependencies are already computed
             if isnothing(findfirst(x -> covar_var in x.first, orders))
-                obs_in_var_idx = indexin([covar_var], T.var)
+                obs_in_var_idx = indexin([covar_var], T.var) .|> Int
                 dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
 
                 while dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[indexin(T.past_not_future_and_mixed, T.var),1:nˢ]) .> tol) != dependencies_in_states
@@ -2174,10 +2174,10 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
     
     # State variables indices in full state vector
-    state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var)
+    state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var) .|> Int
 
     for obs in observables
-        obs_in_var_idx = indexin([obs],T.var)
+        obs_in_var_idx = indexin([obs],T.var) .|> Int
         
         # First order dependencies
         dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
@@ -2244,7 +2244,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         for covar_var in covariance_vars
             # Check if this variable's dependencies are already computed
             if isnothing(findfirst(x -> covar_var in x.first, orders))
-                obs_in_var_idx = indexin([covar_var], T.var)
+                obs_in_var_idx = indexin([covar_var], T.var) .|> Int
                 
                 # First order dependencies
                 dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
@@ -2347,10 +2347,10 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
     kron_s_s_s = ℒ.kron(kron_s_s, s_in_s⁺)
     
     # State variables indices in full state vector
-    state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var)
+    state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var) .|> Int
 
     for obs in observables
-        obs_in_var_idx = indexin([obs],T.var)
+        obs_in_var_idx = indexin([obs],T.var) .|> Int
         
         # First order dependencies
         dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
@@ -2451,19 +2451,19 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         for covar_var in covariance_vars
             # Check if this variable's dependencies are already computed
             if isnothing(findfirst(x -> covar_var in x.first, orders))
-                obs_in_var_idx = indexin([covar_var], T.var)
+                obs_in_var_idx = indexin([covar_var], T.var) .|> Int
                 
                 # First order dependencies
                 dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
                 
                 # Second order dependencies from quadratic terms (s ⊗ s)
                 if nnz(𝐒₂) > 0
-                    s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
+                    s_s_to_y₂ = 𝐒₂[:, kron_s_s]
                     
                     col_idx = 1
                     for i in 1:nˢ
                         for j in 1:nˢ
-                            if sum(abs, s_s_to_y₂[:, col_idx]) > tol
+                            if sum(abs, s_s_to_y₂[obs_in_var_idx,col_idx]) > tol
                                 dependencies_in_states[i] = true
                                 dependencies_in_states[j] = true
                             end
