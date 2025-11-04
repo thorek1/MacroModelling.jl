@@ -2622,6 +2622,38 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
     end
 
 
+    @testset "get_statistics - grouped covariance" begin
+        # Test grouped covariance functionality
+        if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+            # Test with 2 groups
+            stats_grouped = get_statistics(m, old_params, 
+                                          algorithm = algorithm,
+                                          covariance = [vars[2:3], vars[4:5]])
+            
+            @test haskey(stats_grouped, :covariance)
+            @test stats_grouped[:covariance] isa Vector
+            @test length(stats_grouped[:covariance]) == 2
+            @test size(stats_grouped[:covariance][1]) == (2, 2)
+            @test size(stats_grouped[:covariance][2]) == (2, 2)
+            
+            # Compare with non-grouped version for validation
+            stats_non_grouped = get_statistics(m, old_params,
+                                              algorithm = algorithm,
+                                              covariance = vars[2:3])
+            
+            @test isapprox(stats_grouped[:covariance][1], stats_non_grouped[:covariance], rtol = 1e-10)
+            
+            # Test with different group sizes
+            stats_varied = get_statistics(m, old_params,
+                                         algorithm = algorithm,
+                                         covariance = [[vars[2]], vars[3:5]])
+            
+            @test length(stats_varied[:covariance]) == 2
+            @test size(stats_varied[:covariance][1]) == (1, 1)
+            @test size(stats_varied[:covariance][2]) == (3, 3)
+        end
+    end
+
 
     @testset "get_moments" begin
         for non_stochastic_steady_state in [true, false]
