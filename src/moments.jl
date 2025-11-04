@@ -503,7 +503,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
     end
     
-    orders = determine_efficient_order(𝐒₁, 𝓂.timings, observables, tol = opts.tol.dependencies_tol)
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.timings, observables, tol = opts.tol.dependencies_tol)
 
     nᵉ = 𝓂.timings.nExo
 
@@ -767,7 +767,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
     end
     
-    orders = determine_efficient_order(𝐒₁, 𝓂.timings, observables, tol = opts.tol.dependencies_tol)
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.timings, observables, tol = opts.tol.dependencies_tol)
 
     nᵉ = 𝓂.timings.nExo
 
