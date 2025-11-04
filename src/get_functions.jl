@@ -3283,6 +3283,10 @@ function get_statistics(𝓂,
     var_var_idx = @ignore_derivatives parse_variables_input_to_index(variance, 𝓂.timings)
 
     covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂.timings)
+    
+    # Check if covariance is grouped and parse groups
+    is_grouped_covar = @ignore_derivatives is_grouped_covariance_input(covariance)
+    covar_groups = @ignore_derivatives is_grouped_covar ? parse_covariance_groups(covariance, 𝓂.timings) : nothing
 
     autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂.timings)
 
@@ -3405,8 +3409,31 @@ function get_statistics(𝓂,
 
         # droptol!(covar_dcmp_sp,eps(Float64))
 
-        # push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
-        ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
+        if is_grouped_covar
+            # Extract only the specified covariance groups (block diagonal structure)
+            if solved
+                # Return a vector of covariance matrices, one for each group
+                covar_result = Vector{Matrix{T}}(undef, length(covar_groups))
+                
+                for (i, group) in enumerate(covar_groups)
+                    covar_result[i] = covar_dcmp_sp[group, group]
+                end
+                
+                ret[:covariance] = covar_result
+            else
+                # Return vector of Inf-filled matrices
+                covar_result = Vector{Matrix{T}}(undef, length(covar_groups))
+                for (i, group) in enumerate(covar_groups)
+                    group_size = length(group)
+                    covar_result[i] = fill(Inf * sum(abs2,parameter_values), group_size, group_size)
+                end
+                ret[:covariance] = covar_result
+            end
+        else
+            # Original behavior for non-grouped input
+            # push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
+            ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
+        end
     end
     if !(autocorrelation == Symbol[]) 
         # push!(ret,autocorr[autocorr_var_idx,:] )
