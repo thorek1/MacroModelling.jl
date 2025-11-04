@@ -2161,7 +2161,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
             prev_dependencies = copy(dependencies_in_states)
             
             # First order propagation
-            new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[state_idx_in_var, 1:nˢ]) .> tol)
+            dependencies_in_states = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[state_idx_in_var, 1:nˢ]) .> tol)
             
             # Second order propagation: if state i and state j are dependencies,
             # their product can affect states
@@ -2170,20 +2170,19 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                 col_idx = 1
                 for i in 1:nˢ
                     for j in 1:nˢ
-                        if dependencies_in_states[i] && dependencies_in_states[j]
+                        if prev_dependencies[i] && prev_dependencies[j]
                             # Check which states are affected by this product
                             affected = vec(sum(abs, 𝐒₂_states[:, col_idx:col_idx], dims=2) .> tol)
-                            new_deps = new_deps .| affected
+                            dependencies_in_states = dependencies_in_states .| affected
                         end
                         col_idx += 1
                     end
                 end
             end
             
-            if new_deps == prev_dependencies
+            if dependencies_in_states == prev_dependencies
                 break
             end
-            dependencies_in_states = new_deps
         end
 
         dependencies = T.past_not_future_and_mixed[dependencies_in_states]
@@ -2283,7 +2282,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                 col_idx = 1
                 for i in 1:nˢ
                     for j in 1:nˢ
-                        if dependencies_in_states[i] && dependencies_in_states[j]
+                        if prev_dependencies[i] && prev_dependencies[j]
                             affected = vec(sum(abs, 𝐒₂_states[:, col_idx:col_idx], dims=2) .> tol)
                             dependencies_in_states = dependencies_in_states .| affected
                         end
@@ -2299,7 +2298,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                 for i in 1:nˢ
                     for j in 1:nˢ
                         for k in 1:nˢ
-                            if dependencies_in_states[i] && dependencies_in_states[j] && dependencies_in_states[k]
+                            if prev_dependencies[i] && prev_dependencies[j] && prev_dependencies[k]
                                 affected = vec(sum(abs, 𝐒₃_states[:, col_idx:col_idx], dims=2) .> tol)
                                 dependencies_in_states = dependencies_in_states .| affected
                             end
