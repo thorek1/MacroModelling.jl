@@ -9060,7 +9060,12 @@ end
 
 
 function parse_variables_input_to_index(variables::Union{Symbol_input,String_input}, T::timings)::Union{UnitRange{Int}, Vector{Int}}
-    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+    # Handle nested vector conversion separately
+    if variables isa Vector{Vector{String}}
+        variables = [group .|> Meta.parse .|> replace_indices for group in variables]
+    elseif variables isa String_input
+        variables = variables .|> Meta.parse .|> replace_indices
+    end
 
     if variables == :all_excluding_auxiliary_and_obc
         return Int.(indexin(setdiff(T.var[.!contains.(string.(T.var),"ᵒᵇᶜ")],union(T.aux, T.exo_present)),sort(union(T.var,T.aux,T.exo_present))))
@@ -9109,13 +9114,32 @@ end
 
 # Helper function to check if input is grouped covariance format
 function is_grouped_covariance_input(variables::Union{Symbol_input,String_input})::Bool
-    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+    # Handle nested vector conversion for String_input
+    if variables isa Vector{Vector{String}}
+        return true
+    elseif variables isa Vector{String}
+        return false
+    elseif variables isa String_input && !(variables isa Vector)
+        # Single string or tuple
+        return false
+    end
+    
+    # For Symbol_input, check if it's a nested vector
     return variables isa Vector{Vector{Symbol}}
 end
 
 # Function to parse grouped covariance input into groups of indices
 function parse_covariance_groups(variables::Union{Symbol_input,String_input}, T::timings)::Vector{Vector{Int}}
-    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+    # Convert String_input to Symbol_input for nested vectors
+    if variables isa Vector{Vector{String}}
+        variables = [group .|> Meta.parse .|> replace_indices for group in variables]
+    elseif variables isa String_input && !(variables isa Vector{Vector{String}})
+        # For non-nested String_input, use standard parsing
+        if !(is_grouped_covariance_input(variables))
+            idx = parse_variables_input_to_index(variables, T)
+            return [collect(idx)]
+        end
+    end
     
     if !is_grouped_covariance_input(variables)
         # Not grouped, return single group
