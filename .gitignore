@@ -76,3 +76,4 @@ test/data/EA_data.csv
 test/data/SSR_Estimates_20241130.xlsx
 test/data/TED---Output-Labor-and-Labor-Productivity-1950-2015.xlsx
 estimation_results
+juliaup.sh

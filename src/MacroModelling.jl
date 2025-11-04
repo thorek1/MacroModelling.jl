@@ -2142,42 +2142,45 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
             s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
             
             # Check which state variable pairs have influence
+            # The selected columns correspond to state-state products in order (1,1), (1,2), ..., (1,nˢ), (2,1), ..., (nˢ,nˢ)
+            col_idx = 1
             for i in 1:nˢ
                 for j in 1:nˢ
-                    # Compute the index in the Kronecker product
-                    kron_idx = (i - 1) * nˢ + j
-                    if sum(abs, s_s_to_y₂[:, kron_idx]) > tol
+                    if sum(abs, s_s_to_y₂[:, col_idx]) > tol
                         dependencies_in_states[i] = true
                         dependencies_in_states[j] = true
                     end
+                    col_idx += 1
                 end
             end
         end
 
         # Propagate dependencies through the system (iterative closure)
         # considering both first and second order propagation
-        prev_dependencies = copy(dependencies_in_states)
         while true
+            prev_dependencies = copy(dependencies_in_states)
+            
             # First order propagation
             new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[state_idx_in_var, 1:nˢ]) .> tol)
             
-            # Second order propagation: if state i affects state k, and state j affects state k,
-            # then the product i*j can affect states that depend on k
+            # Second order propagation: if state i and state j are dependencies,
+            # their product can affect states
             if nnz(𝐒₂) > 0
                 𝐒₂_states = 𝐒₂[state_idx_in_var, kron_s_s]
+                col_idx = 1
                 for i in 1:nˢ
                     for j in 1:nˢ
                         if dependencies_in_states[i] && dependencies_in_states[j]
-                            kron_idx = (i - 1) * nˢ + j
                             # Check which states are affected by this product
-                            affected = vec(sum(abs, 𝐒₂_states[:, kron_idx:kron_idx], dims=2) .> tol)
+                            affected = vec(sum(abs, 𝐒₂_states[:, col_idx:col_idx], dims=2) .> tol)
                             new_deps = new_deps .| affected
                         end
+                        col_idx += 1
                     end
                 end
             end
             
-            if new_deps == dependencies_in_states
+            if new_deps == prev_dependencies
                 break
             end
             dependencies_in_states = new_deps
@@ -2233,13 +2236,15 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         if nnz(𝐒₂) > 0
             s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
             
+            # The selected columns correspond to state-state products in order (1,1), (1,2), ..., (nˢ,nˢ)
+            col_idx = 1
             for i in 1:nˢ
                 for j in 1:nˢ
-                    kron_idx = (i - 1) * nˢ + j
-                    if sum(abs, s_s_to_y₂[:, kron_idx]) > tol
+                    if sum(abs, s_s_to_y₂[:, col_idx]) > tol
                         dependencies_in_states[i] = true
                         dependencies_in_states[j] = true
                     end
+                    col_idx += 1
                 end
             end
         end
@@ -2248,15 +2253,17 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         if nnz(𝐒₃) > 0
             s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx, kron_s_s_s]
             
+            # The selected columns correspond to state-state-state products in order (1,1,1), (1,1,2), ..., (nˢ,nˢ,nˢ)
+            col_idx = 1
             for i in 1:nˢ
                 for j in 1:nˢ
                     for k in 1:nˢ
-                        kron_idx = ((i - 1) * nˢ + j - 1) * nˢ + k
-                        if sum(abs, s_s_s_to_y₃[:, kron_idx]) > tol
+                        if sum(abs, s_s_s_to_y₃[:, col_idx]) > tol
                             dependencies_in_states[i] = true
                             dependencies_in_states[j] = true
                             dependencies_in_states[k] = true
                         end
+                        col_idx += 1
                     end
                 end
             end
@@ -2273,13 +2280,14 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
             # Second order propagation
             if nnz(𝐒₂) > 0
                 𝐒₂_states = 𝐒₂[state_idx_in_var, kron_s_s]
+                col_idx = 1
                 for i in 1:nˢ
                     for j in 1:nˢ
                         if dependencies_in_states[i] && dependencies_in_states[j]
-                            kron_idx = (i - 1) * nˢ + j
-                            affected = vec(sum(abs, 𝐒₂_states[:, kron_idx:kron_idx], dims=2) .> tol)
+                            affected = vec(sum(abs, 𝐒₂_states[:, col_idx:col_idx], dims=2) .> tol)
                             dependencies_in_states = dependencies_in_states .| affected
                         end
+                        col_idx += 1
                     end
                 end
             end
@@ -2287,14 +2295,15 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
             # Third order propagation
             if nnz(𝐒₃) > 0
                 𝐒₃_states = 𝐒₃[state_idx_in_var, kron_s_s_s]
+                col_idx = 1
                 for i in 1:nˢ
                     for j in 1:nˢ
                         for k in 1:nˢ
                             if dependencies_in_states[i] && dependencies_in_states[j] && dependencies_in_states[k]
-                                kron_idx = ((i - 1) * nˢ + j - 1) * nˢ + k
-                                affected = vec(sum(abs, 𝐒₃_states[:, kron_idx:kron_idx], dims=2) .> tol)
+                                affected = vec(sum(abs, 𝐒₃_states[:, col_idx:col_idx], dims=2) .> tol)
                                 dependencies_in_states = dependencies_in_states .| affected
                             end
+                            col_idx += 1
                         end
                     end
                 end
