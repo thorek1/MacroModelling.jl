@@ -9114,18 +9114,8 @@ end
 
 # Helper function to check if input is grouped covariance format
 function is_grouped_covariance_input(variables::Union{Symbol_input,String_input})::Bool
-    # Handle nested vector conversion for String_input
-    if variables isa Vector{Vector{String}}
-        return true
-    elseif variables isa Vector{String}
-        return false
-    elseif variables isa String_input && !(variables isa Vector)
-        # Single string or tuple
-        return false
-    end
-    
-    # For Symbol_input, check if it's a nested vector
-    return variables isa Vector{Vector{Symbol}}
+    # Check if it's a nested vector (either String or Symbol)
+    return variables isa Vector{Vector{Symbol}} || variables isa Vector{Vector{String}}
 end
 
 # Function to parse grouped covariance input into groups of indices
@@ -9133,12 +9123,6 @@ function parse_covariance_groups(variables::Union{Symbol_input,String_input}, T:
     # Convert String_input to Symbol_input for nested vectors
     if variables isa Vector{Vector{String}}
         variables = [group .|> Meta.parse .|> replace_indices for group in variables]
-    elseif variables isa String_input && !(variables isa Vector{Vector{String}})
-        # For non-nested String_input, use standard parsing
-        if !(is_grouped_covariance_input(variables))
-            idx = parse_variables_input_to_index(variables, T)
-            return [collect(idx)]
-        end
     end
     
     if !is_grouped_covariance_input(variables)
@@ -9147,7 +9131,7 @@ function parse_covariance_groups(variables::Union{Symbol_input,String_input}, T:
         return [collect(idx)]
     end
     
-    # Parse each group
+    # Parse each group (variables is now Vector{Vector{Symbol}})
     groups = Vector{Vector{Int}}()
     for group in variables
         if length(setdiff(group, T.var)) > 0
