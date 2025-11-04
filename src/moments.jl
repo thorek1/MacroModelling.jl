@@ -471,7 +471,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
                                             observables::Union{Symbol_input,String_input},
                                             𝓂::ℳ; 
                                             autocorrelation_periods::U = 1:5,
-                                            covariance::Bool = false,
+                                            covariance::Union{Symbol_input,String_input} = Symbol[],
                                             opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{T}, Vector{T}, Matrix{T}, Vector{T}, Bool} where {U, T <: Real}
 
     second_order_moments = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
@@ -737,7 +737,7 @@ end
 function calculate_third_order_moments(parameters::Vector{T}, 
                                             observables::Union{Symbol_input,String_input},
                                             𝓂::ℳ;
-                                            covariance::Bool = false,
+                                            covariance::Union{Symbol_input,String_input} = Symbol[],
                                             opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{T}, Vector{T}, Vector{T}, Bool} where T <: Real
     second_order_moments = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
 

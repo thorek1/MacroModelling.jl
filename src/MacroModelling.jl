@@ -2078,7 +2078,7 @@ end
 function determine_efficient_order(𝐒₁::Matrix{<: Real}, 
                                     T::timings, 
                                     variables::Union{Symbol_input,String_input};
-                                    covariance::Bool = false,
+                                    covariance::Union{Symbol_input,String_input} = Symbol[],
                                     tol::AbstractFloat = eps())
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
@@ -2105,16 +2105,24 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         push!(orders,[obs] => sort(dependencies))
     end
     
-    # If computing covariances, add entries for all pairs
-    if covariance && length(observables) > 1
-        for i in 1:length(observables)
-            for j in (i+1):length(observables)
-                # Find dependencies for both observables
-                deps_i = orders[findfirst(x -> observables[i] in x.first, orders)].second
-                deps_j = orders[findfirst(x -> observables[j] in x.first, orders)].second
-                # Union of dependencies for covariance computation
-                combined_deps = sort(union(deps_i, deps_j))
-                push!(orders, [observables[i], observables[j]] => combined_deps)
+    # If covariance variables are specified, add entries for those pairs
+    if !(covariance == Symbol[])
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
+        covariance_vars = T.var[covar_var_idx]
+        
+        for i in 1:length(covariance_vars)
+            for j in (i+1):length(covariance_vars)
+                # Find dependencies for both variables
+                idx_i = findfirst(x -> covariance_vars[i] in x.first, orders)
+                idx_j = findfirst(x -> covariance_vars[j] in x.first, orders)
+                
+                if !isnothing(idx_i) && !isnothing(idx_j)
+                    deps_i = orders[idx_i].second
+                    deps_j = orders[idx_j].second
+                    # Union of dependencies for covariance computation
+                    combined_deps = sort(union(deps_i, deps_j))
+                    push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
+                end
             end
         end
     end
@@ -2129,7 +2137,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     𝐒₂::AbstractMatrix{<: Real},
                                     T::timings, 
                                     variables::Union{Symbol_input,String_input};
-                                    covariance::Bool = false,
+                                    covariance::Union{Symbol_input,String_input} = Symbol[],
                                     tol::AbstractFloat = eps())
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
@@ -2212,16 +2220,24 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         push!(orders,[obs] => sort(dependencies))
     end
     
-    # If computing covariances, add entries for all pairs
-    if covariance && length(observables) > 1
-        for i in 1:length(observables)
-            for j in (i+1):length(observables)
-                # Find dependencies for both observables
-                deps_i = orders[findfirst(x -> observables[i] in x.first, orders)].second
-                deps_j = orders[findfirst(x -> observables[j] in x.first, orders)].second
-                # Union of dependencies for covariance computation
-                combined_deps = sort(union(deps_i, deps_j))
-                push!(orders, [observables[i], observables[j]] => combined_deps)
+    # If covariance variables are specified, add entries for those pairs
+    if !(covariance == Symbol[])
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
+        covariance_vars = T.var[covar_var_idx]
+        
+        for i in 1:length(covariance_vars)
+            for j in (i+1):length(covariance_vars)
+                # Find dependencies for both variables
+                idx_i = findfirst(x -> covariance_vars[i] in x.first, orders)
+                idx_j = findfirst(x -> covariance_vars[j] in x.first, orders)
+                
+                if !isnothing(idx_i) && !isnothing(idx_j)
+                    deps_i = orders[idx_i].second
+                    deps_j = orders[idx_j].second
+                    # Union of dependencies for covariance computation
+                    combined_deps = sort(union(deps_i, deps_j))
+                    push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
+                end
             end
         end
     end
@@ -2237,7 +2253,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     𝐒₃::AbstractMatrix{<: Real},
                                     T::timings, 
                                     variables::Union{Symbol_input,String_input};
-                                    covariance::Bool = false,
+                                    covariance::Union{Symbol_input,String_input} = Symbol[],
                                     tol::AbstractFloat = eps())
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
@@ -2355,16 +2371,24 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         push!(orders,[obs] => sort(dependencies))
     end
     
-    # If computing covariances, add entries for all pairs
-    if covariance && length(observables) > 1
-        for i in 1:length(observables)
-            for j in (i+1):length(observables)
-                # Find dependencies for both observables
-                deps_i = orders[findfirst(x -> observables[i] in x.first, orders)].second
-                deps_j = orders[findfirst(x -> observables[j] in x.first, orders)].second
-                # Union of dependencies for covariance computation
-                combined_deps = sort(union(deps_i, deps_j))
-                push!(orders, [observables[i], observables[j]] => combined_deps)
+    # If covariance variables are specified, add entries for those pairs
+    if !(covariance == Symbol[])
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
+        covariance_vars = T.var[covar_var_idx]
+        
+        for i in 1:length(covariance_vars)
+            for j in (i+1):length(covariance_vars)
+                # Find dependencies for both variables
+                idx_i = findfirst(x -> covariance_vars[i] in x.first, orders)
+                idx_j = findfirst(x -> covariance_vars[j] in x.first, orders)
+                
+                if !isnothing(idx_i) && !isnothing(idx_j)
+                    deps_i = orders[idx_i].second
+                    deps_j = orders[idx_j].second
+                    # Union of dependencies for covariance computation
+                    combined_deps = sort(union(deps_i, deps_j))
+                    push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
+                end
             end
         end
     end
