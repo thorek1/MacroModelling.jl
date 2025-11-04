@@ -2105,24 +2105,39 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         push!(orders,[obs] => sort(dependencies))
     end
     
-    # If covariance variables are specified, add entries for those pairs
+    # If covariance variables are specified, compute dependencies and add entries for those pairs
     if !(covariance == Symbol[])
         covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
         covariance_vars = T.var[covar_var_idx]
         
+        # Compute dependencies for covariance variables (if not already computed)
+        for covar_var in covariance_vars
+            # Check if this variable's dependencies are already computed
+            if isnothing(findfirst(x -> covar_var in x.first, orders))
+                obs_in_var_idx = indexin([covar_var], T.var)
+                dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
+
+                while dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[indexin(T.past_not_future_and_mixed, T.var),1:nˢ]) .> tol) != dependencies_in_states
+                    dependencies_in_states = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[indexin(T.past_not_future_and_mixed, T.var),1:nˢ]) .> tol)
+                end
+
+                dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+                push!(orders,[covar_var] => sort(dependencies))
+            end
+        end
+        
+        # Add entries for all pairs of covariance variables
         for i in 1:length(covariance_vars)
             for j in (i+1):length(covariance_vars)
-                # Find dependencies for both variables
+                # Find dependencies for both variables (they should exist now)
                 idx_i = findfirst(x -> covariance_vars[i] in x.first, orders)
                 idx_j = findfirst(x -> covariance_vars[j] in x.first, orders)
                 
-                if !isnothing(idx_i) && !isnothing(idx_j)
-                    deps_i = orders[idx_i].second
-                    deps_j = orders[idx_j].second
-                    # Union of dependencies for covariance computation
-                    combined_deps = sort(union(deps_i, deps_j))
-                    push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
-                end
+                deps_i = orders[idx_i].second
+                deps_j = orders[idx_j].second
+                # Union of dependencies for covariance computation
+                combined_deps = sort(union(deps_i, deps_j))
+                push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
             end
         end
     end
@@ -2220,24 +2235,80 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         push!(orders,[obs] => sort(dependencies))
     end
     
-    # If covariance variables are specified, add entries for those pairs
+    # If covariance variables are specified, compute dependencies and add entries for those pairs
     if !(covariance == Symbol[])
         covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
         covariance_vars = T.var[covar_var_idx]
         
+        # Compute dependencies for covariance variables (if not already computed)
+        for covar_var in covariance_vars
+            # Check if this variable's dependencies are already computed
+            if isnothing(findfirst(x -> covar_var in x.first, orders))
+                obs_in_var_idx = indexin([covar_var], T.var)
+                
+                # First order dependencies
+                dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
+                
+                # Second order dependencies from quadratic terms (s ⊗ s)
+                if nnz(𝐒₂) > 0
+                    s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
+                    
+                    col_idx = 1
+                    for i in 1:nˢ
+                        for j in 1:nˢ
+                            if sum(abs, s_s_to_y₂[:, col_idx]) > tol
+                                dependencies_in_states[i] = true
+                                dependencies_in_states[j] = true
+                            end
+                            col_idx += 1
+                        end
+                    end
+                end
+
+                # Propagate dependencies through the system
+                while true
+                    prev_dependencies = copy(dependencies_in_states)
+                    
+                    # First order propagation
+                    dependencies_in_states = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[state_idx_in_var, 1:nˢ]) .> tol)
+                    
+                    # Second order propagation
+                    if nnz(𝐒₂) > 0
+                        𝐒₂_states = 𝐒₂[state_idx_in_var, kron_s_s]
+                        col_idx = 1
+                        for i in 1:nˢ
+                            for j in 1:nˢ
+                                if prev_dependencies[i] && prev_dependencies[j]
+                                    affected = vec(sum(abs, 𝐒₂_states[:, col_idx:col_idx], dims=2) .> tol)
+                                    dependencies_in_states = dependencies_in_states .| affected
+                                end
+                                col_idx += 1
+                            end
+                        end
+                    end
+                    
+                    if dependencies_in_states == prev_dependencies
+                        break
+                    end
+                end
+
+                dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+                push!(orders,[covar_var] => sort(dependencies))
+            end
+        end
+        
+        # Add entries for all pairs of covariance variables
         for i in 1:length(covariance_vars)
             for j in (i+1):length(covariance_vars)
-                # Find dependencies for both variables
+                # Find dependencies for both variables (they should exist now)
                 idx_i = findfirst(x -> covariance_vars[i] in x.first, orders)
                 idx_j = findfirst(x -> covariance_vars[j] in x.first, orders)
                 
-                if !isnothing(idx_i) && !isnothing(idx_j)
-                    deps_i = orders[idx_i].second
-                    deps_j = orders[idx_j].second
-                    # Union of dependencies for covariance computation
-                    combined_deps = sort(union(deps_i, deps_j))
-                    push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
-                end
+                deps_i = orders[idx_i].second
+                deps_j = orders[idx_j].second
+                # Union of dependencies for covariance computation
+                combined_deps = sort(union(deps_i, deps_j))
+                push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
             end
         end
     end
@@ -2371,24 +2442,116 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         push!(orders,[obs] => sort(dependencies))
     end
     
-    # If covariance variables are specified, add entries for those pairs
+    # If covariance variables are specified, compute dependencies and add entries for those pairs
     if !(covariance == Symbol[])
         covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
         covariance_vars = T.var[covar_var_idx]
         
+        # Compute dependencies for covariance variables (if not already computed)
+        for covar_var in covariance_vars
+            # Check if this variable's dependencies are already computed
+            if isnothing(findfirst(x -> covar_var in x.first, orders))
+                obs_in_var_idx = indexin([covar_var], T.var)
+                
+                # First order dependencies
+                dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
+                
+                # Second order dependencies from quadratic terms (s ⊗ s)
+                if nnz(𝐒₂) > 0
+                    s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
+                    
+                    col_idx = 1
+                    for i in 1:nˢ
+                        for j in 1:nˢ
+                            if sum(abs, s_s_to_y₂[:, col_idx]) > tol
+                                dependencies_in_states[i] = true
+                                dependencies_in_states[j] = true
+                            end
+                            col_idx += 1
+                        end
+                    end
+                end
+                
+                # Third order dependencies from cubic terms (s ⊗ s ⊗ s)
+                if nnz(𝐒₃) > 0
+                    s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx, kron_s_s_s]
+                    
+                    col_idx = 1
+                    for i in 1:nˢ
+                        for j in 1:nˢ
+                            for k in 1:nˢ
+                                if sum(abs, s_s_s_to_y₃[:, col_idx]) > tol
+                                    dependencies_in_states[i] = true
+                                    dependencies_in_states[j] = true
+                                    dependencies_in_states[k] = true
+                                end
+                                col_idx += 1
+                            end
+                        end
+                    end
+                end
+
+                # Propagate dependencies through the system
+                while true
+                    prev_dependencies = copy(dependencies_in_states)
+                    
+                    # First order propagation
+                    dependencies_in_states = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[state_idx_in_var, 1:nˢ]) .> tol)
+                    
+                    # Second order propagation
+                    if nnz(𝐒₂) > 0
+                        𝐒₂_states = 𝐒₂[state_idx_in_var, kron_s_s]
+                        col_idx = 1
+                        for i in 1:nˢ
+                            for j in 1:nˢ
+                                if prev_dependencies[i] && prev_dependencies[j]
+                                    affected = vec(sum(abs, 𝐒₂_states[:, col_idx:col_idx], dims=2) .> tol)
+                                    dependencies_in_states = dependencies_in_states .| affected
+                                end
+                                col_idx += 1
+                            end
+                        end
+                    end
+                    
+                    # Third order propagation
+                    if nnz(𝐒₃) > 0
+                        𝐒₃_states = 𝐒₃[state_idx_in_var, kron_s_s_s]
+                        col_idx = 1
+                        for i in 1:nˢ
+                            for j in 1:nˢ
+                                for k in 1:nˢ
+                                    if prev_dependencies[i] && prev_dependencies[j] && prev_dependencies[k]
+                                        affected = vec(sum(abs, 𝐒₃_states[:, col_idx:col_idx], dims=2) .> tol)
+                                        dependencies_in_states = dependencies_in_states .| affected
+                                    end
+                                    col_idx += 1
+                                end
+                            end
+                        end
+                    end
+                    
+                    if dependencies_in_states == prev_dependencies
+                        break
+                    end
+                end
+
+                dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+                push!(orders,[covar_var] => sort(dependencies))
+            end
+        end
+        
+        # Add entries for all pairs of covariance variables
         for i in 1:length(covariance_vars)
             for j in (i+1):length(covariance_vars)
-                # Find dependencies for both variables
+                # Find dependencies for both variables (they should exist now)
                 idx_i = findfirst(x -> covariance_vars[i] in x.first, orders)
                 idx_j = findfirst(x -> covariance_vars[j] in x.first, orders)
                 
-                if !isnothing(idx_i) && !isnothing(idx_j)
-                    deps_i = orders[idx_i].second
-                    deps_j = orders[idx_j].second
-                    # Union of dependencies for covariance computation
-                    combined_deps = sort(union(deps_i, deps_j))
-                    push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
-                end
+                deps_i = orders[idx_i].second
+                deps_j = orders[idx_j].second
+                # Union of dependencies for covariance computation
+                combined_deps = sort(union(deps_i, deps_j))
+                push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
             end
         end
     end
