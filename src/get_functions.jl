@@ -3317,12 +3317,18 @@ function get_statistics(𝓂,
 
         if !(autocorrelation == Symbol[])
             second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx, covar_var_idx)
+            
+            # Check if covariances are requested
+            compute_covariance = !(covariance == Symbol[])
 
-            covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments_with_autocorrelation(all_parameters, 𝓂.var[second_mom_third_order], 𝓂, opts = opts, autocorrelation_periods = autocorrelation_periods)
+            covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments_with_autocorrelation(all_parameters, 𝓂.var[second_mom_third_order], 𝓂, covariance = compute_covariance, opts = opts, autocorrelation_periods = autocorrelation_periods)
 
         elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
+            
+            # Check if covariances are requested
+            compute_covariance = !(covariance == Symbol[])
 
-            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, 𝓂.var[union(std_var_idx, var_var_idx, covar_var_idx)], 𝓂, opts = opts)
+            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, 𝓂.var[union(std_var_idx, var_var_idx, covar_var_idx)], 𝓂, covariance = compute_covariance, opts = opts)
 
         end
 

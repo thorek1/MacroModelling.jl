@@ -471,6 +471,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
                                             observables::Union{Symbol_input,String_input},
                                             𝓂::ℳ; 
                                             autocorrelation_periods::U = 1:5,
+                                            covariance::Bool = false,
                                             opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{T}, Vector{T}, Matrix{T}, Vector{T}, Bool} where {U, T <: Real}
 
     second_order_moments = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
@@ -503,7 +504,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
     end
     
-    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.timings, observables, tol = opts.tol.dependencies_tol)
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.timings, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
 
     nᵉ = 𝓂.timings.nExo
 
@@ -736,6 +737,7 @@ end
 function calculate_third_order_moments(parameters::Vector{T}, 
                                             observables::Union{Symbol_input,String_input},
                                             𝓂::ℳ;
+                                            covariance::Bool = false,
                                             opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{T}, Vector{T}, Vector{T}, Bool} where T <: Real
     second_order_moments = calculate_second_order_moments_with_covariance(parameters, 𝓂; opts = opts)
 
@@ -767,7 +769,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
     end
     
-    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.timings, observables, tol = opts.tol.dependencies_tol)
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.timings, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
 
     nᵉ = 𝓂.timings.nExo
 

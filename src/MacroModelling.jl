@@ -2047,16 +2047,22 @@ function combine_pairs(v::Vector{Pair{Vector{Symbol}, Vector{Symbol}}})
     while i <= length(v)
         subset_found = false
         for j in i+1:length(v)
-            # Check if v[i].second is subset of v[j].second or vice versa
-            if all(elem -> elem in v[j].second, v[i].second) || all(elem -> elem in v[i].second, v[j].second)
-                # Combine the first elements and assign to the one with the larger second element
+            # Check if v[i].second and v[j].second are equal or if one is subset of the other
+            if v[i].second == v[j].second
+                # Exact match: combine first elements and remove duplicate
+                v[i] = v[i].first ∪ v[j].first => v[i].second
+                deleteat!(v, j)
+                subset_found = true
+                break
+            elseif all(elem -> elem in v[j].second, v[i].second) || all(elem -> elem in v[i].second, v[j].second)
+                # One is subset of the other: combine the first elements and assign to the one with the larger second element
                 if length(v[i].second) > length(v[j].second)
                     v[i] = v[i].first ∪ v[j].first => v[i].second
+                    deleteat!(v, j)
                 else
                     v[j] = v[i].first ∪ v[j].first => v[j].second
+                    deleteat!(v, i)
                 end
-                # Remove the one with the smaller second element
-                deleteat!(v, length(v[i].second) > length(v[j].second) ? j : i)
                 subset_found = true
                 break
             end
@@ -2072,6 +2078,7 @@ end
 function determine_efficient_order(𝐒₁::Matrix{<: Real}, 
                                     T::timings, 
                                     variables::Union{Symbol_input,String_input};
+                                    covariance::Bool = false,
                                     tol::AbstractFloat = eps())
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
@@ -2097,6 +2104,20 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
 
         push!(orders,[obs] => sort(dependencies))
     end
+    
+    # If computing covariances, add entries for all pairs
+    if covariance && length(observables) > 1
+        for i in 1:length(observables)
+            for j in (i+1):length(observables)
+                # Find dependencies for both observables
+                deps_i = orders[findfirst(x -> observables[i] in x.first, orders)].second
+                deps_j = orders[findfirst(x -> observables[j] in x.first, orders)].second
+                # Union of dependencies for covariance computation
+                combined_deps = sort(union(deps_i, deps_j))
+                push!(orders, [observables[i], observables[j]] => combined_deps)
+            end
+        end
+    end
 
     sort!(orders, by = x -> length(x[2]), rev = true)
 
@@ -2108,6 +2129,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     𝐒₂::AbstractMatrix{<: Real},
                                     T::timings, 
                                     variables::Union{Symbol_input,String_input};
+                                    covariance::Bool = false,
                                     tol::AbstractFloat = eps())
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
@@ -2189,6 +2211,20 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
 
         push!(orders,[obs] => sort(dependencies))
     end
+    
+    # If computing covariances, add entries for all pairs
+    if covariance && length(observables) > 1
+        for i in 1:length(observables)
+            for j in (i+1):length(observables)
+                # Find dependencies for both observables
+                deps_i = orders[findfirst(x -> observables[i] in x.first, orders)].second
+                deps_j = orders[findfirst(x -> observables[j] in x.first, orders)].second
+                # Union of dependencies for covariance computation
+                combined_deps = sort(union(deps_i, deps_j))
+                push!(orders, [observables[i], observables[j]] => combined_deps)
+            end
+        end
+    end
 
     sort!(orders, by = x -> length(x[2]), rev = true)
 
@@ -2201,6 +2237,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     𝐒₃::AbstractMatrix{<: Real},
                                     T::timings, 
                                     variables::Union{Symbol_input,String_input};
+                                    covariance::Bool = false,
                                     tol::AbstractFloat = eps())
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
@@ -2316,6 +2353,20 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         dependencies = T.past_not_future_and_mixed[dependencies_in_states]
 
         push!(orders,[obs] => sort(dependencies))
+    end
+    
+    # If computing covariances, add entries for all pairs
+    if covariance && length(observables) > 1
+        for i in 1:length(observables)
+            for j in (i+1):length(observables)
+                # Find dependencies for both observables
+                deps_i = orders[findfirst(x -> observables[i] in x.first, orders)].second
+                deps_j = orders[findfirst(x -> observables[j] in x.first, orders)].second
+                # Union of dependencies for covariance computation
+                combined_deps = sort(union(deps_i, deps_j))
+                push!(orders, [observables[i], observables[j]] => combined_deps)
+            end
+        end
     end
 
     sort!(orders, by = x -> length(x[2]), rev = true)
