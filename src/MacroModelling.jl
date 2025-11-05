@@ -2212,16 +2212,13 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
             # their product can affect states
             if nnz(𝐒₂) > 0
                 𝐒₂_states = 𝐒₂[state_idx_in_var, kron_s_s]
-                col_idx = 1
-                for i in 1:nˢ
-                    for j in 1:nˢ
-                        if prev_dependencies[i] && prev_dependencies[j]
-                            # Check which states are affected by this product
-                            affected = vec(sum(abs, 𝐒₂_states[:, col_idx:col_idx], dims=2) .> tol)
-                            dependencies_in_states = dependencies_in_states .| affected
-                        end
-                        col_idx += 1
-                    end
+                # Generate selector vector for columns where both states are dependencies
+                # Kronecker structure: column index = (i-1)*nˢ + j for states i,j
+                selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
+                if any(selector)
+                    # Check which states are affected by the selected products
+                    affected = vec(sum(abs, 𝐒₂_states[:, selector], dims=2) .> tol)
+                    dependencies_in_states = dependencies_in_states .| affected
                 end
             end
             
@@ -2275,15 +2272,11 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                     # Second order propagation
                     if nnz(𝐒₂) > 0
                         𝐒₂_states = 𝐒₂[state_idx_in_var, kron_s_s]
-                        col_idx = 1
-                        for i in 1:nˢ
-                            for j in 1:nˢ
-                                if prev_dependencies[i] && prev_dependencies[j]
-                                    affected = vec(sum(abs, 𝐒₂_states[:, col_idx:col_idx], dims=2) .> tol)
-                                    dependencies_in_states = dependencies_in_states .| affected
-                                end
-                                col_idx += 1
-                            end
+                        # Generate selector vector for columns where both states are dependencies
+                        selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
+                        if any(selector)
+                            affected = vec(sum(abs, 𝐒₂_states[:, selector], dims=2) .> tol)
+                            dependencies_in_states = dependencies_in_states .| affected
                         end
                     end
                     
@@ -2403,32 +2396,22 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
             # Second order propagation
             if nnz(𝐒₂) > 0
                 𝐒₂_states = 𝐒₂[state_idx_in_var, kron_s_s]
-                col_idx = 1
-                for i in 1:nˢ
-                    for j in 1:nˢ
-                        if prev_dependencies[i] && prev_dependencies[j]
-                            affected = vec(sum(abs, 𝐒₂_states[:, col_idx:col_idx], dims=2) .> tol)
-                            dependencies_in_states = dependencies_in_states .| affected
-                        end
-                        col_idx += 1
-                    end
+                # Generate selector vector for columns where both states are dependencies
+                selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
+                if any(selector)
+                    affected = vec(sum(abs, 𝐒₂_states[:, selector], dims=2) .> tol)
+                    dependencies_in_states = dependencies_in_states .| affected
                 end
             end
             
             # Third order propagation
             if nnz(𝐒₃) > 0
                 𝐒₃_states = 𝐒₃[state_idx_in_var, kron_s_s_s]
-                col_idx = 1
-                for i in 1:nˢ
-                    for j in 1:nˢ
-                        for k in 1:nˢ
-                            if prev_dependencies[i] && prev_dependencies[j] && prev_dependencies[k]
-                                affected = vec(sum(abs, 𝐒₃_states[:, col_idx:col_idx], dims=2) .> tol)
-                                dependencies_in_states = dependencies_in_states .| affected
-                            end
-                            col_idx += 1
-                        end
-                    end
+                # Generate selector vector for columns where all three states are dependencies
+                selector = vec(ℒ.kron(ℒ.kron(prev_dependencies, prev_dependencies), prev_dependencies))
+                if any(selector)
+                    affected = vec(sum(abs, 𝐒₃_states[:, selector], dims=2) .> tol)
+                    dependencies_in_states = dependencies_in_states .| affected
                 end
             end
             
@@ -2501,32 +2484,22 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                     # Second order propagation
                     if nnz(𝐒₂) > 0
                         𝐒₂_states = 𝐒₂[state_idx_in_var, kron_s_s]
-                        col_idx = 1
-                        for i in 1:nˢ
-                            for j in 1:nˢ
-                                if prev_dependencies[i] && prev_dependencies[j]
-                                    affected = vec(sum(abs, 𝐒₂_states[:, col_idx:col_idx], dims=2) .> tol)
-                                    dependencies_in_states = dependencies_in_states .| affected
-                                end
-                                col_idx += 1
-                            end
+                        # Generate selector vector for columns where both states are dependencies
+                        selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
+                        if any(selector)
+                            affected = vec(sum(abs, 𝐒₂_states[:, selector], dims=2) .> tol)
+                            dependencies_in_states = dependencies_in_states .| affected
                         end
                     end
                     
                     # Third order propagation
                     if nnz(𝐒₃) > 0
                         𝐒₃_states = 𝐒₃[state_idx_in_var, kron_s_s_s]
-                        col_idx = 1
-                        for i in 1:nˢ
-                            for j in 1:nˢ
-                                for k in 1:nˢ
-                                    if prev_dependencies[i] && prev_dependencies[j] && prev_dependencies[k]
-                                        affected = vec(sum(abs, 𝐒₃_states[:, col_idx:col_idx], dims=2) .> tol)
-                                        dependencies_in_states = dependencies_in_states .| affected
-                                    end
-                                    col_idx += 1
-                                end
-                            end
+                        # Generate selector vector for columns where all three states are dependencies
+                        selector = vec(ℒ.kron(ℒ.kron(prev_dependencies, prev_dependencies), prev_dependencies))
+                        if any(selector)
+                            affected = vec(sum(abs, 𝐒₃_states[:, selector], dims=2) .> tol)
+                            dependencies_in_states = dependencies_in_states .| affected
                         end
                     end
                     
