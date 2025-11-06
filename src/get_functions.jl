@@ -3290,9 +3290,8 @@ function get_statistics(𝓂,
 
     covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂.timings)
     
-    # Check if covariance is grouped and parse groups
-    is_grouped_covar = @ignore_derivatives is_grouped_covariance_input(covariance)
-    covar_groups = @ignore_derivatives is_grouped_covar ? parse_covariance_groups(covariance, 𝓂.timings) : nothing
+    # Parse covariance groups if input is grouped format
+    covar_groups = @ignore_derivatives is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.timings) : nothing
 
     autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂.timings)
 
@@ -3415,7 +3414,7 @@ function get_statistics(𝓂,
 
         # droptol!(covar_dcmp_sp,eps(Float64))
 
-        if is_grouped_covar
+        if !isnothing(covar_groups)
             # Extract only the specified covariance groups (block diagonal structure)
             # Return a single matrix with zeros for non-computed covariances
             if solved

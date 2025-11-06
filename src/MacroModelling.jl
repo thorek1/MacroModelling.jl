@@ -71,8 +71,8 @@ Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, sp
 
 
 # Type definitions
-const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}},Vector{Vector{Symbol}}}
-const String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}},Vector{Vector{String}}}
+const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}},Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}}
+const String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}},Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}
 const ParameterType = Union{Nothing,
                             Pair{Symbol, Float64},
                             Pair{String, Float64},
@@ -9059,6 +9059,22 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
             return Int[]
         end
         return Int.(indexin(unique(all_vars), T.var))
+    elseif variables isa Vector{Tuple{Symbol,Vararg{Symbol}}}
+        # For grouped inputs with tuples, return union of all variables
+        all_vars = reduce(vcat, [collect(group) for group in variables])
+        if length(setdiff(all_vars,T.var)) > 0
+            @warn "The following variables are not part of the model: " * join(string.(setdiff(all_vars,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
+            return Int[]
+        end
+        return Int.(indexin(unique(all_vars), T.var))
+    elseif variables isa Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}
+        # For grouped inputs with tuple of tuples, return union of all variables
+        all_vars = reduce(vcat, [collect(group) for group in variables])
+        if length(setdiff(all_vars,T.var)) > 0
+            @warn "The following variables are not part of the model: " * join(string.(setdiff(all_vars,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
+            return Int[]
+        end
+        return Int.(indexin(unique(all_vars), T.var))
     elseif variables isa Vector{Symbol}
         if length(setdiff(variables,T.var)) > 0
             @warn "The following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
@@ -9085,15 +9101,22 @@ end
 
 # Helper function to check if input is grouped covariance format
 function is_grouped_covariance_input(variables::Union{Symbol_input,String_input})::Bool
-    # Check if it's a nested vector (either String or Symbol)
-    return variables isa Vector{Vector{Symbol}} || variables isa Vector{Vector{String}}
+    # Check if it's a nested structure (vector of vectors, vector of tuples, or tuple of tuples)
+    return variables isa Vector{Vector{Symbol}} || variables isa Vector{Vector{String}} ||
+           variables isa Vector{Tuple{Symbol,Vararg{Symbol}}} || variables isa Vector{Tuple{String,Vararg{String}}} ||
+           variables isa Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}} || 
+           variables isa Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}
 end
 
 # Function to parse grouped covariance input into groups of indices
 function parse_covariance_groups(variables::Union{Symbol_input,String_input}, T::timings)::Vector{Vector{Int}}
-    # Convert String_input to Symbol_input for nested vectors
+    # Convert String_input to Symbol_input for nested structures
     if variables isa Vector{Vector{String}}
         variables = [group .|> Meta.parse .|> replace_indices for group in variables]
+    elseif variables isa Vector{Tuple{String,Vararg{String}}}
+        variables = [Tuple(group .|> Meta.parse .|> replace_indices) for group in variables]
+    elseif variables isa Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}
+        variables = Tuple(Tuple(group .|> Meta.parse .|> replace_indices) for group in variables)
     end
     
     if !is_grouped_covariance_input(variables)
@@ -9102,14 +9125,15 @@ function parse_covariance_groups(variables::Union{Symbol_input,String_input}, T:
         return [collect(idx)]
     end
     
-    # Parse each group (variables is now Vector{Vector{Symbol}})
+    # Parse each group (convert tuples to vectors for uniform handling)
     groups = Vector{Vector{Int}}()
     for group in variables
-        if length(setdiff(group, T.var)) > 0
-            @warn "The following variables are not part of the model: " * join(string.(setdiff(group,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
+        group_vec = group isa Tuple ? collect(group) : group
+        if length(setdiff(group_vec, T.var)) > 0
+            @warn "The following variables are not part of the model: " * join(string.(setdiff(group_vec,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
             push!(groups, Int[])
         else
-            push!(groups, Int.(indexin(group, T.var)))
+            push!(groups, Int.(indexin(group_vec, T.var)))
         end
     end
     
