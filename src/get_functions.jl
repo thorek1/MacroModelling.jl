@@ -3245,10 +3245,10 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :standard_deviation => [0.0266642, 0.264677, 0.0739325, 0.0102062]
 
 # For grouped covariance (computing covariances only within specified groups):
-get_statistics(RBC, RBC.parameter_values, covariance = [[:c, :k], [:q]])
+get_statistics(RBC, RBC.parameter_values, covariance = [[:c, :k], [:y, :i]])
 # output
 Dict{Symbol, AbstractArray{Float64}} with 1 entry:
-  :covariance => [...3x3 matrix with c-k covariances filled, q variance filled, and cross-group elements set to zero...]
+  :covariance => [...4x4 matrix with c-k covariances filled, y-i covariances filled, and cross-group elements set to zero...]
 ```
 """
 function get_statistics(𝓂,
