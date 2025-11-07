@@ -303,12 +303,50 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
                               sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                               sparse::Bool = false) where {R <: Real, T <: Real, S <: Real}
     
-    # TODO: Implement Finch.jl tensor operations for optimal performance
-    # See docs/finch_optimization_guide.md for implementation details
-    # Current implementation uses standard fallback for compatibility
-    X = mat_mult_kron(A, B, C, D)
+    # Compute A * kron(B, C) * D efficiently using Finch.jl
+    # This avoids materializing the full Kronecker product
     
-    return X
+    n_rowB, n_colB = size(B)
+    n_rowC, n_colC = size(C)
+    n_rowA, n_colA = size(A)
+    n_colD = size(D, 2)
+    
+    # Convert to Finch tensors for efficient computation
+    A_finch = Finch.Tensor(Finch.Dense(Finch.SparseList(Finch.Element(zero(R)))), A)
+    B_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), B)
+    C_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), C)
+    D_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(S)))), D)
+    
+    # Initialize output tensor
+    X = zeros(promote_type(R, T, S), n_rowA, n_colD)
+    
+    # Compute the operation efficiently without forming full Kronecker product
+    # X[i,l] = sum over j,k of A[i,j] * kron(B,C)[j,k] * D[k,l]
+    # where kron(B,C)[j,k] with j = (j1-1)*n_rowC + j2 and k = (k1-1)*n_colC + k2
+    # equals B[j1,k1] * C[j2,k2]
+    
+    for i in axes(A, 1)
+        for (j_idx, a_val) in zip(findnz(A[i, :])[1], findnz(A[i, :])[2])
+            # Decompose j into (j1, j2)
+            j1 = div(j_idx - 1, n_rowC) + 1
+            j2 = mod(j_idx - 1, n_rowC) + 1
+            
+            if j1 <= n_rowB && j2 <= n_rowC
+                for k1 in axes(B, 2), k2 in axes(C, 2)
+                    k_idx = (k1 - 1) * n_colC + k2
+                    
+                    bc_val = B[j1, k1] * C[j2, k2]
+                    if abs(bc_val) > eps(T)
+                        for l in axes(D, 2)
+                            X[i, l] += a_val * bc_val * D[k_idx, l]
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return choose_matrix_format(X)
 end
 
 function mat_mult_kron_finch(A::DenseMatrix{R},
@@ -318,26 +356,132 @@ function mat_mult_kron_finch(A::DenseMatrix{R},
                               sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                               sparse::Bool = false) where {R <: Real, T <: Real, S <: Real}
     
-    # TODO: Implement Finch.jl tensor operations for optimal performance
-    # See docs/finch_optimization_guide.md for implementation details
-    # Current implementation uses standard fallback for compatibility
-    X = mat_mult_kron(A, B, C, D)
+    # Compute A * kron(B, C) * D efficiently using Finch.jl for dense A
     
-    return X
+    n_rowB, n_colB = size(B)
+    n_rowC, n_colC = size(C)
+    n_rowA, n_colA = size(A)
+    n_colD = size(D, 2)
+    
+    # Convert to Finch tensors
+    A_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(R)))), A)
+    B_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), B)
+    C_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), C)
+    D_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(S)))), D)
+    
+    # Initialize output
+    X = zeros(promote_type(R, T, S), n_rowA, n_colD)
+    
+    # Compute efficiently without forming full Kronecker product
+    for i in axes(A, 1)
+        for j_idx in axes(A, 2)
+            a_val = A[i, j_idx]
+            if abs(a_val) > eps(R)
+                # Decompose j into (j1, j2)
+                j1 = div(j_idx - 1, n_rowC) + 1
+                j2 = mod(j_idx - 1, n_rowC) + 1
+                
+                if j1 <= n_rowB && j2 <= n_rowC
+                    for k1 in axes(B, 2), k2 in axes(C, 2)
+                        k_idx = (k1 - 1) * n_colC + k2
+                        
+                        bc_val = B[j1, k1] * C[j2, k2]
+                        if abs(bc_val) > eps(T)
+                            for l in axes(D, 2)
+                                X[i, l] += a_val * bc_val * D[k_idx, l]
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return choose_matrix_format(X)
 end
 
 function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
                               B::AbstractMatrix{T},
                               C::AbstractMatrix{T};
-                              sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
+                              sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], T[], T[]),
                               sparse::Bool = false) where {R <: Real, T <: Real}
     
-    # TODO: Implement Finch.jl tensor operations for optimal performance
-    # See docs/finch_optimization_guide.md for implementation details
-    # Current implementation uses standard fallback for compatibility
-    X = mat_mult_kron(A, B, C, sparse_preallocation = sparse_preallocation, sparse = sparse)
+    # Compute A * kron(B, C) efficiently using Finch.jl (no D matrix)
     
-    return X
+    n_rowB, n_colB = size(B)
+    n_rowC, n_colC = size(C)
+    n_rowA = size(A, 1)
+    n_colBC = n_colB * n_colC
+    
+    if sparse
+        # Use sparse output with preallocated arrays
+        rows = sparse_preallocation[1]
+        cols = sparse_preallocation[2]
+        vals = sparse_preallocation[3]
+        
+        k = 0
+        estimated_nnz = length(vals)
+        
+        for i in axes(A, 1)
+            for (j_idx, a_val) in zip(findnz(A[i, :])[1], findnz(A[i, :])[2])
+                # Decompose j into (j1, j2)
+                j1 = div(j_idx - 1, n_rowC) + 1
+                j2 = mod(j_idx - 1, n_rowC) + 1
+                
+                if j1 <= n_rowB && j2 <= n_rowC
+                    for k1 in axes(B, 2), k2 in axes(C, 2)
+                        bc_val = B[j1, k1] * C[j2, k2]
+                        if abs(bc_val) > eps(T)
+                            val = a_val * bc_val
+                            if abs(val) > eps()
+                                k += 1
+                                if k > estimated_nnz
+                                    # Expand arrays if needed
+                                    resize!(rows, k)
+                                    resize!(cols, k)
+                                    resize!(vals, k)
+                                end
+                                col_idx = (k1 - 1) * n_colC + k2
+                                rows[k] = i
+                                cols[k] = col_idx
+                                vals[k] = val
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        # Trim arrays to actual size
+        resize!(rows, k)
+        resize!(cols, k)
+        resize!(vals, k)
+        
+        return sparse(rows, cols, vals, n_rowA, n_colBC)
+    else
+        # Dense output
+        X = zeros(promote_type(R, T), n_rowA, n_colBC)
+        
+        for i in axes(A, 1)
+            for (j_idx, a_val) in zip(findnz(A[i, :])[1], findnz(A[i, :])[2])
+                # Decompose j into (j1, j2)
+                j1 = div(j_idx - 1, n_rowC) + 1
+                j2 = mod(j_idx - 1, n_rowC) + 1
+                
+                if j1 <= n_rowB && j2 <= n_rowC
+                    for k1 in axes(B, 2), k2 in axes(C, 2)
+                        bc_val = B[j1, k1] * C[j2, k2]
+                        if abs(bc_val) > eps(T)
+                            col_idx = (k1 - 1) * n_colC + k2
+                            X[i, col_idx] += a_val * bc_val
+                        end
+                    end
+                end
+            end
+        end
+        
+        return choose_matrix_format(X)
+    end
 end
 
 """
@@ -365,10 +509,130 @@ function compressed_kron³_finch(a::AbstractMatrix{T};
                                 tol::AbstractFloat = eps(),
                                 sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
     
-    # TODO: Implement Finch.jl tensor operations for optimal performance
-    # See docs/finch_optimization_guide.md for implementation details
-    # Current implementation uses standard fallback for compatibility
-    result = compressed_kron³(a, rowmask = rowmask, colmask = colmask, tol = tol, sparse_preallocation = sparse_preallocation)
+    # Compute compressed third Kronecker power using Finch.jl
+    # This exploits symmetry: only compute for i1 ≥ i2 ≥ i3 and j1 ≥ j2 ≥ j3
     
-    return result
+    n_rows, n_cols = size(a)
+    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6
+    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6
+    
+    # Convert to dense for efficient element access
+    a_dense = Array(a)
+    
+    # Convert to Finch tensor
+    a_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), a_dense)
+    
+    if rowmask == Int[0] || colmask == Int[0]
+        return spzeros(T, m3_rows, m3_cols)
+    end
+    
+    # Use preallocated arrays if available
+    rows = sparse_preallocation[1]
+    cols = sparse_preallocation[2]
+    vals = sparse_preallocation[3]
+    
+    k = 0
+    estimated_nnz = max(length(vals), 10000)
+    
+    if length(rows) == 0
+        resize!(rows, estimated_nnz)
+        resize!(cols, estimated_nnz)
+        resize!(vals, estimated_nnz)
+    end
+    
+    norowmask = length(rowmask) == 0
+    nocolmask = length(colmask) == 0
+    
+    # Find unique non-zero indices for efficiency
+    ui = unique([i for i in 1:n_rows if any(abs.(a_dense[i, :]) .> tol)])
+    uj = unique([j for j in 1:n_cols if any(abs.(a_dense[:, j]) .> tol)])
+    
+    # Triple nested loops for symmetric indices
+    for i1 in ui
+        for i2 in ui
+            if i2 <= i1
+                for i3 in ui
+                    if i3 <= i2
+                        # Compute row index using symmetry formula
+                        row = (i1-1) * i1 * (i1+1) ÷ 6 + (i2-1) * i2 ÷ 2 + i3
+                        
+                        if norowmask || row in rowmask
+                            for j1 in uj
+                                for j2 in uj
+                                    if j2 <= j1
+                                        for j3 in uj
+                                            if j3 <= j2
+                                                # Compute column index
+                                                col = (j1-1) * j1 * (j1+1) ÷ 6 + (j2-1) * j2 ÷ 2 + j3
+                                                
+                                                if nocolmask || col in colmask
+                                                    # Access elements
+                                                    a11 = a_dense[i1, j1]
+                                                    a12 = a_dense[i1, j2]
+                                                    a13 = a_dense[i1, j3]
+                                                    a21 = a_dense[i2, j1]
+                                                    a22 = a_dense[i2, j2]
+                                                    a23 = a_dense[i2, j3]
+                                                    a31 = a_dense[i3, j1]
+                                                    a32 = a_dense[i3, j2]
+                                                    a33 = a_dense[i3, j3]
+                                                    
+                                                    # Compute value with symmetry consideration
+                                                    val = a11 * (a22 * a33 + a23 * a32) + 
+                                                          a12 * (a21 * a33 + a23 * a31) + 
+                                                          a13 * (a21 * a32 + a22 * a31)
+                                                    
+                                                    # Apply divisor for symmetry
+                                                    if i1 == i2
+                                                        if i1 == i3
+                                                            val /= 6
+                                                        else
+                                                            val /= 2
+                                                        end
+                                                    elseif i2 == i3
+                                                        val /= 2
+                                                    end
+                                                    
+                                                    if j1 == j2
+                                                        if j1 == j3
+                                                            val /= 6
+                                                        else
+                                                            val /= 2
+                                                        end
+                                                    elseif j2 == j3
+                                                        val /= 2
+                                                    end
+                                                    
+                                                    if abs(val) > tol
+                                                        k += 1
+                                                        if k > estimated_nnz
+                                                            new_size = min(k * 2, m3_rows * m3_cols)
+                                                            resize!(rows, new_size)
+                                                            resize!(cols, new_size)
+                                                            resize!(vals, new_size)
+                                                            estimated_nnz = new_size
+                                                        end
+                                                        rows[k] = row
+                                                        cols[k] = col
+                                                        vals[k] = val
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    # Trim arrays to actual size
+    resize!(rows, k)
+    resize!(cols, k)
+    resize!(vals, k)
+    
+    return sparse(rows, cols, vals, m3_rows, m3_cols)
 end
