@@ -311,12 +311,6 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
     n_rowA, n_colA = size(A)
     n_colD = size(D, 2)
     
-    # Convert to Finch tensors for efficient computation
-    A_finch = Finch.Tensor(Finch.Dense(Finch.SparseList(Finch.Element(zero(R)))), A)
-    B_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), B)
-    C_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), C)
-    D_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(S)))), D)
-    
     # Initialize output tensor
     X = zeros(promote_type(R, T, S), n_rowA, n_colD)
     
@@ -326,7 +320,8 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
     # equals B[j1,k1] * C[j2,k2]
     
     for i in axes(A, 1)
-        for (j_idx, a_val) in zip(findnz(A[i, :])[1], findnz(A[i, :])[2])
+        nz_indices, nz_values = findnz(A[i, :])
+        for (j_idx, a_val) in zip(nz_indices, nz_values)
             # Decompose j into (j1, j2)
             j1 = div(j_idx - 1, n_rowC) + 1
             j2 = mod(j_idx - 1, n_rowC) + 1
@@ -362,12 +357,6 @@ function mat_mult_kron_finch(A::DenseMatrix{R},
     n_rowC, n_colC = size(C)
     n_rowA, n_colA = size(A)
     n_colD = size(D, 2)
-    
-    # Convert to Finch tensors
-    A_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(R)))), A)
-    B_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), B)
-    C_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), C)
-    D_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(S)))), D)
     
     # Initialize output
     X = zeros(promote_type(R, T, S), n_rowA, n_colD)
@@ -423,7 +412,8 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
         estimated_nnz = length(vals)
         
         for i in axes(A, 1)
-            for (j_idx, a_val) in zip(findnz(A[i, :])[1], findnz(A[i, :])[2])
+            nz_indices, nz_values = findnz(A[i, :])
+            for (j_idx, a_val) in zip(nz_indices, nz_values)
                 # Decompose j into (j1, j2)
                 j1 = div(j_idx - 1, n_rowC) + 1
                 j2 = mod(j_idx - 1, n_rowC) + 1
@@ -433,7 +423,7 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
                         bc_val = B[j1, k1] * C[j2, k2]
                         if abs(bc_val) > eps(T)
                             val = a_val * bc_val
-                            if abs(val) > eps()
+                            if abs(val) > eps(promote_type(R, T))
                                 k += 1
                                 if k > estimated_nnz
                                     # Expand arrays if needed
@@ -463,7 +453,8 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
         X = zeros(promote_type(R, T), n_rowA, n_colBC)
         
         for i in axes(A, 1)
-            for (j_idx, a_val) in zip(findnz(A[i, :])[1], findnz(A[i, :])[2])
+            nz_indices, nz_values = findnz(A[i, :])
+            for (j_idx, a_val) in zip(nz_indices, nz_values)
                 # Decompose j into (j1, j2)
                 j1 = div(j_idx - 1, n_rowC) + 1
                 j2 = mod(j_idx - 1, n_rowC) + 1
@@ -518,9 +509,6 @@ function compressed_kron³_finch(a::AbstractMatrix{T};
     
     # Convert to dense for efficient element access
     a_dense = Array(a)
-    
-    # Convert to Finch tensor
-    a_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), a_dense)
     
     if rowmask == Int[0] || colmask == Int[0]
         return spzeros(T, m3_rows, m3_cols)
