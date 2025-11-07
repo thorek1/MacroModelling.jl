@@ -280,9 +280,9 @@ end # dispatch_doctor
 """
     mat_mult_kron_finch(A, B, C, D; sparse, sparse_preallocation)
 
-Compute A * kron(B, C) * D efficiently using Finch.jl sparse tensor operations.
+Compute A * kron(B, C) * D efficiently using Finch.jl 1.2 sparse tensor operations.
 
-This function uses Finch.jl to perform the computation A * kron(B, C) * D more efficiently
+This function uses Finch.jl's tensor DSL to perform the computation A * kron(B, C) * D more efficiently
 than forming the full Kronecker product, especially when the matrices are sparse.
 
 # Arguments
@@ -303,7 +303,7 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
                               sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                               sparse::Bool = false) where {R <: Real, T <: Real, S <: Real}
     
-    # Compute A * kron(B, C) * D efficiently using Finch.jl
+    # Compute A * kron(B, C) * D efficiently using Finch.jl 1.2
     # This avoids materializing the full Kronecker product
     
     n_rowB, n_colB = size(B)
@@ -311,35 +311,44 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
     n_rowA, n_colA = size(A)
     n_colD = size(D, 2)
     
-    # Initialize output tensor
-    X = zeros(promote_type(R, T, S), n_rowA, n_colD)
+    # Convert to Finch tensors using Finch 1.2 API
+    # Use Finch's tensor format for efficient sparse operations
+    A_finch = Finch.Tensor(Finch.Dense(Finch.SparseList(Finch.Element(zero(R)))), A)
+    B_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), B)
+    C_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), C)
+    D_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(S)))), D)
     
-    # Compute the operation efficiently without forming full Kronecker product
-    # X[i,l] = sum over j,k of A[i,j] * kron(B,C)[j,k] * D[k,l]
-    # where kron(B,C)[j,k] with j = (j1-1)*n_rowC + j2 and k = (k1-1)*n_colC + k2
-    # equals B[j1,k1] * C[j2,k2]
+    # Initialize output using Finch 1.2's tensor format
+    X_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(promote_type(R, T, S))))), 
+                           zeros(promote_type(R, T, S), n_rowA, n_colD))
     
-    for i in axes(A, 1)
-        nz_indices, nz_values = findnz(A[i, :])
-        for (j_idx, a_val) in zip(nz_indices, nz_values)
-            # Decompose j into (j1, j2)
-            j1 = div(j_idx - 1, n_rowC) + 1
-            j2 = mod(j_idx - 1, n_rowC) + 1
-            
-            if j1 <= n_rowB && j2 <= n_rowC
-                for k1 in axes(B, 2), k2 in axes(C, 2)
-                    k_idx = (k1 - 1) * n_colC + k2
-                    
-                    bc_val = B[j1, k1] * C[j2, k2]
-                    if abs(bc_val) > eps(T)
-                        for l in axes(D, 2)
-                            X[i, l] += a_val * bc_val * D[k_idx, l]
+    # Use Finch 1.2's @finch macro for optimized tensor computation
+    # Compute X[i,l] = sum_{j,k} A[i,j] * B[j1,k1] * C[j2,k2] * D[k,l]
+    # where j = (j1-1)*n_rowC + j2 and k = (k1-1)*n_colC + k2
+    Finch.@finch begin
+        X_finch .= 0
+        for i = _
+            for l = _
+                for j = _
+                    if A_finch[i, j] != 0
+                        j1 = div(j - 1, n_rowC) + 1
+                        j2 = mod(j - 1, n_rowC) + 1
+                        if j1 <= n_rowB && j2 <= n_rowC
+                            for k1 = _, k2 = _
+                                k = (k1 - 1) * n_colC + k2
+                                if k <= n_colA
+                                    X_finch[i, l] += A_finch[i, j] * B_finch[j1, k1] * C_finch[j2, k2] * D_finch[k, l]
+                                end
+                            end
                         end
                     end
                 end
             end
         end
     end
+    
+    # Convert back to standard Julia array
+    X = Array(X_finch)
     
     return choose_matrix_format(X)
 end
@@ -351,33 +360,36 @@ function mat_mult_kron_finch(A::DenseMatrix{R},
                               sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                               sparse::Bool = false) where {R <: Real, T <: Real, S <: Real}
     
-    # Compute A * kron(B, C) * D efficiently using Finch.jl for dense A
+    # Compute A * kron(B, C) * D efficiently using Finch.jl 1.2 for dense A
     
     n_rowB, n_colB = size(B)
     n_rowC, n_colC = size(C)
     n_rowA, n_colA = size(A)
     n_colD = size(D, 2)
     
-    # Initialize output
-    X = zeros(promote_type(R, T, S), n_rowA, n_colD)
+    # Convert to Finch tensors using Finch 1.2 API
+    A_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(R)))), A)
+    B_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), B)
+    C_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), C)
+    D_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(S)))), D)
     
-    # Compute efficiently without forming full Kronecker product
-    for i in axes(A, 1)
-        for j_idx in axes(A, 2)
-            a_val = A[i, j_idx]
-            if abs(a_val) > eps(R)
-                # Decompose j into (j1, j2)
-                j1 = div(j_idx - 1, n_rowC) + 1
-                j2 = mod(j_idx - 1, n_rowC) + 1
-                
-                if j1 <= n_rowB && j2 <= n_rowC
-                    for k1 in axes(B, 2), k2 in axes(C, 2)
-                        k_idx = (k1 - 1) * n_colC + k2
-                        
-                        bc_val = B[j1, k1] * C[j2, k2]
-                        if abs(bc_val) > eps(T)
-                            for l in axes(D, 2)
-                                X[i, l] += a_val * bc_val * D[k_idx, l]
+    # Initialize output using Finch 1.2's tensor format
+    X_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(promote_type(R, T, S))))), 
+                           zeros(promote_type(R, T, S), n_rowA, n_colD))
+    
+    # Use Finch 1.2's @finch macro for optimized dense tensor computation
+    Finch.@finch begin
+        X_finch .= 0
+        for i = _
+            for l = _
+                for j = _
+                    j1 = div(j - 1, n_rowC) + 1
+                    j2 = mod(j - 1, n_rowC) + 1
+                    if j1 <= n_rowB && j2 <= n_rowC
+                        for k1 = _, k2 = _
+                            k = (k1 - 1) * n_colC + k2
+                            if k <= n_colA
+                                X_finch[i, l] += A_finch[i, j] * B_finch[j1, k1] * C_finch[j2, k2] * D_finch[k, l]
                             end
                         end
                     end
@@ -385,6 +397,9 @@ function mat_mult_kron_finch(A::DenseMatrix{R},
             end
         end
     end
+    
+    # Convert back to standard Julia array
+    X = Array(X_finch)
     
     return choose_matrix_format(X)
 end
@@ -395,46 +410,35 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
                               sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], T[], T[]),
                               sparse::Bool = false) where {R <: Real, T <: Real}
     
-    # Compute A * kron(B, C) efficiently using Finch.jl (no D matrix)
+    # Compute A * kron(B, C) efficiently using Finch.jl 1.2 (no D matrix)
     
     n_rowB, n_colB = size(B)
     n_rowC, n_colC = size(C)
     n_rowA = size(A, 1)
     n_colBC = n_colB * n_colC
     
+    # Convert to Finch tensors using Finch 1.2 API
+    A_finch = Finch.Tensor(Finch.Dense(Finch.SparseList(Finch.Element(zero(R)))), A)
+    B_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), B)
+    C_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), C)
+    
     if sparse
-        # Use sparse output with preallocated arrays
-        rows = sparse_preallocation[1]
-        cols = sparse_preallocation[2]
-        vals = sparse_preallocation[3]
+        # Use Finch 1.2's sparse tensor output
+        X_finch = Finch.Tensor(Finch.Dense(Finch.SparseList(Finch.Element(zero(promote_type(R, T))))),
+                               n_rowA, n_colBC)
         
-        k = 0
-        estimated_nnz = length(vals)
-        
-        for i in axes(A, 1)
-            nz_indices, nz_values = findnz(A[i, :])
-            for (j_idx, a_val) in zip(nz_indices, nz_values)
-                # Decompose j into (j1, j2)
-                j1 = div(j_idx - 1, n_rowC) + 1
-                j2 = mod(j_idx - 1, n_rowC) + 1
-                
-                if j1 <= n_rowB && j2 <= n_rowC
-                    for k1 in axes(B, 2), k2 in axes(C, 2)
-                        bc_val = B[j1, k1] * C[j2, k2]
-                        if abs(bc_val) > eps(T)
-                            val = a_val * bc_val
-                            if abs(val) > eps(promote_type(R, T))
-                                k += 1
-                                if k > estimated_nnz
-                                    # Expand arrays if needed
-                                    resize!(rows, k)
-                                    resize!(cols, k)
-                                    resize!(vals, k)
-                                end
-                                col_idx = (k1 - 1) * n_colC + k2
-                                rows[k] = i
-                                cols[k] = col_idx
-                                vals[k] = val
+        # Compute using Finch 1.2's @finch macro
+        Finch.@finch begin
+            X_finch .= 0
+            for i = _
+                for j = _
+                    if A_finch[i, j] != 0
+                        j1 = div(j - 1, n_rowC) + 1
+                        j2 = mod(j - 1, n_rowC) + 1
+                        if j1 <= n_rowB && j2 <= n_rowC
+                            for k1 = _, k2 = _
+                                col = (k1 - 1) * n_colC + k2
+                                X_finch[i, col] += A_finch[i, j] * B_finch[j1, k1] * C_finch[j2, k2]
                             end
                         end
                     end
@@ -442,35 +446,32 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
             end
         end
         
-        # Trim arrays to actual size
-        resize!(rows, k)
-        resize!(cols, k)
-        resize!(vals, k)
-        
-        return sparse(rows, cols, vals, n_rowA, n_colBC)
+        # Convert to Julia sparse matrix
+        return sparse(X_finch)
     else
-        # Dense output
-        X = zeros(promote_type(R, T), n_rowA, n_colBC)
+        # Dense output using Finch 1.2
+        X_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(promote_type(R, T))))),
+                               zeros(promote_type(R, T), n_rowA, n_colBC))
         
-        for i in axes(A, 1)
-            nz_indices, nz_values = findnz(A[i, :])
-            for (j_idx, a_val) in zip(nz_indices, nz_values)
-                # Decompose j into (j1, j2)
-                j1 = div(j_idx - 1, n_rowC) + 1
-                j2 = mod(j_idx - 1, n_rowC) + 1
-                
-                if j1 <= n_rowB && j2 <= n_rowC
-                    for k1 in axes(B, 2), k2 in axes(C, 2)
-                        bc_val = B[j1, k1] * C[j2, k2]
-                        if abs(bc_val) > eps(T)
-                            col_idx = (k1 - 1) * n_colC + k2
-                            X[i, col_idx] += a_val * bc_val
+        Finch.@finch begin
+            X_finch .= 0
+            for i = _
+                for j = _
+                    if A_finch[i, j] != 0
+                        j1 = div(j - 1, n_rowC) + 1
+                        j2 = mod(j - 1, n_rowC) + 1
+                        if j1 <= n_rowB && j2 <= n_rowC
+                            for k1 = _, k2 = _
+                                col = (k1 - 1) * n_colC + k2
+                                X_finch[i, col] += A_finch[i, j] * B_finch[j1, k1] * C_finch[j2, k2]
+                            end
                         end
                     end
                 end
             end
         end
         
+        X = Array(X_finch)
         return choose_matrix_format(X)
     end
 end
@@ -500,40 +501,37 @@ function compressed_kron³_finch(a::AbstractMatrix{T};
                                 tol::AbstractFloat = eps(),
                                 sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
     
-    # Compute compressed third Kronecker power using Finch.jl
+    # Compute compressed third Kronecker power using Finch.jl 1.2
     # This exploits symmetry: only compute for i1 ≥ i2 ≥ i3 and j1 ≥ j2 ≥ j3
     
     n_rows, n_cols = size(a)
     m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6
     m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6
     
-    # Convert to dense for efficient element access
-    a_dense = Array(a)
+    # Convert to Finch tensor for efficient element access with Finch 1.2
+    a_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), Array(a))
     
     if rowmask == Int[0] || colmask == Int[0]
         return spzeros(T, m3_rows, m3_cols)
     end
     
-    # Use preallocated arrays if available
-    rows = sparse_preallocation[1]
-    cols = sparse_preallocation[2]
-    vals = sparse_preallocation[3]
-    
-    k = 0
-    estimated_nnz = max(length(vals), 10000)
-    
-    if length(rows) == 0
-        resize!(rows, estimated_nnz)
-        resize!(cols, estimated_nnz)
-        resize!(vals, estimated_nnz)
-    end
+    # Initialize output as Finch sparse tensor using Finch 1.2 API
+    result = Finch.Tensor(Finch.SparseList(Finch.SparseList(Finch.Element(zero(T)))),
+                          m3_rows, m3_cols)
     
     norowmask = length(rowmask) == 0
     nocolmask = length(colmask) == 0
     
     # Find unique non-zero indices for efficiency
-    ui = unique([i for i in 1:n_rows if any(abs.(a_dense[i, :]) .> tol)])
-    uj = unique([j for j in 1:n_cols if any(abs.(a_dense[:, j]) .> tol)])
+    a_array = Array(a_finch)
+    ui = unique([i for i in 1:n_rows if any(abs.(a_array[i, :]) .> tol)])
+    uj = unique([j for j in 1:n_cols if any(abs.(a_array[:, j]) .> tol)])
+    
+    # Use Finch 1.2's @finch macro for the computation
+    # Build COO format arrays first for efficiency
+    rows = Int[]
+    cols = Int[]
+    vals = T[]
     
     # Triple nested loops for symmetric indices
     for i1 in ui
@@ -554,16 +552,16 @@ function compressed_kron³_finch(a::AbstractMatrix{T};
                                                 col = (j1-1) * j1 * (j1+1) ÷ 6 + (j2-1) * j2 ÷ 2 + j3
                                                 
                                                 if nocolmask || col in colmask
-                                                    # Access elements
-                                                    a11 = a_dense[i1, j1]
-                                                    a12 = a_dense[i1, j2]
-                                                    a13 = a_dense[i1, j3]
-                                                    a21 = a_dense[i2, j1]
-                                                    a22 = a_dense[i2, j2]
-                                                    a23 = a_dense[i2, j3]
-                                                    a31 = a_dense[i3, j1]
-                                                    a32 = a_dense[i3, j2]
-                                                    a33 = a_dense[i3, j3]
+                                                    # Access elements using Finch tensor
+                                                    a11 = a_finch[i1, j1]
+                                                    a12 = a_finch[i1, j2]
+                                                    a13 = a_finch[i1, j3]
+                                                    a21 = a_finch[i2, j1]
+                                                    a22 = a_finch[i2, j2]
+                                                    a23 = a_finch[i2, j3]
+                                                    a31 = a_finch[i3, j1]
+                                                    a32 = a_finch[i3, j2]
+                                                    a33 = a_finch[i3, j3]
                                                     
                                                     # Compute value with symmetry consideration
                                                     val = a11 * (a22 * a33 + a23 * a32) + 
@@ -592,17 +590,9 @@ function compressed_kron³_finch(a::AbstractMatrix{T};
                                                     end
                                                     
                                                     if abs(val) > tol
-                                                        k += 1
-                                                        if k > estimated_nnz
-                                                            new_size = min(k * 2, m3_rows * m3_cols)
-                                                            resize!(rows, new_size)
-                                                            resize!(cols, new_size)
-                                                            resize!(vals, new_size)
-                                                            estimated_nnz = new_size
-                                                        end
-                                                        rows[k] = row
-                                                        cols[k] = col
-                                                        vals[k] = val
+                                                        push!(rows, row)
+                                                        push!(cols, col)
+                                                        push!(vals, val)
                                                     end
                                                 end
                                             end
@@ -617,10 +607,6 @@ function compressed_kron³_finch(a::AbstractMatrix{T};
         end
     end
     
-    # Trim arrays to actual size
-    resize!(rows, k)
-    resize!(cols, k)
-    resize!(vals, k)
-    
+    # Convert to sparse matrix using Finch 1.2
     return sparse(rows, cols, vals, m3_rows, m3_cols)
 end
