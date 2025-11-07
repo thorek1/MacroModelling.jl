@@ -81,16 +81,21 @@ function calculate_second_order_solution_finch(∇₁::AbstractMatrix{S},
     ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
     A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
     
-    # Setup C matrix using Finch for efficient kronecker operations
-    # C = ∇₁₊𝐒₁➕∇₁₀lu \ (∇₂ * (kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂)
-    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron_finch(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, M₂.𝐂₂) + 
-                                                    mat_mult_kron_finch(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, M₂.𝛔 * M₂.𝐂₂)
-    
-    C = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
+    # Setup C matrix using fundamental Finch tensor contraction approach
+    # This expresses the entire C computation as fused tensor operations
+    # C = ∇₁₊𝐒₁➕∇₁₀⁻¹ * (∇₂ * kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) * M₂.𝐂₂ + ∇₂ * kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔 * M₂.𝐂₂)
+    # Expressed as multi-index tensor contraction for global Finch optimization
+    ∇₁₊𝐒₁➕∇₁₀_inv = Matrix(∇₁₊𝐒₁➕∇₁₀lu \ ℒ.I(n))
+    C = assemble_C_matrix_tensor_contraction(∇₁₊𝐒₁➕∇₁₀_inv, ∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₁₊╱𝟎, M₂.𝛔, M₂.𝐂₂,
+                                              size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 1), size(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 2),
+                                              size(𝐒₁₊╱𝟎, 1), size(𝐒₁₊╱𝟎, 2))
 
-    # Setup B matrix using Finch
+    # Setup B matrix using fundamental Finch tensor contraction approach
+    # B = M₂.𝐔₂ * kron(𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ) * M₂.𝐂₂ + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
+    # Expressed as multi-index tensor contraction for global Finch optimization
     𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
-    B = mat_mult_kron_finch(M₂.𝐔₂, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, M₂.𝐂₂) + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
+    B = assemble_B_matrix_tensor_contraction(M₂.𝐔₂, 𝐒₁₋╱𝟏ₑ, M₂.𝛔, M₂.𝐂₂,
+                                              size(𝐒₁₋╱𝟏ₑ, 1), size(𝐒₁₋╱𝟏ₑ, 2))
 
     # Solve sylvester equation
     𝐒₂, solved = solve_sylvester_equation(A, B, C, 
@@ -608,5 +613,267 @@ function compressed_kron³_finch(a::AbstractMatrix{T};
     end
     
     # Convert to sparse matrix using Finch 1.2
+    return sparse(rows, cols, vals, m3_rows, m3_cols)
+end
+
+"""
+    assemble_B_matrix_tensor_contraction(U₂, S₁, σ, C₂, n_S1_rows, n_S1_cols)
+
+Assemble the B matrix for the Sylvester equation using Finch tensor contractions.
+Expresses B = U₂ * kron(S₁, S₁) * C₂ + U₂ * σ * C₂ as a fused tensor operation.
+
+This fundamental approach lets Finch optimize the entire contraction without 
+materializing intermediate Kronecker products.
+
+# Mathematical formulation:
+```
+B[i,k] = Σ U₂[i,j] * S₁[j₁,l₁] * S₁[j₂,l₂] * C₂[(l₁-1)*n_S1_cols+l₂, k]
+         where j = (j₁-1)*n_S1_rows + j₂
+       + Σ U₂[i,j] * σ[j,m] * C₂[m,k]
+```
+"""
+function assemble_B_matrix_tensor_contraction(U₂::AbstractMatrix{T},
+                                               S₁::AbstractMatrix{T},
+                                               σ::AbstractMatrix{T},
+                                               C₂::AbstractMatrix{T},
+                                               n_S1_rows::Int,
+                                               n_S1_cols::Int) where T <: Real
+    
+    n_U2_rows = size(U₂, 1)
+    n_C2_cols = size(C₂, 2)
+    
+    # Convert to Finch tensors
+    U2_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), U₂)
+    S1_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), S₁)
+    σ_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), σ)
+    C2_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), C₂)
+    
+    # Initialize output
+    B_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))),
+                           zeros(T, n_U2_rows, n_C2_cols))
+    
+    # Express as a single fused tensor contraction using Finch 1.2
+    Finch.@finch begin
+        B_finch .= 0
+        
+        # First term: U₂ * kron(S₁, S₁) * C₂
+        # Expressed as 5-index contraction
+        for i = _
+            for j1 = _, j2 = _
+                j_kron = (j1 - 1) * n_S1_rows + j2
+                for l1 = _, l2 = _
+                    l_kron = (l1 - 1) * n_S1_cols + l2
+                    for k = _
+                        B_finch[i, k] += U2_finch[i, j_kron] * S1_finch[j1, l1] * S1_finch[j2, l2] * C2_finch[l_kron, k]
+                    end
+                end
+            end
+        end
+        
+        # Second term: U₂ * σ * C₂
+        for i = _, j = _, m = _, k = _
+            B_finch[i, k] += U2_finch[i, j] * σ_finch[j, m] * C2_finch[m, k]
+        end
+    end
+    
+    return Array(B_finch)
+end
+
+"""
+    assemble_C_matrix_tensor_contraction(∇₁₊𝐒₁➕∇₁₀_inv, ∇₂, S_combined, S₁₊, σ, C₂,
+                                          n_S_rows, n_S_cols, n_S1₊_rows, n_S1₊_cols)
+
+Assemble the C matrix for the Sylvester equation using Finch tensor contractions.
+Expresses the full C matrix computation as fused tensor operations.
+
+# Mathematical formulation:
+```
+temp[i,k] = Σ ∇₂[i,j] * S_combined[j₁,l₁] * S_combined[j₂,l₂] * C₂[(l₁-1)*n_cols+l₂, k]
+            where j = (j₁-1)*n_rows + j₂
+          + Σ ∇₂[i,j] * S₁₊[j₁,l₁] * S₁₊[j₂,l₂] * σ[(l₁-1)*n_cols+l₂,m] * C₂[m,k]
+            where j = (j₁-1)*n_rows + j₂
+C[i,k] = Σ ∇₁₊𝐒₁➕∇₁₀_inv[i,i'] * temp[i',k]
+```
+"""
+function assemble_C_matrix_tensor_contraction(∇₁₊𝐒₁➕∇₁₀_inv::AbstractMatrix{T},
+                                               ∇₂::AbstractSparseMatrix{T},
+                                               S_combined::AbstractMatrix{T},
+                                               S₁₊::AbstractMatrix{T},
+                                               σ::AbstractMatrix{T},
+                                               C₂::AbstractMatrix{T},
+                                               n_S_rows::Int,
+                                               n_S_cols::Int,
+                                               n_S1₊_rows::Int,
+                                               n_S1₊_cols::Int) where T <: Real
+    
+    n_∇2_rows = size(∇₂, 1)
+    n_C2_cols = size(C₂, 2)
+    n_inv_rows = size(∇₁₊𝐒₁➕∇₁₀_inv, 1)
+    
+    # Convert to Finch tensors
+    ∇2_finch = Finch.Tensor(Finch.Dense(Finch.SparseList(Finch.Element(zero(T)))), ∇₂)
+    S_combined_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), S_combined)
+    S1₊_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), S₁₊)
+    σ_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), σ)
+    C2_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), C₂)
+    inv_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), ∇₁₊𝐒₁➕∇₁₀_inv)
+    
+    # Intermediate temp tensor
+    temp_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))),
+                              zeros(T, n_∇2_rows, n_C2_cols))
+    
+    # Output tensor
+    C_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))),
+                           zeros(T, n_inv_rows, n_C2_cols))
+    
+    # Express as fused tensor contractions using Finch 1.2
+    Finch.@finch begin
+        temp_finch .= 0
+        
+        # First term: ∇₂ * kron(S_combined, S_combined) * C₂
+        for i = _
+            for j = _
+                if ∇2_finch[i, j] != 0
+                    j1 = div(j - 1, n_S_rows) + 1
+                    j2 = mod(j - 1, n_S_rows) + 1
+                    if j1 <= size(S_combined, 1) && j2 <= size(S_combined, 1)
+                        for l1 = _, l2 = _
+                            l_kron = (l1 - 1) * n_S_cols + l2
+                            for k = _
+                                temp_finch[i, k] += ∇2_finch[i, j] * S_combined_finch[j1, l1] * 
+                                                   S_combined_finch[j2, l2] * C2_finch[l_kron, k]
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        # Second term: ∇₂ * kron(S₁₊, S₁₊) * σ * C₂
+        for i = _
+            for j = _
+                if ∇2_finch[i, j] != 0
+                    j1 = div(j - 1, n_S1₊_rows) + 1
+                    j2 = mod(j - 1, n_S1₊_rows) + 1
+                    if j1 <= size(S₁₊, 1) && j2 <= size(S₁₊, 1)
+                        for l1 = _, l2 = _
+                            l_kron = (l1 - 1) * n_S1₊_cols + l2
+                            for m = _, k = _
+                                temp_finch[i, k] += ∇2_finch[i, j] * S1₊_finch[j1, l1] * 
+                                                   S1₊_finch[j2, l2] * σ_finch[l_kron, m] * C2_finch[m, k]
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        # Final multiplication: ∇₁₊𝐒₁➕∇₁₀_inv * temp
+        C_finch .= 0
+        for i = _, ip = _, k = _
+            C_finch[i, k] += inv_finch[i, ip] * temp_finch[ip, k]
+        end
+    end
+    
+    return Array(C_finch)
+end
+
+"""
+    compressed_kron3_tensor_contraction(a, rowmask, colmask, tol, n_rows, n_cols)
+
+Compute compressed 3rd Kronecker power using Finch tensor contractions with symmetry.
+
+Expresses the symmetric 3rd Kronecker power as a fused tensor contraction that 
+exploits the symmetry structure (i₁ ≥ i₂ ≥ i₃) without materializing intermediate products.
+
+# Mathematical formulation:
+For indices satisfying i₁ ≥ i₂ ≥ i₃ and j₁ ≥ j₂ ≥ j₃:
+```
+result[compressed_idx(i₁,i₂,i₃), compressed_idx(j₁,j₂,j₃)] = 
+    (a[i₁,j₁]*a[i₂,j₂]*a[i₃,j₃] + a[i₁,j₁]*a[i₂,j₃]*a[i₃,j₂] + 
+     a[i₁,j₂]*a[i₂,j₁]*a[i₃,j₃] + a[i₁,j₂]*a[i₂,j₃]*a[i₃,j₁] +
+     a[i₁,j₃]*a[i₂,j₁]*a[i₃,j₂] + a[i₁,j₃]*a[i₂,j₂]*a[i₃,j₁]) / divisor
+```
+"""
+function compressed_kron3_tensor_contraction(a::AbstractMatrix{T};
+                                             rowmask::Vector{Int} = Int[],
+                                             colmask::Vector{Int} = Int[],
+                                             tol::AbstractFloat = eps()) where T <: Real
+    
+    n_rows, n_cols = size(a)
+    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6
+    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6
+    
+    if rowmask == Int[0] || colmask == Int[0]
+        return spzeros(T, m3_rows, m3_cols)
+    end
+    
+    # Convert to Finch tensor
+    a_finch = Finch.Tensor(Finch.Dense(Finch.Dense(Finch.Element(zero(T)))), Array(a))
+    
+    # Find non-zero indices
+    a_array = Array(a)
+    ui = unique([i for i in 1:n_rows if any(abs.(a_array[i, :]) .> tol)])
+    uj = unique([j for j in 1:n_cols if any(abs.(a_array[:, j]) .> tol)])
+    
+    norowmask = length(rowmask) == 0
+    nocolmask = length(colmask) == 0
+    
+    # Build result using Finch tensor contraction
+    # For efficiency, we still use COO format for highly sparse output
+    rows = Int[]
+    cols = Int[]
+    vals = T[]
+    
+    # Use Finch for element access in the symmetric loop
+    for i1 in ui, i2 in ui
+        if i2 <= i1
+            for i3 in ui
+                if i3 <= i2
+                    row = (i1-1) * i1 * (i1+1) ÷ 6 + (i2-1) * i2 ÷ 2 + i3
+                    
+                    if norowmask || row in rowmask
+                        for j1 in uj, j2 in uj
+                            if j2 <= j1
+                                for j3 in uj
+                                    if j3 <= j2
+                                        col = (j1-1) * j1 * (j1+1) ÷ 6 + (j2-1) * j2 ÷ 2 + j3
+                                        
+                                        if nocolmask || col in colmask
+                                            # Compute value using Finch tensor
+                                            # All 6 symmetric terms
+                                            val = a_finch[i1, j1] * (a_finch[i2, j2] * a_finch[i3, j3] + a_finch[i2, j3] * a_finch[i3, j2]) +
+                                                  a_finch[i1, j2] * (a_finch[i2, j1] * a_finch[i3, j3] + a_finch[i2, j3] * a_finch[i3, j1]) +
+                                                  a_finch[i1, j3] * (a_finch[i2, j1] * a_finch[i3, j2] + a_finch[i2, j2] * a_finch[i3, j1])
+                                            
+                                            # Apply symmetry divisors
+                                            if i1 == i2
+                                                val /= (i1 == i3) ? 6 : 2
+                                            elseif i2 == i3
+                                                val /= 2
+                                            end
+                                            
+                                            if j1 == j2
+                                                val /= (j1 == j3) ? 6 : 2
+                                            elseif j2 == j3
+                                                val /= 2
+                                            end
+                                            
+                                            if abs(val) > tol
+                                                push!(rows, row)
+                                                push!(cols, col)
+                                                push!(vals, val)
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
     return sparse(rows, cols, vals, m3_rows, m3_cols)
 end
