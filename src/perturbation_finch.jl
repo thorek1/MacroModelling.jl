@@ -303,8 +303,9 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
                               sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                               sparse::Bool = false) where {R <: Real, T <: Real, S <: Real}
     
-    # For now, use the standard implementation as a fallback
-    # In a production version, we would implement the full Finch logic here
+    # TODO: Implement Finch.jl tensor operations for optimal performance
+    # See docs/finch_optimization_guide.md for implementation details
+    # Current implementation uses standard fallback for compatibility
     X = mat_mult_kron(A, B, C, D)
     
     return X
@@ -317,7 +318,9 @@ function mat_mult_kron_finch(A::DenseMatrix{R},
                               sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                               sparse::Bool = false) where {R <: Real, T <: Real, S <: Real}
     
-    # For now, use the standard implementation as a fallback
+    # TODO: Implement Finch.jl tensor operations for optimal performance
+    # See docs/finch_optimization_guide.md for implementation details
+    # Current implementation uses standard fallback for compatibility
     X = mat_mult_kron(A, B, C, D)
     
     return X
@@ -329,7 +332,9 @@ function mat_mult_kron_finch(A::AbstractSparseMatrix{R},
                               sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], Int[], T[]),
                               sparse::Bool = false) where {R <: Real, T <: Real}
     
-    # For now, use the standard implementation as a fallback
+    # TODO: Implement Finch.jl tensor operations for optimal performance
+    # See docs/finch_optimization_guide.md for implementation details
+    # Current implementation uses standard fallback for compatibility
     X = mat_mult_kron(A, B, C, sparse_preallocation = sparse_preallocation, sparse = sparse)
     
     return X
@@ -360,8 +365,9 @@ function compressed_kron³_finch(a::AbstractMatrix{T};
                                 tol::AbstractFloat = eps(),
                                 sparse_preallocation::Tuple = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
     
-    # For now, use the standard implementation as a fallback
-    # In a production version, we would implement the full Finch logic here
+    # TODO: Implement Finch.jl tensor operations for optimal performance
+    # See docs/finch_optimization_guide.md for implementation details
+    # Current implementation uses standard fallback for compatibility
     result = compressed_kron³(a, rowmask = rowmask, colmask = colmask, tol = tol, sparse_preallocation = sparse_preallocation)
     
     return result
