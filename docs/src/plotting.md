@@ -64,7 +64,7 @@ end
 
 MacroModelling.jl provides several plotting functions for analyzing and visualizing model behavior:
 
-- **[Impulse Response Functions (IRF)](irf.md)**: Visualize the dynamic response of endogenous variables to exogenous shocks using `plot_irf`
+- **[Impulse Response Functions (IRF)](plot_irf.md)**: Visualize the dynamic response of endogenous variables to exogenous shocks using `plot_irf`
 - **[Policy Functions](plot_solution.md)**: Plot the relationship between state variables and endogenous variables using `plot_solution`
 
 Additional plotting functions are documented in the [API reference](api.md).
