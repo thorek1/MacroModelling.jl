@@ -260,22 +260,22 @@ plot_fevd(FS2000)
 
 When no parameters are provided, the solution uses the previously defined parameter values. Parameters can be provided as a `Vector` of values, or as a `Vector` or `Tuple` of `Pair`s mapping parameter `Symbol`s or `String`s to values. The solution is recalculated when new parameter values differ from the previous ones.
 
-Start by changing the discount factor `constebeta` to 1:
+Start by changing the discount factor `z_eg` to 1:
 
 ```julia
 plot_fevd(Smets_Wouters_2007_linear,
-    parameters = :constebeta => 1)
+    parameters = :z_eg => 1)
 ```
 
 ![Smets and Wouters 2007 FEVD - different parameter values](../assets/param_change__Smets_Wouters_2007_linear__2.png)
 
 The shock contributions changed as a result of changing the discount factor.
 
-Multiple parameters can also be changed simultaneously. This example changes `constebeta` to 1.5 and `crpi` to 1.75 using a `Tuple` of `Pair`s and define the variables with `Symbol`s:
+Multiple parameters can also be changed simultaneously. This example changes `z_eg` to 1.5 and `crpi` to 1.75 using a `Tuple` of `Pair`s and define the variables with `Symbol`s:
 
 ```julia
 plot_fevd(Smets_Wouters_2007_linear,
-    parameters = (:constebeta => 1.5, :crpi => 1.75))
+    parameters = (:z_eg => 1.5, :crpi => 1.75))
 ```
 
 ![Smets and Wouters 2007 FEVD - multiple parameter changes](../assets/param_change_2__Smets_Wouters_2007_linear__2.png)
@@ -284,7 +284,7 @@ A `Vector` of `Pair`s can also be used:
 
 ```julia
 plot_fevd(Smets_Wouters_2007_linear,
-    parameters = [:constebeta => 1.5, :crpi => 1.75])
+    parameters = [:z_eg => 1.5, :crpi => 1.75])
 ```
 
 Alternatively, use a `Vector` of parameter values in the order they were defined in the model. To obtain them:
@@ -502,14 +502,14 @@ When parameters change, the first-order solution is recomputed; otherwise, it us
 
 ```julia
 plot_fevd(Smets_Wouters_2007_linear,
-    parameters = :constebeta => 1.05,
+    parameters = :z_eg => 1.05,
     verbose = true)
 # Parameter changes: 
-#         constebeta      from 1.5        to 1.05
+#         z_eg    from 1.5        to 1.05
 # New parameters changed the steady state.
-# Block: 1, - Solved using previous solution; residual norm: 1.5065705188588867e-20
-# Block: 2, - Solved using previous solution; residual norm: 4.760958162722386e-18
-# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 2.4783378081744145e-15
+# Block: 1, - Solved using previous solution; residual norm: 1.776217186138026e-21
+# Block: 2, - Solved using previous solution; residual norm: 6.83217016268833e-19
+# Quadratic matrix equation solver previous solution has tolerance: 2.25183977733317e-15
 ```
 
 ## Numerical Tolerances
@@ -523,14 +523,14 @@ custom_tol = Tolerances(qme_acceptance_tol = 1e-12,
 
 plot_fevd(Smets_Wouters_2007_linear,
     tol = custom_tol,
-    parameters = :constebeta => 1.055,
+    parameters = :z_eg => 1.055,
     verbose = true)
 # Parameter changes: 
-#         constebeta      from 1.05       to 1.055
+#         z_eg    from 1.05       to 1.055
 # New parameters changed the steady state.
-# Block: 1, - Solved using previous solution; residual norm: 1.5288474949132787e-20
-# Block: 2, - Solved using previous solution; residual norm: 4.8308783964489445e-18
-# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 2.2441936684684226e-15
+# Block: 1, - Solved using previous solution; residual norm: 1.776217186138026e-21
+# Block: 2, - Solved using previous solution; residual norm: 6.83217016268833e-19
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 2.25183977733317e-15
 ```
 
 This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or encounter issues with the default solver.
@@ -543,14 +543,14 @@ The quadratic matrix equation solver is used internally when solving the model t
 ```julia
 plot_fevd(Smets_Wouters_2007_linear,
     quadratic_matrix_equation_algorithm = :doubling,
-    parameters = :constebeta => 1.0555,
+    parameters = :z_eg => 1.0555,
     verbose = true)
 # Parameter changes: 
-#         constebeta      from 1.055      to 1.0555
+#         z_eg    from 1.055      to 1.0555
 # New parameters changed the steady state.
-# Block: 1, - Solved using previous solution; residual norm: 1.5310724891217475e-20
-# Block: 2, - Solved using previous solution; residual norm: 4.837862308855699e-18
-# Quadratic matrix equation solver: doubling - converged: true in 10 iterations to tolerance: 3.643122919838728e-16
+# Block: 1, - Solved using previous solution; residual norm: 1.776217186138026e-21
+# Block: 2, - Solved using previous solution; residual norm: 6.83217016268833e-19
+# Quadratic matrix equation solver previous solution has tolerance: 2.25183977733317e-15
 ```
 
 For most use cases, the default `:schur` algorithm is recommended. Use this argument for specific needs or encounter issues with the default solver.

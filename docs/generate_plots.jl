@@ -1131,12 +1131,12 @@ plot_fevd(FS2000,
 
 
 plot_fevd(Smets_Wouters_2007_linear,
-    parameters = :constebeta => 1,
+    parameters = :z_eg => 1,
 	save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :param_change)
 
 
 plot_fevd(Smets_Wouters_2007_linear,
-    parameters = (:constebeta => 1.5, :crpi => 1.75),
+    parameters = (:z_eg => 1.5, :crpi => 1.75),
 	save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :param_change_2)
 
 
