@@ -339,7 +339,7 @@ plot_fevd(Smets_Wouters_2007_linear,
 
 ![Smets and Wouters 2007 FEVD - custom font](../assets/font_family__Smets_Wouters_2007_linear__2.png)
 
-All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case)—for example, the subscripts (e.g. `₍₀₎`) are not rendered properly for this font.
+All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case).
 
 Here is another example that customizes the alpha (transparency) of the filled areas in the FEVD plots:
 
