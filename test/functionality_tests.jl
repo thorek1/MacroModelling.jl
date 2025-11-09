@@ -2622,6 +2622,49 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
     end
 
 
+    @testset "get_statistics - grouped covariance" begin
+        # Test grouped covariance functionality
+        if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+            # Test with 2 groups
+            stats_grouped = get_statistics(m, old_params, 
+                                          algorithm = algorithm,
+                                          covariance = [vars[2:3], vars[4:5]])
+            
+            @test haskey(stats_grouped, :covariance)
+            @test stats_grouped[:covariance] isa Matrix
+            @test size(stats_grouped[:covariance]) == (4, 4)
+            
+            # Compare with non-grouped version for validation
+            stats_non_grouped_1 = get_statistics(m, old_params,
+                                                algorithm = algorithm,
+                                                covariance = vars[2:3])
+            
+            stats_non_grouped_2 = get_statistics(m, old_params,
+                                                algorithm = algorithm,
+                                                covariance = vars[4:5])
+            
+            # Check that within-group covariances match
+            @test isapprox(stats_grouped[:covariance][1:2, 1:2], stats_non_grouped_1[:covariance], rtol = 1e-10)
+            @test isapprox(stats_grouped[:covariance][3:4, 3:4], stats_non_grouped_2[:covariance], rtol = 1e-10)
+            
+            # Check that cross-group covariances are zero
+            @test all(stats_grouped[:covariance][1:2, 3:4] .== 0)
+            @test all(stats_grouped[:covariance][3:4, 1:2] .== 0)
+            
+            # Test with different group sizes
+            stats_varied = get_statistics(m, old_params,
+                                         algorithm = algorithm,
+                                         covariance = [[vars[2]], vars[3:5]])
+            
+            @test stats_varied[:covariance] isa Matrix
+            @test size(stats_varied[:covariance]) == (4, 4)
+            # First group is 1x1, second group is 3x3
+            @test stats_varied[:covariance][1, 1] != 0  # within first group
+            @test all(stats_varied[:covariance][1, 2:4] .== 0)  # cross-group
+            @test all(stats_varied[:covariance][2:4, 1] .== 0)  # cross-group
+        end
+    end
+
 
     @testset "get_moments" begin
         for non_stochastic_steady_state in [true, false]

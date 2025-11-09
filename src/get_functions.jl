@@ -3207,7 +3207,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `mean` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the mean of selected variables (the mean for the linearised solution is the NSSS). Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
 - `standard_deviation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the standard deviation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
 - `variance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the variance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
-- `covariance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the covariance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
+- `covariance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the covariance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. For grouped covariance computation, pass a `Vector` of `Vector`s (e.g. `[[:y, :c], [:k, :i]]`) to compute covariances only within each group, returning a single covariance matrix where cross-group covariances are set to zero. This allows more granular control over which covariances to compute. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all variables less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all variables less those related to occasionally binding constraints. `:all` will contain all variables.
 - `autocorrelation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the autocorrelation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
 - `autocorrelation_periods` [Default: `1:5`, Type = `UnitRange{Int}`]: periods for which to return the autocorrelation of selected variables
 - $ALGORITHM®
@@ -3243,6 +3243,12 @@ get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_
 # output
 Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :standard_deviation => [0.0266642, 0.264677, 0.0739325, 0.0102062]
+
+# For grouped covariance (computing covariances only within specified groups):
+get_statistics(RBC, RBC.parameter_values, covariance = [[:c, :k], [:y, :i]])
+# output
+Dict{Symbol, AbstractArray{Float64}} with 1 entry:
+  :covariance => [...4x4 matrix with c-k covariances filled, y-i covariances filled, and cross-group elements set to zero...]
 ```
 """
 function get_statistics(𝓂,
@@ -3283,6 +3289,9 @@ function get_statistics(𝓂,
     var_var_idx = @ignore_derivatives parse_variables_input_to_index(variance, 𝓂.timings)
 
     covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂.timings)
+    
+    # Parse covariance groups if input is grouped format
+    covar_groups = @ignore_derivatives is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.timings) : nothing
 
     autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂.timings)
 
@@ -3405,8 +3414,38 @@ function get_statistics(𝓂,
 
         # droptol!(covar_dcmp_sp,eps(Float64))
 
-        # push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
-        ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
+        if !isnothing(covar_groups)
+            # Extract only the specified covariance groups (block diagonal structure)
+            # Return a single matrix with zeros for non-computed covariances
+            if solved
+                # Initialize matrix with zeros
+                covar_result = zeros(T, length(covar_var_idx), length(covar_var_idx))
+                
+                # Fill in only the specified groups
+                for group in covar_groups
+                    for (i_idx, i) in enumerate(group)
+                        for (j_idx, j) in enumerate(group)
+                            # Find position in covar_var_idx
+                            i_pos = findfirst(==(i), covar_var_idx)
+                            j_pos = findfirst(==(j), covar_var_idx)
+                            if !isnothing(i_pos) && !isnothing(j_pos)
+                                covar_result[i_pos, j_pos] = covar_dcmp_sp[i, j]
+                            end
+                        end
+                    end
+                end
+                
+                ret[:covariance] = covar_result
+            else
+                # Return matrix with Inf-filled diagonal and zeros elsewhere
+                covar_result = fill(Inf * sum(abs2,parameter_values), length(covar_var_idx), length(covar_var_idx))
+                ret[:covariance] = covar_result
+            end
+        else
+            # Original behavior for non-grouped input
+            # push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
+            ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
+        end
     end
     if !(autocorrelation == Symbol[]) 
         # push!(ret,autocorr[autocorr_var_idx,:] )
