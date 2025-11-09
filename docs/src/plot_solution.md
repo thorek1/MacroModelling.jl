@@ -8,8 +8,6 @@ In the case of pruned higher order solutions there are as many (latent) state ve
 
 If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
 
-## Basic Usage
-
 First, define and load a model:
 
 ```julia
@@ -69,9 +67,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A)
 
 The function plots each endogenous variable in period `t` against the state variable `A` in `t-1`. Each subplot shows how the variable changes on the y-axis as `A` varies within the specified range over the x-axis. The relevant steady state is indicated by a circle of the same color as the line. The title of each subplot indicates the variable name and the title of the overall plot indicates the model name, and page number (if multiple pages are needed). The legend below the plots indicate the solution algorithm used and the nature of the steady state (stochastic or non-stochastic).
 
-## Function Arguments
-
-### State Variable (Required)
+## State Variable (Required)
 
 The `state` argument (type: `Union{Symbol, String}`) specifies which state variable to vary. This must be a state variable from the model (variables with lagged values). If a state variable is provided that is not part of the model's state vector, an error is raised and the valid state variables are listed.
 
@@ -80,7 +76,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A)  # Using Symbol
 plot_solution(Gali_2015_chapter_3_nonlinear, "A") # Using String
 ```
 
-### Variables to Plot
+## Variables to Plot
 
 The `variables` argument (default: `:all`) specifies for which variables to show results. Variable names can be specified as either a `Symbol` or `String` (e.g. `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). `:all_excluding_obc` includes all variables except those related to occasionally binding constraints. `:all` includes all variables.
 
@@ -276,7 +272,7 @@ get_equations(Gali_2015_chapter_3_obc)
 #  "ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁴⁰⁾[0] = ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁹⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁰⁾[x]"
 ```
 
-### Solution Algorithm
+## Solution Algorithm
 
 The `algorithm` argument (default: `:first_order`, type: `Symbol`) specifies which algorithm to use to solve for the dynamics of the model. Available algorithms: `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`.
 
@@ -307,7 +303,7 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
 
 The additional solution appears as another colored line with corresponding entries in the legend. Note that the pruned third-order solution incorporates time-varying risk and reverses the sign of the response for `MC` and `N`.
 
-### State Variable Range
+## State Variable Range
 
 The `σ` argument (default: `2`, type: `Union{Int64, Float64}`) specifies the range of the state variable as a multiple of its standard deviation. The state variable varies from `-σ * std(state)` to `+σ * std(state)`.
 
@@ -323,7 +319,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 This expands the x-axis range, showing how the policy functions behave further from the steady state.
 
-### Parameter Values
+## Parameter Values
 
 When no parameters are provided, the solution uses the previously defined parameter values. Parameters can be provided as a `Vector` of values, or as a `Vector` or `Tuple` of `Pair`s mapping parameter `Symbol`s or `String`s to values. The solution is recalculated when new parameter values differ from the previous ones.
 
@@ -415,7 +411,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     parameters = param_vals)
 ```
 
-### Ignoring Occasionally Binding Constraints
+## Ignoring Occasionally Binding Constraints
 
 The `ignore_obc` argument (default: `false`, type: `Bool`), when `true`, ignores occasionally binding constraints (OBC) even if they are part of the model. This is useful for comparing dynamics with and without OBC.
 For models with defined OBC, use the `ignore_obc` argument to ignore them. The following example compares the policy functions of the `Gali_2015_chapter_3_obc` model with and without OBC. First, examine the policy function with OBC enforced. Since OBC is enforced by default, call:
@@ -437,7 +433,7 @@ plot_solution!(Gali_2015_chapter_3_obc, :A,
 
 The legend indicates which color corresponds to each `ignore_obc` value. The difference between the two can be noticed at the effective lower bound for `R`. For values of `A` where the effective lower bound is reached the shocks enforcing the lower bound act on the economy and the policy function changes for most other variables as well.
 
-### Plot Labels
+## Plot Labels
 
 The `label` argument (type: `Union{Real, String, Symbol}`) adds custom labels to the plot legend. This is useful when comparing multiple solutions using `plot_solution!` to overlay plots. By default, labels take on the values of the one dimensional input that differs and are sequential numbers in case the input differs along more than one dimension. Furthermore, custom labels can be provided using this argument. Acceptable inputs are a `String`, `Symbol`, or a `Real`.
 
@@ -468,7 +464,7 @@ plot_solution!(Gali_2015_chapter_3_obc, :A,
 
 The plot demonstrates how to use labels to describe complex inputs. Here variations in multiple input dimensions are compared: solution algorithms, occasionally binding constraints, and parameter values.
 
-### Plot Attributes
+## Plot Attributes
 
 The `plot_attributes` argument (default: `Dict()`, type: `Dict`) accepts a dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.
 
@@ -530,7 +526,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 ![Gali 2015 solution - custom linestyle and width](../assets/attr_line__Gali_2015_chapter_3_nonlinear__A__1.png)
 
-### Plots Per Page
+## Plots Per Page
 
 The `plots_per_page` argument (default: `6`, type: `Int`) controls the number of subplots per page. When the number of variables exceeds this value, multiple pages are created.
 The following example selects 4 variables and sets `plots_per_page` to 2, resulting in 2 pages with 2 subplots each:
@@ -545,7 +541,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 The first page displays the first two variables (sorted alphabetically) with two subplots for each shock. The title indicates this is page 1 of 2.
 
-### Display Plots
+## Display Plots
 
 The `show_plots` argument (default: `true`, type: `Bool`), when `true`, displays the plots; otherwise, they are only returned as an object.
 
@@ -554,7 +550,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
     show_plots = false)
 ```
 
-### Saving Plots
+## Saving Plots
 
 The `save_plots` argument (default: `false`, type: `Bool`), when `true`, saves the plots to disk; otherwise, they are only displayed and returned as an object.
 
@@ -578,7 +574,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file with a name reflecting the model, the shock, and a sequential index when the number of variables exceeds the plots per page.
 
-### Variable and Shock Renaming
+## Variable and Shock Renaming
 
 The `rename_dictionary` argument (default: `Dict()`, type: `AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}}`) maps variable or shock symbols to custom display names in plots. This is particularly useful when comparing models with different variable naming conventions, allowing them to be displayed with consistent labels.
 
@@ -721,7 +717,7 @@ plot_solution(Backus_Kehoe_Kydland_1992, "K{H}",
 
 Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
 
-### Verbose Output
+## Verbose Output
 
 The `verbose` argument (default: `false`, type: `Bool`), when `true`, enables verbose output related to solving the model
 
@@ -751,7 +747,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 # Block: 2, - Solved using previous solution; residual norm: 1.1102230246251565e-16
 ```
 
-### Numerical Tolerances
+## Numerical Tolerances
 
 The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: `?Tolerances`
 The tolerances used by the numerical solvers can be adjusted. The Tolerances object allows setting tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (QME). For example, to set tighter tolerances (this example also changes parameters to force recomputation):
@@ -788,7 +784,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or encounter issues with the default solver.
 
-### Quadratic Matrix Equation Solver
+## Quadratic Matrix Equation Solver
 
 The `quadratic_matrix_equation_algorithm` argument (default: `:schur`, type: `Symbol`) specifies the algorithm to solve quadratic matrix equation (`A * X ^ 2 + B * X + C = 0`). Available algorithms: `:schur`, `:doubling`
 The quadratic matrix equation solver is used internally when solving the model to first order. Different algorithms are available. The `:schur` algorithm is generally faster and more reliable, while `:doubling` can be more precise in some cases (this example also changes parameters to force recomputation):
@@ -814,7 +810,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 For most use cases, the default `:schur` algorithm is recommended. Use this argument for specific needs or encounter issues with the default solver.
 
-### Sylvester Equation Solver
+## Sylvester Equation Solver
 
 [Default: selector that uses `:doubling` for smaller problems and switches to `:bicgstab` for larger problems, Type: `Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}}`]: Algorithm to solve the Sylvester equation (`A * X * B + C = X`). Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:dqgmres`, `:gmres`. The input argument can contain up to two elements in a `Vector` or `Tuple`. The first (second) element corresponds to the second (third) order perturbation solution's Sylvester equation. When only one element is provided, it corresponds to the second-order perturbation solution's Sylvester equation.
 The algorithm to use can be specified for solving Sylvester equations in higher-order solutions. For example, select the `:bartels_stewart` algorithm for solving the second-order perturbation problem:
@@ -868,7 +864,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 The choice of algorithm affects both speed and precision: `:doubling` and `:bartels_stewart` are generally faster, while `:bicgstab`, `:dqgmres`, and `:gmres` are better for large sparse problems. Use this argument for specific needs or encounter issues with the default solver.
 
-### Lyapunov Equation Solver
+## Lyapunov Equation Solver
 
 [Default: `:doubling`, Type: `Symbol`]: Algorithm to solve the Lyapunov equation (`A * X * A' + C = X`). Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`.
 
