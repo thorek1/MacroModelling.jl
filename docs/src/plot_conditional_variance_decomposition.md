@@ -2,8 +2,6 @@
 
 The `plot_conditional_variance_decomposition` function visualizes the forecast error variance decomposition (FEVD), showing how much of the variance in forecast errors for each variable can be attributed to different shocks over various forecast horizons.
 
-## Basic Usage
-
 First, define and load a model:
 
 ```julia
@@ -129,9 +127,7 @@ Note that if occasionally binding constraints are present in the model, they are
 
 The same function can be called using different names. For example: `plot_fevd`, or `plot_forecast_error_variance_decomposition`. Going forward, `plot_fevd` will be used for brevity.
 
-## Arguments
-
-### Periods Argument
+## Periods Argument
 
 The `periods` argument (default: `40`, type: `Int`) specifies the number of forecast horizons to include in the variance decomposition. This determines how far into the future the decomposition extends.
 
@@ -142,7 +138,7 @@ plot_fevd(Smets_Wouters_2007_linear, periods = 12)
 
 ![Smets and Wouters 2007 FEVD - 12 periods](../assets/short_period__Smets_Wouters_2007_linear__2.png)
 
-### Variables to Plot
+## Variables to Plot
 
 The `variables` argument (default: `:all`) specifies for which variables to show results. Variable names can be specified as either a `Symbol` or `String` (e.g. `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). `:all_excluding_obc` includes all variables except those related to occasionally binding constraints. `:all` includes all variables.
 
@@ -260,7 +256,7 @@ Both `c` and `P` appear twice: once as the variable itself and once as an auxili
 plot_fevd(FS2000)
 ```
 
-### Parameter Values
+## Parameter Values
 
 When no parameters are provided, the solution uses the previously defined parameter values. Parameters can be provided as a `Vector` of values, or as a `Vector` or `Tuple` of `Pair`s mapping parameter `Symbol`s or `String`s to values. The solution is recalculated when new parameter values differ from the previous ones.
 
@@ -302,7 +298,7 @@ plot_fevd(Smets_Wouters_2007_linear,
     parameters = param_vals)
 ```
 
-### Plot Attributes
+## Plot Attributes
 
 The `plot_attributes` argument (default: `Dict()`, type: `Dict`) accepts a dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.
 
@@ -354,7 +350,7 @@ plot_fevd(Smets_Wouters_2007_linear,
 
 ![Smets and Wouters 2007 FEVD - custom fill alpha](../assets/fill_alpha__Smets_Wouters_2007_linear__2.png)
 
-### Plots Per Page
+## Plots Per Page
 
 The `plots_per_page` argument (default: `9`, type: `Int`) controls the number of subplots per page. When the number of variables exceeds this value, multiple pages are created.
 The following example selects 6 variables and sets `plots_per_page` to 4, resulting in 2 pages with the first page having 4 subplots and the second page having 2 subplots:
@@ -369,7 +365,7 @@ plot_fevd(Smets_Wouters_2007_linear,
 
 The first page displays the first four variables (sorted alphabetically) with two subplots for each shock. The title indicates this is page 1 of 2.
 
-### Display Plots
+## Display Plots
 
 The `show_plots` argument (default: `true`, type: `Bool`), when `true`, displays the plots; otherwise, they are only returned as an object.
 
@@ -378,7 +374,7 @@ plot_fevd(Smets_Wouters_2007_linear,
     show_plots = false)
 ```
 
-### Saving Plots
+## Saving Plots
 
 The `save_plots` argument (default: `false`, type: `Bool`), when `true`, saves the plots to disk; otherwise, they are only displayed and returned as an object.
 
@@ -402,7 +398,7 @@ plot_fevd(Smets_Wouters_2007_linear,
 
 The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file with a name reflecting the model, the shock, and a sequential index when the number of variables exceeds the plots per page.
 
-### Variable and Shock Renaming
+## Variable and Shock Renaming
 
 The `rename_dictionary` argument (default: `Dict()`, type: `AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}}`) maps variable or shock symbols to custom display names in plots. This is particularly useful when comparing models with different variable naming conventions, allowing them to be displayed with consistent labels.
 
@@ -492,7 +488,7 @@ plot_fevd(Backus_Kehoe_Kydland_1992,
 
 Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
 
-### Verbose Output
+## Verbose Output
 
 The `verbose` argument (default: `false`, type: `Bool`), when `true`, enables verbose output related to solving the model
 
@@ -516,7 +512,7 @@ plot_fevd(Smets_Wouters_2007_linear,
 # Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 2.4783378081744145e-15
 ```
 
-### Numerical Tolerances
+## Numerical Tolerances
 
 The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: `?Tolerances`
 The tolerances used by the numerical solvers can be adjusted. The Tolerances object allows setting tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (QME). For example, to set tighter tolerances (this example also changes parameters to force recomputation):
@@ -539,7 +535,7 @@ plot_fevd(Smets_Wouters_2007_linear,
 
 This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or encounter issues with the default solver.
 
-### Quadratic Matrix Equation Solver
+## Quadratic Matrix Equation Solver
 
 The `quadratic_matrix_equation_algorithm` argument (default: `:schur`, type: `Symbol`) specifies the algorithm to solve quadratic matrix equation (`A * X ^ 2 + B * X + C = 0`). Available algorithms: `:schur`, `:doubling`
 The quadratic matrix equation solver is used internally when solving the model to first order. Different algorithms are available. The `:schur` algorithm is generally faster and more reliable, while `:doubling` can be more precise in some cases (this example also changes parameters to force recomputation):
