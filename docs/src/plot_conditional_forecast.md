@@ -139,7 +139,7 @@ conditions_sp[12,6] = 1.5
 conditions_sp[12,7] = 1.6
 conditions_sp[12,8] = 1.7
 
-conditions_sp[9,9] = 1.0
+conditions_sp[9,8] = 1.0
 
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
                             conditions_sp)
@@ -147,7 +147,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast sparse matrix input](../assets/cnd_fcst_2_vars__Gali_2015_chapter_3_nonlinear__1.png)
 
-The paths on both variables are enforced and in the 9th period the paths of the endogenous variables and shocks differ to the previous example.
+The paths on both variables are enforced and in the 8th period the paths of the endogenous variables and shocks differ to the previous example.
 
 One can make this even more clear by overlaying the two conditional forecasts with their different conditions:
 
@@ -162,7 +162,7 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 ![Gali 2015 conditional forecast overlay](../assets/cnd_fcst_plot_overlay__Gali_2015_chapter_3_nonlinear__2.png)
 
 The differences between the two become now clearly visible. Note that there are only 6 subplots per plot and at the bottom the legend now features the two set of conditions using a running ID to reference them, and the marker for the conditions also takes on the color of the line.
-
+#### misleading example, we would need to use the shock processes or shocks to condition on them ####
 Another way two disentangle the difference between the two is to stack the difference betwee the first and second set of conditions on top of the first set. The difference as a condidition is only `R = 1.0` in the 8th period:
 
 ```julia

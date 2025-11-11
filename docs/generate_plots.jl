@@ -3,6 +3,7 @@
 # to the docs/assets/ directory, allowing the documentation to be regenerated.
 
 ## Setup
+# using Revise
 using MacroModelling
 import StatsPlots
 using AxisKeys
@@ -1323,7 +1324,7 @@ conditions_sp[12,6] = 1.5
 conditions_sp[12,7] = 1.6
 conditions_sp[12,8] = 1.7
 
-conditions_sp[9,9] = 1.0
+conditions_sp[9,8] = 1.0
 
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
                             conditions_sp,
