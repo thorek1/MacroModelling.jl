@@ -646,7 +646,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
-- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
+- $CONDITIONS_IN_LEVELS®
 - `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
 - $ALGORITHM®
 - $QME®
