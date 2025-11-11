@@ -1239,3 +1239,691 @@ plot_fevd(Backus_Kehoe_Kydland_1992,
                              "Y{H}" => "Output (Home)",
                              "Y{F}" => "Output (Foreign)"),
     save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :rename_dict_string)
+
+
+# Conditional Forecasting
+
+# Load a model
+@model Gali_2015_chapter_3_nonlinear begin
+	W_real[0] = C[0] ^ σ * N[0] ^ φ
+	Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+	R[0] = 1 / Q[0]
+	Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+	R[0] = Pi[1] * realinterest[0]
+	R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])
+	C[0] = Y[0]
+	log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+	log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+	nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+	MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+	1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+	S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+	Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+	x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+	x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+	log_y[0] = log(Y[0])
+	log_W_real[0] = log(W_real[0])
+	log_N[0] = log(N[0])
+	pi_ann[0] = 4 * log(Pi[0])
+	i_ann[0] = 4 * log(R[0])
+	r_real_ann[0] = 4 * log(realinterest[0])
+	M_real[0] = Y[0] / R[0] ^ η
+end
+
+@parameters Gali_2015_chapter_3_nonlinear begin
+	σ = 1
+	φ = 5
+	ϕᵖⁱ = 1.5
+	ϕʸ = 0.125
+	θ = 0.75
+	ρ_ν = 0.5
+	ρ_z = 0.5
+	ρ_a = 0.9
+	β = 0.99
+	η = 3.77
+	α = 0.25
+	ϵ = 9
+	τ = 0
+    std_a = .01
+    std_z = .05
+    std_nu = .0025
+end
+
+
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:Y], Periods = [1])
+conditions[1,1] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
+                            conditions,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets")
+
+
+conditions = Matrix{Union{Nothing,Float64}}(undef,23,8)
+conditions[12,1] = 1.0
+conditions[12,2] = 1.1
+conditions[12,3] = 1.2
+conditions[12,4] = 1.3
+conditions[12,5] = 1.4
+conditions[12,6] = 1.5
+conditions[12,7] = 1.6
+conditions[12,8] = 1.7
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
+                            conditions,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_10_periods)
+
+    
+conditions_sp = spzeros(23,8)
+conditions_sp[12,1] = 1.0
+conditions_sp[12,2] = 1.1
+conditions_sp[12,3] = 1.2
+conditions_sp[12,4] = 1.3
+conditions_sp[12,5] = 1.4
+conditions_sp[12,6] = 1.5
+conditions_sp[12,7] = 1.6
+conditions_sp[12,8] = 1.7
+
+conditions_sp[9,8] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
+                            conditions_sp,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_2_vars)
+
+
+    
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
+                            conditions)
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,  
+                            conditions_sp,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_plot_overlay)
+
+
+    
+conditions_diff = spzeros(23,8)
+conditions_diff[9,8] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
+                            conditions)
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,  
+                            conditions_diff,
+                            plot_type = :stack,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_plot_stack)
+
+
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka[1,1] = 1.0
+conditions_ka[2,2] = 1.0
+conditions_ka[3,3] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_plot_ka)
+                         
+
+    
+shocks = Matrix{Union{Nothing,Float64}}(undef,3,8)
+shocks[2,:] .= 0
+shocks[3,:] .= 0
+
+conditions = Matrix{Union{Nothing,Float64}}(undef,23,8)
+conditions[12,1] = 1.0
+conditions[12,2] = 1.1
+conditions[12,3] = 1.2
+conditions[12,4] = 1.3
+conditions[12,5] = 1.4
+conditions[12,6] = 1.5
+conditions[12,7] = 1.6
+conditions[12,8] = 1.7
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions,
+                         shocks = shocks,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_shocks)
+                         
+
+    
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions,
+                         shocks = shocks)
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                         conditions,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_shocks_compare)
+
+
+    
+shocks_sp = spzeros(3,3)
+shocks_sp[1,1] = 0.1
+shocks_sp[2,2] = 0.1
+shocks_sp[3,3] = 0.1
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka[1,1] = 1.0
+conditions_ka[2,2] = 1.0
+conditions_ka[3,3] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         shocks = shocks_sp,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_shocks_sp)
+    
+
+shocks_ka = KeyedArray(Matrix{Float64}(undef,1,3),Variables = [:eps_a], Periods = 1:3)
+shocks_ka .= 0.0
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka[1,1] = 1.0
+conditions_ka[2,2] = 1.0
+conditions_ka[3,3] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         shocks = shocks_ka,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_shocks_ka)
+    
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         shocks = shocks_ka)
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         shocks = shocks_sp,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_shocks_compare_sp_ka)
+
+    
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka[1,1] = 1.0
+conditions_ka[2,2] = 1.0
+conditions_ka[3,3] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         algorithm = :second_order,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_second_order)
+
+
+    
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka)
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         algorithm = :second_order,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_second_order_combine)
+
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         algorithm = :pruned_third_order,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_higher_order_combine)
+    
+    
+
+init_state = get_irf(Gali_2015_chapter_3_nonlinear,
+    shocks = :none,
+    variables = :all,
+    periods = 1,
+    levels = true)
+    
+init_state(:nu,:,:) .= 0.1
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,13),Variables = [:R, :Y, :MC], Periods = 1:13)
+conditions_ka[1,11] = 1.0
+conditions_ka[2,12] = 1.0
+conditions_ka[3,13] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         initial_state = vec(init_state),
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_init_state)
+    
+
+init_state_pruned_3rd_in_diff = get_irf(Gali_2015_chapter_3_nonlinear,
+    shocks = :none,
+    variables = :all,
+    periods = 1,
+    levels = true) - get_irf(Gali_2015_chapter_3_nonlinear,
+    shocks = :none,
+    variables = :all,
+    periods = 1,
+    algorithm = :pruned_third_order,
+    levels = true)
+    
+init_states_pruned_3rd_vec = [
+    zero(vec(init_state_pruned_3rd_in_diff)),
+    vec(init_state_pruned_3rd_in_diff),
+    zero(vec(init_state_pruned_3rd_in_diff)),
+]
+
+init_states_pruned_3rd_vec[1][18] = 0.1
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         initial_state = init_states_pruned_3rd_vec,
+                         algorithm = :pruned_third_order,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_init_state_3rd_order)
+
+    
+
+init_state_pruned_3rd = get_irf(Gali_2015_chapter_3_nonlinear,
+    shocks = :none,
+    variables = :all,
+    periods = 1,
+    levels = true,
+    algorithm = :pruned_third_order)
+
+init_state_pruned_3rd(:nu, :,  :) .= 0.1
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         initial_state = vec(init_state_pruned_3rd),
+                         algorithm = :pruned_third_order)
+                         
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         initial_state = vec(init_state),
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_init_state_compare_orders)
+    
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,13),Variables = [:R, :Y, :MC], Periods = 1:13)
+conditions_ka[1,11] = 1.0
+conditions_ka[2,12] = 1.0
+conditions_ka[3,13] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         periods = 10,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_periods)
+    
+
+shocks_ka = KeyedArray(Matrix{Float64}(undef,1,20),Variables = [:eps_a], Periods = 1:20)
+shocks_ka .= 0.0
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         shocks = shocks_ka,
+                         periods = 30,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_30_periods)
+    
+
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka[1,1] = 1.0
+conditions_ka[2,2] = 1.0
+conditions_ka[3,3] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         variables = [:Y, :Pi],
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_vars)
+    
+    
+    
+    
+@model FS2000 begin
+    dA[0] = exp(gam + z_e_a  *  e_a[x])
+    log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+    - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+    W[0] = l[0] / n[0]
+    - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+    R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+    1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+    c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+    P[0] * c[0] = m[0]
+    m[0] - 1 + d[0] = l[0]
+    e[0] = exp(z_e_a  *  e_a[x])
+    y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+    gy_obs[0] = dA[0] * y[0] / y[-1]
+    gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+    log_gy_obs[0] = log(gy_obs[0])
+    log_gp_obs[0] = log(gp_obs[0])
+end
+
+@parameters FS2000 begin
+    alp     = 0.356
+    bet     = 0.993
+    gam     = 0.0085
+    mst     = 1.0002
+    rho     = 0.129
+    psi     = 0.65
+    del     = 0.01
+    z_e_a   = 0.035449
+    z_e_m   = 0.008862
+end
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:P, :R, :c], Periods = 1:3)
+conditions_ka[1,1] = 1.0
+conditions_ka[2,2] = 1.0
+conditions_ka[3,3] = 1.0
+
+plot_conditional_forecast(FS2000,
+                         conditions_ka,
+                         variables = :all_excluding_obc,
+    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_all_excluding_obc)
+    
+    
+@model Gali_2015_chapter_3_obc begin
+	W_real[0] = C[0] ^ σ * N[0] ^ φ
+	Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+	R[0] = 1 / Q[0]
+	Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+	R[0] = Pi[1] * realinterest[0]
+	R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+	C[0] = Y[0]
+	log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+	log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+	nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+	MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+	1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+	S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+	Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+	x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+	x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+	log_y[0] = log(Y[0])
+	log_W_real[0] = log(W_real[0])
+	log_N[0] = log(N[0])
+	pi_ann[0] = 4 * log(Pi[0])
+	i_ann[0] = 4 * log(R[0])
+	r_real_ann[0] = 4 * log(realinterest[0])
+	M_real[0] = Y[0] / R[0] ^ η
+end
+
+@parameters Gali_2015_chapter_3_obc begin
+    R̄ = 1.0
+	σ = 1
+	φ = 5
+	ϕᵖⁱ = 1.5
+	ϕʸ = 0.125
+	θ = 0.75
+	ρ_ν = 0.5
+	ρ_z = 0.5
+	ρ_a = 0.9
+	β = 0.99
+	η = 3.77
+	α = 0.25
+	ϵ = 9
+	τ = 0
+    std_a = .01
+    std_z = .05
+    std_nu = .0025
+    R > 1.0001
+end
+
+
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:C, :R, :Y], Periods = 1:3)
+conditions_ka[1,1] = 1.0
+conditions_ka[2,2] = 1.0
+conditions_ka[3,3] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_obc,
+                         conditions_ka,
+                         variables = :all,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_all)
+                         
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka[1,1] = 1.0
+conditions_ka[2,2] = 1.0
+conditions_ka[3,3] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         parameters = :β => 0.95,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_beta_95)
+                         
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         parameters = :β => 0.99)
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         parameters = :β => 0.95,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_compare_beta)
+                         
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         parameters = (:β => 0.97, :τ => 0.5),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_multi_params)
+                         
+
+conditions_in_dev_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:Y], Periods = 1:1)
+conditions_in_dev_ka[1,1] = -0.05
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_in_dev_ka,
+                         conditions_in_levels = false,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_no_levels)
+                         
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                         conditions_in_dev_ka,
+                         conditions_in_levels = false,
+                         algorithm = :second_order,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_no_levels_second_order)
+
+                         
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:Y], Periods = 1:1)
+conditions_ka[1,1] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+    conditions_ka,
+    parameters = (:β => 0.99, :τ => 0.0),
+    label = "Std. params")
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+    conditions_ka,
+    parameters = (:β => 0.95, :τ => 0.5),
+    label = "Alt. params",
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_label)
+
+                         
+
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 .= 0.1
+
+# First shock in the scenario
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+    conditions_ka1,
+    conditions_in_levels = false)
+
+conditions_ka2 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,10),Variables = [:Y,:R], Periods = 1:10)
+conditions_ka2[1,:] .= -0.1
+conditions_ka2[2,:] .= 0.0
+
+# Add second shock to show cumulative effect
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+    conditions_ka2,
+    conditions_in_levels = false,
+    plot_type = :stack,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_stack)
+
+                         
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:R], Periods = 1:1)
+conditions_ka .= 1.0
+
+# Baseline parameterization
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+    conditions_ka,
+    parameters = :β => 0.99)
+
+# Alternative parameterization for comparison
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+    conditions_ka,
+    parameters = :β => 0.95,
+    plot_type = :compare,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_compare)
+
+                         
+
+ec_color_palette =
+[
+	"#FFD724", 	# "Sunflower Yellow"
+	"#353B73", 	# "Navy Blue"
+	"#2F9AFB", 	# "Sky Blue"
+	"#B8AAA2", 	# "Taupe Grey"
+	"#E75118", 	# "Vermilion"
+	"#6DC7A9", 	# "Mint Green"
+	"#F09874", 	# "Coral"
+	"#907800"  	# "Olive"
+]
+
+
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 .= 0.1
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+    conditions_ka1,
+    conditions_in_levels = false)
+
+
+conditions_ka2 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,10),Variables = [:Y,:R], Periods = 1:10)
+conditions_ka2[1,:] .= -0.1
+conditions_ka2[2,:] .= 0.0
+
+# Add second shock to show cumulative effect
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+    conditions_ka2,
+    conditions_in_levels = false,
+    plot_attributes = Dict(:palette => ec_color_palette),
+    plot_type = :stack,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_color)
+
+                         
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+    conditions_ka,
+    plot_attributes = Dict(:fontfamily => "computer modern"),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_font)
+
+                         
+
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 .= 0.1
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+    conditions_ka1,
+    conditions_in_levels = false,
+    variables = [:Y, :Pi, :R, :C, :N, :W_real, :MC, :i_ann, :A],
+    plots_per_page = 2,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_2_per_page)
+
+
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 .= 0.1
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+    conditions_ka1,
+    conditions_in_levels = false,
+    rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_rename_dict)
+
+                         
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:P, :R, :c], Periods = 1:3)
+conditions_ka[1,1] = 1.0
+conditions_ka[2,2] = 1.0
+conditions_ka[3,3] = 1.0
+
+plot_conditional_forecast(FS2000,
+                         conditions_ka,
+                         rename_dictionary = Dict(:c => "Consumption", :y => "Output", :R => "Interest Rate"))
+
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 .= 0.1
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+    conditions_ka1,
+    rename_dictionary = Dict(:C => "Consumption", :Y => "Output", :R => "Interest Rate"),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_rename_dict2)
+
+                         
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 .= 0.1
+
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                            conditions_ka1,
+                            rename_dictionary = Dict(:eps_a => "Technology Shock", :eps_nu => "Monetary Policy Shock"))
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:P, :R, :c], Periods = 1:3)
+conditions_ka[1,1] = 1.0
+conditions_ka[2,2] = 1.0
+conditions_ka[3,3] = 1.0
+
+plot_conditional_forecast!(FS2000,
+                         conditions_ka,
+                         rename_dictionary = Dict(:e_a => "Technology Shock", :e_m => "Monetary Policy Shock"),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_rename_dict_shocks)
+
+                         
+
+@model Backus_Kehoe_Kydland_1992 begin
+    for co in [H, F]
+        Y{co}[0] = ((LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1-theta{co}))^(-nu{co}) + sigma{co} * Z{co}[-1]^(-nu{co}))^(-1/nu{co})
+        K{co}[0] = (1-delta{co})*K{co}[-1] + S{co}[0]
+        X{co}[0] = for lag in (-4+1):0 phi{co} * S{co}[lag] end
+        A{co}[0] = (1-eta{co}) * A{co}[-1] + N{co}[0]
+        L{co}[0] = 1 - alpha{co} * N{co}[0] - (1-alpha{co})*eta{co} * A{co}[-1]
+        U{co}[0] = (C{co}[0]^mu{co}*L{co}[0]^(1-mu{co}))^gamma{co}
+        psi{co} * mu{co} / C{co}[0]*U{co}[0] = LGM[0]
+        psi{co} * (1-mu{co}) / L{co}[0] * U{co}[0] * (-alpha{co}) = - LGM[0] * (1-theta{co}) / N{co}[0] * (LAMBDA{co}[0] * K{co}[-4]^theta{co}*N{co}[0]^(1-theta{co}))^(-nu{co})*Y{co}[0]^(1+nu{co})
+
+        for lag in 0:(4-1)  
+            beta{co}^lag * LGM[lag]*phi{co}
+        end +
+        for lag in 1:4
+            -beta{co}^lag * LGM[lag] * phi{co} * (1-delta{co})
+        end = beta{co}^4 * LGM[+4] * theta{co} / K{co}[0] * (LAMBDA{co}[+4] * K{co}[0]^theta{co} * N{co}[+4]^(1-theta{co})) ^ (-nu{co})* Y{co}[+4]^(1+nu{co})
+
+        LGM[0] = beta{co} * LGM[+1] * (1+sigma{co} * Z{co}[0]^(-nu{co}-1)*Y{co}[+1]^(1+nu{co}))
+        NX{co}[0] = (Y{co}[0] - (C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1]))/Y{co}[0]
+    end
+
+    (LAMBDA{H}[0]-1) = rho{H}{H}*(LAMBDA{H}[-1]-1) + rho{H}{F}*(LAMBDA{F}[-1]-1) + Z_E{H} * E{H}[x]
+    (LAMBDA{F}[0]-1) = rho{F}{F}*(LAMBDA{F}[-1]-1) + rho{F}{H}*(LAMBDA{H}[-1]-1) + Z_E{F} * E{F}[x]
+
+    for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
+end
+
+@parameters Backus_Kehoe_Kydland_1992 begin
+    K_ss = 11
+    K[ss] = K_ss | beta
+    
+    mu      =    0.34
+    gamma   =    -1.0
+    alpha   =    1
+    eta     =    0.5
+    theta   =    0.36
+    nu      =    3
+    sigma   =    0.01
+    delta   =    0.025
+    phi     =    1/4
+    psi     =    0.5
+
+    Z_E = 0.00852
+    
+    rho{H}{H} = 0.906
+    rho{F}{F} = rho{H}{H}
+    rho{H}{F} = 0.088
+    rho{F}{H} = rho{H}{F}
+end
+
+
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = ["C{H}", "C{F}"], Periods = 1:2)
+conditions_ka[1,1] = 1.0
+conditions_ka[2,2] = 1.0
+
+plot_conditional_forecast(Backus_Kehoe_Kydland_1992,
+    conditions_ka,
+    rename_dictionary = Dict("C{H}" => "Home Consumption", 
+                             "C{F}" => "Foreign Consumption",
+                             "Y{H}" => "Home Output",
+                             "Y{F}" => "Foreign Output"),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_rename_dict_string)
