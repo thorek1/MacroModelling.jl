@@ -2,6 +2,56 @@
 
 Calling `plot_irf` computes IRFs for **every exogenous shock** and **every endogenous variable** by default, using the model's default solution method (first-order perturbation) and a **one-standard-deviation positive** shock.
 
+
+First, define and load a model:
+
+```julia
+@model Gali_2015_chapter_3_nonlinear begin
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    R[0] = 1 / Q[0]
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+    R[0] = Pi[1] * realinterest[0]
+    R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])
+    C[0] = Y[0]
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+    log_y[0] = log(Y[0])
+    log_W_real[0] = log(W_real[0])
+    log_N[0] = log(N[0])
+    pi_ann[0] = 4 * log(Pi[0])
+    i_ann[0] = 4 * log(R[0])
+    r_real_ann[0] = 4 * log(realinterest[0])
+    M_real[0] = Y[0] / R[0] ^ η
+end
+
+@parameters Gali_2015_chapter_3_nonlinear begin
+    σ = 1
+    φ = 5
+    ϕᵖⁱ = 1.5
+    ϕʸ = 0.125
+    θ = 0.75
+    ρ_ν = 0.5
+    ρ_z = 0.5
+    ρ_a = 0.9
+    β = 0.99
+    η = 3.77
+    α = 0.25
+    ϵ = 9
+    τ = 0
+    std_a = .01
+    std_z = .05
+    std_nu = .0025
+end
+```
+
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear)
 ```
@@ -165,7 +215,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 The legend shows two lines, with their input differences detailed in the table below. The first line corresponds to the initial state used for the first order solution as well as the IRF using the first order solution and the second line corresponds to the initial state used for the second order solution and using the second order solution. Note that the steady states differ between the two solution methods, which also affects the initial states (except for `nu`, which is set to 0.1 in both cases). A second table below the first one shows the relevant steady states for both solution methods. Since the relevant steady state of `A` is the same for both methods, the corresponding subplot shows the level on the left axis and percentage deviations on the right axis. For all other variables, the relevant steady state differs between methods, so only absolute level deviations appear (`abs. Δ`) on the left axis, with steady states listed in the table at the bottom.
 
-For pruned solution methods the initial state can also be given as multiple state vectors (Vector{Vector{Float64}}). When providing a vector of vectors, values must be specified as differences from the non-stochastic steady state. When providing only one vector, values must be in levels, with the initial state having its full nonlinear effect in the first period. Using a vector of vectors allows setting the pruned higher-order auxiliary state vectors. While this can be useful in some cases, note that these higher-order auxiliary state vectors have only a linear impact in the first period. Start by assembling the vector of vectors:
+For pruned solution methods the initial state can also be given as multiple state vectors (`Vector{Vector{Float64}}`). When providing a vector of vectors, values must be specified as differences from the non-stochastic steady state. When providing only one vector, values must be in levels, with the initial state having its full nonlinear effect in the first period. Using a vector of vectors allows setting the pruned higher-order auxiliary state vectors. While this can be useful in some cases, note that these higher-order auxiliary state vectors have only a linear impact in the first period. Start by assembling the vector of vectors:
 
 ```julia
 init_state_pruned_3rd_in_diff = get_irf(Gali_2015_chapter_3_nonlinear,
@@ -507,7 +557,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - mixed period lengths](../assets/mixed_periods_irf__Gali_2015_chapter_3_nonlinear__multiple_shocks__1.png)
 
-The x-axis adjusts to 35 periods, with the first plot ending after 10 periods and the second plot ending after 35 periods. The legend indicates which color corresponds to each shock, and the title shows that multiple shocks are in the plot.
+The x-axis adjusts to 35 periods, with the first plot ending after 10 periods and the second plot ending after 35 periods. The legend indicates which color corresponds to which shock, and the title shows that multiple shocks are in the plot.
 
 ## Shock Size
 
@@ -764,7 +814,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock comparing β values](../assets/compare_beta_irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
 
-The legend below the plot indicates which color corresponds to each `β` value, with the table underneath showing the relevant steady states. Note that both the steady states and dynamics differ across the two `β` values, even when the steady state remains the same (e.g., for `Y`).
+The legend below the plot indicates which color corresponds to which `β` value, with the table underneath showing the relevant steady states. Note that both the steady states and dynamics differ across the two `β` values, even when the steady state remains the same (e.g., for `Y`).
 
 Multiple parameters can also be changed simultaneously to compare the results to previous plots. This example changes `β` to 0.97 and `τ` to 0.5 using a `Tuple` of `Pair`s and define the variables with `Symbol`s:
 
@@ -776,7 +826,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock with multiple parameter changes](../assets/multi_params_irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
 
-Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to each input combination, with the table showing steady states for all three combinations.
+Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to which input combination, with the table showing steady states for all three combinations.
 
 A `Vector` of `Pair`s can also be used:
 
@@ -858,7 +908,7 @@ plot_irf!(Gali_2015_chapter_3_obc,
 
 ![Gali 2015 OBC IRF - eps_z shock comparing with and without OBC](../assets/compare_obc_irf__Gali_2015_chapter_3_obc__eps_z__1.png)
 
-The legend indicates which color corresponds to each `ignore_obc` value. Note how the interest rate `R` hits the effective lower bound in periods 1-3 when OBC is enforced (blue line) but not when OBC is ignored (orange line). The dynamics of other variables also change when OBC is enforced. Enforcing the OBC results in a deeper and longer recession. The length of the lower bound period depends on the size of the shock.
+The legend indicates which color corresponds to which `ignore_obc` value. Note how the interest rate `R` hits the effective lower bound in periods 1-3 when OBC is enforced (blue line) but not when OBC is ignored (orange line). The dynamics of other variables also change when OBC is enforced. Enforcing the OBC results in a deeper and longer recession. The length of the lower bound period depends on the size of the shock.
 
 ## Generalized Impulse Response Functions
 
@@ -889,7 +939,7 @@ plot_irf!(Gali_2015_chapter_3_obc,
 
 ![Gali 2015 OBC IRF - eps_z shock comparing GIRF vs standard](../assets/obc_girf_compare_irf__Gali_2015_chapter_3_obc__eps_z__1.png)
 
-The legend indicates which color corresponds to each `generalised_irf` value. Note how the interest rate `R` hits the effective lower bound in periods 1-3 when using the standard IRF (orange line). This suggests that the GIRF's accepted draws include many cases where the OBC is not binding. This can be confirmed by also overlaying the IRF ignoring the OBC.
+The legend indicates which color corresponds to which `generalised_irf` value. Note how the interest rate `R` hits the effective lower bound in periods 1-3 when using the standard IRF (orange line). This suggests that the GIRF's accepted draws include many cases where the OBC is not binding. This can be confirmed by also overlaying the IRF ignoring the OBC.
 
 ```julia
 plot_irf!(Gali_2015_chapter_3_obc,
@@ -1025,7 +1075,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
     label = :alternative)
 ```
 
-or with Real inputs:
+or with `Real` inputs:
 
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear,

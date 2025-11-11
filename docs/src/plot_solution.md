@@ -346,7 +346,7 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
 
 ![Gali 2015 solution - comparing β values](../assets/params_compare__Gali_2015_chapter_3_nonlinear__A__1.png)
 
-The legend below the plot indicates which color corresponds to each `β` value. Note that both the steady states and dynamics differ across the two `β` values.
+The legend below the plot indicates which color corresponds to which `β` value. Note that both the steady states and dynamics differ across the two `β` values.
 
 Multiple parameters can also be changed simultaneously to compare the results to previous plots. This example changes `β` to 0.97 and `τ` to 0.5 using a `Tuple` of `Pair`s and define the variables with `Symbol`s:
 
@@ -357,7 +357,7 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
 
 ![Gali 2015 solution - multiple parameter changes](../assets/mult_params_compare__Gali_2015_chapter_3_nonlinear__A__1.png)
 
-Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to each input combination, with the table showing relevant input combinations.
+Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to which input combination, with the table showing relevant input combinations.
 
 A `Vector` of `Pair`s can also be used:
 
@@ -431,7 +431,7 @@ plot_solution!(Gali_2015_chapter_3_obc, :A,
 
 ![Gali 2015 OBC solution - comparing with and without OBC](../assets/obc_ignore__Gali_2015_chapter_3_obc__A__2.png)
 
-The legend indicates which color corresponds to each `ignore_obc` value. The difference between the two can be noticed at the effective lower bound for `R`. For values of `A` where the effective lower bound is reached the shocks enforcing the lower bound act on the economy and the policy function changes for most other variables as well.
+The legend indicates which color corresponds to which `ignore_obc` value. The difference between the two can be noticed at the effective lower bound for `R`. For values of `A` where the effective lower bound is reached the shocks enforcing the lower bound act on the economy and the policy function changes for most other variables as well.
 
 ## Plot Labels
 
