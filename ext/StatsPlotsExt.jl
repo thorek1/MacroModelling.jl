@@ -5239,11 +5239,11 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
             view_mat = shock_mat[:, 1:lastcol]
 
-            # Normalise: replace `nothing` with 0.0
-            mat = map(x -> x === nothing ? 0.0 : float(x), view_mat)
+            # Normalise: replace `nothing` with NaN
+            mat = map(x -> x === nothing ? NaN : float(x), view_mat)
 
             # Ignore leading all-zero rows for indexing
-            firstrow = findfirst(i -> any(!=(0.0), mat[i, :]), axes(mat, 1))
+            firstrow = findfirst(i -> any(!=(NaN), mat[i, :]), axes(mat, 1))
             if firstrow === nothing
                 push!(labels, "nothing")
                 continue
