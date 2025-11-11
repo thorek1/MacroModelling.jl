@@ -71,8 +71,8 @@ Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, sp
 
 
 # Type definitions
-const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}},Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}}
-const String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}},Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}
+const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
+const String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
 const ParameterType = Union{Nothing,
                             Pair{Symbol, Float64},
                             Pair{String, Float64},
