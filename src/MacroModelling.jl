@@ -9083,7 +9083,7 @@ function parse_variables_input_to_index(variables::Union{Symbol_input, String_in
 end
 
 # Helper function to check if input is grouped covariance format
-function is_grouped_covariance_input(variables::Union{Symbol_input,String_input})::Bool
+function is_grouped_covariance_input(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}})::Bool
     # Check if it's a nested structure (vector of vectors, vector of tuples, or tuple of tuples)
     return variables isa Vector{Vector{Symbol}} || variables isa Vector{Vector{String}} ||
            variables isa Vector{Tuple{Symbol,Vararg{Symbol}}} || variables isa Vector{Tuple{String,Vararg{String}}} ||
@@ -9092,7 +9092,7 @@ function is_grouped_covariance_input(variables::Union{Symbol_input,String_input}
 end
 
 # Function to parse grouped covariance input into groups of indices
-function parse_covariance_groups(variables::Union{Symbol_input,String_input}, T::timings)::Vector{Vector{Int}}
+function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, T::timings)::Vector{Vector{Int}}
     # Convert String_input to Symbol_input for nested structures
     if variables isa Vector{Vector{String}}
         variables = [group .|> Meta.parse .|> replace_indices for group in variables]
