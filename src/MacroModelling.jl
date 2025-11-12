@@ -9013,7 +9013,7 @@ function girf(state_update::Function,
 end
 
 
-function parse_variables_input_to_index(variables::Union{Symbol_input,String_input}, T::timings)::Union{UnitRange{Int}, Vector{Int}}
+function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, T::timings)::Union{UnitRange{Int}, Vector{Int}}
     # Handle nested vector conversion separately
     if variables isa Vector{Vector{String}}
         variables = [group .|> Meta.parse .|> replace_indices for group in variables]
