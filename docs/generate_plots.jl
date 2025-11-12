@@ -283,11 +283,12 @@ param_vals = [p[2] for p in params]
 plot_irf(Gali_2015_chapter_3_nonlinear, parameters = param_vals, shocks = :eps_a)
 
 ### ignore_obc
-plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, ignore_obc = true, save_plots = true, save_plots_path = "./docs/src/assets", save_plots_format = :png, save_plots_name = :obc_irf)
+plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, save_plots = true, save_plots_path = "./docs/src/assets", save_plots_format = :png, save_plots_name = :obc_irf)
 plot_irf!(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, ignore_obc = true, save_plots = true, save_plots_path = "./docs/src/assets", save_plots_format = :png, save_plots_name = :compare_obc_irf)
 
 ### generalised_irf
 plot_irf(Gali_2015_chapter_3_obc, generalised_irf = true, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, save_plots = true, save_plots_path = "./docs/src/assets", save_plots_format = :png, save_plots_name = :obc_girf_irf)
+
 plot_irf(Gali_2015_chapter_3_obc, generalised_irf = true, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3)
 plot_irf!(Gali_2015_chapter_3_obc, shocks = :eps_z, variables = [:Y,:R,:Pi,:C], shock_size = 3, save_plots = true, save_plots_path = "./docs/src/assets", save_plots_format = :png, save_plots_name = :obc_girf_compare_irf)
 
