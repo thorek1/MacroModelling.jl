@@ -162,28 +162,6 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 ![Gali 2015 conditional forecast overlay](../assets/cnd_fcst_plot_overlay__Gali_2015_chapter_3_nonlinear__2.png)
 
 The differences between the two become now clearly visible. Note that there are only 6 subplots per plot and at the bottom the legend now features the two set of conditions using a running ID to reference them, and the marker for the conditions also takes on the color of the line.
-#### misleading example, we would need to use the shock processes or shocks to condition on them ####
-Another way two disentangle the difference between the two is to stack the difference betwee the first and second set of conditions on top of the first set. The difference as a condidition is only `R = 1.0` in the 8th period:
-
-```julia
-conditions_diff = spzeros(23,8)
-conditions_diff[9,8] = 1.0
-```
-
-Stacking the two works as follows:
-
-```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
-                            conditions)
-
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,  
-                            conditions_diff,
-                            plot_type = :stack)
-```
-
-![Gali 2015 conditional forecast stack](../assets/cnd_fcst_plot_stack__Gali_2015_chapter_3_nonlinear__2.png)
-
-In this case there are no markers for the conditions but the two paths are stacked on top of each other and add up to the path given `conditions_sp`.
 
 Another possibility to input conditions is by using a `KeyedArray`. The `KeyedArray` type is provided by the `AxisKeys` package. You can use a `KeyedArray{Union{Nothing,Float64}}` where, similar to `Matrix{Union{Nothing,Float64}}`, all entries of type `Float64` are recognised as conditions and all other entries have to be `nothing`. Furthermore, you can specify in the primary axis a subset of variables (of type `Symbol` or `String`) for which you specify conditions and all other variables are considered free. The same goes for the case when you use `KeyedArray{Float64}}` as input, whereas in this case the conditions for the specified variables bind for all periods specified in the `KeyedArray`, because there are no `nothing` entries permitted with this type.
 
@@ -261,8 +239,6 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 ```
 
 ![Gali 2015 conditional forecast - with and without shocks](../assets/cnd_fcst_shocks_compare__Gali_2015_chapter_3_nonlinear__2.png)
-
-#### wrong legend ####
 
 The paths clearly differ and are even directionally different due to the restriction on only the first shcoks being able to fulfill the conditions on the endogenous variables.
 

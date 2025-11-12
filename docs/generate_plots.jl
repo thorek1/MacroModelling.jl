@@ -1341,16 +1341,16 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 
 
     
-conditions_diff = spzeros(23,8)
-conditions_diff[9,8] = 1.0
+# conditions_diff = spzeros(23,8)
+# conditions_diff[9,8] = 1.0
 
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
-                            conditions)
+# plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
+#                             conditions)
 
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,  
-                            conditions_diff,
-                            plot_type = :stack,
-    save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_plot_stack)
+# plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,  
+#                             conditions_diff,
+#                             plot_type = :stack,
+#     save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_plot_stack)
 
 
 
