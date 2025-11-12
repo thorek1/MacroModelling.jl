@@ -665,8 +665,6 @@ plot_conditional_forecast(FS2000,
 
 ![FS2000 conditional forecast - e_a shock with auxiliary variables](../assets/cnd_fcst_all_excluding_obc__FS2000__1.png)
 
-#### superscripts got lost ####
-
 Both `c` and `P` appear twice: once as the variable itself and once as an auxiliary variable with the `ᴸ⁽¹⁾` superscript, representing the value of the variable in t+1 as expected in t.
 
 `:all` plots all variables including auxiliary variables and those used to enforce occasionally binding constraints (OBC).
@@ -1141,23 +1139,22 @@ This feature is especially valuable when overlaying conditional forecasts from d
 
 ```julia
 conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:P, :R, :c], Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
+conditions_ka[1,1] = 1.01
+conditions_ka[2,2] = 1.02
+conditions_ka[3,3] = 1.03
 
 plot_conditional_forecast(FS2000,
                          conditions_ka,
                          rename_dictionary = Dict(:c => "Consumption", :y => "Output", :R => "Interest Rate"))
 
 conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
-conditions_ka1 .= 0.1
+conditions_ka1 .= 0.01
 
 plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
     conditions_ka1,
+    conditions_in_levels = false,
     rename_dictionary = Dict(:C => "Consumption", :Y => "Output", :R => "Interest Rate"))
 ```
-
-#### conditions are mapped to wrong variables if renaming happens ####
 
 ![FS2000 and Gali 2015 conditional forecast - multiple models with rename dictionary](../assets/cnd_fcst_rename_dict2__multiple_models__2.png)
 
@@ -1167,16 +1164,17 @@ The `rename_dictionary` also works with shocks. For example, `Gali_2015_chapter_
 
 ```julia
 conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
-conditions_ka1 .= 0.1
+conditions_ka1 .= 0.01
 
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
                             conditions_ka1,
+                            conditions_in_levels = false,
                             rename_dictionary = Dict(:eps_a => "Technology Shock", :eps_nu => "Monetary Policy Shock"))
 
 conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:P, :R, :c], Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
+conditions_ka[1,1] = 1.01
+conditions_ka[2,2] = 1.02
+conditions_ka[3,3] = 1.03
 
 plot_conditional_forecast!(FS2000,
                          conditions_ka,

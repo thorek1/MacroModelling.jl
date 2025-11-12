@@ -1061,8 +1061,8 @@ function plot_model_estimates!(𝓂::ℳ,
                                 color = data_color)
     end
 
-    sort!(joint_shocks)
-    sort!(joint_variables)
+    sort!(joint_shocks, by = normalize_superscript)
+    sort!(joint_variables, by = normalize_superscript)
 
     return_plots = []
 
@@ -2569,8 +2569,8 @@ function plot_irf!(𝓂::ℳ;
         max_periods = max(max_periods, size(k[:plot_data],2))
     end
     
-    sort!(joint_shocks)
-    sort!(joint_variables)
+    sort!(joint_shocks, by = normalize_superscript)
+    sort!(joint_variables, by = normalize_superscript)
 
     if single_shock_per_irf && length(joint_shocks) > 1
         joint_shocks = [:single_shock_per_irf]
@@ -4533,15 +4533,15 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     var_idx = indexin(var_names,full_SS)
 
-    if length(intersect(𝓂.aux,var_names)) > 0
-        for v in 𝓂.aux
-            idx = indexin([v],var_names)
-            if !isnothing(idx[1])
-                var_names[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-            end
-        end
-        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-    end
+    # if length(intersect(𝓂.aux,var_names)) > 0
+    #     for v in 𝓂.aux
+    #         idx = indexin([v],var_names)
+    #         if !isnothing(idx[1])
+    #             var_names[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    #         end
+    #     end
+    #     # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    # end
     
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
                                     tol = tol,
@@ -4551,17 +4551,19 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
-    if length(intersect(𝓂.aux,full_var_SS)) > 0
+    full_var_SS_copy = deepcopy(full_var_SS)
+
+    if length(intersect(𝓂.aux,full_var_SS_copy)) > 0
         for v in 𝓂.aux
-            idx = indexin([v],full_var_SS)
+            idx = indexin([v],full_var_SS_copy)
             if !isnothing(idx[1])
-                full_var_SS[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+                full_var_SS_copy[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
             end
         end
         # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
     end
 
-    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS]
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS_copy]
 
     var_length = length(full_SS) - 𝓂.timings.nExo
     
@@ -4625,7 +4627,7 @@ function plot_conditional_forecast(𝓂::ℳ,
     @assert length(unique([v for v in full_var_SS if v ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)])) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
 
     variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
-    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(s, rename_dictionary)) for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(Symbol(replace(string(s), "₍ₓ₎" => "")), rename_dictionary)) * "₍ₓ₎" for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
     # Get sorting permutations for variables and shocks separately
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
@@ -4650,13 +4652,15 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     # Apply the combined permutation to all relevant arrays
     Y = Y[combined_sort_perm, :]
-    conditions = conditions[full_var_sort_perm, :]
-    shocks = shocks[full_shock_sort_perm, :]
-    reference_steady_state = reference_steady_state[full_combined_sort_perm]
+    # conditions = conditions[full_var_sort_perm, :]
+    # shocks = shocks[full_shock_sort_perm, :]
+    # reference_steady_state = reference_steady_state[full_combined_sort_perm]
     var_idx = var_idx[combined_sort_perm]
+    var_names_sorted = var_names[var_sort_perm]
+    shock_names_sorted = var_names[(length(variable_names_display) .+ (1:length(shock_names_display)))[shock_sort_perm]]
 
     # Get the sorted display names
-    sorted_variable_names_display = sort(variable_names_display)
+    # sorted_variable_names_display = sort(variable_names_display)
     sorted_shock_names_display = sort(shock_names_display)
 
     args_and_kwargs = Dict(:run_id => length(conditional_forecast_active_plot_container) + 1,
@@ -4689,8 +4693,8 @@ function plot_conditional_forecast(𝓂::ℳ,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
-                           :variable_names => sorted_variable_names_display, # Use the new sorted variable names
-                           :shock_names => sorted_shock_names_display,       # Use the new sorted shock names
+                           :variable_names => var_names_sorted, # Use the new sorted variable names
+                           :shock_names => shock_names_sorted,       # Use the new sorted shock names
                            :rename_dictionary => processed_rename_dictionary
                            )
     
@@ -4723,8 +4727,14 @@ function plot_conditional_forecast(𝓂::ℳ,
         if !(all(isapprox.(Y[i,:],0,atol = eps(Float32)))) || length(findall(vcat(conditions,shocks)[v,:] .!= nothing)) > 0
 
             cond_idx = findall(vcat(conditions,shocks)[v,:] .!= nothing)
-                
-            p = standard_subplot(Y[i,:], SS, apply_custom_name(full_SS[v], rename_dictionary), gr_back, pal = pal)
+
+            if replace(string(full_SS[v]), "₍ₓ₎" => "") == string(full_SS[v])
+                subplot_title = apply_custom_name(full_SS[v], rename_dictionary)
+            else
+                subplot_title = apply_custom_name(replace(string(full_SS[v]), "₍ₓ₎" => ""), rename_dictionary) * "₍ₓ₎"
+            end
+
+            p = standard_subplot(Y[i,:], SS, subplot_title, gr_back, pal = pal)
             
             if length(cond_idx) > 0
                 StatsPlots.scatter!(p,
@@ -4983,15 +4993,15 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     var_idx = indexin(var_names,full_SS)
 
-    if length(intersect(𝓂.aux,var_names)) > 0
-        for v in 𝓂.aux
-            idx = indexin([v],var_names)
-            if !isnothing(idx[1])
-                var_names[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
-            end
-        end
-        # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-    end
+    # if length(intersect(𝓂.aux,var_names)) > 0
+    #     for v in 𝓂.aux
+    #         idx = indexin([v],var_names)
+    #         if !isnothing(idx[1])
+    #             var_names[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    #         end
+    #     end
+    #     # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
+    # end
     
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, return_variables_only = true, derivatives = false,
                                     tol = tol,
@@ -5001,17 +5011,19 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     relevant_SS = relevant_SS isa KeyedArray ? axiskeys(relevant_SS,1) isa Vector{String} ? rekey(relevant_SS, 1 => axiskeys(relevant_SS,1) .|> Meta.parse .|> replace_indices) : relevant_SS : relevant_SS
 
-    if length(intersect(𝓂.aux,full_var_SS)) > 0
+    full_var_SS_copy = deepcopy(full_var_SS)
+
+    if length(intersect(𝓂.aux,full_var_SS_copy)) > 0
         for v in 𝓂.aux
-            idx = indexin([v],full_var_SS)
+            idx = indexin([v],full_var_SS_copy)
             if !isnothing(idx[1])
-                full_var_SS[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+                full_var_SS_copy[idx[1]] = Symbol(replace(string(v), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
             end
         end
         # var_names[indexin(𝓂.aux,var_names)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
     end
 
-    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS]
+    reference_steady_state = [s ∈ union(map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), 𝓂.exo_present) ? 0.0 : relevant_SS(s) for s in full_var_SS_copy]
 
     var_length = length(full_SS) - 𝓂.timings.nExo
     
@@ -5071,7 +5083,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
     @assert length(unique([v for v in full_var_SS if v ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)])) == length(unique(full_shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
 
     variable_names_display = [replace_indices_in_symbol.(apply_custom_name(v, rename_dictionary)) for v in var_names if v ∉ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
-    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(Symbol(replace(string(s), "₍ₓ₎"=>"")), rename_dictionary)) * "₍ₓ₎" for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
+    shock_names_display = [replace_indices_in_symbol.(apply_custom_name(Symbol(replace(string(s), "₍ₓ₎" => "")), rename_dictionary)) * "₍ₓ₎" for s in var_names if s ∈ map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)]
 
     # Get sorting permutations for variables and shocks separately
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
@@ -5096,13 +5108,15 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     # Apply the combined permutation to all relevant arrays
     Y = Y[combined_sort_perm, :]
-    conditions = conditions[full_var_sort_perm, :]
-    shocks = shocks[full_shock_sort_perm, :]
-    reference_steady_state = reference_steady_state[full_combined_sort_perm]
+    # conditions = conditions[full_var_sort_perm, :]
+    # shocks = shocks[full_shock_sort_perm, :]
+    # reference_steady_state = reference_steady_state[full_combined_sort_perm]
     var_idx = var_idx[combined_sort_perm]
+    var_names_sorted = var_names[var_sort_perm]
+    shock_names_sorted = var_names[(length(variable_names_display) .+ (1:length(shock_names_display)))[shock_sort_perm]]
 
     # Get the sorted display names
-    sorted_variable_names_display = sort(variable_names_display)
+    # sorted_variable_names_display = sort(variable_names_display)
     sorted_shock_names_display = sort(shock_names_display)
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
@@ -5143,8 +5157,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
                            :plot_data => Y,
                            :reference_steady_state => reference_steady_state,
-                           :variable_names => sorted_variable_names_display, # Use the new sorted variable names
-                           :shock_names => sorted_shock_names_display,       # Use the new sorted shock names
+                           :variable_names => var_names_sorted, # Use the new sorted variable names
+                           :shock_names => shock_names_sorted,       # Use the new sorted shock names
                            :rename_dictionary => processed_rename_dictionary
                            )
                            
@@ -5420,7 +5434,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         end
 
         foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
-        foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
+        foreach(n -> push!(joint_shocks, String(apply_custom_name(Symbol(replace(string(n), "₍ₓ₎" => "")), Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
 
         max_periods = max(max_periods, size(k[:plot_data],2))
     end
@@ -5436,9 +5450,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
         end
     end
-
-    sort!(joint_variables)
-    sort!(joint_shocks)
+    
+    sort!(joint_variables, by = normalize_superscript)
+    sort!(joint_shocks, by = normalize_superscript)
 
     n_subplots = length(joint_variables) + length(joint_shocks)
     pp = []
@@ -5453,7 +5467,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         not_zero_in_any_cond_fcst = false
 
         for k in conditional_forecast_active_plot_container
-            var_idx = findfirst(==(var), String.(apply_custom_name.(vcat(k[:variable_names], k[:shock_names]), Ref(Dict(k[:rename_dictionary])))))
+            var_idx = findfirst(==(var), String.(apply_custom_name.(vcat(k[:variable_names], Symbol.(replace.(string.(k[:shock_names]), Ref("₍ₓ₎" => "")))), Ref(Dict(k[:rename_dictionary])))))
             if isnothing(var_idx)
                 # If the variable or shock is not present in the current conditional_forecast_active_plot_container,
                 # we skip this iteration.
@@ -5473,13 +5487,13 @@ function plot_conditional_forecast!(𝓂::ℳ,
             n_subplots -= 1
         end
     end
-    
+
     for var in joint_non_zero_variables
         SSs = eltype(conditional_forecast_active_plot_container[1][:reference_steady_state])[]
         Ys = AbstractVector{eltype(conditional_forecast_active_plot_container[1][:plot_data])}[]
 
         for k in conditional_forecast_active_plot_container
-            var_idx = findfirst(==(var), String.(apply_custom_name.(vcat(k[:variable_names], k[:shock_names]), Ref(Dict(k[:rename_dictionary])))))
+            var_idx = findfirst(==(var), String.(apply_custom_name.(vcat(k[:variable_names], Symbol.(replace.(string.(k[:shock_names]), Ref("₍ₓ₎" => "")))), Ref(Dict(k[:rename_dictionary])))))
             if isnothing(var_idx)
                 # If the variable is not present in the current conditional_forecast_active_plot_container,
                 # we skip this iteration.
@@ -5511,11 +5525,11 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
         if plot_type == :compare
             for (i,k) in enumerate(conditional_forecast_active_plot_container)   
-                var_idx = findfirst(==(var), String.(apply_custom_name.(vcat(k[:variable_names], k[:shock_names]), Ref(Dict(k[:rename_dictionary])))))
+                var_idx = findfirst(==(var), String.(apply_custom_name.(vcat(k[:variable_names], Symbol.(replace.(string.(k[:shock_names]), Ref("₍ₓ₎" => "")))), Ref(Dict(k[:rename_dictionary])))))
 
                 if isnothing(var_idx) continue end
                 cond_idx = findall(vcat(k[:conditions], k[:shocks])[k[:var_idx][var_idx],:] .!= nothing)
-                
+
                 if length(cond_idx) > 0
                     SS = k[:reference_steady_state][k[:var_idx][var_idx]]
 

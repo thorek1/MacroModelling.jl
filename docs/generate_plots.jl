@@ -1826,37 +1826,40 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
     rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"),
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_rename_dict)
 
-                         
+
 
 conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:P, :R, :c], Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
+conditions_ka[1,1] = 1.01
+conditions_ka[2,2] = 1.02
+conditions_ka[3,3] = 1.03
 
 plot_conditional_forecast(FS2000,
                          conditions_ka,
                          rename_dictionary = Dict(:c => "Consumption", :y => "Output", :R => "Interest Rate"))
 
 conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
-conditions_ka1 .= 0.1
+conditions_ka1 .= 0.01
 
 plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
     conditions_ka1,
+    conditions_in_levels = false,
     rename_dictionary = Dict(:C => "Consumption", :Y => "Output", :R => "Interest Rate"),
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_rename_dict2)
 
-                         
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
-conditions_ka1 .= 0.1
 
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 .= 0.01
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
                             conditions_ka1,
+                            conditions_in_levels = false,
                             rename_dictionary = Dict(:eps_a => "Technology Shock", :eps_nu => "Monetary Policy Shock"))
 
 conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:P, :R, :c], Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
+conditions_ka[1,1] = 1.01
+conditions_ka[2,2] = 1.02
+conditions_ka[3,3] = 1.03
 
 plot_conditional_forecast!(FS2000,
                          conditions_ka,
