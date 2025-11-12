@@ -4525,7 +4525,7 @@ function plot_conditional_forecast(𝓂::ℳ,
 
     full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
 
-    full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : full_SS
+    full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : deepcopy(full_SS)
 
     var_names = axiskeys(Y,1)   
 
@@ -4975,7 +4975,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
     full_SS = vcat(sort(union(𝓂.var,𝓂.aux,𝓂.exo_present)),map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo))
 
-    full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : full_SS
+    full_var_SS = full_SS isa Vector{String} ? full_SS .|> Meta.parse .|> replace_indices : deepcopy(full_SS)
 
     var_names = axiskeys(Y,1)   
 
