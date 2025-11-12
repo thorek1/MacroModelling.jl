@@ -3504,7 +3504,7 @@ function plot_solution(𝓂::ℳ,
 
     state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
 
-    @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
+    @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(replace_indices_in_symbol.(𝓂.timings.past_not_future_and_mixed))
 
     @assert algorithm ∈ [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order] "Invalid algorithm. Choose one of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
 
@@ -4225,7 +4225,7 @@ function plot_solution!(𝓂::ℳ,
 
     state = state isa Symbol ? state : state |> Meta.parse |> replace_indices
 
-    @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(𝓂.timings.past_not_future_and_mixed)
+    @assert state ∈ 𝓂.timings.past_not_future_and_mixed "Invalid state. Choose one from:"*repr(replace_indices_in_symbol.(𝓂.timings.past_not_future_and_mixed))
 
     @assert algorithm ∈ [:third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order] "Invalid algorithm. Choose one of: :third_order, :pruned_third_order, :second_order, :pruned_second_order, :first_order"
 
@@ -4729,9 +4729,9 @@ function plot_conditional_forecast(𝓂::ℳ,
             cond_idx = findall(vcat(conditions,shocks)[v,:] .!= nothing)
 
             if replace(string(full_SS[v]), "₍ₓ₎" => "") == string(full_SS[v])
-                subplot_title = apply_custom_name(full_SS[v], rename_dictionary)
+                subplot_title = replace_indices_in_symbol(apply_custom_name(full_SS[v], rename_dictionary))
             else
-                subplot_title = apply_custom_name(replace(string(full_SS[v]), "₍ₓ₎" => ""), rename_dictionary) * "₍ₓ₎"
+                subplot_title = replace_indices_in_symbol(Symbol(apply_custom_name(replace(string(full_SS[v]), "₍ₓ₎" => ""), rename_dictionary))) * "₍ₓ₎"
             end
 
             p = standard_subplot(Y[i,:], SS, subplot_title, gr_back, pal = pal)
