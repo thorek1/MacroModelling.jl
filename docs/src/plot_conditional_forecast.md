@@ -1133,7 +1133,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
     rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"))
 ```
 
-![Gali 2015 conditional forecast - rename dictionary](../assets/cnd_fcst_rename_dict__Gali_2015_chapter_3_nonlinear__2.png)
+![Gali 2015 conditional forecast - rename dictionary](../assets/cnd_fcst_rename_dict__Gali_2015_chapter_3_nonlinear__1.png)
 
 This feature is especially valuable when overlaying conditional forecasts from different models. Consider comparing FS2000 (which uses lowercase variable names like `c`) with `Gali_2015_chapter_3_nonlinear` (which uses uppercase like `C`). The `rename_dictionary` allows harmonizing these names when plotting them together:
 
@@ -1260,8 +1260,6 @@ plot_conditional_forecast(Backus_Kehoe_Kydland_1992,
                              "Y{H}" => "Home Output",
                              "Y{F}" => "Foreign Output"))
 ```
-
-#### use symbols in plot output, timings missing ####
 
 ![Backus, Kehoe, Kydland 1992 conditional forecast - E{H} shock with rename dictionary](../assets/cnd_fcst_rename_dict_string__Backus_Kehoe_Kydland_1992__1.png)
 
