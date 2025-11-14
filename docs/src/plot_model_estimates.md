@@ -1,275 +1,298 @@
-# Model Estimates Visualization
+# Model Estimates
 
-The `plot_model_estimates` function visualizes various estimation outputs including filtered and smoothed state estimates, shock decompositions, and historical decompositions of the data.
+`plot_model_estimates` visualizes the variables that enter an estimation problem, the corresponding filtered or smoothed estimates, and—optionally—the contribution of each shock. Every subplot displays an observable (line plot) or the contribution of a shock (stacked bars) measured against the non‑stochastic or stochastic steady state that is relevant for the chosen solution algorithm. The function returns a `Vector{Plots.Plot}` so you can display the figures, save them, or combine them further.
 
-## Basic Usage
+The figures are built with StatsPlots/Plots.jl and expect a `KeyedArray` from the AxisKeys package as data input. Axis 1 must contain the observable names, axis 2 the period labels. Observables are automatically matched to model variables, renamed (if desired), and sorted alphabetically in the plot legends.
+
+## Example Setup
+
+The examples below reuse a simple RBC model. Any other model created with `@model`/`@parameters` can be substituted.
 
 ```julia
-using MacroModelling
+using MacroModelling, StatsPlots
 
-@model Gali_2015_chapter_3_nonlinear begin
-    # Households
-    C[0] = (1 - β) * ((W_real[0] * N[0] + Div[0]) - T[0])
-    
-    W_real[0] = χ * N[0]^φ * C[0]^σ_c
-    
-    # Firms
-    MC[0] = W_real[0] / Z[0]
-    
-    # Monetary policy
-    R[0] = R[-1]^ρ_R * (steady_state(R) * (Pi[0] / steady_state(Pi))^ϕ_π * (Y[0] / steady_state(Y))^ϕ_y)^(1 - ρ_R) * exp(nu[0])
-    
-    # Market clearing
-    Y[0] = C[0]
-    
-    # Production
-    Y[0] = A[0] * N[0]
-    
-    # Price setting
-    1 = θ * Pi[0]^(ϵ - 1) + (1 - θ) * (Pi_star[0])^(1 - ϵ)
-    
-    # Exogenous processes
-    log(A[0]) = ρ_a * log(A[-1]) + eps_a[x]
-    log(Z[0]) = ρ_z * log(Z[-1]) + eps_z[x]
+@model RBC_CME begin
+    y[0] = A[0] * k[-1]^alpha
+    1 / c[0] = beta * 1 / c[1] * (alpha * A[1] * k[0]^(alpha-1) + (1 - delta))
+    1 / c[0] = beta * 1 / c[1] * (R[0] / Pi[1])
+    R[0] * beta = (Pi[0] / Pibar)^phi_pi
+    A[0] * k[-1]^alpha = c[0] + k[0] - (1 - delta * z_delta[0]) * k[-1]
+    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
+    A[0] = 1 - rhoz + rhoz * A[-1] + std_eps * eps_z[x]
 end
 
-@parameters Gali_2015_chapter_3_nonlinear begin
-    σ_c = 1
-    φ = 5
-    ϵ = 9
-    θ = 0.75
-    β = 0.99
-    ρ_R = 0.8
-    ϕ_π = 1.5
-    ϕ_y = 0.125
-    ρ_a = 0.9
-    ρ_z = 0.9
-    χ = 1
+@parameters RBC_CME begin
+    alpha = .157
+    beta = .999
+    delta = .0226
+    Pibar = 1.0008
+    phi_pi = 1.5
+    rhoz = .9
+    std_eps = .0068
+    rho_z_delta = .9
+    std_z_delta = .005
 end
 
-# Simulate some data for estimation
-data = simulate(Gali_2015_chapter_3_nonlinear)
+simulation = simulate(RBC_CME, periods = 200)
+data = simulation([:y, :c, :k, :R], :, :simulate)                # KeyedArray (Variables × Periods)
+data = rekey(data, :Periods => 1:size(data, 2))                   # optional: replace the period axis labels
 
-# Plot filtered estimates
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data)
+plot_model_estimates(RBC_CME, data)                               # returns a Vector{Plot}
 ```
 
-This creates plots showing the estimated states, comparing them with observed data where available.
-
-## Arguments
-
-### Data Argument
-
-The `data` argument (required, type: `Matrix` or `KeyedArray`) provides the observed data used for filtering and estimation. The data should match the observables specified in the model.
+You can also build a `KeyedArray` from empirical data:
 
 ```julia
-# Using a matrix of observations
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data_matrix)
+using AxisKeys, Dates
 
-# Using KeyedArray with variable names
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data_keyed)
+observations = [:y, :c, :k]
+quarters = Date(1960):Month(3):Date(2009, 9)
+matrix = Matrix(df[:, observations])'                            # observables × periods
+
+data_empirical = KeyedArray(matrix,
+    Variables = observations,
+    Periods = collect(quarters))
 ```
 
-### Filter Type
+`plot_model_estimates` sorts the variables on the first axis to match the model’s internal order, so the exact ordering of `observations` does not matter, but the provided names must match valid model observables (symbols or strings that can be parsed into symbols).
 
-The `filter` argument (default: depends on algorithm, type: `Symbol`) selects the Kalman filter type to use for estimation. Common options include `:kalman` for the standard Kalman filter.
+## Required Arguments
+
+### Model (`𝓂`)
+Any model created with `@model`/`@parameters`. The routine internally calls `solve!` with `algorithm` and `parameters`, so you do not have to precompute a solution. If the model includes occasionally binding constraints, they are respected whenever the chosen algorithm supports them.
+
+### Data (`data::KeyedArray{Float64}`)
+Two-dimensional `KeyedArray` with observables on axis 1 and periods on axis 2. Axis keys can be `Symbol`s or `String`s; string keys are parsed into symbols using `Meta.parse`, so `:y` and `"y"` are both valid. The second axis labels are displayed on the x-axis (dates, integers, etc.). If the data originate from `simulate`, select the desired observables and slice away the `:simulate` shock dimension, as shown in the example. Use `rekey` to rename axes if necessary.
+
+## Keyword Arguments
+
+### `parameters`
+Additional parameter sets. Accepts a vector of parameter values ordered as listed by `get_parameters(model)`, tuples/vectors of `Pair`s (`[:beta => .995, :phi_pi => 1.75]`), matrices of values, or `Dict`s (see `ParameterType`). Whenever the provided values differ from the current calibration, `solve!` recomputes the solution:
 
 ```julia
-# Use specific filter
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data, filter = :kalman)
+plot_model_estimates(RBC_CME, data,
+    parameters = [:beta => .995, :phi_pi => 1.75])
 ```
 
-### Smoothing
-
-The `smooth` argument (default: depends on filter, type: `Bool`) determines whether to use the smoother (forward-backward pass) instead of just the filter (forward pass).
+### `algorithm`
+Solution algorithm (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`). Higher-order algorithms require the `:inversion` filter; the helper automatically enforces that constraint.
 
 ```julia
-# Plot smoothed estimates
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data, smooth = true)
-
-# Show shock decomposition
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data, 
-    shock_decomposition = true)
-
-# Combine smoothing with shock decomposition
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data, 
-    smooth = true,
-    shock_decomposition = true)
+plot_model_estimates(RBC_CME, data,
+    algorithm = :pruned_second_order)
 ```
 
-### Variables Selection
-
-The `variables` argument (default: all variables, type: `Symbol` or `Vector{Symbol}`) specifies which variables to plot.
+### `filter`
+Filtering method. `:kalman` is available for first-order linear models, while `:inversion` works for both linear and nonlinear (higher-order) solutions. Passing an invalid combination is corrected automatically (a message is logged explaining the adjustment).
 
 ```julia
-# Plot specific variables
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    variables = [:Y, :Pi, :R])
+plot_model_estimates(RBC_CME, data, filter = :inversion)
 ```
 
-### Shocks Selection (for decomposition plots)
-
-The `shocks` argument (default: all shocks, type: `Symbol` or `Vector{Symbol}`) determines which shocks to include in shock decomposition plots.
+### `warmup_iterations`
+Number of additional simulated periods prepended before the first observation. This option is **only** honored when `algorithm = :first_order` and `filter = :inversion`; otherwise it is ignored with a warning.
 
 ```julia
-# Show only selected shock contributions
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    type = :shock_decomposition,
-    shocks = [:eps_a, :nu])
+plot_model_estimates(RBC_CME, data,
+    filter = :inversion,
+    warmup_iterations = 5)
 ```
 
-### Solution Algorithm
-
-The `algorithm` argument (default: `:first_order`, type: `Symbol`) specifies the solution method for the Kalman filter.
+### `variables`
+Select the endogenous variables to plot. Accepted inputs: a single `Symbol`/`String`, tuples, vectors, matrices of names, or one of the built-in selectors `:all`, `:all_excluding_obc`, or `:all_excluding_auxiliary_and_obc`. Variables not present in the model raise a warning.
 
 ```julia
-# Use second-order approximation for filtering
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    algorithm = :second_order)
+plot_model_estimates(RBC_CME, data,
+    variables = [:y, :c, :k])
+
+plot_model_estimates(RBC_CME, data,
+    variables = :all_excluding_auxiliary_and_obc)
 ```
 
-### Alternative Parameters
-
-The `parameters` argument (default: model parameters, type: `Vector{Real}`) allows comparing estimates under different parameter values.
+### `shocks`
+Select which shocks to display in the decomposition (ignored when `shock_decomposition = false`). Inputs mirror `variables` and accept `:all`, `:all_excluding_obc`, explicit name collections, or `:none` to skip shock plots even if `shock_decomposition = true`.
 
 ```julia
-# Compare filtered estimates with different parameters
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    parameters = alternative_params)
+plot_model_estimates(RBC_CME, data,
+    shock_decomposition = true,
+    shocks = [:eps_z, :delta_eps])
 ```
 
-### Confidence Intervals
-
-The `show_ci` argument (default: `true`, type: `Bool`) determines whether to display confidence intervals around the estimates.
-
-The `ci_level` argument (default: `0.95`, type: `Real`) specifies the confidence level for the intervals.
+### `presample_periods`
+Drop the first `presample_periods` periods **after** filtering/smoothing to focus on the main sample:
 
 ```julia
-# Show 90% confidence intervals
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    show_ci = true,
-    ci_level = 0.90)
-
-# Hide confidence intervals
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    show_ci = false)
+plot_model_estimates(RBC_CME, data,
+    presample_periods = 20)
 ```
 
-### Include Observables
-
-The `show_data` argument (default: `true`, type: `Bool`) determines whether to overlay observed data on filtered/smoothed estimates.
+### `data_in_levels`
+Set to `false` if the provided data are already expressed as deviations from the steady state. When `true` (default) the data are demeaned using the relevant steady state before filtering.
 
 ```julia
-# Hide observed data points
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    show_data = false)
+plot_model_estimates(RBC_CME, data,
+    data_in_levels = false)
 ```
 
-### Plot Attributes
-
-The `plot_attributes` argument (default: `Dict()`, type: `Dict`) accepts standard Plots.jl attributes for customization.
+### `smooth`
+Toggle backward smoothing. Only the Kalman filter supports smoothing; requesting `smooth = true` with the inversion filter automatically flips the flag back to `false`.
 
 ```julia
-# Customize appearance
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    plot_attributes = Dict(
-        :size => (1000, 800),
-        :linewidth => 2,
-        :legend => :bottomright,
-        :title => "Filtered State Estimates"
-    ))
+plot_model_estimates(RBC_CME, data,
+    filter = :kalman,
+    smooth = true)
 ```
 
-### Variable and Shock Renaming
-
-The `rename_dictionary` argument (default: `Dict()`, type: `AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}}`) maps names to more readable labels.
+### `shock_decomposition`
+Controls whether stacked bars with the contribution of each shock, the initial condition, and—when using pruned solutions—the “Nonlinearities” bucket are plotted below the estimates. The default is `true` for first-order and pruned solutions and `false` for unpruned higher-order solutions (the inversion filter cannot provide a consistent decomposition there). The convenience wrapper `plot_shock_decomposition` always sets this flag to `true`.
 
 ```julia
-# Use descriptive labels
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    type = :shock_decomposition,
-    rename_dictionary = Dict(
-        :Y => "Output",
-        :Pi => "Inflation Rate",
-        :eps_a => "Technology Shock",
-        :nu => "Monetary Policy Shock"
-    ))
+plot_shock_decomposition(RBC_CME, data,
+    shocks = [:eps_z, :delta_eps])
 ```
 
-### Plot Labels
-
-The `label` argument (default: `""`, type: `String`) provides a label for the plot series, useful when overlaying multiple estimates.
+### `label`
+Legend label for the entire run. When you later call `plot_model_estimates!` the new label is shown alongside the previous runs:
 
 ```julia
-# Compare estimates from different specifications
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    parameters = params1,
-    label = "Baseline")
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear, data,
-    parameters = params2,
-    label = "Alternative")
+plot_model_estimates(RBC_CME, data, label = "Baseline")
+plot_model_estimates!(RBC_CME, data[:, 50:end], label = "Post-break")
 ```
 
-### Saving Plots
-
-The `save_plots` argument (default: `false`, type: `Bool`) determines whether to save the plots.
-
-Related saving arguments:
-- `save_plots_name` (default: `"estimates"`, type: `Union{String, Symbol}`)
-- `save_plots_format` (default: `:pdf`, type: `Symbol`)
-- `save_plots_path` (default: `"."`, type: `String`)
+### `show_plots`
+Display the plots as they are created. Disable this flag when running batch jobs or saving figures without rendering to the screen.
 
 ```julia
-# Save estimation plots
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    type = :smoother,
+plots = plot_model_estimates(RBC_CME, data,
+    show_plots = false)
+```
+
+### `save_plots`, `save_plots_format`, `save_plots_name`, `save_plots_path`
+Save each page of the output (`save_plots = true`). `save_plots_name` becomes part of the filename (`<name>__<model>__<page>.<format>`), `save_plots_format` is any format understood by Plots.jl (e.g. `:pdf`, `:png`), and `save_plots_path` controls the directory (created automatically if it does not exist).
+
+```julia
+plot_model_estimates(RBC_CME, data,
     save_plots = true,
-    save_plots_name = "smoothed_estimates",
     save_plots_format = :png,
+    save_plots_name = "sw_estimates",
     save_plots_path = "estimation_output")
 ```
 
-### Prior and Posterior Comparison
-
-The `show_prior` argument (default: `false`, type: `Bool`) determines whether to show prior distributions alongside posterior estimates.
-
-```julia
-# Compare prior and posterior
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data,
-    type = :parameter_estimates,
-    show_prior = true)
-```
-
-## Estimation Types Explained
-
-### Filtering
-Shows the real-time estimate of states based on information available up to each point in time. Useful for understanding what was known at each period.
-
-### Smoothing
-Provides the best estimate of states using all available information (full sample). Generally more precise than filtered estimates.
-
-### Shock Decomposition
-Shows how much of each variable's movement is attributable to specific shocks over time. Helps identify the key drivers of economic fluctuations.
-
-### Historical Decomposition
-Similar to shock decomposition but shows contributions to deviations from steady state, making it easier to interpret the economic significance of shocks.
-
-## Comparison with plot_model_estimates!
-
-The `plot_model_estimates!` function overlays new estimates on existing plots:
+### `plots_per_page`
+Number of subplots before a new page is started (default: 6). Increase this to pack more variables per page or reduce it to emphasize individual series.
 
 ```julia
-# Compare estimates from different sample periods
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, data_full,
-    label = "Full Sample")
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear, data_subsample,
-    label = "Subsample")
+plot_model_estimates(RBC_CME, data,
+    plots_per_page = 4)
 ```
 
-## Diagnostic Checking
+### `transparency`
+Alpha channel applied to the stacked bars in the decomposition (0–1). Only relevant when `shock_decomposition = true`.
 
-When evaluating model fit, consider:
-- **Filtered vs Smoothed**: Large differences suggest information from future observations matters
-- **Confidence Intervals**: Width indicates estimation uncertainty
-- **Shock Decomposition**: Which shocks explain most variation
-- **Observed vs Estimated**: How well the model tracks actual data
+```julia
+plot_shock_decomposition(RBC_CME, data,
+    transparency = 0.35)
+```
+
+### `max_elements_per_legend_row`
+Upper bound on the number of legend entries per row (useful when overlaying multiple runs or showing many shocks). The function automatically computes the number of columns subject to this cap.
+
+```julia
+plot_shock_decomposition(RBC_CME, data,
+    shocks = :all,
+    max_elements_per_legend_row = 6)
+```
+
+### `extra_legend_space`
+Adds extra vertical space (in fraction of the total plot height) below the subplots for the legend. This is helpful when period labels contain long strings (dates) or when the legend spans multiple rows.
+
+```julia
+plot_model_estimates(RBC_CME, data,
+    extra_legend_space = 0.1)
+```
+
+### `rename_dictionary`
+Map variable or shock names to prettier labels. Keys and values can be `Symbol`s or `String`s. All resulting names must be unique because the plots use them as labels.
+
+```julia
+plot_model_estimates(RBC_CME, data,
+    rename_dictionary = Dict(
+        :y => "Output",
+        :c => "Consumption",
+        :k => "Capital",
+        :eps_z => "Technology shock"))
+```
+
+### `plot_attributes`
+Additional Plots.jl attributes merged into the defaults (size, palette, legend position, etc.). `:framestyle` is kept for the subplots; all other entries are applied to the combined layout.
+
+```julia
+plot_model_estimates(RBC_CME, data,
+    plot_attributes = Dict(
+        :size => (900, 600),
+        :palette => :Dark2,
+        :legend => :bottom))
+```
+
+### `verbose`
+When `true`, prints progress information from the steady-state solver, the filtering routines, and the linear algebra backends (quadratic matrix equation, Sylvester, Lyapunov). Useful while debugging convergence problems.
+
+```julia
+plot_model_estimates(RBC_CME, data,
+    verbose = true)
+```
+
+### `tol`
+Instance of `Tolerances`, letting you tighten or relax the acceptance thresholds of the steady-state solver and the matrix-equation solvers.
+
+```julia
+plot_model_estimates(RBC_CME, data,
+    tol = Tolerances(NSSS_xtol = 1e-13, qme_tol = 1e-12))
+```
+
+### `quadratic_matrix_equation_algorithm`
+Select the solver for the quadratic matrix equation that underpins the linear solution (`:schur`, `:doubling`, `:linear_time_iteration`, `:quadratic_iteration`). The default `:schur` is fast and reliable; `:doubling` is more precise for difficult calibrations.
+
+```julia
+plot_model_estimates(RBC_CME, data,
+    quadratic_matrix_equation_algorithm = :doubling)
+```
+
+### `sylvester_algorithm`
+Choose the solver for the Sylvester equations that appear in higher-order solutions. Pass a single symbol (e.g. `:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`, `:dqgmres`) to reuse it everywhere, or a tuple/vector with two entries to specify separate algorithms for the first- and third-order Sylvester problems. Large models automatically fallback to `:bicgstab` unless you override this behavior.
+
+```julia
+plot_model_estimates(RBC_CME, data,
+    sylvester_algorithm = (:doubling, :bicgstab))
+```
+
+### `lyapunov_algorithm`
+Solver for the Lyapunov equation (`:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`, `:iterative`, `:speedmapping`). The default `:doubling` is typically fastest and most accurate.
+
+```julia
+plot_model_estimates(RBC_CME, data,
+    lyapunov_algorithm = :bartels_stewart)
+```
+
+## Return Value and Side Effects
+
+The function returns a vector of plots (one entry per page). Each page contains the subplots plus a legend panel that lists the line and bar colors, the model name, and the page count. When `show_plots = true`, each page is displayed. When `save_plots = true`, each page is written to disk after it is rendered.
+
+## Comparing Runs with `plot_model_estimates!`
+
+`plot_model_estimates!` shares the same signature but appends its results to the last call of `plot_model_estimates`/`plot_model_estimates!`. Use it to compare different parameterizations, filters, or samples without rebuilding the plot manually.
+
+```julia
+baseline = plot_model_estimates(RBC_CME, data,
+    parameters = [:beta => .999], label = "β = 0.999")
+
+plot_model_estimates!(RBC_CME, data,
+    parameters = [:beta => .995], label = "β = 0.995",
+    transparency = 0.6)
+```
+
+The helper keeps an internal registry of all arguments so that follow-up calls can use the same variable ordering, labels, and color palette. Remember to change `label` for each overlay when you intend to show multiple runs.
+
+## Shock-Decomposition Wrapper
+
+`plot_shock_decomposition(args...; kwargs...)` is a lightweight wrapper around `plot_model_estimates` with `shock_decomposition = true`. Use it when you only care about the stacked contributions and do not want to retype the keyword argument.
