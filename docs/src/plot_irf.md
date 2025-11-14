@@ -1217,7 +1217,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock (2 plots per page)](../assets/two_per_page_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-The first page displays the first two variables (sorted alphabetically) with two subplots for each shock. The title indicates this is page 1 of 5.
+The first page displays the first two variables (sorted alphabetically) with two subplots for each shock. The title indicates the current page and the total number of pages.
 
 ## Display Plots
 
@@ -1410,7 +1410,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 
 ## Numerical Tolerances
 
-The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: `?Tolerances`
+The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: `?Tolerances`.
 The tolerances used by the numerical solvers can be adjusted. The Tolerances object allows setting tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (QME). For example, to set tighter tolerances (this example also changes parameters to force recomputation):
 
 ```julia
@@ -1439,7 +1439,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 # Block: 2, - Solved using previous solution; residual norm: 7.021666937153402e-16
 ```
 
-This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or encounter issues with the default solver.
+This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or when encountering issues with the default solver.
 
 ## Quadratic Matrix Equation Solver
 
@@ -1464,7 +1464,7 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
 # Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
 ```
 
-For most use cases, the default `:schur` algorithm is recommended. Use this argument for specific needs or encounter issues with the default solver.
+For most use cases, the default `:schur` algorithm is recommended. Use this argument for specific needs or when encountering issues with the default solver.
 
 ## Sylvester Equation Solver
 

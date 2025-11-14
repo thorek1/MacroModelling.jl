@@ -749,7 +749,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 ## Numerical Tolerances
 
-The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: `?Tolerances`
+The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: `?Tolerances`.
 The tolerances used by the numerical solvers can be adjusted. The Tolerances object allows setting tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (QME). For example, to set tighter tolerances (this example also changes parameters to force recomputation):
 
 ```julia
@@ -782,7 +782,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 # Block: 2, - Solved using previous solution; residual norm: 5.551115123125783e-16
 ```
 
-This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or encounter issues with the default solver.
+This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or when encountering issues with the default solver.
 
 ## Quadratic Matrix Equation Solver
 
@@ -808,7 +808,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 # Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
 ```
 
-For most use cases, the default `:schur` algorithm is recommended. Use this argument for specific needs or encounter issues with the default solver.
+For most use cases, the default `:schur` algorithm is recommended. Use this argument for specific needs or when encountering issues with the default solver.
 
 ## Sylvester Equation Solver
 
@@ -862,7 +862,7 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 # Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
 ```
 
-The choice of algorithm affects both speed and precision: `:doubling` and `:bartels_stewart` are generally faster, while `:bicgstab`, `:dqgmres`, and `:gmres` are better for large sparse problems. Use this argument for specific needs or encounter issues with the default solver.
+The choice of algorithm affects both speed and precision: `:doubling` and `:bartels_stewart` are generally faster, while `:bicgstab`, `:dqgmres`, and `:gmres` are better for large sparse problems. Use this argument for specific needs or when encountering issues with the default solver.
 
 ## Lyapunov Equation Solver
 

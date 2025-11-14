@@ -1,6 +1,6 @@
 # Conditional Forecasting
 
-Conditional forecasting allows generating model projections conditional on specified future paths for certain variables or shocks. The conditions are fulfilled by contemporaneous shocks only and there is no effect today from conditions in the future. The `plot_conditional_forecast` function visualizes these conditional forecasts, showing how the model evolves given constraints on particular variables.
+Conditional forecasting allows generating model projections conditional on future paths for endogenous variables or exogenous shocks. The conditions are fulfilled by contemporaneous shocks only and there is no effect today from conditions in the future. The `plot_conditional_forecast` function visualizes these conditional forecasts, showing how the model variables evolve.
 
 First, define and load a model:
 
@@ -54,7 +54,9 @@ end
 Calling `plot_conditional_forecast` requires specifying conditions on endogenous variables. For example, conditioning on `Y = 1.0` in the first period can be implemented as follows:
 
 ```julia
-conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:Y], Periods = [1])
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
+                Variables = [:Y], 
+                Periods = [1])
 conditions[1,1] = 1.0
 ```
 
@@ -67,7 +69,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast](../assets/conditional_forecast__Gali_2015_chapter_3_nonlinear__2.png)
 
-The function plots the paths of each endogenous variable conditional on fulfilling the specified conditions. If there was a condition provided for a variable it is represented by a marker (also indicated in the legend below the subplots). The title of each subplot indicates the variable name and the title of the overall plot indicates the model name, and page number (if multiple pages are needed).
+The function plots the paths of each endogenous variable conditional on fulfilling the specified conditions. If there was a condition provided for a variable it is represented by a marker (also indicated in the legend below the subplots). The title of the overall plot indicates the model name, and page number (if multiple pages are needed) and the title of each subplot indicates the variable name.
 
 ## Conditions (Required)
 
@@ -168,7 +170,9 @@ Another possibility to input conditions is by using a `KeyedArray`. The `KeyedAr
 The benefit of using a `KeyedArray` is that there is no need to look up the variables. Conditioning on multiple variables in multiple periods works as follows:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -240,7 +244,7 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast - with and without shocks](../assets/cnd_fcst_shocks_compare__Gali_2015_chapter_3_nonlinear__2.png)
 
-The paths clearly differ and are even directionally different due to the restriction on only the first shcoks being able to fulfill the conditions on the endogenous variables.
+The paths clearly differ and are even directionally different due to the restriction on only the first shocks being able to fulfill the conditions on the endogenous variables.
 
 You can also use a `SparseMatrixCSC{Float64}` as input. In this case only non-zero elements are taken as certain shock values. Note that you cannot condition shocks to be zero using a `SparseMatrixCSC{Float64}` as input (use other input formats to do so).
 
@@ -256,7 +260,9 @@ shocks_sp[3,3] = 0.1
 Given this non-zero path for the shocks, two of the three shocks remain to fulfill the conditions. There was one conditions per period so that the least square solution will be selected:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -272,17 +278,21 @@ This mixture of known and unknown shocks, and known conditions on endogenous var
 
 Another possibility to input known shocks is by using a `KeyedArray`. The `KeyedArray` type is provided by the `AxisKeys` package. You can use a `KeyedArray{Union{Nothing,Float64}}` where, similar to `Matrix{Union{Nothing,Float64}}`, all entries of type `Float64` are recognised as known shocks and all other entries have to be `nothing`. Furthermore, you can specify in the primary axis a subset of shocks (of type `Symbol` or `String`) for which you specify values and all other shocks are considered free. The same goes for the case when you use `KeyedArray{Float64}}` as input, whereas in this case the values for the specified shocks bind for all periods specified in the `KeyedArray`, because there are no `nothing` entries permitted with this type.
 
-Working with the same conditions one can restrict shocks to zero using this input type. DOing so for one shock per period works as follows:
+Working with the same conditions one can restrict shocks to zero using this input type. Doing so for one shock per period works as follows:
 
 ```julia
-shocks_ka = KeyedArray(Matrix{Float64}(undef,1,3),Variables = [:eps_a], Periods = 1:3)
+shocks_ka = KeyedArray(Matrix{Float64}(undef,1,3),
+                    Variables = [:eps_a], 
+                    Periods = 1:3)
 shocks_ka .= 0.0
 ```
 
 Combined with conditions on the endogenous variables one can plot the conditional forecast:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -313,7 +323,9 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 Conditional forecasts can be plotted using different solution algorithms. The following example uses a second-order perturbation solution:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -356,9 +368,7 @@ Note that the pruned third-order solution incorporates time-varying risk and the
 
 ## Initial State
 
-The `initial_state` argument (default: `[0.0]`, type: `Union{Vector{Vector{Float64}},Vector{Float64}}`) defines the starting point for the model. For pruned solution algorithms, the initial state can be provided as multiple state vectors (`Vector{Vector{Float64}}`). In this case, the initial state must be specified in deviations from the non-stochastic steady state. For all other cases, specify the initial state in levels. For pruned solution algorithms with a `Vector{Float64}` initial state, only the first-order initial state vector is affected. The state includes all variables as well as exogenous variables in leads or lags if present. `get_irf(𝓂, shocks = :none, variables = :all, periods = 1)` returns a `KeyedArray` with all variables. The `KeyedArray` type is provided by the AxisKeys package.
-
-The initial state defines the starting point for the conditional forecast and must contain all model variables, including any leads or lags. To obtain the correct ordering and number of variables, call `get_irf(𝓂, shocks = :none, variables = :all, periods = 1)`, which returns a `KeyedArray` with all variables in the correct order. The `KeyedArray` type is provided by the AxisKeys package. For example:
+The `initial_state` argument (default: `[0.0]`, type: `Union{Vector{Vector{Float64}},Vector{Float64}}`) defines the starting point for the model. For pruned solution algorithms, the initial state can be provided as multiple state vectors (`Vector{Vector{Float64}}`). In this case, the initial state must be specified in deviations from the non-stochastic steady state. For all other cases, specify the initial state in levels. For pruned solution algorithms with a `Vector{Float64}` initial state, only the first-order initial state vector is affected. The initial state defines the starting point for the conditional forecast and must contain all model variables, including any leads or lags. To obtain the correct ordering and number of variables, call `get_irf(𝓂, shocks = :none, variables = :all, periods = 1)`, which returns a `KeyedArray` with all variables in the correct order. The `KeyedArray` type is provided by the AxisKeys package. For example:
 
 ```julia
 init_state = get_irf(Gali_2015_chapter_3_nonlinear,
@@ -388,7 +398,9 @@ init_state(:nu,:,:) .= 0.1
 The modified initial state can now be input into the `plot_conditional_forecast` function as a `Vector`. Furthermore, in the following example the conditions are shifted 10 periods into the future:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,13),Variables = [:R, :Y, :MC], Periods = 1:13)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,13),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:13)
 conditions_ka[1,11] = 1.0
 conditions_ka[2,12] = 1.0
 conditions_ka[3,13] = 1.0
@@ -506,7 +518,9 @@ The `periods` argument (default: `40`, type: `Int`) specifies the number of peri
 To set the number of periods to 10:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,13),Variables = [:R, :Y, :MC], Periods = 1:13)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,13),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:13)
 conditions_ka[1,11] = 1.0
 conditions_ka[2,12] = 1.0
 conditions_ka[3,13] = 1.0
@@ -523,7 +537,9 @@ The x-axis automatically adjusts to show only 23 periods as this corresponds to 
 The following example uses a shock matrix with the last input in period 20, sets the `periods` argument to 30, and compares it to the previous 10-period plot:
 
 ```julia
-shocks_ka = KeyedArray(Matrix{Float64}(undef,1,20),Variables = [:eps_a], Periods = 1:20)
+shocks_ka = KeyedArray(Matrix{Float64}(undef,1,20),
+                Variables = [:eps_a], 
+                Periods = 1:20)
 shocks_ka .= 0.0
 
 plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
@@ -543,7 +559,9 @@ The `variables` argument (default: `:all_excluding_obc`) specifies for which var
 Specific variables can be selected to plot. The following example selects only output (`Y`) and inflation (`Pi`) using a `Vector` of `Symbol`s:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -653,7 +671,9 @@ end
 Since both `c` and `P` appear in t+2, they generate auxiliary variables in the model. Plotting the conditional forecast for all variables excluding OBC-related ones means auxiliary variables are shown:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:P, :R, :c], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:P, :R, :c], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -673,46 +693,46 @@ Use the `Gali_2015_chapter_3` model with an effective lower bound (note the use 
 
 ```julia
 @model Gali_2015_chapter_3_obc begin
-	W_real[0] = C[0] ^ σ * N[0] ^ φ
-	Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
-	R[0] = 1 / Q[0]
-	Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
-	R[0] = Pi[1] * realinterest[0]
-	R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
-	C[0] = Y[0]
-	log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
-	log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
-	nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
-	MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
-	1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
-	S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
-	Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
-	x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
-	x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
-	log_y[0] = log(Y[0])
-	log_W_real[0] = log(W_real[0])
-	log_N[0] = log(N[0])
-	pi_ann[0] = 4 * log(Pi[0])
-	i_ann[0] = 4 * log(R[0])
-	r_real_ann[0] = 4 * log(realinterest[0])
-	M_real[0] = Y[0] / R[0] ^ η
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    R[0] = 1 / Q[0]
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+    R[0] = Pi[1] * realinterest[0]
+    R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+    C[0] = Y[0]
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+    log_y[0] = log(Y[0])
+    log_W_real[0] = log(W_real[0])
+    log_N[0] = log(N[0])
+    pi_ann[0] = 4 * log(Pi[0])
+    i_ann[0] = 4 * log(R[0])
+    r_real_ann[0] = 4 * log(realinterest[0])
+    M_real[0] = Y[0] / R[0] ^ η
 end
 
 @parameters Gali_2015_chapter_3_obc begin
     R̄ = 1.0
-	σ = 1
-	φ = 5
-	ϕᵖⁱ = 1.5
-	ϕʸ = 0.125
-	θ = 0.75
-	ρ_ν = 0.5
-	ρ_z = 0.5
-	ρ_a = 0.9
-	β = 0.99
-	η = 3.77
-	α = 0.25
-	ϵ = 9
-	τ = 0
+    σ = 1
+    φ = 5
+    ϕᵖⁱ = 1.5
+    ϕʸ = 0.125
+    θ = 0.75
+    ρ_ν = 0.5
+    ρ_z = 0.5
+    ρ_a = 0.9
+    β = 0.99
+    η = 3.77
+    α = 0.25
+    ϵ = 9
+    τ = 0
     std_a = .01
     std_z = .05
     std_nu = .0025
@@ -723,7 +743,9 @@ end
 Plotting the conditional forecast for all variables including OBC-related ones reveals the OBC-related auxiliary variables:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:C, :R, :Y], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:C, :R, :Y], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -744,7 +766,9 @@ When no parameters are provided, the solution uses the previously defined parame
 Start by changing the discount factor `β` from 0.99 to 0.95:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -782,7 +806,7 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast - multiple parameter changes](../assets/cnd_fcst_multi_params__Gali_2015_chapter_3_nonlinear__2.png)
 
-Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to which input combination, with the table showing steady states for all three combinations. The change in steady state fir the latest change means substantially different
+Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to which input combination, with the table showing steady states for all three combinations. The change in steady state for the latest change means substantially different absolute differences relevant for the conditions and therefore also different size of shocks to enforce the conditions.
 
 A `Vector` of `Pair`s can also be used:
 
@@ -845,7 +869,9 @@ Conditions are assumed to be in levels by default. One can also provide them in 
 Starting with conditions in levels:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:Y], Periods = 1:1)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
+                    Variables = [:Y], 
+                    Periods = 1:1)
 conditions_ka[1,1] = 1.0
 
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
@@ -855,7 +881,9 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 Moving to defining conditions in absolute deviation from the relevant steady state:
 
 ```julia
-conditions_in_dev_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:Y], Periods = 1:1)
+conditions_in_dev_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
+                            Variables = [:Y], 
+                            Periods = 1:1)
 conditions_in_dev_ka[1,1] = -0.05
 
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
@@ -884,7 +912,9 @@ Custom labels are particularly useful when inputs differ in complex ways (e.g., 
 For example, let's compare the conditional forecast of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with `β = 0.99` and `τ = 0` to the conditional forecast with `β = 0.95` and `τ = 0.5` using custom labels `String` input:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:Y], Periods = 1:1)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
+                    Variables = [:Y], 
+                    Periods = 1:1)
 conditions_ka[1,1] = 1.0
 
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
@@ -937,26 +967,28 @@ The `plot_type` argument (default: `:compare`, type: `Symbol`) determines how co
 - `:compare` - Displays conditional forecasts as separate lines for comparison across scenarios
 - `:stack` - Stacks conditional forecasts on top of each other to show cumulative effects
 
-The `:stack` option is particularly useful when analyzing scenarios composed of multiple shock series, as it shows how different shocks contribute to the overall response. The `:compare` option is better suited for comparing conditional forecasts across different parameter values or model specifications.
+The `:stack` option is particularly useful when analyzing scenarios composed of differnt conditions or shock inputs. The `:compare` option is better suited for comparing conditional forecasts across different parameter values or model specifications.
 
 ### Using `:stack` for Layered Shock Scenarios
 
-When analyzing a scenario composed of multiple shocks, `:stack` visualizes the cumulative impact. For example, plot two conditions on endogenous variables:
+When analyzing a scenario composed of different conditions or shocks, `:stack` visualizes the cumulative impact. For example, plot two conditions on endogenous variables:
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
+                    Variables = [:Y], 
+                    Periods = 1:10)
 conditions_ka1 .= 0.1
 
-# First shock in the scenario
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
     conditions_ka1,
     conditions_in_levels = false)
 
-conditions_ka2 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,10),Variables = [:Y,:R], Periods = 1:10)
+conditions_ka2 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,10),
+                    Variables = [:Y,:R], 
+                    Periods = 1:10)
 conditions_ka2[1,:] .= -0.1
 conditions_ka2[2,:] .= 0.0
 
-# Add second shock to show cumulative effect
 plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
     conditions_ka2,
     conditions_in_levels = false,
@@ -965,14 +997,16 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast - stacked](../assets/cnd_fcst_stack__Gali_2015_chapter_3_nonlinear__2.png)
 
-The `:stack` visualization shows how each shock contributes to the total response, with the second shock's effect layered on top of the first.
+The `:stack` visualization shows how each condition contributes to the combined path, with the second condition's effect layered on top of the first.
 
 ### Using `:compare` for Parameter Comparisons
 
 When comparing conditional forecasts across different parameter values, `:compare` displays the responses as separate lines:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),Variables = [:R], Periods = 1:1)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
+                    Variables = [:R], 
+                    Periods = 1:1)
 conditions_ka .= 1.0
 
 # Baseline parameterization
@@ -1015,7 +1049,9 @@ ec_color_palette =
 Then plot the first conditional forecast:
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
+                    Variables = [:Y], 
+                    Periods = 1:10)
 conditions_ka1 .= 0.1
 
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
@@ -1026,7 +1062,9 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 Finally, overlay another conditional forecast using the custom color palette:
 
 ```julia
-conditions_ka2 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,10),Variables = [:Y,:R], Periods = 1:10)
+conditions_ka2 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,10),
+                    Variables = [:Y,:R], 
+                    Periods = 1:10)
 conditions_ka2[1,:] .= -0.1
 conditions_ka2[2,:] .= 0.0
 
@@ -1052,7 +1090,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast - custom font](../assets/cnd_fcst_font__Gali_2015_chapter_3_nonlinear__1.png)
 
-All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case)—for example, the superscript `⁺` is not rendered properly for this font.
+All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case).
 
 ## Plots Per Page
 
@@ -1060,7 +1098,9 @@ The `plots_per_page` argument (default: `9`, type: `Int`) controls the number of
 The following example selects 9 variables and sets `plots_per_page` to 2:
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
+                    Variables = [:Y], 
+                    Periods = 1:10)
 conditions_ka1 .= 0.1
 
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
@@ -1072,14 +1112,16 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast - 2 plots per page](../assets/cnd_fcst_2_per_page__Gali_2015_chapter_3_nonlinear__3.png)
 
-The first page displays the first two variables (sorted alphabetically) with two subplots for each shock. The title indicates this is page 1 of 5.
+The first four pages display two variables (sorted alphabetically). The title indicates the current page and the total number of pages.
 
 ## Display Plots
 
 The `show_plots` argument (default: `true`, type: `Bool`), when `true`, displays the plots; otherwise, they are only returned as an object.
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
+                    Variables = [:Y], 
+                    Periods = 1:10)
 conditions_ka1 .= 0.1
 
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
@@ -1096,14 +1138,16 @@ Related arguments control the saving behavior:
 
 - `save_plots_format` (default: `:pdf`, type: `Symbol`): output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` (default: `"."`, type: `String`): path where plots are saved. If the path does not exist, it will be created automatically.
-- `save_plots_name` (default: `"irf"`, type: `Union{String, Symbol}`): prefix prepended to the filename when saving plots.
+- `save_plots_name` (default: `"conditional_forecast"`, type: `Union{String, Symbol}`): prefix prepended to the filename when saving plots.
 
-Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., `irf__ModelName__shock__1.pdf`).
+Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., `conditional_forecast__ModelName__shock__1.pdf`).
 
-The following example saves all conditional forecasts for the `Gali_2015_chapter_3_nonlinear` model as PNG files in the `../plots` directory with `impulse_response` as the filename prefix:
+The following example saves all conditional forecasts for the `Gali_2015_chapter_3_nonlinear` model as PNG files in the `../plots` directory with `cond_fcst` as the filename prefix:
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
+                    Variables = [:Y], 
+                    Periods = 1:10)
 conditions_ka1 .= 0.1
 
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
@@ -1112,10 +1156,10 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
     save_plots = true,
     save_plots_format = :png,
     save_plots_path = "./../plots",
-    save_plots_name = :impulse_response)
+    save_plots_name = :cond_fcst)
 ```
 
-The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file with a name reflecting the model, the shock, and a sequential index when the number of variables exceeds the plots per page.
+The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file with a name reflecting the model, and a sequential index when the number of variables exceeds the plots per page.
 
 ## Variable and Shock Renaming
 
@@ -1124,7 +1168,9 @@ The `rename_dictionary` argument (default: `Dict()`, type: `AbstractDict{<:Union
 For example, to rename variables for clearer display:
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
+                    Variables = [:Y], 
+                    Periods = 1:10)
 conditions_ka1 .= 0.1
 
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
@@ -1135,25 +1181,37 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast - rename dictionary](../assets/cnd_fcst_rename_dict__Gali_2015_chapter_3_nonlinear__1.png)
 
-This feature is especially valuable when overlaying conditional forecasts from different models. Consider comparing FS2000 (which uses lowercase variable names like `c`) with `Gali_2015_chapter_3_nonlinear` (which uses uppercase like `C`). The `rename_dictionary` allows harmonizing these names when plotting them together:
+This feature is especially valuable when overlaying conditional forecasts from different models. Consider comparing FS2000 (which uses lowercase variable names like `c`) with `Gali_2015_chapter_3_nonlinear` (which uses uppercase variable names like `C`). The `rename_dictionary` allows harmonizing these names when plotting them together:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:P, :R, :c], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:P, :R, :c], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.01
 conditions_ka[2,2] = 1.02
 conditions_ka[3,3] = 1.03
 
 plot_conditional_forecast(FS2000,
                          conditions_ka,
-                         rename_dictionary = Dict(:c => "Consumption", :y => "Output", :R => "Interest Rate"))
+                         rename_dictionary = Dict(
+                            :c => "Consumption", 
+                            :y => "Output", 
+                            :R => "Interest Rate"
+                         ))
 
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
+                    Variables = [:Y], 
+                    Periods = 1:10)
 conditions_ka1 .= 0.01
 
 plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
     conditions_ka1,
     conditions_in_levels = false,
-    rename_dictionary = Dict(:C => "Consumption", :Y => "Output", :R => "Interest Rate"))
+    rename_dictionary = Dict(
+        :C => "Consumption", 
+        :Y => "Output", 
+        :R => "Interest Rate"
+        ))
 ```
 
 ![FS2000 and Gali 2015 conditional forecast - multiple models with rename dictionary](../assets/cnd_fcst_rename_dict2__multiple_models__2.png)
@@ -1163,22 +1221,32 @@ Both models now appear in the plot with consistent, readable labels, making comp
 The `rename_dictionary` also works with shocks. For example, `Gali_2015_chapter_3_nonlinear` has shocks `eps_a` and `eps_nu`, while FS2000 has `e_a` and `e_m`. To compare these with consistent labels:
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),Variables = [:Y], Periods = 1:10)
+conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
+                    Variables = [:Y], 
+                    Periods = 1:10)
 conditions_ka1 .= 0.01
 
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
                             conditions_ka1,
                             conditions_in_levels = false,
-                            rename_dictionary = Dict(:eps_a => "Technology Shock", :eps_nu => "Monetary Policy Shock"))
+                            rename_dictionary = Dict(
+                                :eps_a => "Technology Shock", 
+                                :eps_nu => "Monetary Policy Shock"
+                                ))
 
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:P, :R, :c], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:P, :R, :c], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.01
 conditions_ka[2,2] = 1.02
 conditions_ka[3,3] = 1.03
 
 plot_conditional_forecast!(FS2000,
                          conditions_ka,
-                         rename_dictionary = Dict(:e_a => "Technology Shock", :e_m => "Monetary Policy Shock"))
+                         rename_dictionary = Dict(
+                            :e_a => "Technology Shock", 
+                            :e_m => "Monetary Policy Shock"
+                            ))
 ```
 
 ![FS2000 and Gali 2015 conditional forecast - multiple models with shock rename dictionary](../assets/cnd_fcst_rename_dict_shocks__multiple_models__7.png)
@@ -1249,7 +1317,9 @@ end
 end
 
 
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = ["C{H}", "C{F}"], Periods = 1:2)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),
+                    Variables = ["C{H}", "C{F}"], 
+                    Periods = 1:2)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 
@@ -1270,7 +1340,9 @@ Variables or shocks not included in the dictionary retain their default names. T
 The `verbose` argument (default: `false`, type: `Bool`), when `true`, enables verbose output related to solving the model
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -1302,14 +1374,16 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 ## Numerical Tolerances
 
-The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: `?Tolerances`
+The `tol` argument (default: `Tolerances()`, type: `Tolerances`) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: `?Tolerances`.
 The tolerances used by the numerical solvers can be adjusted. The Tolerances object allows setting tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (QME). For example, to set tighter tolerances (this example also changes parameters to force recomputation):
 
 ```julia
 custom_tol = Tolerances(qme_acceptance_tol = 1e-12,
     sylvester_acceptance_tol = 1e-12)
 
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -1336,7 +1410,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 # Block: 2, - Solved using previous solution; residual norm: 7.021666937153402e-16
 ```
 
-This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or encounter issues with the default solver.
+This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or when encountering issues with the default solver.
 
 ## Quadratic Matrix Equation Solver
 
@@ -1344,7 +1418,9 @@ The `quadratic_matrix_equation_algorithm` argument (default: `:schur`, type: `Sy
 The quadratic matrix equation solver is used internally when solving the model to first order. Different algorithms are available. The `:schur` algorithm is generally faster and more reliable, while `:doubling` can be more precise in some cases (this example also changes parameters to force recomputation):
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -1366,7 +1442,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 # Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
 ```
 
-For most use cases, the default `:schur` algorithm is recommended. Use this argument for specific needs or encounter issues with the default solver.
+For most use cases, the default `:schur` algorithm is recommended. Use this argument for specific needs or when encountering issues with the default solver.
 
 ## Sylvester Equation Solver
 
@@ -1374,7 +1450,9 @@ For most use cases, the default `:schur` algorithm is recommended. Use this argu
 The algorithm to use can be specified for solving Sylvester equations in higher-order solutions. For example, select the `:bartels_stewart` algorithm for solving the second-order perturbation problem:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
@@ -1398,7 +1476,9 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 For third-order solutions, different algorithms can be specified for the second- and third-order Sylvester equations using a `Tuple`:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),Variables = [:R, :Y, :MC], Periods = 1:3)
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
+                    Variables = [:R, :Y, :MC], 
+                    Periods = 1:3)
 conditions_ka[1,1] = 1.0
 conditions_ka[2,2] = 1.0
 conditions_ka[3,3] = 1.0
