@@ -180,7 +180,7 @@ Since both `c` and `P` appear in `t+2`, they generate auxiliary variables in the
 
 ```julia
 plot_solution(FS2000, :k,
-	variables = :all_excluding_obc)
+    variables = :all_excluding_obc)
 ```
 
 ![FS2000 solution - including auxiliary variables](../assets/aux__FS2000__k__1.png)
