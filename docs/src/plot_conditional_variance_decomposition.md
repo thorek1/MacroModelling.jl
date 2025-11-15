@@ -330,7 +330,7 @@ plot_fevd(Smets_Wouters_2007_linear,
 
 The colors of the shock contributions now follow the custom color palette.
 
-Other attributes such as the font family can also be modified (see [here](https://github.com/JuliaPlots/Plots.jl/blob/v1.41.1/src/backends/gr.jl#L61) for font options):
+Other attributes such as the font family can also be modified (see here for [GR font options](https://github.com/JuliaPlots/Plots.jl/blob/v1.41.1/src/backends/gr.jl#L61)):
 
 ```julia
 plot_fevd(Smets_Wouters_2007_linear,

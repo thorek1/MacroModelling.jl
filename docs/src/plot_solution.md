@@ -506,7 +506,7 @@ end
 
 The colors of the policy functions and steady state markers now follow the custom color palette.
 
-Other attributes such as the font family can also be modified (see [here](https://github.com/JuliaPlots/Plots.jl/blob/v1.41.1/src/backends/gr.jl#L61) for font options):
+Other attributes such as the font family can also be modified (see here for [GR font options](https://github.com/JuliaPlots/Plots.jl/blob/v1.41.1/src/backends/gr.jl#L61)):
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
