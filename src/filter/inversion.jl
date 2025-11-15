@@ -3872,7 +3872,7 @@ function filter_data_with_model(𝓂::ℳ,
     𝐒²ᵉ     = nnz(𝐒²ᵉ)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
     𝐒⁻²     = nnz(𝐒⁻²)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
 
-    initial_state = copy(state)
+    initial_state = deepcopy(state)
 
     state₁ = state[1][T.past_not_future_and_mixed_idx]
     state₂ = state[2][T.past_not_future_and_mixed_idx]
@@ -4494,7 +4494,7 @@ function filter_data_with_model(𝓂::ℳ,
     𝐒³ᵉ     = nnz(𝐒³ᵉ)     / length(𝐒³ᵉ)   > .1 ? collect(𝐒³ᵉ)     : 𝐒³ᵉ
     𝐒⁻³     = nnz(𝐒⁻³)     / length(𝐒⁻³)   > .1 ? collect(𝐒⁻³)     : 𝐒⁻³
 
-    initial_state = copy(state)
+    initial_state = deepcopy(state)
 
     state₁ = state[1][T.past_not_future_and_mixed_idx]
     state₂ = state[2][T.past_not_future_and_mixed_idx]
