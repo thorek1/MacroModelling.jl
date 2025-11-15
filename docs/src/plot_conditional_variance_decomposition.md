@@ -308,14 +308,14 @@ First, define the custom color palette using hex color codes:
 ```julia
 ec_color_palette =
 [
-	"#FFD724", 	# "Sunflower Yellow"
-	"#353B73", 	# "Navy Blue"
-	"#2F9AFB", 	# "Sky Blue"
-	"#B8AAA2", 	# "Taupe Grey"
-	"#E75118", 	# "Vermilion"
-	"#6DC7A9", 	# "Mint Green"
-	"#F09874", 	# "Coral"
-	"#907800"  	# "Olive"
+    "#FFD724",  # "Sunflower Yellow"
+    "#353B73",  # "Navy Blue"
+    "#2F9AFB",  # "Sky Blue"
+    "#B8AAA2",  # "Taupe Grey"
+    "#E75118",  # "Vermilion"
+    "#6DC7A9",  # "Mint Green"
+    "#F09874",  # "Coral"
+    "#907800"   # "Olive"
 ]
 ```
 
