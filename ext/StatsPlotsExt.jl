@@ -137,7 +137,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `true` for algorithms supporting shock decompositions (`:first_order`, `:pruned_second_order`, `:pruned_third_order`), otherwise `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks. When an unsupported algorithm is chosen the argument automatically falls back to `false`.
 - $SMOOTH®
-- `unconditional_forecast_periods` [Default: `0`, Type: `Int`]: number of periods to plot as an unconditional forecast after the end of the data. When greater than 0, the forecast is shown as a dashed line for all endogenous variables (shocks are not forecasted). The forecast uses the filtered/smoothed state at the end of the data and iteratively applies the first-order state transition matrix with zero shocks.
+- `unconditional_forecast_periods` [Default: `0`, Type: `Int`]: number of periods to plot as an unconditional forecast after the end of the data. When greater than 0, the forecast is shown as a dashed line for all endogenous variables (shocks are not forecasted). The forecast uses the filtered/smoothed state at the end of the data and iteratively applies the state transition function with zero shocks, working for all perturbation orders.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -334,17 +334,27 @@ function plot_model_estimates(𝓂::ℳ,
     forecast_variables = nothing
     forecast_x_axis = nothing
     if unconditional_forecast_periods > 0
-        # Get state transition matrix
-        A = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+        # Get state transition function for the algorithm
+        state_update, _ = parse_algorithm_to_state_update(algorithm, 𝓂, false)
         
-        # Initialize forecast with the last filtered/smoothed state
-        forecast_state = variables_to_plot[:, end]
+        # Initialize forecast state with the last filtered/smoothed state
+        # For pruned algorithms, we need to construct the state appropriately
+        if algorithm == :pruned_second_order
+            forecast_state = [variables_to_plot[:, end], zeros(𝓂.timings.nVars)]
+        elseif algorithm == :pruned_third_order
+            forecast_state = [variables_to_plot[:, end], zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)]
+        else
+            forecast_state = variables_to_plot[:, end]
+        end
+        
         forecast_variables = zeros(𝓂.timings.nVars, unconditional_forecast_periods)
         
-        # Generate forecast by iterating the state transition
+        # Generate forecast by iterating the state transition with zero shocks
+        zero_shocks = zeros(𝓂.timings.nExo)
         for t in 1:unconditional_forecast_periods
-            forecast_state = A * forecast_state
-            forecast_variables[:, t] = forecast_state
+            forecast_state = state_update(forecast_state, zero_shocks)
+            # Extract the actual state (sum for pruned algorithms)
+            forecast_variables[:, t] = pruning ? sum(forecast_state) : forecast_state
         end
         
         # Create x-axis for forecast periods
@@ -690,7 +700,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $LABEL®
 - $RENAME_DICTIONARY®
 - $SMOOTH®
-- `unconditional_forecast_periods` [Default: `0`, Type: `Int`]: number of periods to plot as an unconditional forecast after the end of the data. When greater than 0, the forecast is shown as a dashed line for all endogenous variables (shocks are not forecasted). The forecast uses the filtered/smoothed state at the end of the data and iteratively applies the first-order state transition matrix with zero shocks. Note: The comparison functionality of this `!` version does not yet plot forecasts from multiple runs, but the parameter is accepted for compatibility.
+- `unconditional_forecast_periods` [Default: `0`, Type: `Int`]: number of periods to plot as an unconditional forecast after the end of the data. When greater than 0, the forecast is shown as a dashed line for all endogenous variables (shocks are not forecasted). The forecast uses the filtered/smoothed state at the end of the data and iteratively applies the state transition function with zero shocks, working for all perturbation orders. Note: The comparison functionality of this `!` version does not yet plot forecasts from multiple runs, but the parameter is accepted for compatibility.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -902,17 +912,27 @@ function plot_model_estimates!(𝓂::ℳ,
     forecast_variables = nothing
     forecast_x_axis = nothing
     if unconditional_forecast_periods > 0
-        # Get state transition matrix
-        A = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+        # Get state transition function for the algorithm
+        state_update, _ = parse_algorithm_to_state_update(algorithm, 𝓂, false)
         
-        # Initialize forecast with the last filtered/smoothed state
-        forecast_state = variables_to_plot[:, end]
+        # Initialize forecast state with the last filtered/smoothed state
+        # For pruned algorithms, we need to construct the state appropriately
+        if algorithm == :pruned_second_order
+            forecast_state = [variables_to_plot[:, end], zeros(𝓂.timings.nVars)]
+        elseif algorithm == :pruned_third_order
+            forecast_state = [variables_to_plot[:, end], zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)]
+        else
+            forecast_state = variables_to_plot[:, end]
+        end
+        
         forecast_variables = zeros(𝓂.timings.nVars, unconditional_forecast_periods)
         
-        # Generate forecast by iterating the state transition
+        # Generate forecast by iterating the state transition with zero shocks
+        zero_shocks = zeros(𝓂.timings.nExo)
         for t in 1:unconditional_forecast_periods
-            forecast_state = A * forecast_state
-            forecast_variables[:, t] = forecast_state
+            forecast_state = state_update(forecast_state, zero_shocks)
+            # Extract the actual state (sum for pruned algorithms)
+            forecast_variables[:, t] = pruning ? sum(forecast_state) : forecast_state
         end
         
         # Create x-axis for forecast periods
