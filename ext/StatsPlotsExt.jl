@@ -137,6 +137,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `true` for algorithms supporting shock decompositions (`:first_order`, `:pruned_second_order`, `:pruned_third_order`), otherwise `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks. When an unsupported algorithm is chosen the argument automatically falls back to `false`.
 - $SMOOTH®
+- `unconditional_forecast_periods` [Default: `0`, Type: `Int`]: number of periods to plot as an unconditional forecast after the end of the data. When greater than 0, the forecast is shown as a dashed line for all endogenous variables (shocks are not forecasted). The forecast uses the filtered/smoothed state at the end of the data and iteratively applies the first-order state transition matrix with zero shocks.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -689,6 +690,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $LABEL®
 - $RENAME_DICTIONARY®
 - $SMOOTH®
+- `unconditional_forecast_periods` [Default: `0`, Type: `Int`]: number of periods to plot as an unconditional forecast after the end of the data. When greater than 0, the forecast is shown as a dashed line for all endogenous variables (shocks are not forecasted). The forecast uses the filtered/smoothed state at the end of the data and iteratively applies the first-order state transition matrix with zero shocks. Note: The comparison functionality of this `!` version does not yet plot forecasts from multiple runs, but the parameter is accepted for compatibility.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
