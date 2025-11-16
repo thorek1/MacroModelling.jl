@@ -389,6 +389,7 @@ function plot_model_estimates(𝓂::ℳ,
                            :data_in_levels => data_in_levels,
                         #    :shock_decomposition => shock_decomposition,
                            :smooth => smooth,
+                           :unconditional_forecast_periods => unconditional_forecast_periods,
                            
                            :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
                            :NSSS_xtol => tol.NSSS_xtol,
@@ -935,7 +936,7 @@ function plot_model_estimates!(𝓂::ℳ,
     estimate_color = :navy
 
     data_color = :orangered
-    
+
     args_and_kwargs = Dict(:run_id => length(model_estimates_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
                            :label => label,
@@ -951,6 +952,7 @@ function plot_model_estimates!(𝓂::ℳ,
                            :data_in_levels => data_in_levels,
                         #    :shock_decomposition => shock_decomposition,
                            :smooth => smooth,
+                           :unconditional_forecast_periods => unconditional_forecast_periods,
                            
                            :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
                            :NSSS_xtol => tol.NSSS_xtol,
