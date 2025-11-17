@@ -132,7 +132,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $ALGORITHM®
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
-- `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
+- `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. 
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `true` for algorithms supporting shock decompositions (`:first_order`, `:pruned_second_order`, `:pruned_third_order`), otherwise `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks. When an unsupported algorithm is chosen the argument automatically falls back to `false`.
@@ -260,9 +260,11 @@ function plot_model_estimates(𝓂::ℳ,
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
+    @assert shocks ∉ [:none, :simulate, :all_excluding_obc] "Shocks input cannot be :none, :all_excluding_obc, or :simulate in `plot_model_estimates`."
+
     obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> unique |> sort
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) |> unique  |> sort
-    shock_idx   = shocks == :none ? [] : parse_shocks_input_to_index(shocks, 𝓂.timings)
+    shock_idx   = parse_shocks_input_to_index(shocks, 𝓂.timings)
 
     # Create display names and sort alphabetically
     variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.var[v], rename_dictionary)) for v in var_idx]
@@ -614,7 +616,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $ALGORITHM®
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
-- `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` (e.g. `:y`, or `:all`), `Tuple{Symbol, Vararg{Symbol}}`, `Matrix{Symbol}`, or `Vector{Symbol}`.
+- `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. 
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
 - $DATA_IN_LEVELS®
 - $LABEL®
@@ -757,6 +759,8 @@ function plot_model_estimates!(𝓂::ℳ,
     variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
+
+    @assert shocks ∉ [:none, :simulate, :all_excluding_obc] "Shocks input cannot be :none, :all_excluding_obc, or :simulate in `plot_model_estimates`."
 
     obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> unique |> sort
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) |> unique  |> sort
