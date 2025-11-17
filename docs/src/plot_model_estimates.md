@@ -1,6 +1,6 @@
 # Model Estimates
 
-`plot_model_estimates` visualizes the variables that enter an estimation problem, the corresponding filtered or smoothed estimates, and—optionally—the contribution of each shock. Every subplot displays an observable (line plot) or the contribution of a shock (stacked bars) measured against the non‑stochastic or stochastic steady state that is relevant for the chosen solution algorithm. The function returns a `Vector{Plots.Plot}` so you can display the figures, save them, or combine them further.
+`plot_model_estimates` visualizes the variables that enter an estimation problem, the corresponding filtered or smoothed estimates, and—optionally—the contribution of each shock. Every subplot displays an observable (line plot) or the contribution of a shock (stacked bars) measured against the non‑stochastic or stochastic steady state that is relevant for the chosen solution algorithm. Occasionally binding constraints are not uspported in this function. The function returns a `Vector{Plots.Plot}` so you can display the figures, save them, or combine them further.
 
 The figures are built with StatsPlots/Plots.jl and expect a `KeyedArray` from the AxisKeys package as data input. Axis 1 must contain the observable names, axis 2 the period labels. Observables are automatically matched to model variables, renamed (if desired), and sorted alphabetically in the plot legends.
 
@@ -128,28 +128,142 @@ plot_model_estimates(FS2000, data)
 
 One can use data in absolute deviations from the non-stochastic steady state as follows.
 
-In order to create such data, one can for example use data in levels and subtract the non-stochastic steady state, but here for illustration purposes, random data is generated:
+In order to create such data, one can for example use data in levels and subtract the non-stochastic steady state, but here for illustration purposes, random data is generated, and we use the variables `R` and `y` to filter on:
 
 ```julia
 sim = simulate(FS2000, levels = false)
-plot_model_estimates(FS2000, sim[[3,end],:,1], data_in_levels = false)
+plot_model_estimates(FS2000, sim([:y,:R],:,:simulate), data_in_levels = false)
 ```
+
+#### mentiond that the second dimnesion can be of any type in the docstring ####
 
 ## Filter
 
+The `filter` argument [Type: `Symbol`] specifies the filtering method to use. Options are `:kalman` for the Kalman filter and `:inversion` for the inversion filter. By default, the Kalman filter is used for first order solutions and the inversion method for higher order (nonlinear) solutions.
+
+A model with more than two shocks is useful to illustrate the difference between the two filtering methods. We use the Gali (2015) model from chapter 3 with three shocks:
+
+```julia
+@model Gali_2015_chapter_3_nonlinear begin
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    R[0] = 1 / Q[0]
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+    R[0] = Pi[1] * realinterest[0]
+    R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])
+    C[0] = Y[0]
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+    log_y[0] = log(Y[0])
+    log_W_real[0] = log(W_real[0])
+    log_N[0] = log(N[0])
+    pi_ann[0] = 4 * log(Pi[0])
+    i_ann[0] = 4 * log(R[0])
+    r_real_ann[0] = 4 * log(realinterest[0])
+    M_real[0] = Y[0] / R[0] ^ η
+end
+
+@parameters Gali_2015_chapter_3_nonlinear begin
+    σ = 1
+    φ = 5
+    ϕᵖⁱ = 1.5
+    ϕʸ = 0.125
+    θ = 0.75
+    ρ_ν = 0.5
+    ρ_z = 0.5
+    ρ_a = 0.9
+    β = 0.99
+    η = 3.77
+    α = 0.25
+    ϵ = 9
+    τ = 0
+    std_a = .01
+    std_z = .05
+    std_nu = .0025
+end
+```
+
+The Kalman filter can be explicitly specified as follows:
+
+```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, filter = :kalman)
+```
+
+and the inversion filter can be overlayed, in order to compare with the Kalman filter, as:
+
+```julia
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion)
+```
+
+Note that the two filtering methods yield different results when there are more shocks than observables, as is the case here. The Kalman smoother (due to the default setting `smooth = true`) produces smoother estimates by optimally combining information from all periods, while the inversion filter directly solves for shocks that match the observables in each period, leading to more volatile estimates. Furthermore, when comparing two estimates only the estimates but not the shock decomposition are shown.
+
 ## Smooth
+
+The `smooth` argument [Default: `true`, Type: `Bool`] specifies whether to use smoothing (only available for the Kalman filter and set to `true` by default for the Kalman filter) or filtering (available for both filter and set to `true` in case the inversion filter is used). If `true`, smoothed estimates are plotted, otherwise filtered estimates are shown. Smoothing uses information from the entire sample to estimate the states at each point in time, while filtering only uses information up to the current period.
+
+Smoothed estimates using the Kalman filter can be plotted as follows (this is the default behaviour and does not need to be specified explicitly):
+
+```julia
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, smooth = true)
+```
+
+comparing with filtered estimates (using the Kalman filter) can be done like this:
+
+```julia
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, smooth = false)
+```
+
+additionally one can compare with filtered estimates using the inversion filter (with `smooth = false` being the default for the inversion filter which doesn't need to be specified explicitly):
+
+```julia
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion, smooth = false)
+```
 
 ## Presample periods
 
+The `presample_periods` argument [Default: `0`, Type: `Int`] specifies the number of periods at the beginning of the data used for filtering that are not shown in the plots. This is useful if one wants to view only later periods in the sample, while still using the earlier periods for filtering.
+
+For example, to exclude the first 20 periods from the plots, while still using them for filtering, one can do:
+
+```julia
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods = 20)
+```
+
+Note that now only 20 periods are shown in the plots, starting from period 21, while the first 20 periods were used in the filtering process.
+
 ## Shock decomposition
+
+The `shock_decomposition` argument [Default: `true`, Type: `Bool`] specifies whether to include shock decomposition in the plots. If set to `true`, stacked bar charts showing the contribution of each shock to the variable's deviation from its steady state are included below the line plots for each variable.
+
+To include shock decomposition in the plots, simply use the default setting:
+
+```julia
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = true)
+```
+
+This will generate plots with stacked bar charts below the line plots, illustrating how each shock contributes to the variable's deviation from its steady state over time.
+
+To exclude shock decomposition from the plots, set the argument to `false`:
+
+```julia
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = false)
+```
+
+This shows only the line plots without the stacked bar charts for shock contributions. When combining multiple plots, the setting for `shock_decomposition` is ignored and `false`.
 
 ## Shocks
 
-The `shocks` argument [Default: `nothing`, Type: `Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}, Nothing}`] allows the user to condition on the shocks in addition to the endogenous variables. This argument allows the user to include certain (known) shock values. By entering restrictions on the shocks in this way, the problem to match the conditions on endogenous variables is restricted to the remaining free (unknown) shocks in the respective period.
+The `shocks` argument determines the shocks shown in the plots. By default, all shocks are included (`:all`).  Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`.
 
-The input can have multiple formats, but for all types of entries, the first dimension corresponds to shocks and the second dimension to the number of periods. `shocks` can be specified using a matrix of type `Matrix{Union{Nothing,Float64}}`. In this case the shocks are matrix elements of type `Float64` and all remaining (free) entries are `nothing`.
-
-Given conditions on `Y` for the first 8 periods, one can restrict the shocks to fulfill this conditions by setting all but one shock to zero. The number of shocks can be retrieved as follows:
+In order to recall the shocks of a model one can use the `get_shocks` function:
 
 ```julia
 get_shocks(Gali_2015_chapter_3_nonlinear)
@@ -159,138 +273,64 @@ get_shocks(Gali_2015_chapter_3_nonlinear)
 #  "eps_z"
 ```
 
-Setting the shock values for the last two shocks to 0 can be done like this:
+To plot only a subset of shocks, one can specify them as follows, using a `Vector` of `Symbol`s:
 
 ```julia
-shocks = Matrix{Union{Nothing,Float64}}(undef,3,8)
-shocks[2,:] .= 0
-shocks[3,:] .= 0
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = [:eps_a, :eps_z])
 ```
 
-Together with the conditions one can then plot the conditional forecast:
+The same can be done with a `Vector` of `String`s:
 
 ```julia
-conditions = Matrix{Union{Nothing,Float64}}(undef,23,8)
-conditions[12,1] = 1.0
-conditions[12,2] = 1.1
-conditions[12,3] = 1.2
-conditions[12,4] = 1.3
-conditions[12,5] = 1.4
-conditions[12,6] = 1.5
-conditions[12,7] = 1.6
-conditions[12,8] = 1.7
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions,
-                         shocks = shocks)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = ["eps_a", "eps_z"])
 ```
 
-![Gali 2015 conditional forecast - shocks](../assets/cnd_fcst_shocks__Gali_2015_chapter_3_nonlinear__2.png)
-
-![Gali 2015 conditional forecast - shocks](../assets/cnd_fcst_shocks__Gali_2015_chapter_3_nonlinear__3.png)
-
-Note the very large shock magnitudes of the first shock and the condition markers on the shocks indicating that the other two shocks were conditioned to be zero. Contrasting this with the version without the conditions of the shocks also highlights the difference in outcomes depending on which shocks can be used to enforce the conditions on the endogenous variables.
+or `Tuple`s of `Symbol`s:
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions,
-                         shocks = shocks)
-
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-                         conditions)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = (:eps_a, :eps_z))
 ```
 
-![Gali 2015 conditional forecast - with and without shocks](../assets/cnd_fcst_shocks_compare__Gali_2015_chapter_3_nonlinear__2.png)
-
-The paths clearly differ and are even directionally different due to the restriction on only the first shocks being able to fulfill the conditions on the endogenous variables.
-
-You can also use a `SparseMatrixCSC{Float64}` as input. In this case only non-zero elements are taken as certain shock values. Note that you cannot condition shocks to be zero using a `SparseMatrixCSC{Float64}` as input (use other input formats to do so).
-
-Using the previous example for the conditions on multiple variables across multiple periods, one can do the same for the `shocks`:
+or `Tuple`s of `String`s:
 
 ```julia
-shocks_sp = spzeros(3,3)
-shocks_sp[1,1] = 0.1
-shocks_sp[2,2] = 0.1
-shocks_sp[3,3] = 0.1
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = ("eps_a", "eps_z"))
 ```
 
-Given this non-zero path for the shocks, two of the three shocks remain to fulfill the conditions. There was one conditions per period so that the least square solution will be selected:
+or `Matrix` of `Symbol`s:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:R, :Y, :MC], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         shocks = shocks_sp)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = [:eps_a  :eps_z])
 ```
 
-![Gali 2015 conditional forecast - shocks sparse input](../assets/cnd_fcst_shocks_sp__Gali_2015_chapter_3_nonlinear__1.png)
-
-This mixture of known and unknown shocks, and known conditions on endogenous variables allows for substantial flexibility.
-
-Another possibility to input known shocks is by using a `KeyedArray`. The `KeyedArray` type is provided by the `AxisKeys` package. You can use a `KeyedArray{Union{Nothing,Float64}}` where, similar to `Matrix{Union{Nothing,Float64}}`, all entries of type `Float64` are recognised as known shocks and all other entries have to be `nothing`. Furthermore, you can specify in the primary axis a subset of shocks (of type `Symbol` or `String`) for which you specify values and all other shocks are considered free. The same goes for the case when you use `KeyedArray{Float64}}` as input, whereas in this case the values for the specified shocks bind for all periods specified in the `KeyedArray`, because there are no `nothing` entries permitted with this type.
-
-Working with the same conditions one can restrict shocks to zero using this input type. Doing so for one shock per period works as follows:
+or `Matrix` of `String`s:
 
 ```julia
-shocks_ka = KeyedArray(Matrix{Float64}(undef,1,3),
-                    Variables = [:eps_a], 
-                    Periods = 1:3)
-shocks_ka .= 0.0
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = ["eps_a"  "eps_z"])
 ```
-
-Combined with conditions on the endogenous variables one can plot the conditional forecast:
-
-```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:R, :Y, :MC], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         shocks = shocks_ka)
-```
-
-![Gali 2015 conditional forecast - shocks KeyedArray input](../assets/cnd_fcst_shocks_ka__Gali_2015_chapter_3_nonlinear__1.png)
-
-To see the influence of the shocks (which is similar to conditional forecasts) one can compare the last two examples. One has non zero shocks and the other zero shocks they conditions on:
-
-```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         shocks = shocks_ka)
-
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         shocks = shocks_sp)
-```
-
-![Gali 2015 conditional forecast - shocks KeyedArray input](../assets/cnd_fcst_shocks_compare_sp_ka__Gali_2015_chapter_3_nonlinear__1.png)
 
 ## Solution Algorithm
 
-Conditional forecasts can be plotted using different solution algorithms. The following example uses a second-order perturbation solution:
+The `algorithm` argument [Default: `:first_order`, Type: `Symbol`] specifies the solution algorithm used for the filtering. Options include `:first_order`, `:second_order`, `:third_order`, as well as `:pruned_second_order` and `:pruned_third_order`. The choice of algorithm affects the available filtering method (only first order support the Kalman filter, all solution algorithms support the inversion filter), steady state levels used in the plots and the dynamics of the variables.
+
+The following example uses a second-order perturbation solution:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:R, :Y, :MC], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         algorithm = :second_order)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :second_order)
 ```
 
 ![Gali 2015 conditional forecast - second order](../assets/cnd_fcst_second_order__Gali_2015_chapter_3_nonlinear__1.png)
@@ -300,13 +340,15 @@ The most notable difference is that at second order, dynamics are observed for `
 To compare the two solution methods side by side, use `plot_conditional_forecast!` to add to an existing plot:
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data)
 
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         algorithm = :second_order)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :second_order)
 ```
+
+#### how to plot the data when there are different steady states? ####
 
 ![Gali 2015 conditional forecast - first and second order](../assets/cnd_fcst_second_order_combine__Gali_2015_chapter_3_nonlinear__2.png)
 
