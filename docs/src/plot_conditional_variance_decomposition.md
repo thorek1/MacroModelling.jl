@@ -398,7 +398,7 @@ plot_fevd(Smets_Wouters_2007_linear,
 
 The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file with a name reflecting the model, the shock, and a sequential index when the number of variables exceeds the plots per page.
 
-## Variable and Shock Renaming
+## Variable and Shock Renaming (rename dictionary)
 
 The `rename_dictionary` argument (default: `Dict()`, type: `AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}}`) maps variable or shock symbols to custom display names in plots. This is particularly useful when comparing models with different variable naming conventions, allowing them to be displayed with consistent labels.
 
