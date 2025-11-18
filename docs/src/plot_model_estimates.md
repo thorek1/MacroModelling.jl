@@ -212,6 +212,7 @@ The `smooth` argument [Default: `true`, Type: `Bool`] specifies whether to use s
 Smoothed estimates using the Kalman filter can be plotted as follows (this is the default behaviour and does not need to be specified explicitly):
 
 ```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, smooth = true)
 ```
 
@@ -234,6 +235,7 @@ The `presample_periods` argument [Default: `0`, Type: `Int`] specifies the numbe
 For example, to exclude the first 20 periods from the plots, while still using them for filtering, one can do:
 
 ```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods = 20)
 ```
 
@@ -246,6 +248,7 @@ The `shock_decomposition` argument [Default: `true`, Type: `Bool`] specifies whe
 To include shock decomposition in the plots, simply use the default setting:
 
 ```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = true)
 ```
 
@@ -276,6 +279,7 @@ get_shocks(Gali_2015_chapter_3_nonlinear)
 To plot only a subset of shocks, one can specify them as follows, using a `Vector` of `Symbol`s:
 
 ```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
                      shocks = [:eps_a, :eps_z])
@@ -328,6 +332,7 @@ The `algorithm` argument [Default: `:first_order`, Type: `Symbol`] specifies the
 The following example uses a second-order perturbation solution:
 
 ```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
                      algorithm = :second_order)
@@ -357,80 +362,70 @@ The plots now show both solution methods overlaid. The first-order solution is s
 Additional solution methods can be added to the same plot:
 
 ```julia
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         algorithm = :pruned_third_order)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :pruned_third_order)
 ```
 
 ![Gali 2015 conditional forecast - multiple orders](../assets/cnd_fcst_higher_order_combine__Gali_2015_chapter_3_nonlinear__1.png)
 
 Note that the pruned third-order solution incorporates time-varying risk and the dynamics differ relative to lower order solutions. The additional solution appears as another colored line with corresponding entries in both the legend and the steady state table below.
 
-## Simulation Periods
-
-Continues the time series for a specified number of periods after the last period with data. To be implemented.
-
 ## Variables to Plot
 
 The `variables` argument (default: `:all_excluding_obc`) specifies for which variables to show results. Variable names can be specified as either a `Symbol` or `String` (e.g. `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). `:all_excluding_obc` includes all variables except those related to occasionally binding constraints. `:all` includes all variables.
 
-Specific variables can be selected to plot. The following example selects only output (`Y`) and inflation (`Pi`) using a `Vector` of `Symbol`s:
+Specific variables can be selected to plot. The following example selects only output (`Y`) and inflation (`Pi`) using a `Vector` of `Symbol`s. Note that selecting shocks can be done using the `shocks` argument as shown above.
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:R, :Y, :MC], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         variables = [:Y, :Pi])
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = [:Y, :Pi])
 ```
 
 ![Gali 2015 conditional forecast - selected variables (Y, Pi)](../assets/cnd_fcst_vars__Gali_2015_chapter_3_nonlinear__1.png)
 
-The plot now displays the two selected variables (sorted alphabetically) and the plots enforcing the conditions on endogenous variables. The other two variables for which conditions were provided are not shown.
+The plot now displays the two selected variables (sorted alphabetically) as well as the corresponding shocks. 
 
 The same can be done using a `Tuple`:
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         variables = (:Y, :Pi))
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = (:Y, :Pi))
 ```
 
 a `Matrix`:
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         variables = [:Y :Pi])
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = [:Y :Pi])
 ```
 
 or providing the variable names as `String`s:
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         variables = ["Y", "Pi"])
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = ["Y", "Pi"])
 ```
 
 or a single variable as a `Symbol`:
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         variables = :Y)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = :Y)
 ```
 
 or as a `String`:
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         variables = "Y")
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = "Y")
 ```
 
 Then there are some predefined options:
@@ -438,17 +433,17 @@ Then there are some predefined options:
 `:all_excluding_auxiliary_and_obc` (default) plots all variables except auxiliary variables and those used to enforce occasionally binding constraints (OBC).
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         variables = :all_excluding_auxiliary_and_obc)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = :all_excluding_auxiliary_and_obc)
 ```
 
 `:all_excluding_obc` plots all variables except those used to enforce occasionally binding constraints (OBC).
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         variables = :all_excluding_obc)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = :all_excluding_obc)
 ```
 
 To see auxiliary variables, use a model that defines them. The FS2000 model can be used:
@@ -489,16 +484,10 @@ end
 Since both `c` and `P` appear in t+2, they generate auxiliary variables in the model. Plotting the conditional forecast for all variables excluding OBC-related ones means auxiliary variables are shown:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:P, :R, :c], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(FS2000,
-                         conditions_ka,
-                         variables = :all_excluding_obc)
+sim_data_FS2000 = simulate(FS2000)([:y],:,:simulate)
+plot_model_estimates(FS2000,
+                     sim_data_FS2000,
+                     variables = :all_excluding_obc)
 ```
 
 ![FS2000 conditional forecast - e_a shock with auxiliary variables](../assets/cnd_fcst_all_excluding_obc__FS2000__1.png)
@@ -561,15 +550,9 @@ end
 Plotting the conditional forecast for all variables including OBC-related ones reveals the OBC-related auxiliary variables:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:C, :R, :Y], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_obc,
-                         conditions_ka,
+sim_data_Gali_obc = simulate(Gali_2015_chapter_3_obc)([:R],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_obc,
+                     sim_data_Gali_obc,
                          variables = :all)
 ```
 
@@ -584,16 +567,10 @@ When no parameters are provided, the solution uses the previously defined parame
 Start by changing the discount factor `β` from 0.99 to 0.95:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:R, :Y, :MC], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         parameters = :β => 0.95)
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β => 0.95)
 ```
 
 ![Gali 2015 conditional forecast - `β = 0.95`](../assets/cnd_fcst_beta_95__Gali_2015_chapter_3_nonlinear__1.png)
@@ -601,13 +578,13 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 The steady states and dynamics changed as a result of changing the discount factor, also because the absolute deviation of the conditons on the endogenous variables from the relevant steady state changed. To better visualize the differences between `β = 0.99` and `β = 0.95`, the two conditional forecasts can be overlaid (compared). Since parameter changes are permanent, first reset `β = 0.99` before overlaying the conditional forecast with `β = 0.95` on top of it:
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         parameters = :β => 0.99)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β => 0.99)
 
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         parameters = :β => 0.95)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β => 0.95)
 ```
 
 ![Gali 2015 conditional forecast - comparing β values](../assets/cnd_fcst_compare_beta__Gali_2015_chapter_3_nonlinear__2.png)
@@ -617,9 +594,9 @@ The legend below the plot indicates which color corresponds to which `β` value,
 Multiple parameters can also be changed simultaneously to compare the results to previous plots. This example changes `β` to 0.97 and `τ` to 0.5 using a `Tuple` of `Pair`s and define the variables with `Symbol`s:
 
 ```julia
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         parameters = (:β => 0.97, :τ => 0.5))
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = (:β => 0.97, :τ => 0.5))
 ```
 
 ![Gali 2015 conditional forecast - multiple parameter changes](../assets/cnd_fcst_multi_params__Gali_2015_chapter_3_nonlinear__2.png)
@@ -629,9 +606,9 @@ Since the plot function calls now differ in multiple input arguments, the legend
 A `Vector` of `Pair`s can also be used:
 
 ```julia
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         parameters = [:β => 0.98, :τ => 0.25])
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = [:β => 0.98, :τ => 0.25])
 ```
 
 Alternatively, use a `Vector` of parameter values in the order they were defined in the model. To obtain them:
@@ -675,9 +652,9 @@ param_vals = [p[2] for p in params]
 #  0.05
 #  0.0025
 
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-                         conditions_ka,
-                         parameters = param_vals)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = param_vals)
 ```
 
 ## Plot Labels
@@ -688,20 +665,11 @@ Custom labels are particularly useful when inputs differ in complex ways (e.g., 
 For example, let's compare the conditional forecast of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with `β = 0.99` and `τ = 0` to the conditional forecast with `β = 0.95` and `τ = 0.5` using custom labels `String` input:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
-                    Variables = [:Y], 
-                    Periods = 1:1)
-conditions_ka[1,1] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
-    parameters = (:β => 0.99, :τ => 0.0),
-    label = "Std. params")
-
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
-    parameters = (:β => 0.95, :τ => 0.5),
-    label = "Alt. params")
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = (:β => 0.95, :τ => 0.5),
+                     label = "Alt. params")
 ```
 
 ![Gali 2015 conditional forecast - custom labels](../assets/cnd_fcst_label__Gali_2015_chapter_3_nonlinear__2.png)
@@ -711,13 +679,14 @@ The legend now displays the custom label names instead of sequential numbers (1 
 The same result can be achieved using `Symbol`s (though they are less expressive):
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
-    parameters = (:β => 0.99, :τ => 0.0),
-    label = :standard)
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = (:β => 0.99, :τ => 0.0),
+                     label = :standard)
 
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     parameters = (:β => 0.95, :τ => 0.5),
     label = :alternative)
 ```
@@ -725,13 +694,13 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 or with `Real` inputs:
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     parameters = (:β => 0.99, :τ => 0.0),
     label = 0.99)
 
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     parameters = (:β => 0.95, :τ => 0.5),
     label = 0.95)
 ```
@@ -760,31 +729,10 @@ ec_color_palette =
 Then plot the first conditional forecast:
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
-                    Variables = [:Y], 
-                    Periods = 1:10)
-conditions_ka1 .= 0.1
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka1,
-    conditions_in_levels = false)
-```
-
-Finally, overlay another conditional forecast using the custom color palette:
-
-```julia
-conditions_ka2 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,10),
-                    Variables = [:Y,:R], 
-                    Periods = 1:10)
-conditions_ka2[1,:] .= -0.1
-conditions_ka2[2,:] .= 0.0
-
-# Add second shock to show cumulative effect
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-    conditions_ka2,
-    conditions_in_levels = false,
-    plot_attributes = Dict(:palette => ec_color_palette),
-    plot_type = :stack)
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     plot_attributes = Dict(:palette => ec_color_palette))
 ```
 
 ![Gali 2015 conditional forecast - custom color palette](../assets/cnd_fcst_color__Gali_2015_chapter_3_nonlinear__2.png)
@@ -794,9 +742,9 @@ The colors of the bars now follow the custom color palette.
 Other attributes such as the font family can also be modified (see here for [GR font options](https://github.com/JuliaPlots/Plots.jl/blob/v1.41.1/src/backends/gr.jl#L61)):
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
-    plot_attributes = Dict(:fontfamily => "computer modern"))
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     plot_attributes = Dict(:fontfamily => "computer modern"))
 ```
 
 ![Gali 2015 conditional forecast - custom font](../assets/cnd_fcst_font__Gali_2015_chapter_3_nonlinear__1.png)
@@ -809,16 +757,11 @@ The `plots_per_page` argument (default: `9`, type: `Int`) controls the number of
 The following example selects 9 variables and sets `plots_per_page` to 2:
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
-                    Variables = [:Y], 
-                    Periods = 1:10)
-conditions_ka1 .= 0.1
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka1,
-    conditions_in_levels = false,
-    variables = [:Y, :Pi, :R, :C, :N, :W_real, :MC, :i_ann, :A],
-    plots_per_page = 2)
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = [:Y, :Pi, :R, :C, :N, :W_real, :MC, :i_ann, :A],
+                     plots_per_page = 2)
 ```
 
 ![Gali 2015 conditional forecast - 2 plots per page](../assets/cnd_fcst_2_per_page__Gali_2015_chapter_3_nonlinear__3.png)
@@ -830,15 +773,10 @@ The first four pages display two variables (sorted alphabetically). The title in
 The `show_plots` argument (default: `true`, type: `Bool`), when `true`, displays the plots; otherwise, they are only returned as an object.
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
-                    Variables = [:Y], 
-                    Periods = 1:10)
-conditions_ka1 .= 0.1
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka1,
-    conditions_in_levels = false,
-    show_plots = false)
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     show_plots = false)
 ```
 
 ## Saving Plots
@@ -856,14 +794,9 @@ Each plot is saved as a separate file with a name indicating the prefix, model n
 The following example saves all conditional forecasts for the `Gali_2015_chapter_3_nonlinear` model as PNG files in the `../plots` directory with `cond_fcst` as the filename prefix:
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
-                    Variables = [:Y], 
-                    Periods = 1:10)
-conditions_ka1 .= 0.1
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka1,
-    conditions_in_levels = false,
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     save_plots = true,
     save_plots_format = :png,
     save_plots_path = "./../plots",
@@ -879,14 +812,9 @@ The `rename_dictionary` argument (default: `Dict()`, type: `AbstractDict{<:Union
 For example, to rename variables for clearer display:
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
-                    Variables = [:Y], 
-                    Periods = 1:10)
-conditions_ka1 .= 0.1
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka1,
-    conditions_in_levels = false,
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"))
 ```
 
@@ -895,29 +823,18 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 This feature is especially valuable when overlaying conditional forecasts from different models. Consider comparing FS2000 (which uses lowercase variable names like `c`) with `Gali_2015_chapter_3_nonlinear` (which uses uppercase variable names like `C`). The `rename_dictionary` allows harmonizing these names when plotting them together:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:P, :R, :c], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.01
-conditions_ka[2,2] = 1.02
-conditions_ka[3,3] = 1.03
-
-plot_conditional_forecast(FS2000,
-                         conditions_ka,
+sim_data_FS2000 = simulate(FS2000)([:y],:,:simulate)
+plot_model_estimates(FS2000,
+                         sim_data_FS2000,
                          rename_dictionary = Dict(
                             :c => "Consumption", 
                             :y => "Output", 
                             :R => "Interest Rate"
                          ))
 
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
-                    Variables = [:Y], 
-                    Periods = 1:10)
-conditions_ka1 .= 0.01
-
-plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
-    conditions_ka1,
-    conditions_in_levels = false,
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     rename_dictionary = Dict(
         :C => "Consumption", 
         :Y => "Output", 
@@ -932,28 +849,15 @@ Both models now appear in the plot with consistent, readable labels, making comp
 The `rename_dictionary` also works with shocks. For example, `Gali_2015_chapter_3_nonlinear` has shocks `eps_a` and `eps_nu`, while FS2000 has `e_a` and `e_m`. To compare these with consistent labels:
 
 ```julia
-conditions_ka1 = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,10),
-                    Variables = [:Y], 
-                    Periods = 1:10)
-conditions_ka1 .= 0.01
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-                            conditions_ka1,
-                            conditions_in_levels = false,
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                            sim_data,
                             rename_dictionary = Dict(
                                 :eps_a => "Technology Shock", 
                                 :eps_nu => "Monetary Policy Shock"
                                 ))
 
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:P, :R, :c], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.01
-conditions_ka[2,2] = 1.02
-conditions_ka[3,3] = 1.03
-
-plot_conditional_forecast!(FS2000,
-                         conditions_ka,
+plot_model_estimates!(FS2000,
+                         sim_data_FS2000,
                          rename_dictionary = Dict(
                             :e_a => "Technology Shock", 
                             :e_m => "Monetary Policy Shock"
@@ -1028,14 +932,10 @@ end
 end
 
 
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),
-                    Variables = ["C{H}", "C{F}"], 
-                    Periods = 1:2)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
 
-plot_conditional_forecast(Backus_Kehoe_Kydland_1992,
-    conditions_ka,
+sim_data = simulate(Backus_Kehoe_Kydland_1992)(["Y{H}"],:,:simulate)
+plot_model_estimates(Backus_Kehoe_Kydland_1992,
+    sim_data,
     rename_dictionary = Dict("C{H}" => "Home Consumption", 
                              "C{F}" => "Foreign Consumption",
                              "Y{H}" => "Home Output",
@@ -1051,15 +951,9 @@ Variables or shocks not included in the dictionary retain their default names. T
 The `verbose` argument (default: `false`, type: `Bool`), when `true`, enables verbose output related to solving the model
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:R, :Y, :MC], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     verbose = true)
 ```
 
@@ -1067,8 +961,8 @@ The code outputs information about solving the steady state blocks.
 When parameters change, the first-order solution is recomputed; otherwise, it uses the cached solution:
 
 ```julia
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     parameters = :β => 0.955,
     verbose = true)
 # Parameter changes: 
@@ -1092,15 +986,9 @@ The tolerances used by the numerical solvers can be adjusted. The Tolerances obj
 custom_tol = Tolerances(qme_acceptance_tol = 1e-12,
     sylvester_acceptance_tol = 1e-12)
 
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:R, :Y, :MC], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     tol = custom_tol,
     algorithm = :second_order,
     parameters = :β => 0.9555,
@@ -1129,15 +1017,9 @@ The `quadratic_matrix_equation_algorithm` argument (default: `:schur`, type: `Sy
 The quadratic matrix equation solver is used internally when solving the model to first order. Different algorithms are available. The `:schur` algorithm is generally faster and more reliable, while `:doubling` can be more precise in some cases (this example also changes parameters to force recomputation):
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:R, :Y, :MC], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     quadratic_matrix_equation_algorithm = :doubling,
     parameters = :β => 0.95555,
     verbose = true)
@@ -1161,15 +1043,9 @@ For most use cases, the default `:schur` algorithm is recommended. Use this argu
 The algorithm to use can be specified for solving Sylvester equations in higher-order solutions. For example, select the `:bartels_stewart` algorithm for solving the second-order perturbation problem:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:R, :Y, :MC], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     algorithm = :second_order,
     sylvester_algorithm = :bartels_stewart,
     verbose = true)
@@ -1187,15 +1063,9 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 For third-order solutions, different algorithms can be specified for the second- and third-order Sylvester equations using a `Tuple`:
 
 ```julia
-conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
-                    Variables = [:R, :Y, :MC], 
-                    Periods = 1:3)
-conditions_ka[1,1] = 1.0
-conditions_ka[2,2] = 1.0
-conditions_ka[3,3] = 1.0
-
-plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
-    conditions_ka,
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
     algorithm = :third_order,
     sylvester_algorithm = (:doubling, :bicgstab),
     verbose = true)
@@ -1216,298 +1086,3 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 ```
 
 The choice of algorithm affects both speed and precision: `:doubling` and `:bartels_stewart` are generally faster, while `:bicgstab`, `:dqgmres`, and `:gmres` are better for large sparse problems. Use this argument for specific needs or when encountering issues with the default solver.
-
-
-
-## Example Setup
-
-The examples below reuse a simple RBC model. Any other model created with `@model`/`@parameters` can be substituted.
-
-```julia
-using MacroModelling, StatsPlots
-
-@model RBC_CME begin
-    y[0] = A[0] * k[-1]^alpha
-    1 / c[0] = beta * 1 / c[1] * (alpha * A[1] * k[0]^(alpha-1) + (1 - delta))
-    1 / c[0] = beta * 1 / c[1] * (R[0] / Pi[1])
-    R[0] * beta = (Pi[0] / Pibar)^phi_pi
-    A[0] * k[-1]^alpha = c[0] + k[0] - (1 - delta * z_delta[0]) * k[-1]
-    z_delta[0] = 1 - rho_z_delta + rho_z_delta * z_delta[-1] + std_z_delta * delta_eps[x]
-    A[0] = 1 - rhoz + rhoz * A[-1] + std_eps * eps_z[x]
-end
-
-@parameters RBC_CME begin
-    alpha = .157
-    beta = .999
-    delta = .0226
-    Pibar = 1.0008
-    phi_pi = 1.5
-    rhoz = .9
-    std_eps = .0068
-    rho_z_delta = .9
-    std_z_delta = .005
-end
-
-simulation = simulate(RBC_CME, periods = 200)
-data = simulation([:y, :c, :k, :R], :, :simulate)                # KeyedArray (Variables × Periods)
-data = rekey(data, :Periods => 1:size(data, 2))                   # optional: replace the period axis labels
-
-plot_model_estimates(RBC_CME, data)                               # returns a Vector{Plot}
-```
-
-You can also build a `KeyedArray` from empirical data:
-
-```julia
-using AxisKeys, Dates
-
-observations = [:y, :c, :k]
-quarters = Date(1960):Month(3):Date(2009, 9)
-matrix = Matrix(df[:, observations])'                            # observables × periods
-
-data_empirical = KeyedArray(matrix,
-    Variables = observations,
-    Periods = collect(quarters))
-```
-
-`plot_model_estimates` sorts the variables on the first axis to match the model’s internal order, so the exact ordering of `observations` does not matter, but the provided names must match valid model observables (symbols or strings that can be parsed into symbols).
-
-## Required Arguments
-
-### Model (`𝓂`)
-Any model created with `@model`/`@parameters`. The routine internally calls `solve!` with `algorithm` and `parameters`, so you do not have to precompute a solution. If the model includes occasionally binding constraints, they are respected whenever the chosen algorithm supports them.
-
-### Data (`data::KeyedArray{Float64}`)
-Two-dimensional `KeyedArray` with observables on axis 1 and periods on axis 2. Axis keys can be `Symbol`s or `String`s; string keys are parsed into symbols using `Meta.parse`, so `:y` and `"y"` are both valid. The second axis labels are displayed on the x-axis (dates, integers, etc.). If the data originate from `simulate`, select the desired observables and slice away the `:simulate` shock dimension, as shown in the example. Use `rekey` to rename axes if necessary.
-
-## Keyword Arguments
-
-### `parameters`
-Additional parameter sets. Accepts a vector of parameter values ordered as listed by `get_parameters(model)`, tuples/vectors of `Pair`s (`[:beta => .995, :phi_pi => 1.75]`), matrices of values, or `Dict`s (see `ParameterType`). Whenever the provided values differ from the current calibration, `solve!` recomputes the solution:
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    parameters = [:beta => .995, :phi_pi => 1.75])
-```
-
-### `algorithm`
-Solution algorithm (`:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`). Higher-order algorithms require the `:inversion` filter; the helper automatically enforces that constraint.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    algorithm = :pruned_second_order)
-```
-
-### `filter`
-Filtering method. `:kalman` is available for first-order linear models, while `:inversion` works for both linear and nonlinear (higher-order) solutions. Passing an invalid combination is corrected automatically (a message is logged explaining the adjustment).
-
-```julia
-plot_model_estimates(RBC_CME, data, filter = :inversion)
-```
-
-### `warmup_iterations`
-Number of additional simulated periods prepended before the first observation. This option is **only** honored when `algorithm = :first_order` and `filter = :inversion`; otherwise it is ignored with a warning.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    filter = :inversion,
-    warmup_iterations = 5)
-```
-
-### `variables`
-Select the endogenous variables to plot. Accepted inputs: a single `Symbol`/`String`, tuples, vectors, matrices of names, or one of the built-in selectors `:all`, `:all_excluding_obc`, or `:all_excluding_auxiliary_and_obc`. Variables not present in the model raise a warning.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    variables = [:y, :c, :k])
-
-plot_model_estimates(RBC_CME, data,
-    variables = :all_excluding_auxiliary_and_obc)
-```
-
-### `shocks`
-Select which shocks to display in the decomposition (ignored when `shock_decomposition = false`). Inputs mirror `variables` and accept `:all`, `:all_excluding_obc`, explicit name collections, or `:none` to skip shock plots even if `shock_decomposition = true`.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    shock_decomposition = true,
-    shocks = [:eps_z, :delta_eps])
-```
-
-### `presample_periods`
-Drop the first `presample_periods` periods **after** filtering/smoothing to focus on the main sample:
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    presample_periods = 20)
-```
-
-### `data_in_levels`
-Set to `false` if the provided data are already expressed as deviations from the steady state. When `true` (default) the data are demeaned using the relevant steady state before filtering.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    data_in_levels = false)
-```
-
-### `smooth`
-Toggle backward smoothing. Only the Kalman filter supports smoothing; requesting `smooth = true` with the inversion filter automatically flips the flag back to `false`.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    filter = :kalman,
-    smooth = true)
-```
-
-### `shock_decomposition`
-Controls whether stacked bars with the contribution of each shock, the initial condition, and—when using pruned solutions—the “Nonlinearities” bucket are plotted below the estimates. The default is `true` for first-order and pruned solutions and `false` for unpruned higher-order solutions (the inversion filter cannot provide a consistent decomposition there). The convenience wrapper `plot_shock_decomposition` always sets this flag to `true`.
-
-```julia
-plot_shock_decomposition(RBC_CME, data,
-    shocks = [:eps_z, :delta_eps])
-```
-
-### `label`
-Legend label for the entire run. When you later call `plot_model_estimates!` the new label is shown alongside the previous runs:
-
-```julia
-plot_model_estimates(RBC_CME, data, label = "Baseline")
-plot_model_estimates!(RBC_CME, data[:, 50:end], label = "Post-break")
-```
-
-### `show_plots`
-Display the plots as they are created. Disable this flag when running batch jobs or saving figures without rendering to the screen.
-
-```julia
-plots = plot_model_estimates(RBC_CME, data,
-    show_plots = false)
-```
-
-### `save_plots`, `save_plots_format`, `save_plots_name`, `save_plots_path`
-Save each page of the output (`save_plots = true`). `save_plots_name` becomes part of the filename (`<name>__<model>__<page>.<format>`), `save_plots_format` is any format understood by Plots.jl (e.g. `:pdf`, `:png`), and `save_plots_path` controls the directory (created automatically if it does not exist).
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    save_plots = true,
-    save_plots_format = :png,
-    save_plots_name = "sw_estimates",
-    save_plots_path = "estimation_output")
-```
-
-### `plots_per_page`
-Number of subplots before a new page is started (default: 6). Increase this to pack more variables per page or reduce it to emphasize individual series.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    plots_per_page = 4)
-```
-
-### `transparency`
-Alpha channel applied to the stacked bars in the decomposition (0–1). Only relevant when `shock_decomposition = true`.
-
-```julia
-plot_shock_decomposition(RBC_CME, data,
-    transparency = 0.35)
-```
-
-### `max_elements_per_legend_row`
-Upper bound on the number of legend entries per row (useful when overlaying multiple runs or showing many shocks). The function automatically computes the number of columns subject to this cap.
-
-```julia
-plot_shock_decomposition(RBC_CME, data,
-    shocks = :all,
-    max_elements_per_legend_row = 6)
-```
-
-### `extra_legend_space`
-Adds extra vertical space (in fraction of the total plot height) below the subplots for the legend. This is helpful when period labels contain long strings (dates) or when the legend spans multiple rows.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    extra_legend_space = 0.1)
-```
-
-### `rename_dictionary`
-Map variable or shock names to prettier labels. Keys and values can be `Symbol`s or `String`s. All resulting names must be unique because the plots use them as labels.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    rename_dictionary = Dict(
-        :y => "Output",
-        :c => "Consumption",
-        :k => "Capital",
-        :eps_z => "Technology shock"))
-```
-
-### `plot_attributes`
-Additional Plots.jl attributes merged into the defaults (size, palette, legend position, etc.). `:framestyle` is kept for the subplots; all other entries are applied to the combined layout.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    plot_attributes = Dict(
-        :size => (900, 600),
-        :palette => :Dark2,
-        :legend => :bottom))
-```
-
-### `verbose`
-When `true`, prints progress information from the steady-state solver, the filtering routines, and the linear algebra backends (quadratic matrix equation, Sylvester, Lyapunov). Useful while debugging convergence problems.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    verbose = true)
-```
-
-### `tol`
-Instance of `Tolerances`, letting you tighten or relax the acceptance thresholds of the steady-state solver and the matrix-equation solvers.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    tol = Tolerances(NSSS_xtol = 1e-13, qme_tol = 1e-12))
-```
-
-### `quadratic_matrix_equation_algorithm`
-Select the solver for the quadratic matrix equation that underpins the linear solution (`:schur`, `:doubling`, `:linear_time_iteration`, `:quadratic_iteration`). The default `:schur` is fast and reliable; `:doubling` is more precise for difficult calibrations.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    quadratic_matrix_equation_algorithm = :doubling)
-```
-
-### `sylvester_algorithm`
-Choose the solver for the Sylvester equations that appear in higher-order solutions. Pass a single symbol (e.g. `:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`, `:dqgmres`) to reuse it everywhere, or a tuple/vector with two entries to specify separate algorithms for the first- and third-order Sylvester problems. Large models automatically fallback to `:bicgstab` unless you override this behavior.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    sylvester_algorithm = (:doubling, :bicgstab))
-```
-
-### `lyapunov_algorithm`
-Solver for the Lyapunov equation (`:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`, `:iterative`, `:speedmapping`). The default `:doubling` is typically fastest and most accurate.
-
-```julia
-plot_model_estimates(RBC_CME, data,
-    lyapunov_algorithm = :bartels_stewart)
-```
-
-## Return Value and Side Effects
-
-The function returns a vector of plots (one entry per page). Each page contains the subplots plus a legend panel that lists the line and bar colors, the model name, and the page count. When `show_plots = true`, each page is displayed. When `save_plots = true`, each page is written to disk after it is rendered.
-
-## Comparing Runs with `plot_model_estimates!`
-
-`plot_model_estimates!` shares the same signature but appends its results to the last call of `plot_model_estimates`/`plot_model_estimates!`. Use it to compare different parameterizations, filters, or samples without rebuilding the plot manually.
-
-```julia
-baseline = plot_model_estimates(RBC_CME, data,
-    parameters = [:beta => .999], label = "β = 0.999")
-
-plot_model_estimates!(RBC_CME, data,
-    parameters = [:beta => .995], label = "β = 0.995",
-    transparency = 0.6)
-```
-
-The helper keeps an internal registry of all arguments so that follow-up calls can use the same variable ordering, labels, and color palette. Remember to change `label` for each overlay when you intend to show multiple runs.
-
-## Shock-Decomposition Wrapper
-
-`plot_shock_decomposition(args...; kwargs...)` is a lightweight wrapper around `plot_model_estimates` with `shock_decomposition = true`. Use it when you only care about the stacked contributions and do not want to retype the keyword argument.
