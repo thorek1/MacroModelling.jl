@@ -6,6 +6,8 @@ The figures are built with StatsPlots/Plots.jl and expect a `KeyedArray` from th
 
 First, load the necessary packages:
 
+#### add aux functions (plot_shock_decomposition) ####
+
 ```julia
 using MacroModelling, StatsPlots, CSV, DataFrames, AxisKeys, Dates
 ```

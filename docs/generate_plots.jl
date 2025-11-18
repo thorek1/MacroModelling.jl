@@ -1932,3 +1932,606 @@ plot_conditional_forecast(Backus_Kehoe_Kydland_1992,
                              "Y{H}" => "Home Output",
                              "Y{F}" => "Foreign Output"),
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_rename_dict_string)
+
+
+# Model Estimates
+
+
+#### add aux functions (plot_shock_decomposition) ####
+
+
+using MacroModelling, StatsPlots, CSV, DataFrames, AxisKeys, Dates
+
+
+@model FS2000 begin
+    dA[0] = exp(gam + z_e_a  *  e_a[x])
+    log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+    - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+    W[0] = l[0] / n[0]
+    - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+    R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+    1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+    c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+    P[0] * c[0] = m[0]
+    m[0] - 1 + d[0] = l[0]
+    e[0] = exp(z_e_a  *  e_a[x])
+    y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+    gy_obs[0] = dA[0] * y[0] / y[-1]
+    gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+    log_gy_obs[0] = log(gy_obs[0])
+    log_gp_obs[0] = log(gp_obs[0])
+end
+
+@parameters FS2000 begin
+    alp     = 0.356
+    bet     = 0.993
+    gam     = 0.0085
+    mst     = 1.0002
+    rho     = 0.129
+    psi     = 0.65
+    del     = 0.01
+    z_e_a   = 0.035449
+    z_e_m   = 0.008862
+end
+
+dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
+data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
+data = log.(data)
+
+plot_model_estimates(FS2000, data)
+
+
+# ![FS2000 model estimates](../assets/conditional_forecast__FS2000__2.png)
+
+
+## Data (Required)
+
+
+dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
+data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)), Time = 1:size(dat)[1])
+data = log.(data)
+
+plot_model_estimates(FS2000, data)
+
+dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
+data = KeyedArray(Array(dat)', Variable = "log_".*names(dat), Time = 1:size(dat)[1])
+data = log.(data)
+
+plot_model_estimates(FS2000, data)
+
+dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
+data = KeyedArray(Array(dat)', Variable = Symbol.("log_".*names(dat)), Time = 1:size(dat)[1])
+data = log.(data)
+
+current_date = Date(1950, 1, 1)
+
+dates = Vector{Date}(undef, size(data,2))
+
+for i in 1:size(data,2)
+    dates[i] = current_date
+    current_date = current_date + Dates.Month(3)
+end
+
+data_rekey = rekey(data, :Time => dates)
+
+plot_model_estimates(FS2000, data_rekey)
+
+## Data in levels
+
+dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
+data = KeyedArray(Array(dat)', Variable = "log_".*names(dat), Time = 1:size(dat)[1])
+data = log.(data)
+
+plot_model_estimates(FS2000, data)
+
+sim = simulate(FS2000, levels = false)
+plot_model_estimates(FS2000, sim([:y,:R],:,:simulate), data_in_levels = false)
+
+
+#### mentiond that the second dimnesion can be of any type in the docstring ####
+
+## Filter
+
+
+@model Gali_2015_chapter_3_nonlinear begin
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    R[0] = 1 / Q[0]
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+    R[0] = Pi[1] * realinterest[0]
+    R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])
+    C[0] = Y[0]
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+    log_y[0] = log(Y[0])
+    log_W_real[0] = log(W_real[0])
+    log_N[0] = log(N[0])
+    pi_ann[0] = 4 * log(Pi[0])
+    i_ann[0] = 4 * log(R[0])
+    r_real_ann[0] = 4 * log(realinterest[0])
+    M_real[0] = Y[0] / R[0] ^ η
+end
+
+@parameters Gali_2015_chapter_3_nonlinear begin
+    σ = 1
+    φ = 5
+    ϕᵖⁱ = 1.5
+    ϕʸ = 0.125
+    θ = 0.75
+    ρ_ν = 0.5
+    ρ_z = 0.5
+    ρ_a = 0.9
+    β = 0.99
+    η = 3.77
+    α = 0.25
+    ϵ = 9
+    τ = 0
+    std_a = .01
+    std_z = .05
+    std_nu = .0025
+end
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, filter = :kalman)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion)
+
+## Smooth
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, smooth = true)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, smooth = false)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion, smooth = false)
+
+
+## Presample periods
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods = 20)
+
+
+## Shock decomposition
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = true)
+
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = false)
+
+## Shocks
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = [:eps_a, :eps_z])
+
+
+## Solution Algorithm
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :second_order)
+
+
+# ![Gali 2015 conditional forecast - second order](../assets/cnd_fcst_second_order__Gali_2015_chapter_3_nonlinear__1.png)
+
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :second_order)
+
+
+#### how to plot the data when there are different steady states? ####
+
+# ![Gali 2015 conditional forecast - first and second order](../assets/cnd_fcst_second_order_combine__Gali_2015_chapter_3_nonlinear__2.png)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :pruned_third_order)
+
+
+# ![Gali 2015 conditional forecast - multiple orders](../assets/cnd_fcst_higher_order_combine__Gali_2015_chapter_3_nonlinear__1.png)
+
+## Variables to Plot
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = [:Y, :Pi])
+
+
+# ![Gali 2015 conditional forecast - selected variables (Y, Pi)](../assets/cnd_fcst_vars__Gali_2015_chapter_3_nonlinear__1.png)
+
+
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = (:Y, :Pi))
+                     
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = [:Y :Pi])
+                     
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = ["Y", "Pi"])
+                     
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = :Y)
+                     
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = "Y")
+                     
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = :all_excluding_auxiliary_and_obc)
+                     
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = :all_excluding_obc)
+                     
+@model FS2000 begin
+    dA[0] = exp(gam + z_e_a  *  e_a[x])
+    log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+    - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+    W[0] = l[0] / n[0]
+    - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+    R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+    1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+    c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+    P[0] * c[0] = m[0]
+    m[0] - 1 + d[0] = l[0]
+    e[0] = exp(z_e_a  *  e_a[x])
+    y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+    gy_obs[0] = dA[0] * y[0] / y[-1]
+    gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+    log_gy_obs[0] = log(gy_obs[0])
+    log_gp_obs[0] = log(gp_obs[0])
+end
+
+@parameters FS2000 begin
+    alp     = 0.356
+    bet     = 0.993
+    gam     = 0.0085
+    mst     = 1.0002
+    rho     = 0.129
+    psi     = 0.65
+    del     = 0.01
+    z_e_a   = 0.035449
+    z_e_m   = 0.008862
+end
+
+sim_data_FS2000 = simulate(FS2000)([:y],:,:simulate)
+plot_model_estimates(FS2000,
+                     sim_data_FS2000,
+                     variables = :all_excluding_obc)
+
+
+# ![FS2000 conditional forecast - e_a shock with auxiliary variables](../assets/cnd_fcst_all_excluding_obc__FS2000__1.png)
+
+@model Gali_2015_chapter_3_obc begin
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    R[0] = 1 / Q[0]
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+    R[0] = Pi[1] * realinterest[0]
+    R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+    C[0] = Y[0]
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+    log_y[0] = log(Y[0])
+    log_W_real[0] = log(W_real[0])
+    log_N[0] = log(N[0])
+    pi_ann[0] = 4 * log(Pi[0])
+    i_ann[0] = 4 * log(R[0])
+    r_real_ann[0] = 4 * log(realinterest[0])
+    M_real[0] = Y[0] / R[0] ^ η
+end
+
+@parameters Gali_2015_chapter_3_obc begin
+    R̄ = 1.0
+    σ = 1
+    φ = 5
+    ϕᵖⁱ = 1.5
+    ϕʸ = 0.125
+    θ = 0.75
+    ρ_ν = 0.5
+    ρ_z = 0.5
+    ρ_a = 0.9
+    β = 0.99
+    η = 3.77
+    α = 0.25
+    ϵ = 9
+    τ = 0
+    std_a = .01
+    std_z = .05
+    std_nu = .0025
+    R > 1.0001
+end
+
+sim_data_Gali_obc = simulate(Gali_2015_chapter_3_obc)([:R],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_obc,
+                     sim_data_Gali_obc,
+                         variables = :all)
+
+
+# ![Gali 2015 OBC conditional forecast - with OBC variables](../assets/cnd_fcst_all__Gali_2015_chapter_3_obc__3.png)
+
+## Parameter Values
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β => 0.95)
+
+
+# ![Gali 2015 conditional forecast - `β = 0.95`](../assets/cnd_fcst_beta_95__Gali_2015_chapter_3_nonlinear__1.png)
+
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β => 0.99)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β => 0.95)
+
+
+# ![Gali 2015 conditional forecast - comparing β values](../assets/cnd_fcst_compare_beta__Gali_2015_chapter_3_nonlinear__2.png)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = (:β => 0.97, :τ => 0.5))
+
+
+# ![Gali 2015 conditional forecast - multiple parameter changes](../assets/cnd_fcst_multi_params__Gali_2015_chapter_3_nonlinear__2.png)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = [:β => 0.98, :τ => 0.25])
+
+params = get_parameters(Gali_2015_chapter_3_nonlinear, values = true)
+# 16-element Vector{Pair{String, Float64}}:
+#       "σ" => 1.0
+#       "φ" => 5.0
+#     "ϕᵖⁱ" => 1.5
+#      "ϕʸ" => 0.125
+#       "θ" => 0.75
+#     "ρ_ν" => 0.5
+#     "ρ_z" => 0.5
+#     "ρ_a" => 0.9
+#       "β" => 0.95
+#       "η" => 3.77
+#       "α" => 0.25
+#       "ϵ" => 9.0
+#       "τ" => 0.5
+#   "std_a" => 0.01
+#   "std_z" => 0.05
+#  "std_nu" => 0.0025
+
+param_vals = [p[2] for p in params]
+# 16-element Vector{Float64}:
+#  1.0
+#  5.0
+#  1.5
+#  0.125
+#  0.75
+#  0.5
+#  0.5
+#  0.9
+#  0.95
+#  3.77
+#  0.25
+#  9.0
+#  0.5
+#  0.01
+#  0.05
+#  0.0025
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = param_vals)
+
+
+## Plot Labels
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = (:β => 0.95, :τ => 0.5),
+                     label = "Alt. params")
+
+
+# ![Gali 2015 conditional forecast - custom labels](../assets/cnd_fcst_label__Gali_2015_chapter_3_nonlinear__2.png)
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = (:β => 0.99, :τ => 0.0),
+                     label = :standard)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    parameters = (:β => 0.95, :τ => 0.5),
+    label = :alternative)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    parameters = (:β => 0.99, :τ => 0.0),
+    label = 0.99)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    parameters = (:β => 0.95, :τ => 0.5),
+    label = 0.95)
+
+
+## Plot Attributes
+
+ec_color_palette =
+[
+    "#FFD724",  # "Sunflower Yellow"
+    "#353B73",  # "Navy Blue"
+    "#2F9AFB",  # "Sky Blue"
+    "#B8AAA2",  # "Taupe Grey"
+    "#E75118",  # "Vermilion"
+    "#6DC7A9",  # "Mint Green"
+    "#F09874",  # "Coral"
+    "#907800"   # "Olive"
+]
+    
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     plot_attributes = Dict(:palette => ec_color_palette))
+
+
+# ![Gali 2015 conditional forecast - custom color palette](../assets/cnd_fcst_color__Gali_2015_chapter_3_nonlinear__2.png)
+
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     plot_attributes = Dict(:fontfamily => "computer modern"))
+
+
+# ![Gali 2015 conditional forecast - custom font](../assets/cnd_fcst_font__Gali_2015_chapter_3_nonlinear__1.png)
+
+
+## Plots Per Page
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = [:Y, :Pi, :R, :C, :N, :W_real, :MC, :i_ann, :A],
+                     plots_per_page = 2)
+
+
+# ![Gali 2015 conditional forecast - 2 plots per page](../assets/cnd_fcst_2_per_page__Gali_2015_chapter_3_nonlinear__3.png)
+
+## Variable and Shock Renaming (rename dictionary)
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"))
+
+# ![Gali 2015 conditional forecast - rename dictionary](../assets/cnd_fcst_rename_dict__Gali_2015_chapter_3_nonlinear__1.png)
+
+sim_data_FS2000 = simulate(FS2000)([:y],:,:simulate)
+plot_model_estimates(FS2000,
+                         sim_data_FS2000,
+                         rename_dictionary = Dict(
+                            :c => "Consumption", 
+                            :y => "Output", 
+                            :R => "Interest Rate"
+                         ))
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    rename_dictionary = Dict(
+        :C => "Consumption", 
+        :Y => "Output", 
+        :R => "Interest Rate"
+        ))
+
+# ![FS2000 and Gali 2015 conditional forecast - multiple models with rename dictionary](../assets/cnd_fcst_rename_dict2__multiple_models__2.png)
+
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                            sim_data,
+                            rename_dictionary = Dict(
+                                :eps_a => "Technology Shock", 
+                                :eps_nu => "Monetary Policy Shock"
+                                ))
+
+plot_model_estimates!(FS2000,
+                         sim_data_FS2000,
+                         rename_dictionary = Dict(
+                            :e_a => "Technology Shock", 
+                            :e_m => "Monetary Policy Shock"
+                            ))
+
+
+# ![FS2000 and Gali 2015 conditional forecast - multiple models with shock rename dictionary](../assets/cnd_fcst_rename_dict_shocks__multiple_models__7.png)
+
+# Define the Backus model (abbreviated for clarity)
+@model Backus_Kehoe_Kydland_1992 begin
+    for co in [H, F]
+        Y{co}[0] = ((LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1-theta{co}))^(-nu{co}) + sigma{co} * Z{co}[-1]^(-nu{co}))^(-1/nu{co})
+        K{co}[0] = (1-delta{co})*K{co}[-1] + S{co}[0]
+        X{co}[0] = for lag in (-4+1):0 phi{co} * S{co}[lag] end
+        A{co}[0] = (1-eta{co}) * A{co}[-1] + N{co}[0]
+        L{co}[0] = 1 - alpha{co} * N{co}[0] - (1-alpha{co})*eta{co} * A{co}[-1]
+        U{co}[0] = (C{co}[0]^mu{co}*L{co}[0]^(1-mu{co}))^gamma{co}
+        psi{co} * mu{co} / C{co}[0]*U{co}[0] = LGM[0]
+        psi{co} * (1-mu{co}) / L{co}[0] * U{co}[0] * (-alpha{co}) = - LGM[0] * (1-theta{co}) / N{co}[0] * (LAMBDA{co}[0] * K{co}[-4]^theta{co}*N{co}[0]^(1-theta{co}))^(-nu{co})*Y{co}[0]^(1+nu{co})
+
+        for lag in 0:(4-1)  
+            beta{co}^lag * LGM[lag]*phi{co}
+        end +
+        for lag in 1:4
+            -beta{co}^lag * LGM[lag] * phi{co} * (1-delta{co})
+        end = beta{co}^4 * LGM[+4] * theta{co} / K{co}[0] * (LAMBDA{co}[+4] * K{co}[0]^theta{co} * N{co}[+4]^(1-theta{co})) ^ (-nu{co})* Y{co}[+4]^(1+nu{co})
+
+        LGM[0] = beta{co} * LGM[+1] * (1+sigma{co} * Z{co}[0]^(-nu{co}-1)*Y{co}[+1]^(1+nu{co}))
+        NX{co}[0] = (Y{co}[0] - (C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1]))/Y{co}[0]
+    end
+
+    (LAMBDA{H}[0]-1) = rho{H}{H}*(LAMBDA{H}[-1]-1) + rho{H}{F}*(LAMBDA{F}[-1]-1) + Z_E{H} * E{H}[x]
+    (LAMBDA{F}[0]-1) = rho{F}{F}*(LAMBDA{F}[-1]-1) + rho{F}{H}*(LAMBDA{H}[-1]-1) + Z_E{F} * E{F}[x]
+
+    for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
+end
+
+@parameters Backus_Kehoe_Kydland_1992 begin
+    K_ss = 11
+    K[ss] = K_ss | beta
+    
+    mu      =    0.34
+    gamma   =    -1.0
+    alpha   =    1
+    eta     =    0.5
+    theta   =    0.36
+    nu      =    3
+    sigma   =    0.01
+    delta   =    0.025
+    phi     =    1/4
+    psi     =    0.5
+
+    Z_E = 0.00852
+    
+    rho{H}{H} = 0.906
+    rho{F}{F} = rho{H}{H}
+    rho{H}{F} = 0.088
+    rho{F}{H} = rho{H}{F}
+end
+
+
+
+sim_data = simulate(Backus_Kehoe_Kydland_1992)(["Y{H}"],:,:simulate)
+plot_model_estimates(Backus_Kehoe_Kydland_1992,
+    sim_data,
+    rename_dictionary = Dict("C{H}" => "Home Consumption", 
+                             "C{F}" => "Foreign Consumption",
+                             "Y{H}" => "Home Output",
+                             "Y{F}" => "Foreign Output"))
+
+
+# ![Backus, Kehoe, Kydland 1992 conditional forecast - E{H} shock with rename dictionary](../assets/cnd_fcst_rename_dict_string__Backus_Kehoe_Kydland_1992__1.png)
