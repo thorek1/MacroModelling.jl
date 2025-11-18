@@ -260,7 +260,10 @@ function plot_model_estimates(𝓂::ℳ,
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
-    @assert shocks ∉ [:none, :simulate, :all_excluding_obc] "Shocks input cannot be :none, :all_excluding_obc, or :simulate in `plot_model_estimates`."
+    if shocks ∈ [:none, :simulate, :all_excluding_obc] 
+        @warn "Shocks input cannot be `:none`, `:all_excluding_obc`, or `:simulate` in `plot_model_estimates`. Changed shocks to `:all`"
+        shocks = :all
+    end
 
     obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> unique |> sort
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) |> unique  |> sort
@@ -760,7 +763,10 @@ function plot_model_estimates!(𝓂::ℳ,
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
-    @assert shocks ∉ [:none, :simulate, :all_excluding_obc] "Shocks input cannot be :none, :all_excluding_obc, or :simulate in `plot_model_estimates`."
+    if shocks ∈ [:none, :simulate, :all_excluding_obc] 
+        @warn "Shocks input cannot be `:none`, `:all_excluding_obc`, or `:simulate` in `plot_model_estimates`. Changed shocks to `:all`"
+        shocks = :all
+    end
 
     obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> unique |> sort
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) |> unique  |> sort
