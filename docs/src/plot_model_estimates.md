@@ -91,7 +91,7 @@ data = log.(data)
 plot_model_estimates(FS2000, data)
 ```
 
-A useful feature is that the second dimension of the `KeyedArray` can be customised. This can be helpful when working with date labels. The following example shows how to create date labels for quarterly data starting from 2000-Q1:
+A useful feature is that the second dimension of the `KeyedArray` can be customised. This can be helpful when working with date labels. The following example shows how to create date labels for quarterly data starting from 1950-Q1:
 
 ```julia
 dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
@@ -278,7 +278,7 @@ This shows only the line plots without the stacked bar charts for shock contribu
 
 ## Shocks
 
-The `shocks` argument determines the shocks shown in the plots. By default, all shocks are included (`:all`).  Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`.
+The `shocks` argument determines the shocks shown in the plots. By default, all shocks are included (`:all`).  Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `"eps_a"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`.
 
 In order to recall the shocks of a model one can use the `get_shocks` function:
 
