@@ -1978,26 +1978,14 @@ dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
 data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
 data = log.(data)
 
-plot_model_estimates(FS2000, data)
+plot_model_estimates(FS2000, data,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates)
 
 
-# ![FS2000 model estimates](../assets/conditional_forecast__FS2000__2.png)
+# ![FS2000 model estimates](../assets/estimates__FS2000__3.png)
 
 
 ## Data (Required)
-
-
-dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)), Time = 1:size(dat)[1])
-data = log.(data)
-
-plot_model_estimates(FS2000, data)
-
-dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
-data = KeyedArray(Array(dat)', Variable = "log_".*names(dat), Time = 1:size(dat)[1])
-data = log.(data)
-
-plot_model_estimates(FS2000, data)
 
 dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
 data = KeyedArray(Array(dat)', Variable = Symbol.("log_".*names(dat)), Time = 1:size(dat)[1])
@@ -2014,21 +2002,8 @@ end
 
 data_rekey = rekey(data, :Time => dates)
 
-plot_model_estimates(FS2000, data_rekey)
-
-## Data in levels
-
-dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
-data = KeyedArray(Array(dat)', Variable = "log_".*names(dat), Time = 1:size(dat)[1])
-data = log.(data)
-
-plot_model_estimates(FS2000, data)
-
-sim = simulate(FS2000, levels = false)
-plot_model_estimates(FS2000, sim([:y,:R],:,:simulate), data_in_levels = false)
-
-
-#### mentiond that the second dimnesion can be of any type in the docstring ####
+plot_model_estimates(FS2000, data_rekey,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_rekey)
 
 ## Filter
 
@@ -2081,37 +2056,41 @@ end
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, filter = :kalman)
 
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_filters)
 
 ## Smooth
 
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, smooth = true)
 
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, smooth = false)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, smooth = false,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_smooth)
 
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion, smooth = false)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion, smooth = false,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_smooth_inversion)
 
 
 ## Presample periods
 
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods = 20)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods = 20,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_presample)
 
 
 ## Shock decomposition
 
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = true)
-
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = false)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = false,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_shock_decomp)
 
 ## Shocks
 
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     shocks = [:eps_a, :eps_z])
+                     shocks = [:eps_a, :eps_z],
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_selected_shocks)
 
 
 ## Solution Algorithm
@@ -2119,7 +2098,8 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     algorithm = :second_order)
+                     algorithm = :second_order,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_second_order)
 
 
 # ![Gali 2015 conditional forecast - second order](../assets/cnd_fcst_second_order__Gali_2015_chapter_3_nonlinear__1.png)
@@ -2129,7 +2109,8 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
 
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     algorithm = :second_order)
+                     algorithm = :second_order,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_first_and_second_order)
 
 
 #### how to plot the data when there are different steady states? ####
@@ -2138,7 +2119,8 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     algorithm = :pruned_third_order)
+                     algorithm = :pruned_third_order,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_multiple_orders)
 
 
 # ![Gali 2015 conditional forecast - multiple orders](../assets/cnd_fcst_higher_order_combine__Gali_2015_chapter_3_nonlinear__1.png)
@@ -2148,32 +2130,12 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     variables = [:Y, :Pi])
+                     variables = [:Y, :Pi],
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_vars)
 
 
 # ![Gali 2015 conditional forecast - selected variables (Y, Pi)](../assets/cnd_fcst_vars__Gali_2015_chapter_3_nonlinear__1.png)
 
-
-plot_model_estimates(Gali_2015_chapter_3_nonlinear,
-                     sim_data,
-                     variables = (:Y, :Pi))
-                     
-plot_model_estimates(Gali_2015_chapter_3_nonlinear,
-                     sim_data,
-                     variables = [:Y :Pi])
-                     
-plot_model_estimates(Gali_2015_chapter_3_nonlinear,
-                     sim_data,
-                     variables = ["Y", "Pi"])
-                     
-plot_model_estimates(Gali_2015_chapter_3_nonlinear,
-                     sim_data,
-                     variables = :Y)
-                     
-plot_model_estimates(Gali_2015_chapter_3_nonlinear,
-                     sim_data,
-                     variables = "Y")
-                     
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
                      variables = :all_excluding_auxiliary_and_obc)
@@ -2216,7 +2178,8 @@ end
 sim_data_FS2000 = simulate(FS2000)([:y],:,:simulate)
 plot_model_estimates(FS2000,
                      sim_data_FS2000,
-                     variables = :all_excluding_obc)
+                     variables = :all_excluding_obc,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_all_excluding_obc)
 
 
 # ![FS2000 conditional forecast - e_a shock with auxiliary variables](../assets/cnd_fcst_all_excluding_obc__FS2000__1.png)
@@ -2271,7 +2234,8 @@ end
 sim_data_Gali_obc = simulate(Gali_2015_chapter_3_obc)([:R],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_obc,
                      sim_data_Gali_obc,
-                         variables = :all)
+                         variables = :all,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_all)
 
 
 # ![Gali 2015 OBC conditional forecast - with OBC variables](../assets/cnd_fcst_all__Gali_2015_chapter_3_obc__3.png)
@@ -2281,7 +2245,8 @@ plot_model_estimates(Gali_2015_chapter_3_obc,
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     parameters = :β => 0.95)
+                     parameters = :β => 0.95,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_beta_95)
 
 
 # ![Gali 2015 conditional forecast - `β = 0.95`](../assets/cnd_fcst_beta_95__Gali_2015_chapter_3_nonlinear__1.png)
@@ -2292,21 +2257,24 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
 
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     parameters = :β => 0.95)
+                     parameters = :β => 0.95,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_beta_95_vs_99)
 
 
 # ![Gali 2015 conditional forecast - comparing β values](../assets/cnd_fcst_compare_beta__Gali_2015_chapter_3_nonlinear__2.png)
 
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     parameters = (:β => 0.97, :τ => 0.5))
+                     parameters = (:β => 0.97, :τ => 0.5),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_multi_params)
 
 
 # ![Gali 2015 conditional forecast - multiple parameter changes](../assets/cnd_fcst_multi_params__Gali_2015_chapter_3_nonlinear__2.png)
 
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     parameters = [:β => 0.98, :τ => 0.25])
+                     parameters = [:β => 0.98, :τ => 0.25],
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_multi_params_2)
 
 params = get_parameters(Gali_2015_chapter_3_nonlinear, values = true)
 # 16-element Vector{Pair{String, Float64}}:
@@ -2348,7 +2316,8 @@ param_vals = [p[2] for p in params]
 
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     parameters = param_vals)
+                     parameters = param_vals,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_multi_params_3)
 
 
 ## Plot Labels
@@ -2356,13 +2325,18 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     parameters = (:β => 0.95, :τ => 0.5),
-                     label = "Alt. params")
+                     parameters = (:β => 0.99, :τ => 0.0),
+                     label = "Std. params")
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                      sim_data,
+                      parameters = (:β => 0.95, :τ => 0.5),
+                      label = "Alt. params",
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_labels)
 
 
 # ![Gali 2015 conditional forecast - custom labels](../assets/cnd_fcst_label__Gali_2015_chapter_3_nonlinear__2.png)
 
-sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
                      parameters = (:β => 0.99, :τ => 0.0),
@@ -2371,9 +2345,10 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
     sim_data,
     parameters = (:β => 0.95, :τ => 0.5),
-    label = :alternative)
+    label = :alternative,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_labels_symbol)
 
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
     sim_data,
     parameters = (:β => 0.99, :τ => 0.0),
     label = 0.99)
@@ -2381,7 +2356,8 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
     sim_data,
     parameters = (:β => 0.95, :τ => 0.5),
-    label = 0.95)
+    label = 0.95,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_labels_value)
 
 
 ## Plot Attributes
@@ -2401,14 +2377,16 @@ ec_color_palette =
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     plot_attributes = Dict(:palette => ec_color_palette))
+                     plot_attributes = Dict(:palette => ec_color_palette),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_color)
 
 
 # ![Gali 2015 conditional forecast - custom color palette](../assets/cnd_fcst_color__Gali_2015_chapter_3_nonlinear__2.png)
 
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     plot_attributes = Dict(:fontfamily => "computer modern"))
+                     plot_attributes = Dict(:fontfamily => "computer modern"),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_font)
 
 
 # ![Gali 2015 conditional forecast - custom font](../assets/cnd_fcst_font__Gali_2015_chapter_3_nonlinear__1.png)
@@ -2420,7 +2398,8 @@ sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
                      variables = [:Y, :Pi, :R, :C, :N, :W_real, :MC, :i_ann, :A],
-                     plots_per_page = 2)
+                     plots_per_page = 2,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_2_per_page)
 
 
 # ![Gali 2015 conditional forecast - 2 plots per page](../assets/cnd_fcst_2_per_page__Gali_2015_chapter_3_nonlinear__3.png)
@@ -2430,7 +2409,8 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
     sim_data,
-    rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"))
+    rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_rename_dict)
 
 # ![Gali 2015 conditional forecast - rename dictionary](../assets/cnd_fcst_rename_dict__Gali_2015_chapter_3_nonlinear__1.png)
 
@@ -2450,7 +2430,8 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
         :C => "Consumption", 
         :Y => "Output", 
         :R => "Interest Rate"
-        ))
+        ),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_rename_dict_multiple_models)
 
 # ![FS2000 and Gali 2015 conditional forecast - multiple models with rename dictionary](../assets/cnd_fcst_rename_dict2__multiple_models__2.png)
 
@@ -2466,7 +2447,8 @@ plot_model_estimates!(FS2000,
                          rename_dictionary = Dict(
                             :e_a => "Technology Shock", 
                             :e_m => "Monetary Policy Shock"
-                            ))
+                            ),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_rename_dict_multiple_models_shocks)
 
 
 # ![FS2000 and Gali 2015 conditional forecast - multiple models with shock rename dictionary](../assets/cnd_fcst_rename_dict_shocks__multiple_models__7.png)
@@ -2531,7 +2513,7 @@ plot_model_estimates(Backus_Kehoe_Kydland_1992,
     rename_dictionary = Dict("C{H}" => "Home Consumption", 
                              "C{F}" => "Foreign Consumption",
                              "Y{H}" => "Home Output",
-                             "Y{F}" => "Foreign Output"))
-
+                             "Y{F}" => "Foreign Output"),
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_rename_dict_string)
 
 # ![Backus, Kehoe, Kydland 1992 conditional forecast - E{H} shock with rename dictionary](../assets/cnd_fcst_rename_dict_string__Backus_Kehoe_Kydland_1992__1.png)

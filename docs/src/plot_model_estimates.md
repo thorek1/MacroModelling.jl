@@ -57,15 +57,15 @@ data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:si
 data = log.(data)
 ```
 
-Given the model and data we can plot the conditional forecast as follows:
+Given the model and data we can plot the model estimates as follows:
 
 ```julia
 plot_model_estimates(FS2000, data)
 ```
 
-![FS2000 model estimates](../assets/conditional_forecast__FS2000__2.png)
+![FS2000 model estimates](../assets/estimates__FS2000__3.png)
 
-The function plots the paths of each endogenous variable conditional on fulfilling the specified conditions. If there was a condition provided for a variable it is represented by a marker (also indicated in the legend below the subplots). The title of the overall plot indicates the model name, and page number (if multiple pages are needed) and the title of each subplot indicates the variable name.
+The function plots the filtered or smoothed estimates of the model variables that correspond to the observables in the data, along with the shock decomposition. Each subplot displays an observable or filtered variable (as a line plot) or the contribution of a shock (as stacked bars) measured against the relevant steady state for the chosen solution algorithm.
 
 ## Data (Required)
 
@@ -112,7 +112,11 @@ data_rekey = rekey(data, :Time => dates)
 plot_model_estimates(FS2000, data_rekey)
 ```
 
+![FS2000 model estimates - custom x-axis](../assets/estimates_rekey__FS2000__3.png)
+
 The loop generates the date labels by starting from a given date and adding three months for each subsequent period. The `rekey` function from AxisKeys is then used to replace the second axis of the `KeyedArray` with the generated date labels. The resulting plot now has dates on the x-axis. Note that any input type for the second axis that `Plots.jl` can handle is valid.
+
+#### mentiond that the second dimnesion can be of any type in the docstring ####
 
 ## Data in levels
 
@@ -136,8 +140,6 @@ In order to create such data, one can for example use data in levels and subtrac
 sim = simulate(FS2000, levels = false)
 plot_model_estimates(FS2000, sim([:y,:R],:,:simulate), data_in_levels = false)
 ```
-
-#### mentiond that the second dimnesion can be of any type in the docstring ####
 
 ## Filter
 
@@ -205,6 +207,8 @@ and the inversion filter can be overlayed, in order to compare with the Kalman f
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion)
 ```
 
+![Gali 2015 model estimates - inversion and Kalman filters](../assets/estimates_filters__Gali_2015_chapter_3_nonlinear__2.png)
+
 Note that the two filtering methods yield different results when there are more shocks than observables, as is the case here. The Kalman smoother (due to the default setting `smooth = true`) produces smoother estimates by optimally combining information from all periods, while the inversion filter directly solves for shocks that match the observables in each period, leading to more volatile estimates. Furthermore, when comparing two estimates only the estimates but not the shock decomposition are shown.
 
 ## Smooth
@@ -224,11 +228,15 @@ comparing with filtered estimates (using the Kalman filter) can be done like thi
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, smooth = false)
 ```
 
+![Gali 2015 model estimates - smoothing options](../assets/estimates_smooth__Gali_2015_chapter_3_nonlinear__2.png)
+
 additionally one can compare with filtered estimates using the inversion filter (with `smooth = false` being the default for the inversion filter which doesn't need to be specified explicitly):
 
 ```julia
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion, smooth = false)
 ```
+
+![Gali 2015 model estimates - smoothing options and inversion filter](../assets/estimates_smooth_inversion__Gali_2015_chapter_3_nonlinear__2.png)
 
 ## Presample periods
 
@@ -241,11 +249,13 @@ sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods = 20)
 ```
 
+![Gali 2015 model estimates - 20 presample periods](../assets/estimates_presample__Gali_2015_chapter_3_nonlinear__2.png)
+
 Note that now only 20 periods are shown in the plots, starting from period 21, while the first 20 periods were used in the filtering process.
 
 ## Shock decomposition
 
-The `shock_decomposition` argument [Default: `true`, Type: `Bool`] specifies whether to include shock decomposition in the plots. If set to `true`, stacked bar charts showing the contribution of each shock to the variable's deviation from its steady state are included below the line plots for each variable.
+The `shock_decomposition` argument [Type: `Bool`] specifies whether to include shock decomposition in the plots. By default, it is set to `true` for first order, pruned second order, and pruned third order solutions. For second order and third order solutions `shock_decomposition = false`, as the algorithm is not designed to handle it. If set to `true`, stacked bar charts showing the contribution of each shock to the variable's deviation from its steady state are included below the line plots for each variable.
 
 To include shock decomposition in the plots, simply use the default setting:
 
@@ -261,6 +271,8 @@ To exclude shock decomposition from the plots, set the argument to `false`:
 ```julia
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = false)
 ```
+
+![Gali 2015 model estimates - shock decomposition](../assets/estimates_shock_decomp__Gali_2015_chapter_3_nonlinear__1.png)
 
 This shows only the line plots without the stacked bar charts for shock contributions. When combining multiple plots, the setting for `shock_decomposition` is ignored and `false`.
 
@@ -286,6 +298,8 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
                      shocks = [:eps_a, :eps_z])
 ```
+
+![Gali 2015 model estimates - selected shocks](../assets/estimates_selected_shocks__Gali_2015_chapter_3_nonlinear__4.png)
 
 The same can be done with a `Vector` of `String`s:
 
@@ -340,7 +354,7 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      algorithm = :second_order)
 ```
 
-![Gali 2015 conditional forecast - second order](../assets/cnd_fcst_second_order__Gali_2015_chapter_3_nonlinear__1.png)
+![Gali 2015 model estimates - second order](../assets/estimates_second_order__Gali_2015_chapter_3_nonlinear__2.png)
 
 The most notable difference is that at second order, dynamics are observed for `S`, which remains constant at first order (under certainty equivalence). Additionally, the steady state levels change because the stochastic steady state incorporates precautionary behavior (see horizontal lines). This has consequences for the conditions as they are in levels.
 
@@ -355,9 +369,9 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      algorithm = :second_order)
 ```
 
-#### how to plot the data when there are different steady states? ####
+![Gali 2015 model estimates - first and second order](../assets/estimates_first_and_second_order__Gali_2015_chapter_3_nonlinear__2.png)
 
-![Gali 2015 conditional forecast - first and second order](../assets/cnd_fcst_second_order_combine__Gali_2015_chapter_3_nonlinear__2.png)
+#### how to plot the data when there are different steady states? ####
 
 The plots now show both solution methods overlaid. The first-order solution is shown in blue, the second-order solution in orange, as indicated in the legend below the plot. Note that the steady state levels can be different for the two solution methods. For variables where the relevant steady state is the same for both methods (e.g., `S`), the level appears on the left axis and percentage deviations on the right axis. For variables where the steady state differs between methods (e.g., `R`), only absolute level deviations (`abs. Δ`) appear on the left axis. The relevant steady state levels are shown in a table below the plot for reference (rounded to help identify differences). The relevant steady state also implies that the conditions vary in terms of distance to steady state and thereby in the shocks they require for them to be fulfilled. For the variable `Y` the conditions given a first order solution imply a lower absolute deviation from the relevant steady state than for the second order solution.
 
@@ -369,7 +383,7 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      algorithm = :pruned_third_order)
 ```
 
-![Gali 2015 conditional forecast - multiple orders](../assets/cnd_fcst_higher_order_combine__Gali_2015_chapter_3_nonlinear__1.png)
+![Gali 2015 model estimates - multiple orders](../assets/estimates_multiple_orders__Gali_2015_chapter_3_nonlinear__2.png)
 
 Note that the pruned third-order solution incorporates time-varying risk and the dynamics differ relative to lower order solutions. The additional solution appears as another colored line with corresponding entries in both the legend and the steady state table below.
 
@@ -386,7 +400,7 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      variables = [:Y, :Pi])
 ```
 
-![Gali 2015 conditional forecast - selected variables (Y, Pi)](../assets/cnd_fcst_vars__Gali_2015_chapter_3_nonlinear__1.png)
+![Gali 2015 model estimates - selected variables (Y, Pi)](../assets/estimates_vars__Gali_2015_chapter_3_nonlinear__1.png)
 
 The plot now displays the two selected variables (sorted alphabetically) as well as the corresponding shocks. 
 
@@ -483,7 +497,7 @@ end
 end
 ```
 
-Since both `c` and `P` appear in t+2, they generate auxiliary variables in the model. Plotting the conditional forecast for all variables excluding OBC-related ones means auxiliary variables are shown:
+Since both `c` and `P` appear in t+2, they generate auxiliary variables in the model. Plotting the model estimates for all variables excluding OBC-related ones means auxiliary variables are shown:
 
 ```julia
 sim_data_FS2000 = simulate(FS2000)([:y],:,:simulate)
@@ -492,7 +506,7 @@ plot_model_estimates(FS2000,
                      variables = :all_excluding_obc)
 ```
 
-![FS2000 conditional forecast - e_a shock with auxiliary variables](../assets/cnd_fcst_all_excluding_obc__FS2000__1.png)
+![FS2000 model estimates - e_a shock with auxiliary variables](../assets/estimates_all_excluding_obc__FS2000__1.png)
 
 Both `c` and `P` appear twice: once as the variable itself and once as an auxiliary variable with the `ᴸ⁽¹⁾` superscript, representing the value of the variable in t+1 as expected in t.
 
@@ -549,7 +563,7 @@ end
 end
 ```
 
-Plotting the conditional forecast for all variables including OBC-related ones reveals the OBC-related auxiliary variables:
+Plotting the model estimates for all variables including OBC-related ones reveals the OBC-related auxiliary variables:
 
 ```julia
 sim_data_Gali_obc = simulate(Gali_2015_chapter_3_obc)([:R],:,:simulate)
@@ -558,7 +572,7 @@ plot_model_estimates(Gali_2015_chapter_3_obc,
                          variables = :all)
 ```
 
-![Gali 2015 OBC conditional forecast - with OBC variables](../assets/cnd_fcst_all__Gali_2015_chapter_3_obc__3.png)
+![Gali 2015 OBC model estimates - with OBC variables](../assets/estimates_all__Gali_2015_chapter_3_obc__4.png)
 
 The OBC-related variables appear in the last subplot, but note that OBCs are ignored with conditional forecasting.
 
@@ -575,9 +589,9 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      parameters = :β => 0.95)
 ```
 
-![Gali 2015 conditional forecast - `β = 0.95`](../assets/cnd_fcst_beta_95__Gali_2015_chapter_3_nonlinear__1.png)
+![Gali 2015 model estimates - `β = 0.95`](../assets/estimates_beta_95__Gali_2015_chapter_3_nonlinear__2.png)
 
-The steady states and dynamics changed as a result of changing the discount factor, also because the absolute deviation of the conditons on the endogenous variables from the relevant steady state changed. To better visualize the differences between `β = 0.99` and `β = 0.95`, the two conditional forecasts can be overlaid (compared). Since parameter changes are permanent, first reset `β = 0.99` before overlaying the conditional forecast with `β = 0.95` on top of it:
+The steady states and dynamics changed as a result of changing the discount factor, also because the absolute deviation of the conditons on the endogenous variables from the relevant steady state changed. To better visualize the differences between `β = 0.99` and `β = 0.95`, the two conditional forecasts can be overlaid (compared). Since parameter changes are permanent, first reset `β = 0.99` before overlaying the model estimates with `β = 0.95` on top of it:
 
 ```julia
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
@@ -589,7 +603,7 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      parameters = :β => 0.95)
 ```
 
-![Gali 2015 conditional forecast - comparing β values](../assets/cnd_fcst_compare_beta__Gali_2015_chapter_3_nonlinear__2.png)
+![Gali 2015 model estimates - comparing β values](../assets/estimates_beta_95_vs_99__Gali_2015_chapter_3_nonlinear__1.png)
 
 The legend below the plot indicates which color corresponds to which `β` value, with the table underneath showing the relevant steady states. Note that both the steady states and dynamics differ across the two `β` values, even when the steady state remains the same (e.g., for `Y`).
 
@@ -601,7 +615,7 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      parameters = (:β => 0.97, :τ => 0.5))
 ```
 
-![Gali 2015 conditional forecast - multiple parameter changes](../assets/cnd_fcst_multi_params__Gali_2015_chapter_3_nonlinear__2.png)
+![Gali 2015 model estimates - multiple parameter changes](../assets/estimates_multi_params__Gali_2015_chapter_3_nonlinear__1.png)
 
 Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to which input combination, with the table showing steady states for all three combinations. The change in steady state for the latest change means substantially different absolute differences relevant for the conditions and therefore also different size of shocks to enforce the conditions.
 
@@ -612,6 +626,8 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      sim_data,
                      parameters = [:β => 0.98, :τ => 0.25])
 ```
+
+![Gali 2015 model estimates - multiple parameter changes (2)](../assets/estimates_multi_params_2__Gali_2015_chapter_3_nonlinear__2.png)
 
 Alternatively, use a `Vector` of parameter values in the order they were defined in the model. To obtain them:
 
@@ -659,22 +675,29 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      parameters = param_vals)
 ```
 
+![Gali 2015 model estimates - multiple parameter changes (3)](../assets/estimates_multi_params_3__Gali_2015_chapter_3_nonlinear__2.png)
+
 ## Plot Labels
 
 The `label` argument (type: `Union{String,Symbol,Real}`) controls labels that appear in plots when using the `plot_conditional_forecast!` function to overlay multiple conditional forecasts. By default, labels take on the values of the one dimensional input that differs and are sequential numbers in case the input differs along more than one dimension. Furthermore, custom labels can be provided using this argument. Acceptable inputs are a `String`, `Symbol`, or a `Real`.
 
 Custom labels are particularly useful when inputs differ in complex ways (e.g., shock matrices or multiple input changes).
-For example, let's compare the conditional forecast of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with `β = 0.99` and `τ = 0` to the conditional forecast with `β = 0.95` and `τ = 0.5` using custom labels `String` input:
+For example, let's compare the model estimates of the `Gali_2015_chapter_3_nonlinear` model for a 1 standard deviation `eps_a` shock with `β = 0.99` and `τ = 0` to the model estimates with `β = 0.95` and `τ = 0.5` using custom labels `String` input:
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     parameters = (:β => 0.95, :τ => 0.5),
-                     label = "Alt. params")
+                     parameters = (:β => 0.99, :τ => 0.0),
+                     label = "Std. params")
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                      sim_data,
+                      parameters = (:β => 0.95, :τ => 0.5),
+                      label = "Alt. params")
 ```
 
-![Gali 2015 conditional forecast - custom labels](../assets/cnd_fcst_label__Gali_2015_chapter_3_nonlinear__2.png)
+![Gali 2015 model estimates - custom labels](../assets/estimates_labels__Gali_2015_chapter_3_nonlinear__2.png)
 
 The legend now displays the custom label names instead of sequential numbers (1 and 2). Additionally, the tables showing input differences and steady states use the custom labels in the first column instead of sequential numbers.
 
@@ -693,10 +716,12 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
     label = :alternative)
 ```
 
+![Gali 2015 model estimates - custom labels (Symbol)](../assets/estimates_labels_symbol__Gali_2015_chapter_3_nonlinear__2.png)
+
 or with `Real` inputs:
 
 ```julia
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
     sim_data,
     parameters = (:β => 0.99, :τ => 0.0),
     label = 0.99)
@@ -707,11 +732,13 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
     label = 0.95)
 ```
 
+![Gali 2015 model estimates - custom labels (Value)](../assets/estimates_labels_value__Gali_2015_chapter_3_nonlinear__2.png)
+
 ## Plot Attributes
 
 The `plot_attributes` argument (default: `Dict()`, type: `Dict`) accepts a dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.
 
-The color palette can be customized using the `plot_attributes` argument. The following example defines a custom color palette (inspired by the European Commission's economic reports) to plot and stack multiple conditional forecasts for the `Gali_2015_chapter_3_nonlinear` model.
+The color palette can be customized using the `plot_attributes` argument. The following example defines a custom color palette (inspired by the European Commission's economic reports) to plot the model estimates (color are used for the shock decomposition) of the `Gali_2015_chapter_3_nonlinear` model.
 First, define the custom color palette using hex color codes:
 
 ```julia
@@ -728,7 +755,7 @@ ec_color_palette =
 ]
 ```
 
-Then plot the first conditional forecast:
+Then plot the first model estimates:
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
@@ -737,7 +764,7 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      plot_attributes = Dict(:palette => ec_color_palette))
 ```
 
-![Gali 2015 conditional forecast - custom color palette](../assets/cnd_fcst_color__Gali_2015_chapter_3_nonlinear__2.png)
+![Gali 2015 model estimates - custom color palette](../assets/estimates_color__Gali_2015_chapter_3_nonlinear__1.png)
 
 The colors of the bars now follow the custom color palette.
 
@@ -749,7 +776,7 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      plot_attributes = Dict(:fontfamily => "computer modern"))
 ```
 
-![Gali 2015 conditional forecast - custom font](../assets/cnd_fcst_font__Gali_2015_chapter_3_nonlinear__1.png)
+![Gali 2015 model estimates - custom font](../assets/estimates_font__Gali_2015_chapter_3_nonlinear__1.png)
 
 All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case).
 
@@ -766,7 +793,7 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      plots_per_page = 2)
 ```
 
-![Gali 2015 conditional forecast - 2 plots per page](../assets/cnd_fcst_2_per_page__Gali_2015_chapter_3_nonlinear__3.png)
+![Gali 2015 model estimates - 2 plots per page](../assets/estimates_2_per_page__Gali_2015_chapter_3_nonlinear__1.png)
 
 The first four pages display two variables (sorted alphabetically). The title indicates the current page and the total number of pages.
 
@@ -820,7 +847,7 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
     rename_dictionary = Dict(:Y => "Output", :Pi => "Inflation", :R => "Interest Rate"))
 ```
 
-![Gali 2015 conditional forecast - rename dictionary](../assets/cnd_fcst_rename_dict__Gali_2015_chapter_3_nonlinear__1.png)
+![Gali 2015 model estimates - rename dictionary](../assets/estimates_rename_dict__Gali_2015_chapter_3_nonlinear__1.png)
 
 This feature is especially valuable when overlaying conditional forecasts from different models. Consider comparing FS2000 (which uses lowercase variable names like `c`) with `Gali_2015_chapter_3_nonlinear` (which uses uppercase variable names like `C`). The `rename_dictionary` allows harmonizing these names when plotting them together:
 
@@ -844,7 +871,7 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
         ))
 ```
 
-![FS2000 and Gali 2015 conditional forecast - multiple models with rename dictionary](../assets/cnd_fcst_rename_dict2__multiple_models__2.png)
+![FS2000 and Gali 2015 model estimates - multiple models with rename dictionary](../assets/estimates_rename_dict_multiple_models__Gali_2015_chapter_3_nonlinear__1.png)
 
 Both models now appear in the plot with consistent, readable labels, making comparison straightforward.
 
@@ -866,7 +893,7 @@ plot_model_estimates!(FS2000,
                             ))
 ```
 
-![FS2000 and Gali 2015 conditional forecast - multiple models with shock rename dictionary](../assets/cnd_fcst_rename_dict_shocks__multiple_models__7.png)
+![FS2000 and Gali 2015 model estimates - multiple models with shock rename dictionary](../assets/estimates_rename_dict_multiple_models_shocks__Gali_2015_chapter_3_nonlinear__7.png)
 
 The `rename_dictionary` accepts flexible type combinations for keys and values—both `Symbol` and `String` types work interchangeably:
 
@@ -944,7 +971,7 @@ plot_model_estimates(Backus_Kehoe_Kydland_1992,
                              "Y{F}" => "Foreign Output"))
 ```
 
-![Backus, Kehoe, Kydland 1992 conditional forecast - E{H} shock with rename dictionary](../assets/cnd_fcst_rename_dict_string__Backus_Kehoe_Kydland_1992__1.png)
+![Backus, Kehoe, Kydland 1992 model estimates - E{H} shock with rename dictionary](../assets/estimates_rename_dict_string__Backus_Kehoe_Kydland_1992__1.png)
 
 Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.
 
