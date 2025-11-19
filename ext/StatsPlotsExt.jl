@@ -137,6 +137,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `true` for algorithms supporting shock decompositions (`:first_order`, `:pruned_second_order`, `:pruned_third_order`), otherwise `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks. When an unsupported algorithm is chosen the argument automatically falls back to `false`.
 - $SMOOTH®
+- `unconditional_forecast_periods` [Default: `0`, Type: `Int`]: number of periods to plot as an unconditional forecast after the end of the data. When greater than 0, the forecast is shown as a dashed line for all endogenous variables (shocks are not forecasted). The forecast uses the filtered/smoothed state at the end of the data and iteratively applies the state transition function with zero shocks, working for all perturbation orders.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -202,6 +203,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 shock_decomposition::Bool = DEFAULT_SHOCK_DECOMPOSITION_SELECTOR(algorithm),
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
+                                unconditional_forecast_periods::Int = 0,
                                 label::Union{Real, String, Symbol} = DEFAULT_LABEL,
                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
@@ -294,7 +296,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     legend_columns = 1
 
-    legend_items = length(shock_idx) + 3 + pruning
+    legend_items = length(shock_idx) + 3 + pruning + (unconditional_forecast_periods > 0 ? 1 : 0)
 
     max_columns = min(legend_items, max_elements_per_legend_row)
     
@@ -318,6 +320,8 @@ function plot_model_estimates(𝓂::ℳ,
 
     @assert presample_periods < size(data,2) "The number of presample periods must be less than the number of periods in the data."
 
+    @assert unconditional_forecast_periods >= 0 "The number of unconditional forecast periods must be non-negative."
+
     periods = presample_periods+1:size(data,2)
 
     x_axis = x_axis[periods]
@@ -329,6 +333,45 @@ function plot_model_estimates(𝓂::ℳ,
         decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
         variables_to_plot                           .+= SSS_delta
         data_in_deviations                          .+= SSS_delta[obs_idx]
+    end
+
+    # Compute unconditional forecast if requested
+    forecast_variables = nothing
+    forecast_x_axis = nothing
+    if unconditional_forecast_periods > 0
+        # Get state transition function for the algorithm
+        state_update, _ = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+        
+        # Initialize forecast state with the last filtered/smoothed state
+        # For pruned algorithms, we need to construct the state appropriately
+        if algorithm == :pruned_second_order
+            forecast_state = [variables_to_plot[:, end], zeros(𝓂.timings.nVars)]
+        elseif algorithm == :pruned_third_order
+            forecast_state = [variables_to_plot[:, end], zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)]
+        else
+            forecast_state = variables_to_plot[:, end]
+        end
+        
+        forecast_variables = zeros(𝓂.timings.nVars, unconditional_forecast_periods)
+        
+        # Generate forecast by iterating the state transition with zero shocks
+        zero_shocks = zeros(𝓂.timings.nExo)
+        for t in 1:unconditional_forecast_periods
+            forecast_state = state_update(forecast_state, zero_shocks)
+            # Extract the actual state (sum for pruned algorithms)
+            forecast_variables[:, t] = pruning ? sum(forecast_state) : forecast_state
+        end
+        
+        # Create x-axis for forecast periods
+        if x_axis isa AbstractRange
+            step_size = step(x_axis)
+            last_period = x_axis[end]
+            forecast_x_axis = (last_period + step_size):(step_size):(last_period + step_size * unconditional_forecast_periods)
+        else
+            # If x_axis is not a range, create simple integer indices
+            last_period = x_axis[end]
+            forecast_x_axis = (last_period + 1):(last_period + unconditional_forecast_periods)
+        end
     end
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
@@ -362,6 +405,7 @@ function plot_model_estimates(𝓂::ℳ,
                            :data_in_levels => data_in_levels,
                         #    :shock_decomposition => shock_decomposition,
                            :smooth => smooth,
+                           :unconditional_forecast_periods => unconditional_forecast_periods,
                            
                            :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
                            :NSSS_xtol => tol.NSSS_xtol,
@@ -457,6 +501,16 @@ function plot_model_estimates(𝓂::ℳ,
                             label = "",
                             color = shock_decomposition ? data_color : pal[2])
                     end
+                    
+                    # Add unconditional forecast if requested
+                    if unconditional_forecast_periods > 0 && forecast_variables !== nothing
+                        StatsPlots.plot!(p,
+                            forecast_x_axis,
+                            forecast_variables[var_idx[i], :] .+ SS,
+                            label = "",
+                            color = estimate_color,
+                            linestyle = :dash)
+                    end
                 else
                     p = standard_subplot(variables_to_plot[var_idx[i],periods], 
                                         SS, 
@@ -471,6 +525,16 @@ function plot_model_estimates(𝓂::ℳ,
                             shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
                             label = "",
                             color = shock_decomposition ? data_color : pal[2])
+                    end
+                    
+                    # Add unconditional forecast if requested
+                    if unconditional_forecast_periods > 0 && forecast_variables !== nothing
+                        StatsPlots.plot!(p,
+                            forecast_x_axis,
+                            forecast_variables[var_idx[i], :] .+ SS,
+                            label = "",
+                            color = shock_decomposition ? estimate_color : pal[1],
+                            linestyle = :dash)
                     end
                 end
                         
@@ -500,6 +564,14 @@ function plot_model_estimates(𝓂::ℳ,
                             [NaN], 
                             label = "Data", 
                             color = shock_decomposition ? data_color : pal[2])
+
+            if unconditional_forecast_periods > 0
+                StatsPlots.plot!(pl,
+                                [NaN], 
+                                label = "Forecast", 
+                                color = shock_decomposition ? estimate_color : pal[1],
+                                linestyle = :dash)
+            end
 
             if shock_decomposition
                 additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
@@ -554,6 +626,14 @@ function plot_model_estimates(𝓂::ℳ,
                         [NaN], 
                         label = "Data", 
                         color = shock_decomposition ? data_color : pal[2])
+
+        if unconditional_forecast_periods > 0
+            StatsPlots.plot!(pl,
+                            [NaN], 
+                            label = "Forecast", 
+                            color = shock_decomposition ? estimate_color : pal[1],
+                            linestyle = :dash)
+        end
 
         if shock_decomposition
             additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
@@ -625,6 +705,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $LABEL®
 - $RENAME_DICTIONARY®
 - $SMOOTH®
+- `unconditional_forecast_periods` [Default: `0`, Type: `Int`]: number of periods to plot as an unconditional forecast after the end of the data. When greater than 0, the forecast is shown as a dashed line for all endogenous variables (shocks are not forecasted). The forecast uses the filtered/smoothed state at the end of the data and iteratively applies the state transition function with zero shocks, working for all perturbation orders. Note: The comparison functionality of this `!` version does not yet plot forecasts from multiple runs, but the parameter is accepted for compatibility.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -706,6 +787,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
+                                unconditional_forecast_periods::Int = 0,
                                 label::Union{Real, String, Symbol} = length(model_estimates_active_plot_container) + 1,
                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
@@ -797,7 +879,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     legend_columns = 1
 
-    legend_items = length(shock_idx) + 3 + pruning
+    legend_items = length(shock_idx) + 3 + pruning + (unconditional_forecast_periods > 0 ? 1 : 0)
 
     max_columns = min(legend_items, max_elements_per_legend_row)
     
@@ -821,6 +903,8 @@ function plot_model_estimates!(𝓂::ℳ,
 
     @assert presample_periods < size(data,2) "The number of presample periods must be less than the number of periods in the data."
 
+    @assert unconditional_forecast_periods >= 0 "The number of unconditional forecast periods must be non-negative."
+
     periods = presample_periods+1:size(data,2)
 
     x_axis = x_axis[periods]
@@ -834,6 +918,45 @@ function plot_model_estimates!(𝓂::ℳ,
         data_in_deviations                          .+= SSS_delta[obs_idx]
     end
 
+    # Compute unconditional forecast if requested (shared computation for plot_model_estimates!)
+    forecast_variables = nothing
+    forecast_x_axis = nothing
+    if unconditional_forecast_periods > 0
+        # Get state transition function for the algorithm
+        state_update, _ = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+        
+        # Initialize forecast state with the last filtered/smoothed state
+        # For pruned algorithms, we need to construct the state appropriately
+        if algorithm == :pruned_second_order
+            forecast_state = [variables_to_plot[:, end], zeros(𝓂.timings.nVars)]
+        elseif algorithm == :pruned_third_order
+            forecast_state = [variables_to_plot[:, end], zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars)]
+        else
+            forecast_state = variables_to_plot[:, end]
+        end
+        
+        forecast_variables = zeros(𝓂.timings.nVars, unconditional_forecast_periods)
+        
+        # Generate forecast by iterating the state transition with zero shocks
+        zero_shocks = zeros(𝓂.timings.nExo)
+        for t in 1:unconditional_forecast_periods
+            forecast_state = state_update(forecast_state, zero_shocks)
+            # Extract the actual state (sum for pruned algorithms)
+            forecast_variables[:, t] = pruning ? sum(forecast_state) : forecast_state
+        end
+        
+        # Create x-axis for forecast periods
+        if x_axis isa AbstractRange
+            step_size = step(x_axis)
+            last_period = x_axis[end]
+            forecast_x_axis = (last_period + step_size):(step_size):(last_period + step_size * unconditional_forecast_periods)
+        else
+            # If x_axis is not a range, create simple integer indices
+            last_period = x_axis[end]
+            forecast_x_axis = (last_period + 1):(last_period + unconditional_forecast_periods)
+        end
+    end
+
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
     total_pal_len = 100
@@ -845,7 +968,7 @@ function plot_model_estimates!(𝓂::ℳ,
     estimate_color = :navy
 
     data_color = :orangered
-    
+
     args_and_kwargs = Dict(:run_id => length(model_estimates_active_plot_container) + 1,
                            :model_name => 𝓂.model_name,
                            :label => label,
@@ -861,6 +984,7 @@ function plot_model_estimates!(𝓂::ℳ,
                            :data_in_levels => data_in_levels,
                         #    :shock_decomposition => shock_decomposition,
                            :smooth => smooth,
+                           :unconditional_forecast_periods => unconditional_forecast_periods,
                            
                            :NSSS_acceptance_tol => tol.NSSS_acceptance_tol,
                            :NSSS_xtol => tol.NSSS_xtol,
