@@ -871,7 +871,7 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
         ))
 ```
 
-![FS2000 and Gali 2015 model estimates - multiple models with rename dictionary](../assets/estimates_rename_dict_multiple_models__Gali_2015_chapter_3_nonlinear__1.png)
+![FS2000 and Gali 2015 model estimates - multiple models with rename dictionary](../assets/estimates_rename_dict_multiple_models__multiple_models__1.png)
 
 Both models now appear in the plot with consistent, readable labels, making comparison straightforward.
 
@@ -893,7 +893,7 @@ plot_model_estimates!(FS2000,
                             ))
 ```
 
-![FS2000 and Gali 2015 model estimates - multiple models with shock rename dictionary](../assets/estimates_rename_dict_multiple_models_shocks__Gali_2015_chapter_3_nonlinear__7.png)
+![FS2000 and Gali 2015 model estimates - multiple models with shock rename dictionary](../assets/estimates_rename_dict_multiple_models_shocks__multiple_models__7.png)
 
 The `rename_dictionary` accepts flexible type combinations for keys and values—both `Symbol` and `String` types work interchangeably:
 
