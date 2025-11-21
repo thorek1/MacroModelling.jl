@@ -1,12 +1,10 @@
 # Model Estimates
 
-`plot_model_estimates` visualizes the variables that enter an estimation problem, the corresponding filtered or smoothed estimates, and—optionally—the contribution of each shock. Every subplot displays an observable (line plot) or the contribution of a shock (stacked bars) measured against the non‑stochastic or stochastic steady state that is relevant for the chosen solution algorithm. Occasionally binding constraints are not uspported in this function. The function returns a `Vector{Plots.Plot}` so you can display the figures, save them, or combine them further.
+`plot_model_estimates` visualizes the variables that enter an estimation problem, the corresponding filtered or smoothed estimates of endogenous variables and exogenous shocks, and optionally the contribution of each shock to the endogenous variables. Every subplot displays a variable or shock (line) and optionally the contribution of a shock (stacked bars) measured against the non‑stochastic or stochastic steady state that is relevant for the chosen solution algorithm. Occasionally binding constraints are not uspported in this function. The function returns a `Vector{Plots.Plot}` so one can display the figures, save them, or combine them further.
 
-The figures are built with StatsPlots/Plots.jl and expect a `KeyedArray` from the AxisKeys package as data input. Axis 1 must contain the observable names, axis 2 the period labels. Observables are automatically matched to model variables, renamed (if desired), and sorted alphabetically in the plot legends.
+The figures are built with StatsPlots.jl/Plots.jl and expect a `KeyedArray` from the AxisKeys package as data input. Axis 1 must contain the observable names, axis 2 the period labels. Observables are automatically matched to model variables, renamed (if desired), and sorted alphabetically in the plot legends. Period labels can be of any format compatible with Plots.jl and are used to fill the x-axis of the plots.
 
-First, load the necessary packages:
-
-#### add aux functions (plot_shock_decomposition) ####
+In order to run the examples on this page, the following packages need to be installed and loaded:
 
 ```julia
 using MacroModelling, StatsPlots, CSV, DataFrames, AxisKeys, Dates
@@ -67,15 +65,25 @@ plot_model_estimates(FS2000, data)
 
 The function plots the filtered or smoothed estimates of the model variables that correspond to the observables in the data, along with the shock decomposition. Each subplot displays an observable or filtered variable (as a line plot) or the contribution of a shock (as stacked bars) measured against the relevant steady state for the chosen solution algorithm.
 
+Another way to plot the model estimates including the shock decomposition is by calling:
+
+```julia
+plot_shock_decomposition(FS2000, data)
+```
+
+This produces the same output as `plot_model_estimates` with `shock_decomposition = true`, which is the default setting for first order, pruned second order, and pruned third order solution algorithms.
+
 ## Data (Required)
 
-The `data` argument [Type: `KeyedArray{Float64}`] contains the data used for filtering or smoothing the model estimates. The first axis must contain variable names (as `Symbol`s or `String`s) and the second axis must contain period labels (as `Int`s or `String`s). Note that the second axis is used to fill the x-axis of the plots.
+The `data` argument [Type: `KeyedArray{Float64}`] contains the data used for filtering or smoothing the model estimates. The first axis must contain variable names (as `Symbol`s or `String`s) and the second axis must contain period labels (as any format compatible with Plots.jl). Note that the second axis is used to fill the x-axis of the plots.
 
 Plotting model estimates with `Symbol`s as variable names can be done as follows, but here the way to load the data is shown again for completeness, and can be done in various ways:
 
 ```julia
+variable_names = Symbol.("log_".*names(dat))
+
 dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
-data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)), Time = 1:size(dat)[1])
+data = KeyedArray(Array(dat)',Variable = variable_names, Time = 1:size(dat)[1])
 data = log.(data)
 
 plot_model_estimates(FS2000, data)
@@ -84,14 +92,16 @@ plot_model_estimates(FS2000, data)
 The same can be done with `String`s as variable names:
 
 ```julia
+variable_names = "log_".*names(dat)
+
 dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
-data = KeyedArray(Array(dat)', Variable = "log_".*names(dat), Time = 1:size(dat)[1])
+data = KeyedArray(Array(dat)',Variable = variable_names, Time = 1:size(dat)[1])
 data = log.(data)
 
 plot_model_estimates(FS2000, data)
 ```
 
-A useful feature is that the second dimension of the `KeyedArray` can be customised. This can be helpful when working with date labels. The following example shows how to create date labels for quarterly data starting from 1950-Q1:
+A useful feature is that the second dimension of the `KeyedArray` can be used to customize the x-axis labels of the plots. The following example shows how to create date labels for quarterly data starting from 1950-01-01:
 
 ```julia
 dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
@@ -116,13 +126,22 @@ plot_model_estimates(FS2000, data_rekey)
 
 The loop generates the date labels by starting from a given date and adding three months for each subsequent period. The `rekey` function from AxisKeys is then used to replace the second axis of the `KeyedArray` with the generated date labels. The resulting plot now has dates on the x-axis. Note that any input type for the second axis that `Plots.jl` can handle is valid.
 
-#### mentiond that the second dimnesion can be of any type in the docstring ####
+One can also compare estimates based on different data:
+
+```julia
+sim_data = simulate(FS2000)([:log_gy_obs,:log_gp_obs],:,:simulate)
+plot_model_estimates!(FS2000, sim_data)
+```
+
+![FS2000 model estimates - different data](../assets/estimates_multiple_data__FS2000__3.png)
+
+Note that the different data inputs are indexed with a running number in the legend.
 
 ## Data in levels
 
-By default, the data is assumed to be in levels, and internally the non-stochastic steady state is substracted. If the data is in absolute deviations from the non-stochastic steady state, set the `data_in_levels` argument to `false`.
+By default, the data is assumed to be in levels (`data_in_levels = true`). If the data is in absolute deviations from the non-stochastic steady state, set `data_in_levels = false`.
 
-The previoulsy shown example uses data in levels, so that it is compatible with the default setting:
+The previously shown example uses data in levels, so that it is compatible with the default setting:
 
 ```julia
 dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
@@ -134,16 +153,18 @@ plot_model_estimates(FS2000, data)
 
 One can use data in absolute deviations from the non-stochastic steady state as follows.
 
-In order to create such data, one can for example use data in levels and subtract the non-stochastic steady state, but here for illustration purposes, random data is generated, and we use the variables `R` and `y` to filter on:
+One way to create data in deviation from the non-stochastic steady state is to use the `simulate` function with the argument `levels = false`. This will generate random data in deviations for all endogenous variables, of which in the below example only `R` and `y` are used:
 
 ```julia
 sim = simulate(FS2000, levels = false)
 plot_model_estimates(FS2000, sim([:y,:R],:,:simulate), data_in_levels = false)
 ```
 
+![FS2000 model estimates - data in deviations from non-stochastic steady state](../assets/estimates_levels_false__FS2000__3.png)
+
 ## Filter
 
-The `filter` argument [Type: `Symbol`] specifies the filtering method to use. Options are `:kalman` for the Kalman filter and `:inversion` for the inversion filter. By default, the Kalman filter is used for first order solutions and the inversion method for higher order (nonlinear) solutions.
+The `filter` argument [Type: `Symbol`] specifies the filtering method to use. Options are `:kalman` for the Kalman filter or smoother (depending on the `smooth` argument) and `:inversion` for the inversion filter. By default, the Kalman smoother is used for first order solutions and the inversion method for higher order (nonlinear) solutions.
 
 A model with more than two shocks is useful to illustrate the difference between the two filtering methods. We use the Gali (2015) model from chapter 3 with three shocks:
 
@@ -194,14 +215,14 @@ end
 end
 ```
 
-The Kalman filter can be explicitly specified as follows:
+The Kalman smoother (because by default `smooth = true` for the first order solution algorithm) can be explicitly specified as follows (but it would be the default in this case and there is no need to specify it):
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, filter = :kalman)
 ```
 
-and the inversion filter can be overlayed, in order to compare with the Kalman filter, as:
+and the inversion filter can be overlayed, in order to compare with the Kalman smoother, as:
 
 ```julia
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion)
@@ -209,23 +230,27 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversi
 
 ![Gali 2015 model estimates - inversion and Kalman filters](../assets/estimates_filters__Gali_2015_chapter_3_nonlinear__2.png)
 
-Note that the two filtering methods yield different results when there are more shocks than observables, as is the case here. The Kalman smoother (due to the default setting `smooth = true`) produces smoother estimates by optimally combining information from all periods, while the inversion filter directly solves for shocks that match the observables in each period, leading to more volatile estimates. Furthermore, when comparing two estimates only the estimates but not the shock decomposition are shown.
+Note that the two filtering methods yield different results when there are more shocks than observables, as is the case here. The Kalman smoother (due to the default setting `smooth = true`) produces smoother estimates by optimally combining information from all periods, while the inversion filter directly solves for shocks that match the observables in each period. Furthermore, when comparing two estimates only the estimates but not the shock decomposition are shown.
 
 ## Smooth
 
-The `smooth` argument [Default: `true`, Type: `Bool`] specifies whether to use smoothing (only available for the Kalman filter and set to `true` by default for the Kalman filter) or filtering (available for both filter and set to `true` in case the inversion filter is used). If `true`, smoothed estimates are plotted, otherwise filtered estimates are shown. Smoothing uses information from the entire sample to estimate the states at each point in time, while filtering only uses information up to the current period.
+The `smooth` argument [Default: `true`, Type: `Bool`] specifies whether to use smoothing (only available for the Kalman filter and set to `true` by default for the Kalman filter) or filtering (available for both and set to `true` in case the inversion filter is used). If `true`, smoothed estimates are plotted, otherwise filtered estimates are shown. Smoothing uses information from the entire sample to estimate the states at each point in time, while filtering only uses information up to the current period.
 
 Smoothed estimates using the Kalman filter can be plotted as follows (this is the default behaviour and does not need to be specified explicitly):
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
-plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, smooth = true)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, 
+                    sim_data, 
+                    smooth = true)
 ```
 
 comparing with filtered estimates (using the Kalman filter) can be done like this:
 
 ```julia
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, smooth = false)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, 
+                    sim_data, 
+                    smooth = false)
 ```
 
 ![Gali 2015 model estimates - smoothing options](../assets/estimates_smooth__Gali_2015_chapter_3_nonlinear__2.png)
@@ -233,14 +258,17 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, smooth = false)
 additionally one can compare with filtered estimates using the inversion filter (with `smooth = false` being the default for the inversion filter which doesn't need to be specified explicitly):
 
 ```julia
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion, smooth = false)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, 
+                    sim_data, 
+                    filter = :inversion, 
+                    smooth = false)
 ```
 
 ![Gali 2015 model estimates - smoothing options and inversion filter](../assets/estimates_smooth_inversion__Gali_2015_chapter_3_nonlinear__2.png)
 
 ## Presample periods
 
-The `presample_periods` argument [Default: `0`, Type: `Int`] specifies the number of periods at the beginning of the data used for filtering that are not shown in the plots. This is useful if one wants to view only later periods in the sample, while still using the earlier periods for filtering.
+The `presample_periods` argument [Default: `0`, Type: `Int`] specifies the number of periods at the beginning of the data that are not shown in the plots but are used for filtering. This is useful if one wants to view only later periods in the sample, while still using the earlier periods for filtering.
 
 For example, to exclude the first 20 periods from the plots, while still using them for filtering, one can do:
 
@@ -251,18 +279,20 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods 
 
 ![Gali 2015 model estimates - 20 presample periods](../assets/estimates_presample__Gali_2015_chapter_3_nonlinear__2.png)
 
-Note that now only 20 periods are shown in the plots, starting from period 21, while the first 20 periods were used in the filtering process.
+Note that now only 20 periods of the 40 periods in the data are shown in the plots, starting from period 21, while the first 20 periods were used in the filtering process.
 
 ## Shock decomposition
 
-The `shock_decomposition` argument [Type: `Bool`] specifies whether to include shock decomposition in the plots. By default, it is set to `true` for first order, pruned second order, and pruned third order solutions. For second order and third order solutions `shock_decomposition = false`, as the algorithm is not designed to handle it. If set to `true`, stacked bar charts showing the contribution of each shock to the variable's deviation from its steady state are included below the line plots for each variable.
+The `shock_decomposition` argument [Type: `Bool`] specifies whether to include shock decompositions in the plots. By default, it is set to `true` for first order, pruned second order, and pruned third order solutions. For second order and third order solutions `shock_decomposition = false`, as the algorithm is not designed to handle it. If set to `true`, stacked bar charts showing the contribution of each shock to the variable's deviation from its steady state are included below the line plots for each variable.
 
-To include shock decomposition in the plots, simply use the default setting:
+Shock decompositions are included by default in the plots (except for second and third order solutions), and one can specify it explicitly as follows:
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = true)
 ```
+
+![Gali 2015 model estimates - shock decomposition true](../assets/estimates_shock_decomp_true__Gali_2015_chapter_3_nonlinear__2.png)
 
 This will generate plots with stacked bar charts below the line plots, illustrating how each shock contributes to the variable's deviation from its steady state over time.
 
@@ -278,7 +308,7 @@ This shows only the line plots without the stacked bar charts for shock contribu
 
 ## Shocks
 
-The `shocks` argument determines the shocks shown in the plots. By default, all shocks are included (`:all`).  Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `"eps_a"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`.
+The `shocks` argument determines the shocks shown in the plots as subplots and in the shock decomposition. By default, all shocks are included (`:all`).  Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `"eps_a"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:none` means no shocks are shown, and `:all` shows all shocks. If not all shocks are shown, then their respective subplot is ommitted and if a shock decomposition was intended to be shown, the ommitted shocks will be summarised and netted under the label `Other shocks (net)`.
 
 In order to recall the shocks of a model one can use the `get_shocks` function:
 
@@ -296,17 +326,19 @@ To plot only a subset of shocks, one can specify them as follows, using a `Vecto
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     shocks = [:eps_a, :eps_z])
+                     shocks = [:eps_a, :eps_nu])
 ```
 
 ![Gali 2015 model estimates - selected shocks](../assets/estimates_selected_shocks__Gali_2015_chapter_3_nonlinear__4.png)
+
+Note, how the ommitted shock: `:eps_z` is not shown but (the only) part of `Other shocks (net)`.
 
 The same can be done with a `Vector` of `String`s:
 
 ```julia
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     shocks = ["eps_a", "eps_z"])
+                     shocks = ["eps_a", "eps_nu"])
 ```
 
 or `Tuple`s of `Symbol`s:
@@ -314,7 +346,7 @@ or `Tuple`s of `Symbol`s:
 ```julia
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     shocks = (:eps_a, :eps_z))
+                     shocks = (:eps_a, :eps_nu))
 ```
 
 or `Tuple`s of `String`s:
@@ -322,7 +354,7 @@ or `Tuple`s of `String`s:
 ```julia
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     shocks = ("eps_a", "eps_z"))
+                     shocks = ("eps_a", "eps_nu"))
 ```
 
 or `Matrix` of `Symbol`s:
@@ -341,6 +373,34 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      shocks = ["eps_a"  "eps_z"])
 ```
 
+or simply as a `Symbol`
+
+```julia
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = :eps_a)
+```
+
+or simply as a `String`
+
+```julia
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = "eps_a")
+```
+
+Not showing any shocks by using `shocks = :none`:
+
+```julia
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = :none)
+```
+
+![Gali 2015 model estimates - no shocks](../assets/estimates_no_shocks__Gali_2015_chapter_3_nonlinear__4.png)
+
+means that no subplots with the estimated shocks are shown and the shock decompositions only distinguish between the initial state and `Other shocks (net)`.
+
 ## Solution Algorithm
 
 The `algorithm` argument [Default: `:first_order`, Type: `Symbol`] specifies the solution algorithm used for the filtering. Options include `:first_order`, `:second_order`, `:third_order`, as well as `:pruned_second_order` and `:pruned_third_order`. The choice of algorithm affects the available filtering method (only first order support the Kalman filter, all solution algorithms support the inversion filter), steady state levels used in the plots and the dynamics of the variables.
@@ -356,7 +416,7 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 model estimates - second order](../assets/estimates_second_order__Gali_2015_chapter_3_nonlinear__2.png)
 
-The most notable difference is that at second order, dynamics are observed for `S`, which remains constant at first order (under certainty equivalence). Additionally, the steady state levels change because the stochastic steady state incorporates precautionary behavior (see horizontal lines). This has consequences for the conditions as they are in levels.
+The most notable difference is that at second order, dynamics are observed for `S`, which remains constant at first order (under certainty equivalence). Additionally, the steady state levels change because the stochastic steady state incorporates risk effects (see horizontal lines). This has consequences for the conditions as they are in levels.
 
 To compare the two solution methods side by side, use `plot_conditional_forecast!` to add to an existing plot:
 
@@ -574,7 +634,7 @@ plot_model_estimates(Gali_2015_chapter_3_obc,
 
 ![Gali 2015 OBC model estimates - with OBC variables](../assets/estimates_all__Gali_2015_chapter_3_obc__4.png)
 
-The OBC-related variables appear in the last subplot, but note that OBCs are ignored with conditional forecasting.
+The OBC-related variables appear in the last subplot, but note that simulated data respected the OBCs but the model estimates do not and explain the data using the standard model equations.
 
 ## Parameter Values
 
@@ -738,7 +798,7 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 
 The `plot_attributes` argument (default: `Dict()`, type: `Dict`) accepts a dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.
 
-The color palette can be customized using the `plot_attributes` argument. The following example defines a custom color palette (inspired by the European Commission's economic reports) to plot the model estimates (color are used for the shock decomposition) of the `Gali_2015_chapter_3_nonlinear` model.
+The color palette can be customized using the `plot_attributes` argument. The following example defines a custom color palette (inspired by the European Commission's economic reports) to plot the model estimates (colors are used for the shock decomposition) of the `Gali_2015_chapter_3_nonlinear` model.
 First, define the custom color palette using hex color codes:
 
 ```julia
@@ -755,7 +815,7 @@ ec_color_palette =
 ]
 ```
 
-Then plot the first model estimates:
+Then plot the model estimates:
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
@@ -816,11 +876,11 @@ Related arguments control the saving behavior:
 
 - `save_plots_format` (default: `:pdf`, type: `Symbol`): output format of saved plots. See [input formats compatible with GR](https://docs.juliaplots.org/latest/output/#Supported-output-file-formats) for valid formats.
 - `save_plots_path` (default: `"."`, type: `String`): path where plots are saved. If the path does not exist, it will be created automatically.
-- `save_plots_name` (default: `"conditional_forecast"`, type: `Union{String, Symbol}`): prefix prepended to the filename when saving plots.
+- `save_plots_name` (default: `"estimation"`, type: `Union{String, Symbol}`): prefix prepended to the filename when saving plots.
 
-Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., `conditional_forecast__ModelName__shock__1.pdf`).
+Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., `estimation__ModelName__1.pdf`).
 
-The following example saves all conditional forecasts for the `Gali_2015_chapter_3_nonlinear` model as PNG files in the `../plots` directory with `cond_fcst` as the filename prefix:
+The following example saves all conditional forecasts for the `Gali_2015_chapter_3_nonlinear` model as PNG files in the `../plots` directory with `estim` as the filename prefix:
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
@@ -829,7 +889,7 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
     save_plots = true,
     save_plots_format = :png,
     save_plots_path = "./../plots",
-    save_plots_name = :cond_fcst)
+    save_plots_name = :estim)
 ```
 
 The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file with a name reflecting the model, and a sequential index when the number of variables exceeds the plots per page.
@@ -873,7 +933,7 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 
 ![FS2000 and Gali 2015 model estimates - multiple models with rename dictionary](../assets/estimates_rename_dict_multiple_models__multiple_models__1.png)
 
-Both models now appear in the plot with consistent, readable labels, making comparison straightforward.
+Both models now appear in the plot with consistent labels, facilitating comparison.
 
 The `rename_dictionary` also works with shocks. For example, `Gali_2015_chapter_3_nonlinear` has shocks `eps_a` and `eps_nu`, while FS2000 has `e_a` and `e_m`. To compare these with consistent labels:
 
@@ -895,7 +955,7 @@ plot_model_estimates!(FS2000,
 
 ![FS2000 and Gali 2015 model estimates - multiple models with shock rename dictionary](../assets/estimates_rename_dict_multiple_models_shocks__multiple_models__7.png)
 
-The `rename_dictionary` accepts flexible type combinations for keys and values—both `Symbol` and `String` types work interchangeably:
+The `rename_dictionary` accepts flexible type combinations for keys and values, both `Symbol` and `String` types work interchangeably:
 
 ```julia
 # All of these are valid and equivalent:
@@ -959,8 +1019,6 @@ end
     rho{H}{F} = 0.088
     rho{F}{H} = rho{H}{F}
 end
-
-
 
 sim_data = simulate(Backus_Kehoe_Kydland_1992)(["Y{H}"],:,:simulate)
 plot_model_estimates(Backus_Kehoe_Kydland_1992,

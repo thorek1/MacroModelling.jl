@@ -2005,9 +2005,18 @@ data_rekey = rekey(data, :Time => dates)
 plot_model_estimates(FS2000, data_rekey,
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_rekey)
 
+sim_data = simulate(FS2000)([:log_gy_obs,:log_gp_obs],:,:simulate)
+
+plot_model_estimates!(FS2000, sim_data,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_multiple_data)
+
+
+## Data in levels
+sim = simulate(FS2000, levels = false)
+plot_model_estimates(FS2000, sim([:y,:R],:,:simulate), data_in_levels = false, smooth = false,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_levels_false)
+
 ## Filter
-
-
 @model Gali_2015_chapter_3_nonlinear begin
     W_real[0] = C[0] ^ σ * N[0] ^ φ
     Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
@@ -2081,6 +2090,10 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods 
 ## Shock decomposition
 
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = true,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_shock_decomp_true)
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = false,
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_shock_decomp)
 
@@ -2089,8 +2102,14 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decompositio
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_nonlinear,
                      sim_data,
-                     shocks = [:eps_a, :eps_z],
+                     shocks = [:eps_a, :eps_nu],
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_selected_shocks)
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = :none,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_no_shocks)
 
 
 ## Solution Algorithm
