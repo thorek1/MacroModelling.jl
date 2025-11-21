@@ -67,6 +67,34 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A)
 
 The function plots each endogenous variable in period `t` against the state variable `A` in `t-1`. Each subplot shows how the variable changes on the y-axis as `A` varies within the specified range over the x-axis. The relevant steady state is indicated by a circle of the same color as the line. The title of each subplot indicates the variable name and the title of the overall plot indicates the model name, and page number (if multiple pages are needed). The legend below the plots indicate the solution algorithm used and the nature of the steady state (stochastic or non-stochastic).
 
+## Using `plot_solution!` to Overlay Multiple Policy Functions
+
+The `plot_solution!` function (note the exclamation mark `!`) allows you to add additional policy functions to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
+- Different solution algorithms (e.g., first-order vs. second-order vs. third-order perturbation)
+- Different parameter values
+- Models with and without occasionally binding constraints (OBC)
+- Different model specifications
+
+When using `plot_solution!`, the new policy function is overlaid on the existing plot with a different color. Both the policy function line and the steady state marker (circle) use the same color to make identification easier. The legend below the plot automatically updates to indicate which line corresponds to which scenario. If the scenarios differ in multiple dimensions (e.g., both algorithm and parameters), the legend references a table that shows all input differences.
+
+For example, to compare multiple solution algorithms:
+
+```julia
+# Plot first-order solution
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    algorithm = :first_order)
+
+# Add second-order solution to the same plot
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    algorithm = :second_order)
+
+# Add third-order solution to the same plot
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    algorithm = :pruned_third_order)
+```
+
+This will create a single plot showing all three policy functions with different colored lines and steady state markers, making it easy to visualize how different solution methods affect the model's dynamics. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+
 ## State Variable (Required)
 
 The `state` argument (type: `Union{Symbol, String}`) specifies which state variable to vary. This must be a state variable from the model (variables with lagged values). If a state variable is provided that is not part of the model's state vector, an error is raised and the valid state variables are listed.

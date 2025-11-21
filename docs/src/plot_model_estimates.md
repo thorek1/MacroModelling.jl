@@ -73,6 +73,48 @@ plot_shock_decomposition(FS2000, data)
 
 This produces the same output as `plot_model_estimates` with `shock_decomposition = true`, which is the default setting for first order, pruned second order, and pruned third order solution algorithms.
 
+## Using `plot_model_estimates!` to Overlay Multiple Model Estimates
+
+The `plot_model_estimates!` function (note the exclamation mark `!`) allows you to add additional model estimates to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
+- Different datasets
+- Different solution algorithms (e.g., first-order vs. second-order perturbation)
+- Different parameter values
+- Different filtering methods (Kalman filter vs. inversion filter)
+- Smoothed vs. filtered estimates
+
+When using `plot_model_estimates!`, the new estimates are overlaid on the existing plot with a different color. The legend below the plot automatically updates to indicate which line corresponds to which scenario. Note that when combining multiple plots, shock decomposition is automatically disabled to avoid visual clutter - only the line plots showing the estimates are displayed. Different data inputs are indexed with a running number in the legend for easy reference.
+
+For example, to compare estimates from different datasets:
+
+```julia
+# Plot estimates using actual data
+dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
+data = KeyedArray(Array(dat)', Variable = Symbol.("log_".*names(dat)), Time = 1:size(dat)[1])
+data = log.(data)
+
+plot_model_estimates(FS2000, data)
+
+# Add estimates using simulated data
+sim_data = simulate(FS2000)([:log_gy_obs,:log_gp_obs],:,:simulate)
+plot_model_estimates!(FS2000, sim_data)
+```
+
+Or to compare different solution algorithms:
+
+```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+
+# Plot first-order estimates
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data)
+
+# Add second-order estimates to the same plot
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :second_order)
+```
+
+This will create a single plot showing both sets of estimates with different colored lines, making it easy to compare how different specifications affect the filtered/smoothed estimates. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+
 ## Data (Required)
 
 The `data` argument [Type: `KeyedArray{Float64}`] contains the data used for filtering or smoothing the model estimates. The first axis must contain variable names (as `Symbol`s or `String`s) and the second axis must contain period labels (as any format compatible with Plots.jl). Note that the second axis is used to fill the x-axis of the plots.

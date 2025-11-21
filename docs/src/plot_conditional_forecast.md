@@ -71,6 +71,38 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 The function plots the paths of each endogenous variable conditional on fulfilling the specified conditions. If there was a condition provided for a variable it is represented by a marker (also indicated in the legend below the subplots). The title of the overall plot indicates the model name, and page number (if multiple pages are needed) and the title of each subplot indicates the variable name.
 
+## Using `plot_conditional_forecast!` to Overlay Multiple Conditional Forecasts
+
+The `plot_conditional_forecast!` function (note the exclamation mark `!`) allows you to add additional conditional forecasts to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
+- Different conditions on endogenous variables
+- Different shock assumptions
+- Different solution algorithms (e.g., first-order vs. second-order perturbation)
+- Different parameter values
+- Different initial states
+
+When using `plot_conditional_forecast!`, the new conditional forecast is overlaid on the existing plot with a different color. Condition markers also adopt the corresponding line color for easy identification. The legend below the plot automatically updates to indicate which line corresponds to which scenario, with a running ID number to reference different sets of conditions. If the scenarios differ in multiple dimensions, the legend references a table that shows all input differences.
+
+For example, to compare conditional forecasts with different parameter values:
+
+```julia
+# Plot conditional forecast with baseline parameters
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
+                    Variables = [:Y], 
+                    Periods = 1:1)
+conditions_ka[1,1] = 1.0
+
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         parameters = :β => 0.99)
+
+# Add conditional forecast with different discount factor
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                          conditions_ka,
+                          parameters = :β => 0.95)
+```
+
+This will create a single plot showing both conditional forecasts with different colored lines and condition markers, making it easy to compare how parameter changes affect the model's conditional paths. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+
 ## Conditions (Required)
 
 The `conditions` argument [Type: `Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}}`] defines conditions for which to find the corresponding shocks. The input can have multiple formats, but for all types of entries the first dimension corresponds to variables and the second dimension to the number of periods. The conditions can be specified using a matrix of type `Matrix{Union{Nothing,Float64}}`. In this case the conditions are matrix elements of type `Float64` and all remaining (free) entries are `nothing`.

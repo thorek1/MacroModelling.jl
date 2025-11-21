@@ -59,6 +59,31 @@ plot_irf(Gali_2015_chapter_3_nonlinear)
 
 The plots display every endogenous variable affected for each exogenous shock. One plot/page consists of multiple subplots, one per variable, and shows the repsonse for one shock at a time (mentioned in the title). The title includes the model name, shock identifier, sign of the impulse (positive by default), and the page indicator (e.g., `(1/3)`). Each subplot shows the steady state as a horizontal reference line (non-stochastic for first-order solutions, stochastic for higher orders). For strictly positive variables, a secondary axis displays percentage deviations.
 
+## Using `plot_irf!` to Overlay Multiple IRFs
+
+The `plot_irf!` function (note the exclamation mark `!`) allows you to add additional IRFs to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
+- Different solution algorithms (e.g., first-order vs. second-order perturbation)
+- Different parameter values
+- Different shock specifications
+- Different initial states
+
+When using `plot_irf!`, the new IRF is overlaid on the existing plot with a different color. The legend below the plot automatically updates to indicate which line corresponds to which scenario. If the scenarios differ in multiple dimensions (e.g., both algorithm and parameters), the legend references a table that shows all input differences.
+
+For example, to compare first-order and second-order solutions:
+
+```julia
+# Plot first-order solution
+plot_irf(Gali_2015_chapter_3_nonlinear,
+    shocks = :eps_a)
+
+# Add second-order solution to the same plot
+plot_irf!(Gali_2015_chapter_3_nonlinear,
+    shocks = :eps_a,
+    algorithm = :second_order)
+```
+
+This will create a single plot showing both IRFs with different colored lines, making it easy to compare the responses across different solution methods. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+
 ## Solution Algorithm
 
 IRFs can be plotted using different solution algorithms. The following example uses a second-order perturbation solution:
