@@ -528,8 +528,8 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 # ```
 
 
-
 # Policy Functions
+Random.seed!(10)
 
 # The `plot_solution` function visualizes the solution of the model (mapping of past states to present variables) around the relevant steady state (e.g. higher order perturbation algorithms are centred around the stochastic steady state).
 
@@ -976,6 +976,7 @@ plot_solution(Backus_Kehoe_Kydland_1992, "K{H}",
 
 
 # Conditional Variance Decomposition
+Random.seed!(10)
 @model Smets_Wouters_2007_linear begin
     a[0] = calfa * rkf[0] + (1 - calfa) * wf[0]
     zcapf[0] = rkf[0] * 1 / (czcap / (1 - czcap))
@@ -1244,7 +1245,7 @@ plot_fevd(Backus_Kehoe_Kydland_1992,
 
 
 # Conditional Forecasting
-
+Random.seed!(10)
 # Load a model
 @model Gali_2015_chapter_3_nonlinear begin
 	W_real[0] = C[0] ^ σ * N[0] ^ φ
@@ -1867,7 +1868,7 @@ plot_conditional_forecast!(FS2000,
                          rename_dictionary = Dict(:e_a => "Technology Shock", :e_m => "Monetary Policy Shock"),
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :cnd_fcst_rename_dict_shocks)
 
-                         
+
 
 @model Backus_Kehoe_Kydland_1992 begin
     for co in [H, F]
@@ -1935,7 +1936,7 @@ plot_conditional_forecast(Backus_Kehoe_Kydland_1992,
 
 
 # Model Estimates
-
+Random.seed!(10)
 
 #### add aux functions (plot_shock_decomposition) ####
 
@@ -1991,16 +1992,18 @@ dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
 data = KeyedArray(Array(dat)', Variable = Symbol.("log_".*names(dat)), Time = 1:size(dat)[1])
 data = log.(data)
 
-current_date = Date(1950, 1, 1)
 
-dates = Vector{Date}(undef, size(data,2))
-
-for i in 1:size(data,2)
-    dates[i] = current_date
-    current_date = current_date + Dates.Month(3)
+function quarterly_dates(start_date::Date, len::Int)
+    dates = Vector{Date}(undef, len)
+    current_date = start_date
+    for i in 1:len
+        dates[i] = current_date
+        current_date = current_date + Dates.Month(3)
+    end
+    return dates
 end
 
-data_rekey = rekey(data, :Time => dates)
+data_rekey = rekey(data, :Time => quarterly_dates(Date(1960, 1, 1), size(data,2)))
 
 plot_model_estimates(FS2000, data_rekey,
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_rekey)
@@ -2013,7 +2016,7 @@ plot_model_estimates!(FS2000, sim_data,
 
 ## Data in levels
 sim = simulate(FS2000, levels = false)
-plot_model_estimates(FS2000, sim([:y,:R],:,:simulate), data_in_levels = false, smooth = false,
+plot_model_estimates(FS2000, sim([:y,:R],:,:simulate), data_in_levels = false,
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_levels_false)
 
 ## Filter
@@ -2131,8 +2134,6 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      algorithm = :second_order,
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_first_and_second_order)
 
-
-#### how to plot the data when there are different steady states? ####
 
 # ![Gali 2015 conditional forecast - first and second order](../assets/cnd_fcst_second_order_combine__Gali_2015_chapter_3_nonlinear__2.png)
 
@@ -2253,8 +2254,8 @@ end
 sim_data_Gali_obc = simulate(Gali_2015_chapter_3_obc)([:R],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_obc,
                      sim_data_Gali_obc,
-                         variables = :all,
-                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_all)
+                     variables = :all,
+                     save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_all)
 
 
 # ![Gali 2015 OBC conditional forecast - with OBC variables](../assets/cnd_fcst_all__Gali_2015_chapter_3_obc__3.png)
