@@ -101,30 +101,31 @@ data = log.(data)
 plot_model_estimates(FS2000, data)
 ```
 
-A useful feature is that the second dimension of the `KeyedArray` can be used to customize the x-axis labels of the plots. The following example shows how to create date labels for quarterly data starting from 1950-01-01:
+A useful feature is that the second dimension of the `KeyedArray` can be used to customize the x-axis labels of the plots. The following example shows how to create date labels for quarterly data starting from 1960-01-01:
 
 ```julia
 dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
 data = KeyedArray(Array(dat)', Variable = Symbol.("log_".*names(dat)), Time = 1:size(dat)[1])
 data = log.(data)
 
-current_date = Date(1950, 1, 1)
-
-dates = Vector{Date}(undef, size(data,2))
-
-for i in 1:size(data,2)
-    dates[i] = current_date
-    current_date = current_date + Dates.Month(3)
+function quarterly_dates(start_date::Date, len::Int)
+    dates = Vector{Date}(undef, len)
+    current_date = start_date
+    for i in 1:len
+        dates[i] = current_date
+        current_date = current_date + Dates.Month(3)
+    end
+    return dates
 end
 
-data_rekey = rekey(data, :Time => dates)
+data_rekey = rekey(data, :Time => quarterly_dates(Date(1960, 1, 1), size(data,2)))
 
 plot_model_estimates(FS2000, data_rekey)
 ```
 
 ![FS2000 model estimates - custom x-axis](../assets/estimates_rekey__FS2000__3.png)
 
-The loop generates the date labels by starting from a given date and adding three months for each subsequent period. The `rekey` function from AxisKeys is then used to replace the second axis of the `KeyedArray` with the generated date labels. The resulting plot now has dates on the x-axis. Note that any input type for the second axis that `Plots.jl` can handle is valid.
+The function generates the date labels by starting from a given date and adding three months for each subsequent period. The `rekey` function from AxisKeys is then used to replace the second axis of the `KeyedArray` with the generated date labels. The resulting plot now has dates on the x-axis. Note that any input type for the second axis that `Plots.jl` can handle is valid.
 
 One can also compare estimates based on different data:
 
