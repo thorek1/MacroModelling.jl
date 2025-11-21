@@ -227,7 +227,7 @@ and check the NSSS once more:
 
 ```@repl howto_obc
 SS(Gali_2015_chapter_3_obc)
-SS(Gali_2015_chapter_3_obc)(:R)
+SS(Gali_2015_chapter_3_obc)(:R,:)
 ```
 
 Now we get `R > R̄`, so that the constraint is not binding in the NSSS and we can work with a stable first order solution:
@@ -245,7 +245,7 @@ import StatsPlots
 plot_simulations(Gali_2015_chapter_3_obc)
 ```
 
-![Simulation_elb](../assets/Gali_2015_chapter_3_obc__simulation__1.png)
+![Simulation_elb](../assets/sim_obc__Gali_2015_chapter_3_obc__simulation__1.png)
 
 In the background an optimisation problem is set up to find the smallest shocks in magnitude which enforce the equation containing the occasionally binding constraint over the unconditional forecast horizon (default 40 periods) at each period of the simulation. The plots show multiple spells of a binding effective lower bound and many other variables are skewed as a result of the nonlinearity. It can happen that it is not possible to find a combination of shocks which enforce the occasionally binding constraint equation. In this case one solution can be to make the horizon larger over which the algorithm tries to enforce the equation. You can do this by setting the parameter at the beginning of the `@model` section: `@model Gali_2015_chapter_3_obc max_obc_horizon = 60 begin ... end`.
 
@@ -255,7 +255,7 @@ Next let us change the effective lower bound to `0.99` and plot once more:
 plot_simulations(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.99)
 ```
 
-![Simulation_elb2](../assets/Gali_2015_chapter_3_obc__simulation__2.png)
+![Simulation_elb2](../assets/sim_obc_elb__Gali_2015_chapter_3_obc__simulation__1.png)
 
 Now, the effect of the effective lower bound becomes less important as it binds less often.
 
@@ -265,7 +265,7 @@ If you want to ignore the occasionally binding constraint you can simply call:
 plot_simulations(Gali_2015_chapter_3_obc, ignore_obc = true)
 ```
 
-![Simulation_no_elb](../assets/Gali_2015_chapter_3_obc__simulation__no.png)
+![Simulation_no_elb](../assets/sim_ignore_obc__Gali_2015_chapter_3_obc__simulation__1.png)
 
 and you get the simulation based on the first order solution approximated around the NSSS, which is the same as the one for the model without the modified Taylor rule.
 
@@ -275,7 +275,7 @@ We can plot the impulse response functions for the `eps_z` shock, while setting 
 plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, parameters = :R̄ => 1.0)
 ```
 
-![IRF_elb](../assets/Gali_2015_chapter_3_obc__eps_z.png)
+![IRF_elb](../assets/obc_irf_higher_bound__Gali_2015_chapter_3_obc__simulation__1.png)
 
 As you can see `R` remains above the effective lower bound in the first period.
 
@@ -289,10 +289,12 @@ shcks[15] = 1.0
 
 sks = KeyedArray(shcks;  Shocks = [:eps_z], Periods = 1:15)  # KeyedArray is provided by the `AxisKeys` package
 
-plot_irf(Gali_2015_chapter_3_obc, shocks = sks, periods = 10)
+plot_irf(Gali_2015_chapter_3_obc, 
+            shocks = sks, 
+            periods = 10)
 ```
 
-![Shock_series_elb](../assets/Gali_2015_chapter_3_obc__shock_matrix__1.png)
+![Shock_series_elb](../assets/obc_irf__Gali_2015_chapter_3_obc__shock_matrix__1.png)
 
 The effective lower bound is binding after all three shocks but the length of the constraint being binding varies with the shock size and is completely endogenous.
 
