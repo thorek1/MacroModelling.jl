@@ -432,8 +432,6 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 model estimates - first and second order](../assets/estimates_first_and_second_order__Gali_2015_chapter_3_nonlinear__2.png)
 
-#### how to plot the data when there are different steady states? ####
-
 The plots now show both solution methods overlaid. The first-order solution is shown in blue, the second-order solution in orange, as indicated in the legend below the plot. Note that the steady state levels can be different for the two solution methods. For variables where the relevant steady state is the same for both methods (e.g., `S`), the level appears on the left axis and percentage deviations on the right axis. For variables where the steady state differs between methods (e.g., `R`), only absolute level deviations (`abs. Δ`) appear on the left axis. The relevant steady state levels are shown in a table below the plot for reference (rounded to help identify differences). The relevant steady state also implies that the conditions vary in terms of distance to steady state and thereby in the shocks they require for them to be fulfilled. For the variable `Y` the conditions given a first order solution imply a lower absolute deviation from the relevant steady state than for the second order solution.
 
 Additional solution methods can be added to the same plot:
@@ -630,7 +628,7 @@ Plotting the model estimates for all variables including OBC-related ones reveal
 sim_data_Gali_obc = simulate(Gali_2015_chapter_3_obc)([:R],:,:simulate)
 plot_model_estimates(Gali_2015_chapter_3_obc,
                      sim_data_Gali_obc,
-                         variables = :all)
+                     variables = :all)
 ```
 
 ![Gali 2015 OBC model estimates - with OBC variables](../assets/estimates_all__Gali_2015_chapter_3_obc__4.png)
@@ -689,6 +687,8 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 ```
 
 ![Gali 2015 model estimates - multiple parameter changes (2)](../assets/estimates_multi_params_2__Gali_2015_chapter_3_nonlinear__2.png)
+
+Note that the parameter change led to a different relevant steady state for variable `Y`. Since `Y` is also an observable, the subplot is shown in levels with the relevant steady states being indicated by black lines and their respective values mentioned in the table below the plot. This behaviour is in contrast to cases where the variables is not an observable, in which case absolute deviations from steady state are shown.
 
 Alternatively, use a `Vector` of parameter values in the order they were defined in the model. To obtain them:
 

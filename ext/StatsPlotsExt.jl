@@ -519,7 +519,7 @@ function plot_model_estimates(𝓂::ℳ,
             if shock_decomposition
                 additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
                 
-                if length(non_zero_shock_idx) < (size(decomposition,2) - 2 - pruning) # not showing all shocks
+                if length(non_zero_shock_idx) < (size(decomposition,2) - sum(contains.(string.(𝓂.timings.exo), "ᵒᵇᶜ")) - 2 - pruning) # not showing all shocks
                     other_shocks = ["Other shocks (net)"]
                 else
                     other_shocks = []
@@ -581,7 +581,7 @@ function plot_model_estimates(𝓂::ℳ,
         if shock_decomposition
             additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
 
-            if length(non_zero_shock_idx) < (size(decomposition,2) - 2 - pruning) # not showing all shocks
+            if length(non_zero_shock_idx) < (size(decomposition,2) - sum(contains.(string.(𝓂.timings.exo), "ᵒᵇᶜ")) - 2 - pruning) # not showing all shocks
                 other_shocks = ["Other shocks (net)"]
             else
                 other_shocks = []
@@ -638,7 +638,7 @@ plot_shock_decomposition(args...; kwargs...) =  plot_model_estimates(args...; kw
 
 """
 $(SIGNATURES)
-This function allows comparison of the estimated variables, shocks, and the data underlying the estimates for any combination of inputs.
+This function allows comparison of the estimated variables, shocks, and the data underlying the estimates for any combination of inputs. In case the relevant steady state differs for a variable across the different calls, the plot shows the absolute deviations from the respective steady state for each call. The only exception being if the variable is observed in the data, in which case the data is always shown in levels, and the relevant steady states are indicated by black lines and mentioned in the table below the plot.
 
 This function shares most of the signature and functionality of [`plot_model_estimates`](@ref). Its main purpose is to append plots based on the inputs to previous calls of this function and the last call of [`plot_model_estimates`](@ref). In the background it keeps a registry of the inputs and outputs and then plots the comparison.
 
