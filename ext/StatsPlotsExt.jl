@@ -260,14 +260,14 @@ function plot_model_estimates(𝓂::ℳ,
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
-    if shocks ∈ [:none, :simulate, :all_excluding_obc] 
-        @warn "Shocks input cannot be `:none`, `:all_excluding_obc`, or `:simulate` in `plot_model_estimates`. Changed shocks to `:all`"
+    if shocks ∈ [:simulate, :all_excluding_obc] 
+        @warn "Shocks input cannot be `:all_excluding_obc`, or `:simulate` in `plot_model_estimates`. Changed shocks to `:all`"
         shocks = :all
     end
 
     obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> unique |> sort
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) |> unique  |> sort
-    shock_idx   = parse_shocks_input_to_index(shocks, 𝓂.timings)
+    shock_idx   = shocks == :none ? Int64[] : parse_shocks_input_to_index(shocks, 𝓂.timings)
 
     # Create display names and sort alphabetically
     variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.var[v], rename_dictionary)) for v in var_idx]
@@ -275,7 +275,7 @@ function plot_model_estimates(𝓂::ℳ,
     var_sort_perm = sortperm(variable_names_display, by = normalize_superscript)
     var_idx = var_idx[var_sort_perm]
     variable_names_display = variable_names_display[var_sort_perm]
-    
+
     shock_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.exo[s], rename_dictionary)) * "₍ₓ₎" for s in shock_idx]
     @assert length(shock_names_display) == length(unique(shock_names_display)) "Renaming shocks resulted in non-unique names. Please check the `rename_dictionary`."
     if length(shock_idx) > 1
@@ -323,13 +323,15 @@ function plot_model_estimates(𝓂::ℳ,
     x_axis = x_axis[periods]
     
     variables_to_plot, shocks_to_plot, standard_deviations, decomposition = filter_data_with_model(𝓂, data_in_deviations, Val(algorithm), Val(filter), warmup_iterations = warmup_iterations, smooth = smooth, opts = opts)
-    
+
     if pruning
         decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
         decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
-        variables_to_plot                           .+= SSS_delta
-        data_in_deviations                          .+= SSS_delta[obs_idx]
+        decomposition[:,end,:]                      .+= SSS_delta
     end
+    
+    variables_to_plot                           .+= SSS_delta
+    data_in_deviations                          .+= SSS_delta[obs_idx]
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
@@ -437,11 +439,24 @@ function plot_model_estimates(𝓂::ℳ,
                 SS = reference_steady_state[var_idx[i]]
 
                 if shock_decomposition
-                    additional_indices = pruning ? [size(decomposition,2)-1, size(decomposition,2)-2] : [size(decomposition,2)-1]
+                    if length(non_zero_shock_idx) < (size(decomposition,2) - 2 - pruning) # not showing all shocks
+                        decomp_of_nonzero_shocks = decomposition[var_idx[i],non_zero_shock_idx,periods]
+                        sum_of_other_shocks = decomposition[var_idx[i],[end],periods] .- decomposition[var_idx[i],[end-1],periods] .- sum(decomp_of_nonzero_shocks, dims = 1)
 
+                        if pruning
+                            sum_of_other_shocks .-= decomposition[var_idx[i],[end-2],periods]
+                        end
+                        
+                        decomp = cat(decomp_of_nonzero_shocks, sum_of_other_shocks, decomposition[var_idx[i],(size(decomposition,2) - 1 - pruning):end,periods], dims = 1)
+                    else
+                        decomp = decomposition[var_idx[i],:,periods]
+                    end
+
+                    additional_indices = pruning ? [size(decomp,1)-1, size(decomp,1)-2] : [size(decomp,1)-1]
+                    
                     p = standard_subplot(Val(:stack),
-                                        [decomposition[var_idx[i],k,periods] for k in vcat(additional_indices, non_zero_shock_idx)], 
-                                        [SS for k in vcat(additional_indices, non_zero_shock_idx)], 
+                                        [decomp[k,:] for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))], 
+                                        [SS for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))], 
                                         variable_names_display[i], 
                                         gr_back,
                                         true, # same_ss,
@@ -503,11 +518,19 @@ function plot_model_estimates(𝓂::ℳ,
 
             if shock_decomposition
                 additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
+                
+                if length(non_zero_shock_idx) < (size(decomposition,2) - 2 - pruning) # not showing all shocks
+                    other_shocks = ["Other shocks (net)"]
+                else
+                    other_shocks = []
+                end
 
-                lbls = reshape(vcat(additional_labels, string.(non_zero_shock_names)), 1, length(non_zero_shock_idx) + 1 + pruning)
+                lbls_vec = vcat(additional_labels, string.(non_zero_shock_names), other_shocks)
+
+                lbls = reshape(lbls_vec, 1, length(lbls_vec))
 
                 StatsPlots.bar!(pl,
-                                fill(NaN, 1, length(non_zero_shock_idx) + 1 + pruning), 
+                                fill(NaN, 1, length(lbls_vec)), 
                                 label = lbls, 
                                 linewidth = 0,
                                 alpha = transparency,
@@ -558,15 +581,23 @@ function plot_model_estimates(𝓂::ℳ,
         if shock_decomposition
             additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
 
-            lbls = reshape(vcat(additional_labels, string.(non_zero_shock_names)), 1, length(non_zero_shock_idx) + 1 + pruning)
+            if length(non_zero_shock_idx) < (size(decomposition,2) - 2 - pruning) # not showing all shocks
+                other_shocks = ["Other shocks (net)"]
+            else
+                other_shocks = []
+            end
+
+            lbls_vec = vcat(additional_labels, string.(non_zero_shock_names), other_shocks)
+
+            lbls = reshape(lbls_vec, 1, length(lbls_vec))
 
             StatsPlots.bar!(pl,
-                            fill(NaN, 1, length(non_zero_shock_idx) + 1 + pruning), 
+                            fill(NaN, 1, length(lbls_vec)), 
                             label = lbls, 
                             linewidth = 0,
                             alpha = transparency,
                             color = pal[mod1.(1:length(lbls), length(pal))]', 
-                                legend_columns = legend_columns)
+                            legend_columns = legend_columns)
         end
         
         # Legend
@@ -763,14 +794,14 @@ function plot_model_estimates!(𝓂::ℳ,
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
-    if shocks ∈ [:none, :simulate, :all_excluding_obc] 
-        @warn "Shocks input cannot be `:none`, `:all_excluding_obc`, or `:simulate` in `plot_model_estimates`. Changed shocks to `:all`"
+    if shocks ∈ [:simulate, :all_excluding_obc] 
+        @warn "Shocks input cannot be `:all_excluding_obc`, or `:simulate` in `plot_model_estimates`. Changed shocks to `:all`"
         shocks = :all
     end
 
     obs_idx     = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> unique |> sort
     var_idx     = parse_variables_input_to_index(variables, 𝓂.timings) |> unique  |> sort
-    shock_idx   = parse_shocks_input_to_index(shocks, 𝓂.timings)
+    shock_idx   = shocks == :none ? Int64[] : parse_shocks_input_to_index(shocks, 𝓂.timings)
 
     # Create display names and sort alphabetically
     variable_names_display = [replace_indices_in_symbol.(apply_custom_name(𝓂.timings.var[v], rename_dictionary)) for v in var_idx]
@@ -830,9 +861,10 @@ function plot_model_estimates!(𝓂::ℳ,
     if pruning
         decomposition[:,1:(end - 2 - pruning),:]    .+= SSS_delta
         decomposition[:,end - 2,:]                  .-= SSS_delta * (size(decomposition,2) - 4)
-        variables_to_plot                           .+= SSS_delta
-        data_in_deviations                          .+= SSS_delta[obs_idx]
     end
+
+    variables_to_plot                           .+= SSS_delta
+    data_in_deviations                          .+= SSS_delta[obs_idx]
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
@@ -1210,6 +1242,23 @@ function plot_model_estimates!(𝓂::ℳ,
             same_ss = false
         end
 
+
+        has_data = false
+
+        for k in model_estimates_active_plot_container
+            obs_axis = collect(axiskeys(k[:data],1))
+
+            obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
+
+            obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
+
+            var_indx = findfirst(==(var), k[:variable_names]) 
+
+            if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
+                has_data = true || has_data
+            end
+        end
+
         p = standard_subplot(Val(:compare),
                                     plot_data, 
                                     SSs, 
@@ -1219,6 +1268,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                     pal = pal,
                                     xvals = combined_x_axis, # TODO: check different data length or presample periods. to be fixed
                                     # transparency = transparency
+                                    has_data = has_data
                                     )
 
         if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
@@ -1857,6 +1907,7 @@ function standard_subplot(::Val{:compare},
                             gr_back::Bool, 
                             same_ss::Bool; 
                             xvals = 1:maximum(length.(irf_data)),
+                            has_data::Bool = false,
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
                             transparency::Float64 = DEFAULT_TRANSPARENCY) where {S <: AbstractFloat, R <: Union{String, Symbol}}
     plot_dat = []
@@ -1873,16 +1924,16 @@ function standard_subplot(::Val{:compare},
     for (y, ss) in zip(irf_data, steady_state)
         can_dual_axis = can_dual_axis && all((filter(!isnan, y) .+ ss) .> eps(Float32)) && ((ss > eps(Float32)) || isnan(ss))
     end
-
+    
     for (i,(y, ss)) in enumerate(zip(irf_data, steady_state))
         if !isnan(ss)
             stst = ss
             
-            if can_dual_axis && same_ss
+            if can_dual_axis && (same_ss || has_data)
                 push!(plot_dat, y .+ ss)
                 plot_ss = ss
             else
-                if same_ss
+                if (same_ss || has_data)
                     push!(plot_dat, y .+ ss)
                 else
                     push!(plot_dat, y)
@@ -1900,9 +1951,17 @@ function standard_subplot(::Val{:compare},
                         xrotation = xrotation,
                         label = "")
 
-    StatsPlots.hline!([same_ss ? stst : 0], 
-                      color = :black, 
-                      label = "")
+    if (same_ss || has_data)
+        for ss in steady_state
+            StatsPlots.hline!([ss], 
+                            color = :black, 
+                            label = "")
+        end
+    else
+        StatsPlots.hline!([0], 
+                        color = :black, 
+                        label = "")
+    end
 
     lo, hi = StatsPlots.ylims(p)
 
@@ -1920,7 +1979,7 @@ function standard_subplot(::Val{:compare},
     #     StatsPlots.plot!(xticks = (ticks_shifted, labels))
     # end
 
-    if can_dual_axis && same_ss
+    if can_dual_axis && (same_ss || has_data)
         StatsPlots.plot!(StatsPlots.twinx(), 
                          ylims = (100 * (lo / plot_ss - 1), 100 * (hi / plot_ss - 1)),
                          ylabel = LaTeXStrings.L"\% \Delta")
