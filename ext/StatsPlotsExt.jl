@@ -132,7 +132,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $ALGORITHM®
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
-- `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. 
+- `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots and in the shock decompositions. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model. If not all shocks are shown, the ommitted shocks will be summarised and netted under the label `Other shocks (net)` in the shock decomposition.
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `true` for algorithms supporting shock decompositions (`:first_order`, `:pruned_second_order`, `:pruned_third_order`), otherwise `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks. When an unsupported algorithm is chosen the argument automatically falls back to `false`.
@@ -650,7 +650,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $ALGORITHM®
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
-- `shocks` [Default: `:all`]: shocks for which to plot the estimates. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. 
+- `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model.
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
 - $DATA_IN_LEVELS®
 - $LABEL®
@@ -1946,7 +1946,7 @@ function standard_subplot(::Val{:compare},
     p = StatsPlots.plot(xvals,
                         plot_dat,
                         title = variable_name,
-                        ylabel = same_ss ? "Level" : "abs. " * LaTeXStrings.L"\Delta",
+                        ylabel = (same_ss || has_data) ? "Level" : "abs. " * LaTeXStrings.L"\Delta",
                         color = pal[mod1.(pal_val, length(pal))]',
                         xrotation = xrotation,
                         label = "")
@@ -1979,7 +1979,7 @@ function standard_subplot(::Val{:compare},
     #     StatsPlots.plot!(xticks = (ticks_shifted, labels))
     # end
 
-    if can_dual_axis && (same_ss || has_data)
+    if can_dual_axis && same_ss
         StatsPlots.plot!(StatsPlots.twinx(), 
                          ylims = (100 * (lo / plot_ss - 1), 100 * (hi / plot_ss - 1)),
                          ylabel = LaTeXStrings.L"\% \Delta")
@@ -5402,7 +5402,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
         vals = diffdict[:initial_state]
 
         labels = String[]                                # "" for [0.0], "#k" otherwise
-        seen   = []           # store distinct non-[0.0] values by content
+        seen   = []                                      # store distinct non-[0.0] values by content
         next_idx = 0
 
         for v in vals
@@ -5536,7 +5536,10 @@ function plot_conditional_forecast!(𝓂::ℳ,
         not_zero_in_any_cond_fcst = false
 
         for k in conditional_forecast_active_plot_container
-            var_idx = findfirst(==(var), String.(apply_custom_name.(replace_indices_in_symbol.(vcat(k[:variable_names], Symbol.(replace.(string.(k[:shock_names])), Ref("₍ₓ₎" => "")))), Ref(Dict(k[:rename_dictionary])))))
+            transformed_vars = String.(apply_custom_name.(replace_indices_in_symbol.(k[:variable_names]), Ref(Dict(k[:rename_dictionary]))))
+            transformed_shocks = String.(apply_custom_name.(Symbol.(replace.(string.(replace_indices_in_symbol.(k[:shock_names])), Ref("₍ₓ₎" => ""))), Ref(Dict(k[:rename_dictionary]))))
+            
+            var_idx = findfirst(==(var), vcat(transformed_vars, transformed_shocks))
             if isnothing(var_idx)
                 # If the variable or shock is not present in the current conditional_forecast_active_plot_container,
                 # we skip this iteration.
@@ -5556,7 +5559,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
             n_subplots -= 1
         end
     end
-
+    
     for var in joint_non_zero_variables
         SSs = eltype(conditional_forecast_active_plot_container[1][:reference_steady_state])[]
         Ys = AbstractVector{eltype(conditional_forecast_active_plot_container[1][:plot_data])}[]
@@ -5564,7 +5567,10 @@ function plot_conditional_forecast!(𝓂::ℳ,
         subplot_title = ""
         
         for k in conditional_forecast_active_plot_container
-            var_idx = findfirst(==(var), String.(apply_custom_name.(replace_indices_in_symbol.(vcat(k[:variable_names], Symbol.(replace.(string.(k[:shock_names])), Ref("₍ₓ₎" => "")))), Ref(Dict(k[:rename_dictionary])))))
+            transformed_vars = String.(apply_custom_name.(replace_indices_in_symbol.(k[:variable_names]), Ref(Dict(k[:rename_dictionary]))))
+            transformed_shocks = String.(apply_custom_name.(Symbol.(replace.(string.(replace_indices_in_symbol.(k[:shock_names])), Ref("₍ₓ₎" => ""))), Ref(Dict(k[:rename_dictionary]))))
+            
+            var_idx = findfirst(==(var), vcat(transformed_vars, transformed_shocks))
             if isnothing(var_idx)
                 # If the variable is not present in the current conditional_forecast_active_plot_container,
                 # we skip this iteration.
@@ -5578,10 +5584,10 @@ function plot_conditional_forecast!(𝓂::ℳ,
             end
 
         
-            if var ∈ String.(apply_custom_name.(replace_indices_in_symbol.(k[:variable_names]), Ref(Dict(k[:rename_dictionary]))))
-                subplot_title = apply_custom_name(replace_indices_in_symbol(Symbol(var)), rename_dictionary)
-            else
-                subplot_title = apply_custom_name(replace(string(replace_indices_in_symbol(Symbol(var))), "₍ₓ₎" => ""), rename_dictionary) * "₍ₓ₎"
+            if var ∈ transformed_vars
+                subplot_title = apply_custom_name(replace_indices_in_symbol(Symbol(var)), Dict(k[:rename_dictionary]))
+            elseif var ∈ transformed_shocks
+                subplot_title = String(apply_custom_name(Symbol(replace(string(replace_indices_in_symbol(Symbol(var))), "₍ₓ₎" => "")), Dict(k[:rename_dictionary]))) * "₍ₓ₎"
             end
         end
 
@@ -5593,13 +5599,13 @@ function plot_conditional_forecast!(𝓂::ℳ,
         end
         
         p = standard_subplot(Val(plot_type),
-                                        Ys, 
-                                        SSs, 
-                                        subplot_title, 
-                                        gr_back,
-                                        same_ss,
-                                        pal = pal,
-                                        transparency = transparency)
+                                Ys, 
+                                SSs, 
+                                subplot_title, 
+                                gr_back,
+                                same_ss,
+                                pal = pal,
+                                transparency = transparency)
 
         if plot_type == :compare
             for (i,k) in enumerate(conditional_forecast_active_plot_container)   
@@ -5709,7 +5715,6 @@ function plot_conditional_forecast!(𝓂::ℳ,
     end
 
     if length(pp) > 0
-
         shock_string = "Conditional forecast"
 
         if haskey(diffdict, :model_name)
