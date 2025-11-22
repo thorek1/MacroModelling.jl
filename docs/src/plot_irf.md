@@ -61,7 +61,7 @@ The plots display every endogenous variable affected for each exogenous shock. O
 
 ## Combine or compare IRFs with `plot_irf!`
 
-The `plot_irf!` function (note the exclamation mark `!`) adds additional IRFs to an existing plot created with `plot_irf`, enabling direct comparison between different scenarios. You can vary any input argument that affects the model's output (such as solution algorithm, parameter values, shocks, or initial states) to compare how these changes influence the impulse response functions. See the respective subsections below (e.g., [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
+The `plot_irf!` function (note the exclamation mark `!`) adds additional IRFs to an existing plot created with `plot_irf`, enabling direct comparison between different scenarios. Any input argument that affects the model's output (such as solution algorithm, parameter values, shocks, or initial states) can be varied to compare how these changes influence the impulse response functions. See the respective subsections below (e.g., [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
 
 When using `plot_irf!`, the new IRF can be either overlaid for comparison (default) or stacked to show cumulative effects, depending on the `plot_type` argument (see [Plot Type](#plot-type)). 
 

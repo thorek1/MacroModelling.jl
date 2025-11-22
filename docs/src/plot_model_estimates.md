@@ -75,7 +75,7 @@ This produces the same output as `plot_model_estimates` with `shock_decompositio
 
 ## Combine Model Estimates with `plot_model_estimates!`
 
-The `plot_model_estimates!` function (note the exclamation mark `!`) adds additional model estimates to an existing plot created with `plot_model_estimates`, enabling direct comparison between different scenarios. You can vary any input argument that affects the model's output (such as datasets, solution algorithm, parameter values, filtering methods, or smoothing options) to compare how these changes influence the estimates. See the respective subsections below (e.g., [Data](#data-required), [Filter](#filter), [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
+The `plot_model_estimates!` function (note the exclamation mark `!`) adds additional model estimates to an existing plot created with `plot_model_estimates`, enabling direct comparison between different scenarios. Any input argument that affects the model's output (such as datasets, solution algorithm, parameter values, filtering methods, or smoothing options) can be varied to compare how these changes influence the estimates. See the respective subsections below (e.g., [Data](#data-required), [Filter](#filter), [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
 
 When using `plot_model_estimates!`, the new estimates are overlaid on the existing plot with a different color. Note that when combining multiple plots, shock decomposition is automatically disabled to avoid visual clutter - only the line plots showing the estimates are displayed.
 

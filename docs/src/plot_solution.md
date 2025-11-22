@@ -69,7 +69,7 @@ The function plots each endogenous variable in period `t` against the state vari
 
 ## Combine Policy Functions with `plot_solution!`
 
-The `plot_solution!` function (note the exclamation mark `!`) adds additional policy functions to an existing plot created with `plot_solution`, enabling direct comparison between different scenarios. You can vary any input argument that affects the model's output (such as solution algorithm, parameter values, or occasionally binding constraints) to compare how these changes influence the policy functions. See the respective subsections below (e.g., [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values), [Ignoring Occasionally Binding Constraints](#ignoring-occasionally-binding-constraints)) for details on specific arguments.
+The `plot_solution!` function (note the exclamation mark `!`) adds additional policy functions to an existing plot created with `plot_solution`, enabling direct comparison between different scenarios. Any input argument that affects the model's output (such as solution algorithm, parameter values, or occasionally binding constraints) can be varied to compare how these changes influence the policy functions. See the respective subsections below (e.g., [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values), [Ignoring Occasionally Binding Constraints](#ignoring-occasionally-binding-constraints)) for details on specific arguments.
 
 When using `plot_solution!`, the new policy function is overlaid on the existing plot with a different color. Both the policy function line and the steady state marker (circle) use the same color to make identification easier.
 
