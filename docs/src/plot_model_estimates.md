@@ -55,7 +55,7 @@ data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:si
 data = log.(data)
 ```
 
-Given the model and data we can plot the model estimates as follows:
+Given the model and data the model estimates can be plotted as follows:
 
 ```julia
 plot_model_estimates(FS2000, data)
