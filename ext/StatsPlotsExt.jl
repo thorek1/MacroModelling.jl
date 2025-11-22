@@ -3976,7 +3976,7 @@ function _plot_solution_from_container(;
             end
         end
         
-        for var in joint_states
+        for var in intersect(joint_states, all_vars)
             push!(vars_with_impact, var)
         end
 
