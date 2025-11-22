@@ -3538,7 +3538,7 @@ function get_loglikelihood(𝓂::ℳ,
     #     sylvester_algorithm = :bicgstab
     # end
 
-    @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, you need to combine the estimated parameters with the other model parameters in one `Vector`. Make sure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
+    @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, the estimated parameters need to be combined with the other model parameters in one `Vector`. Ensure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
 
     # checks to avoid errors further down the line and inform the user
     @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."

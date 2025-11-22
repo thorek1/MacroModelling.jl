@@ -23,7 +23,7 @@ As of now the package can:
 The package is not:
 
 - guaranteed to find the non-stochastic steady state
-- the fastest package around if you already have a fast way to find the NSSS
+- the fastest package around if there exists already a fast implementation to find the NSSS (e.g. an analytical solution)
 
 The former has to do with the fact that solving systems of nonlinear equations is hard (an active area of research). Especially in cases where the values of the solution are far apart (have a high standard deviation - e.g. `sol = [-46.324, .993457, 23523.3856]`), the algorithms have a hard time finding a solution. The recommended way to tackle this is to set bounds in the [`@parameters`](@ref) part (e.g. `r < 0.2`), so that the initial points are closer to the final solution (think of steady state interest rates not being higher than 20% - meaning not being higher than 0.2 or 1.2 depending on the definition).
 

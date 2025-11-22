@@ -65,11 +65,11 @@ using MacroModelling
 end
 ```
 
-First, we load the package and then use the [`@model`](@ref) macro to define our model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between `begin` and `end`. Equations can contain an equality sign or the expression is assumed to equal 0. Equations cannot span multiple lines (unless you wrap the expression in brackets) and the timing of endogenous variables are expressed in the square brackets following the variable name (e.g. `[-1]` for the past period). Exogenous variables (shocks) are followed by a keyword in square brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julia's unicode capabilities (e.g. alpha can be written as α).
+First, the package is loaded and then the [`@model`](@ref) macro is used to define the model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which are written down between `begin` and `end`. Equations can contain an equality sign or the expression is assumed to equal 0. Equations cannot span multiple lines (unless the expression is wrapped in brackets) and the timing of endogenous variables are expressed in the square brackets following the variable name (e.g. `[-1]` for the past period). Exogenous variables (shocks) are followed by a keyword in square brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julia's unicode capabilities (e.g. alpha can be written as α).
 
 ## Define the parameters
 
-Next we need to add the parameters of the model. The macro [`@parameters`](@ref) takes care of this:
+Next the parameters of the model need to be added. The macro [`@parameters`](@ref) takes care of this:
 
 ```@repl tutorial_3
 @parameters Gali_2015 begin
@@ -108,15 +108,15 @@ Next we need to add the parameters of the model. The macro [`@parameters`](@ref)
 end
 ```
 
-The block defining the parameters above only describes the simple parameter definitions the same way you assign values (e.g. `α = .25`).
+The block defining the parameters above only describes the simple parameter definitions the same way values are assigned (e.g. `α = .25`).
 
-Note that we have to write one parameter definition per line.
+Note that one parameter definition per line is required.
 
 ## Linear solution
 
 ### Inspect model moments
 
-Given the equations and parameters, we have everything to we need for the package to generate the theoretical model moments. You can retrieve the mean of the linearised model as follows:
+Given the equations and parameters, everything is available for the package to generate the theoretical model moments. The mean of the linearised model can be retrieved as follows:
 
 ```@repl tutorial_3
 get_mean(Gali_2015)
@@ -156,7 +156,7 @@ or for multiple parameters:
 get_mean(Gali_2015, parameter_derivatives = [:σ, :α, :β, :ϕᵖⁱ, :φ])
 ```
 
-We can do the same for standard deviation or variance, and all parameters:
+The same can be done for standard deviation or variance, and all parameters:
 
 ```@repl tutorial_3
 get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015))
@@ -166,7 +166,7 @@ get_std(Gali_2015, parameter_derivatives = get_parameters(Gali_2015))
 get_variance(Gali_2015, parameter_derivatives = get_parameters(Gali_2015))
 ```
 
-You can use this information to calibrate certain values to your targets. For example, let's say we want to have higher real wages (`:W_real`), and lower inflation volatility. Since there are too many variables and parameters for them to be shown here, let's print only a subset of them:
+This information can be used to calibrate certain values to targets. For example, assuming higher real wages (`:W_real`), and lower inflation volatility are desired. Since there are too many variables and parameters to be shown here, only a subset of them is printed:
 
 ```@repl tutorial_3
 get_mean(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi])
@@ -176,11 +176,11 @@ get_mean(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_
 get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi])
 ```
 
-Looking at the sensitivity table we see that lowering the production function parameter `:α` will increase real wages, but at the same time it will increase inflation volatility. We could compensate that effect by decreasing the standard deviation of the total factor productivity shock `:std_a`.
+Looking at the sensitivity table it can be seen that lowering the production function parameter `:α` will increase real wages, but at the same time it will increase inflation volatility. This effect could be compensated by decreasing the standard deviation of the total factor productivity shock `:std_a`.
 
 ### Method of moments
 
-Instead of doing this by hand we can also set a target and have an optimiser find the corresponding parameter values. In order to do that we need to define targets, and set up an optimisation problem.
+Instead of doing this by hand a target can also be set and an optimiser can find the corresponding parameter values. In order to do that targets need to be defined, and an optimisation problem needs to be set up.
 
 Our targets are:
 
@@ -189,15 +189,15 @@ Our targets are:
 
 For the optimisation problem we use the L-BFGS algorithm implemented in `Optim.jl`. This optimisation algorithm is very efficient and gradient based. Note that all model outputs are differentiable with respect to the parameters using automatic and implicit differentiation.
 
-The package provides functions specialised for the use with gradient based code (e.g. gradient-based optimisers or samplers). For model statistics we can use `get_statistics` to get the mean of real wages and the standard deviation of inflation like this:
+The package provides functions specialised for the use with gradient based code (e.g. gradient-based optimisers or samplers). For model statistics `get_statistics` can be used to get the mean of real wages and the standard deviation of inflation like this:
 
 ```@repl tutorial_3
 get_statistics(Gali_2015, Gali_2015.parameter_values, parameters = Gali_2015.parameters, mean = [:W_real], standard_deviation = [:Pi])
 ```
 
-First we pass on the model object, followed by the parameter values and the parameter names the values correspond to. Then we define the outputs we want: for the mean we want real wages and for the standard deviation we want inflation. We can also get outputs for variance, covariance, or autocorrelation the same way as for the mean and standard deviation.
+First the model object is passed on, followed by the parameter values and the parameter names the values correspond to. Then the desired outputs are defined: for the mean real wages are wanted and for the standard deviation inflation is wanted. Outputs for variance, covariance, or autocorrelation can also be obtained the same way as for the mean and standard deviation.
 
-Next, let's define a function measuring how close we are to our target for given values of `:α` and `:std_a`:
+Next, a function measuring how close the model is to the target for given values of `:α` and `:std_a` can be defined:
 
 ```@repl tutorial_3
 function distance_to_target(parameter_value_inputs)
@@ -207,7 +207,7 @@ function distance_to_target(parameter_value_inputs)
 end
 ```
 
-Now let's test the function with the current parameter values. In case we forgot the parameter values we can also look them up like this:
+Now the function can be tested with the current parameter values. In case the parameter values are not known they can also be looked up like this:
 
 ```@repl tutorial_3
 get_parameters(Gali_2015, values = true)
@@ -347,4 +347,4 @@ sol = Optim.optimize(distance_to_target,
 sol.minimizer
 ```
 
-Given the new value for `std_a` and optimising over `σ` allows us to match the target exactly.
+Given the new value for `std_a` and optimising over `σ` allows matching the target exactly.

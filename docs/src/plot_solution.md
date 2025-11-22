@@ -682,7 +682,7 @@ plot_solution!(Caldara_et_al_2012, :k,
 
 ![FS2000 and Gali 2015 solution - multiple models with rename dictionary](../assets/rename_dict_combine__multiple_models__k__1.png)
 
-As you can see the steady states and dynamics around the respective steady states differ across states and variables for the two models but they are shown in the same subplots with consistent labels.
+As can be seen the steady states and dynamics around the respective steady states differ across states and variables for the two models but they are shown in the same subplots with consistent labels.
 
 The `rename_dictionary` accepts flexible type combinations for keys and values—both `Symbol` and `String` types work interchangeably:
 
