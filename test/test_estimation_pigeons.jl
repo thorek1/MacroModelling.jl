@@ -2,9 +2,8 @@ using MacroModelling
 using Test
 import Turing, Pigeons
 import ADTypes: AutoZygote
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, InitFromParams
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL
 
 include("../models/FS2000.jl")
 

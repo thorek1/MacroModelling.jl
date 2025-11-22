@@ -1,10 +1,9 @@
 using MacroModelling
 import Turing
 import ADTypes: AutoZygote
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, InitFromParams
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL
 
 include("../models/FS2000.jl")
 
@@ -52,7 +51,7 @@ Random.seed!(30)
 
 n_samples = 500
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = (all_params = FS2000.parameter_values,))
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = InitFromParams((all_params = FS2000.parameter_values,)))
 
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")

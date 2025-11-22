@@ -99,9 +99,9 @@ data = data(observables,:)
 Next the parameter priors are defined using the Turing package. The `@model` macro of the Turing package allows defining the prior distributions over the parameters and combining it with the (Kalman filter) loglikelihood of the model and parameters given the data with the help of the `get_loglikelihood` function. The prior distributions are defined in an array and passed on to the `arraydist` function inside the `@model` macro from the Turing package. It is also possible to define the prior distributions inside the macro but especially for reverse mode auto differentiation the `arraydist` function is substantially faster. When defining the prior distributions the distribution implemented in the Distributions package can be relied upon. Note that the `μσ` parameter allows handing over the moments (`μ` and `σ`) of the distribution as parameters in case of the non-normal distributions (Gamma, Beta, InverseGamma), and upper and lower bounds truncating the distribution can also be defined as third and fourth arguments to the distribution functions. Last but not least, the loglikelihood is defined and added to the posterior loglikelihood with the help of the `@addlogprob!` macro using the named tuple syntax `(; loglikelihood=...)` to explicitly add to the likelihood component.
 
 ```@repl tutorial_2
-import DynamicPPL
+
 import Turing
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, InitFromParams
 import ADTypes: AutoZygote
 
 prior_distributions = [
@@ -136,7 +136,7 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(prior_distributions, data, 
 
 n_samples = 1000
 
-chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = (parameters = FS2000.parameter_values,))
+chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = InitFromParams((parameters = FS2000.parameter_values,)))
 ```
 
 ### Inspect posterior
@@ -214,7 +214,7 @@ Other than the mean and median of the posterior distribution the mode can also b
 ```@repl tutorial_2
 modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
                                         adtype = AutoZygote(), 
-                                        initial_params = (parameters = FS2000.parameter_values,))
+                                        initial_params = InitFromParams((parameters = FS2000.parameter_values,)))
 ```
 
 ## Model estimates given the data and the model solution
