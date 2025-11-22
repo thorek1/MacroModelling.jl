@@ -3976,6 +3976,10 @@ function _plot_solution_from_container(;
             end
         end
         
+        for var in joint_states
+            push!(vars_with_impact, var)
+        end
+
         n_subplots = length(vars_with_impact)
         pp = []
         pane = 1
