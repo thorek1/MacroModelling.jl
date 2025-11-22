@@ -60,7 +60,7 @@ conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
 conditions[1,1] = 1.0
 ```
 
-Given the model and conditions we can plot the conditional forecast as follows:
+Given the model and conditions the conditional forecast can be plotted as follows:
 
 ```julia
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
@@ -182,7 +182,7 @@ The plot shows the conditional paths and conditions. On the last page one can se
 
 ![Gali 2015 conditional forecast 10 periods](../assets/cnd_fcst_10_periods__Gali_2015_chapter_3_nonlinear__3.png)
 
-You can also use a `SparseMatrixCSC{Float64}` as input. In this case only non-zero elements are taken as conditions. Note that you cannot condition variables to be zero using a `SparseMatrixCSC{Float64}` as input (use other input formats to do so). The conditions in this example also include restrictions for the variable `R = 1.0` (second element) in period 9:
+A `SparseMatrixCSC{Float64}` can also be used as input. In this case only non-zero elements are taken as conditions. Note that conditioning variables to be zero using a `SparseMatrixCSC{Float64}` as input is not possible (use other input formats to do so). The conditions in this example also include restrictions for the variable `R = 1.0` (second element) in period 9:
 
 ```julia
 conditions_sp = spzeros(23,8)
@@ -219,7 +219,7 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 
 The differences between the two become now clearly visible. Note that there are only 6 subplots per plot and at the bottom the legend now features the two set of conditions using a running ID to reference them, and the marker for the conditions also takes on the color of the line.
 
-Another possibility to input conditions is by using a `KeyedArray`. The `KeyedArray` type is provided by the `AxisKeys` package. You can use a `KeyedArray{Union{Nothing,Float64}}` where, similar to `Matrix{Union{Nothing,Float64}}`, all entries of type `Float64` are recognised as conditions and all other entries have to be `nothing`. Furthermore, you can specify in the primary axis a subset of variables (of type `Symbol` or `String`) for which you specify conditions and all other variables are considered free. The same goes for the case when you use `KeyedArray{Float64}}` as input, whereas in this case the conditions for the specified variables bind for all periods specified in the `KeyedArray`, because there are no `nothing` entries permitted with this type.
+Another possibility to input conditions is by using a `KeyedArray`. The `KeyedArray` type is provided by the `AxisKeys` package. A `KeyedArray{Union{Nothing,Float64}}` can be used where, similar to `Matrix{Union{Nothing,Float64}}`, all entries of type `Float64` are recognised as conditions and all other entries have to be `nothing`. Furthermore, in the primary axis a subset of variables (of type `Symbol` or `String`) for which conditions are specified can be included and all other variables are considered free. The same goes for the case when using `KeyedArray{Float64}}` as input, whereas in this case the conditions for the specified variables bind for all periods specified in the `KeyedArray`, because there are no `nothing` entries permitted with this type.
 
 The benefit of using a `KeyedArray` is that there is no need to look up the variables. Conditioning on multiple variables in multiple periods works as follows:
 
@@ -300,7 +300,7 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 
 The paths clearly differ and are even directionally different due to the restriction on only the first shocks being able to fulfill the conditions on the endogenous variables.
 
-You can also use a `SparseMatrixCSC{Float64}` as input. In this case only non-zero elements are taken as certain shock values. Note that you cannot condition shocks to be zero using a `SparseMatrixCSC{Float64}` as input (use other input formats to do so).
+A `SparseMatrixCSC{Float64}` can also be used as input. In this case only non-zero elements are taken as certain shock values. Note that conditioning shocks to be zero using a `SparseMatrixCSC{Float64}` as input is not possible (use other input formats to do so).
 
 Using the previous example for the conditions on multiple variables across multiple periods, one can do the same for the `shocks`:
 
@@ -330,7 +330,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 This mixture of known and unknown shocks, and known conditions on endogenous variables allows for substantial flexibility.
 
-Another possibility to input known shocks is by using a `KeyedArray`. The `KeyedArray` type is provided by the `AxisKeys` package. You can use a `KeyedArray{Union{Nothing,Float64}}` where, similar to `Matrix{Union{Nothing,Float64}}`, all entries of type `Float64` are recognised as known shocks and all other entries have to be `nothing`. Furthermore, you can specify in the primary axis a subset of shocks (of type `Symbol` or `String`) for which you specify values and all other shocks are considered free. The same goes for the case when you use `KeyedArray{Float64}}` as input, whereas in this case the values for the specified shocks bind for all periods specified in the `KeyedArray`, because there are no `nothing` entries permitted with this type.
+Another possibility to input known shocks is by using a `KeyedArray`. The `KeyedArray` type is provided by the `AxisKeys` package. A `KeyedArray{Union{Nothing,Float64}}` can be used where, similar to `Matrix{Union{Nothing,Float64}}`, all entries of type `Float64` are recognised as known shocks and all other entries have to be `nothing`. Furthermore, in the primary axis a subset of shocks (of type `Symbol` or `String`) for which values are specified can be included and all other shocks are considered free. The same goes for the case when using `KeyedArray{Float64}}` as input, whereas in this case the values for the specified shocks bind for all periods specified in the `KeyedArray`, because there are no `nothing` entries permitted with this type.
 
 Working with the same conditions one can restrict shocks to zero using this input type. Doing so for one shock per period works as follows:
 
