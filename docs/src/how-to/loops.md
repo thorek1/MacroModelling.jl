@@ -114,7 +114,7 @@ alpha = 0.3
 
 By not using the index, the package understands that there are two parameters with this name and different indices and will set both accordingly.
 
-This logic extends to calibration equations. We can write:
+This logic also applies to calibration equations; for example:
 
 ```julia
 y{H}[ss] = 1 | alpha{H}

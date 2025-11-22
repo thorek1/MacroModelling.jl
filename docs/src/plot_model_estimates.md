@@ -216,7 +216,7 @@ plot_model_estimates(FS2000, sim([:y,:R],:,:simulate), data_in_levels = false)
 
 The `filter` argument [Type: `Symbol`] specifies the filtering method to use. Options are `:kalman` for the Kalman filter or smoother (depending on the `smooth` argument) and `:inversion` for the inversion filter. By default, the Kalman smoother is used for first order solutions and the inversion method for higher order (nonlinear) solutions.
 
-A model with more than two shocks is useful to illustrate the difference between the two filtering methods. We use the Gali (2015) model from chapter 3 with three shocks:
+A model featuring more than two shocks clearly illustrates the difference between the two filtering methods. The Gali (2015) model from chapter 3 with three shocks is presented below:
 
 ```julia
 @model Gali_2015_chapter_3_nonlinear begin

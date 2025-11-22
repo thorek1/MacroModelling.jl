@@ -128,7 +128,7 @@ and the standard deviation like this:
 get_standard_deviation(Gali_2015)
 ```
 
-You could also simply use: `std` or `get_std` to the same effect.
+Alternatively, `std` or `get_std` can be used to achieve the same effect.
 
 Another interesting output is the autocorrelation of the model variables:
 
@@ -144,7 +144,7 @@ get_covariance(Gali_2015)
 
 ### Parameter sensitivities
 
-Before embarking on calibrating the model it is useful to get familiar with the impact of parameter changes on model moments. `MacroModelling.jl` provides the partial derivatives of the model moments with respect to the model parameters. The model we are working with is of a medium size and by default derivatives are automatically shown as long as the calculation does not take too long (too many derivatives need to be taken). In this case they are not shown but it is possible to show them by explicitly defining the parameter for which to take the partial derivatives for:
+Before calibrating the model, examine how parameter changes affect model moments. MacroModelling.jl provides partial derivatives of model moments with respect to model parameters. This model is medium-sized, and derivatives are shown automatically. In this example, the sensitivity of the mean of all variables with respect to the production function parameter `σ` can be obtained like this:
 
 ```@repl tutorial_3
 get_mean(Gali_2015, parameter_derivatives = :σ)
@@ -182,12 +182,12 @@ Looking at the sensitivity table it can be seen that lowering the production fun
 
 Instead of doing this by hand a target can also be set and an optimiser can find the corresponding parameter values. In order to do that targets need to be defined, and an optimisation problem needs to be set up.
 
-Our targets are:
+The targets are:
 
 - Mean of `W_real = 0.7`
 - Standard deviation of `Pi = 0.01`
 
-For the optimisation problem we use the L-BFGS algorithm implemented in `Optim.jl`. This optimisation algorithm is very efficient and gradient based. Note that all model outputs are differentiable with respect to the parameters using automatic and implicit differentiation.
+For the optimisation problem the L-BFGS algorithm implemented in `Optim.jl` is used. This optimisation algorithm is very efficient and gradient based. Note that all model outputs are differentiable with respect to the parameters using automatic and implicit differentiation.
 
 The package provides functions specialised for the use with gradient based code (e.g. gradient-based optimisers or samplers). For model statistics `get_statistics` can be used to get the mean of real wages and the standard deviation of inflation like this:
 
@@ -213,13 +213,13 @@ Now the function can be tested with the current parameter values. In case the pa
 get_parameters(Gali_2015, values = true)
 ```
 
-with this we can test the distance function:
+this allows testing the distance function:
 
 ```@repl tutorial_3
 distance_to_target([0.25, 0.01])
 ```
 
-Next we can pass it on to an optimiser and find the parameters corresponding to the best fit like this:
+Next pass it on to an optimiser and find the parameters corresponding to the best fit like this:
 
 ```@repl tutorial_3
 using Optim, LineSearches
@@ -230,33 +230,33 @@ sol = Optim.optimize(distance_to_target,
                         Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))))
 ```
 
-The first argument to the optimisation call is the function we defined previously, followed by lower and upper bounds, the starting values, and finally the algorithm. For the algorithm we have to add `Fminbox` because we have bounds (optional) and we set the specific line search method to speed up convergence (recommended but optional).
+The first argument to the optimisation call is the function defined previously, followed by lower and upper bounds, the starting values, and finally the algorithm. For the algorithm `Fminbox` has to be added because bounds are present (optional) and the specific line search method is set to speed up convergence (recommended but optional).
 
-The output shows that we could almost perfectly match the target and the values of the parameters found by the optimiser are:
+The output shows that the optimisation almost perfectly matches the target and the values of the parameters found by the optimiser are:
 
 ```@repl tutorial_3
 sol.minimizer
 ```
 
-slightly lower for both parameters (in line with what we understood from the sensitivities).
+slightly lower for both parameters (in line with the previous insights from the sensitivities).
 
-You can combine the method of moments with estimation by simply adding the distance to the target to the posterior loglikelihood.
+One can combine the method of moments with estimation by simply adding the distance to the target to the posterior loglikelihood.
 
 ## Nonlinear solutions
 
-So far we used the linearised solution of the model. The package also provides nonlinear solutions and can calculate the theoretical model moments for pruned second and third order perturbation solutions. This can be of interest because nonlinear solutions capture volatility effects (at second order) and asymmetries (at third order). Furthermore, the moments of the data are often non-gaussian while linear solutions with gaussian noise can only generate gaussian distributions of model variables. Nonetheless, already pruned second order solutions produce non-gaussian skewness and kurtosis with gaussian noise.
+Up to this point the linearised solution of the model was used. The package also provides nonlinear solutions and can calculate the theoretical model moments for pruned second and third order perturbation solutions. This can be of interest because nonlinear solutions capture volatility effects (at second order) and asymmetries (at third order). Furthermore, the moments of the data are often non-gaussian while linear solutions with gaussian noise can only generate gaussian distributions of model variables. Nonetheless, already pruned second order solutions produce non-gaussian skewness and kurtosis with gaussian noise.
 
 From a user perspective little changes other than specifying that the solution algorithm is `:pruned_second_order` or `:pruned_third_order`.
 
-For example we can get the mean for the pruned second order solution:
+For example the mean for the pruned second order solution can be obtained as follows:
 
 ```@repl tutorial_3
 get_mean(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_second_order)
 ```
 
-Note that the mean of real wages is lower, while inflation is higher. We can see the effect of volatility with the partial derivatives for the shock standard deviations being non-zero. Larger shocks sizes drive down the mean of real wages while they increase inflation.
+Note that the mean of real wages is lower, while inflation is higher. The effect of volatility can be seen with the partial derivatives for the shock standard deviations being non-zero. Larger shocks sizes drive down the mean of real wages while they increase inflation.
 
-The mean of the variables does not change if we use pruned third order perturbation by construction but the standard deviation does. Let's look at the standard deviations for the pruned second order solution first:
+The mean of the variables does not change if pruned third order perturbation is used by construction but the standard deviation does. Consider the standard deviations for the pruned second order solution first:
 
 ```@repl tutorial_3
 get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_second_order)
@@ -264,7 +264,7 @@ get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_r
 
 for both inflation and real wages the volatility is higher and the standard deviation of the total factor productivity shock `std_a` has a much larger impact on the standard deviation of real wages compared to the linear solution.
 
-At third order we get the following results:
+At third order the results are:
 
 ```@repl tutorial_3
 get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_third_order)
@@ -278,14 +278,14 @@ These results make it clear that capturing the nonlinear interactions by using n
 
 Matching the theoretical moments of the nonlinear model solution to the data is no more complicated for the user than in the linear solution case (see above).
 
-We need to define the target value and function and let an optimiser find the parameters minimising the distance to the target.
+Define the target value and function and let an optimiser find the parameters minimising the distance to the target.
 
 Keeping the targets:
 
 - Mean of `W_real = 0.7`
 - Standard deviation of `Pi = 0.01`
 
-we need to define the target function and specify that we use a nonlinear solution algorithm (e.g. pruned third order):
+the target function needs to specify that a nonlinear solution algorithm is used (e.g. pruned third order):
 
 ```@repl tutorial_3
 function distance_to_target(parameter_value_inputs)
@@ -295,7 +295,7 @@ function distance_to_target(parameter_value_inputs)
 end
 ```
 
-and then we can use the same code to optimise as in the linear solution case:
+and then use the same code to optimise as in the linear solution case:
 
 ```@repl tutorial_3
 sol = Optim.optimize(distance_to_target,
@@ -305,7 +305,7 @@ sol = Optim.optimize(distance_to_target,
                         Optim.Fminbox(Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3))))
 ```
 
-the calculations take substantially longer and we don't get as close to our target as for the linear solution case. The parameter values minimising the distance are:
+the calculations take substantially longer and the solution does not get as close to the target as for the linear solution case. The parameter values minimising the distance are:
 
 ```@repl tutorial_3
 sol.minimizer
@@ -319,7 +319,7 @@ get_statistics(Gali_2015, sol.minimizer, algorithm = :pruned_third_order, parame
 
 The solution does not match the standard deviation of inflation very well.
 
-Potentially the partial derivatives change a lot for small changes in parameters and even though the partial derivatives for standard deviation of inflation were large wrt `std_a` they might be small for values returned from the optimisation. We can check this with:
+Potentially the partial derivatives change a lot for small changes in parameters and even though the partial derivatives for standard deviation of inflation were large wrt `std_a` they might be small for values returned from the optimisation. This can be checked with:
 
 ```@repl tutorial_3
 get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_real,:Pi], algorithm = :pruned_third_order, parameters = [:α, :std_a] .=> sol.minimizer)
@@ -327,9 +327,9 @@ get_std(Gali_2015, parameter_derivatives = [:σ, :std_a, :α], variables = [:W_r
 
 and indeed it seems also the second derivative is large since the first derivative changed significantly.
 
-Another parameter we can try is `σ`. It has a positive impact on the mean of real wages and a negative impact on standard deviation of inflation.
+Another parameter to try is `σ`. It has a positive impact on the mean of real wages and a negative impact on standard deviation of inflation.
 
-We need to redefine our target function and optimise it. Note that the previous call made a permanent change of parameters (as do all calls where parameters are explicitly set) and now `std_a` is set to 2.91e-9 and no longer 0.01.
+The target function needs to be redefined and optimised. Note that the previous call made a permanent change of parameters (as do all calls where parameters are explicitly set) and now `std_a` is set to 2.91e-9 and no longer 0.01.
 
 ```@repl tutorial_3
 function distance_to_target(parameter_value_inputs)

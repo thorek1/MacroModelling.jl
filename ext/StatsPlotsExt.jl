@@ -133,7 +133,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots and in the shock decompositions. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model. If not all shocks are shown, the ommitted shocks will be summarised and netted under the label `Other shocks (net)` in the shock decomposition.
-- `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
+- `presample_periods` [Default: `0`, Type: `Int`]: number of initial periods in the data omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod.
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `true` for algorithms supporting shock decompositions (`:first_order`, `:pruned_second_order`, `:pruned_third_order`), otherwise `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks. When an unsupported algorithm is chosen the argument automatically falls back to `false`.
 - $SMOOTH®
@@ -651,7 +651,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model.
-- `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data which are not plotted. Useful if you want to filter for all periods but focus only on a certain period later in the sample.
+- `presample_periods` [Default: `0`, Type: `Int`]: number of initial periods in the data omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod.
 - $DATA_IN_LEVELS®
 - $LABEL®
 - $RENAME_DICTIONARY®

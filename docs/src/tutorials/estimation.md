@@ -127,7 +127,7 @@ end
 
 ## Sample from posterior: No-U-Turn Sampler (NUTS)
 
-We use the NUTS sampler to retrieve the posterior distribution of the parameters. This sampler uses the gradient of the posterior loglikelihood with respect to the model parameters to navigate the parameter space. The NUTS sampler is considered robust, fast, and user-friendly (auto-tuning of hyper-parameters).
+The No-U-Turn Sampler (NUTS) is used to obtain the posterior distribution of the parameters. It exploits gradients of the posterior log‑likelihood with respect to model parameters to navigate the parameter space efficiently. NUTS is regarded as robust and fast, and it simplifies tuning by automatically adapting its hyperparameters.
 
 First the loglikelihood model is defined with the specific data, and model. Next, 1000 samples are drawn from the model:
 

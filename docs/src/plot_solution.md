@@ -320,7 +320,7 @@ get_equations(Gali_2015_chapter_3_obc)
 
 The `algorithm` argument (default: `:first_order`, type: `Symbol`) specifies which algorithm to use to solve for the dynamics of the model. Available algorithms: `:first_order`, `:second_order`, `:pruned_second_order`, `:third_order`, `:pruned_third_order`.
 
-You can compare different solution algorithms by overlaying plots using `plot_solution!`. The following example first plots the first-order solution and then overlays the second-order solution for comparison:
+Compare different solution algorithms by overlaying plots with `plot_solution!`. The example below plots the first-order solution and then overlays the second-order solution for comparison:
 
 ```julia
 # Plot first-order policy function
@@ -912,7 +912,7 @@ The choice of algorithm affects both speed and precision: `:doubling` and `:bart
 
 [Default: `:doubling`, Type: `Symbol`]: Algorithm to solve the Lyapunov equation (`A * X * A' + C = X`). Available algorithms: `:doubling`, `:bartels_stewart`, `:bicgstab`, `:gmres`.
 
-The algorithm is used to calculate the first order standard deviation used to determine the range for the state variable. You can specify a different algorithm for solving the Lyapunov equation. For example, select the `:bartels_stewart` algorithm:
+The algorithm is used to compute the first-order standard deviation that defines the range for the state variable. A different algorithm can be specified for solving the Lyapunov equation. For example, the `:bartels_stewart` algorithm can be selected:
 
 ```julia
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
