@@ -1,10 +1,8 @@
 using MacroModelling
 using Test
 import Turing
-import ADTypes: AutoZygote
 import Pigeons
-import Turing: NUTS, sample, logpdf, PG, IS
-import Optim, LineSearches
+import Turing: logpdf, PG, IS
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
 
@@ -73,37 +71,10 @@ Caldara_et_al_2012_loglikelihood = Caldara_et_al_2012_loglikelihood_function(dat
 # samps = sample(Caldara_et_al_2012_loglikelihood, IS(), 1000, progress = true)#, init_params = sol)
 
 
-mode_estimateNM = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
-                                                Optim.NelderMead(),
-                                                iterations = 100,
-                                                # show_trace = true,
-                                                initial_params = Caldara_et_al_2012_estim.parameter_values)
-
-mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
-                                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
-                                                adtype = AutoZygote(),
-
-                                                iterations = 100,
-                                                # show_trace = true,
-                                                initial_params = mode_estimateNM.values)
-
-init_params = mode_estimateLBFGS.values |> collect
-
-
-println("Mode variable values (L-BFGS): $init_params")
-
-n_samples = 100
-
-samps = @time sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = AutoZygote()), n_samples, progress = true, initial_params = init_params)
-
-
-println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
-
-sample_nuts = mean(samps).nt.mean
-
-
 # generate a Pigeons log potential
 Caldara_lp = Pigeons.TuringLogPotential(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10)) #, verbose = true))
+
+init_params = Caldara_et_al_2012_estim.parameter_values
 
 LLH = Turing.logjoint(Caldara_et_al_2012_loglikelihood_function(data, Caldara_et_al_2012_estim, -floatmax(Float64)+1e10, verbose = false), (all_params = init_params,))
 

@@ -2,9 +2,7 @@ using MacroModelling
 using Test
 import Turing
 import Pigeons
-import Turing: NUTS, sample, logpdf
-import ADTypes: AutoZygote
-import Optim, LineSearches
+import Turing: logpdf
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 import DynamicPPL
 
@@ -50,22 +48,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m, filter, on_failure
     end
 end
 
-n_samples = 1000
-
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
-
-
-println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
-
-sample_nuts = mean(samps).nt.mean
-
-modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), 
-                                        Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                                        adtype = AutoZygote(), 
-                                        initial_params = FS2000.parameter_values)
-
-println("Mode variable values: $(modeFS2000i.values); Mode loglikelihood: $(modeFS2000i.lp)")
-
+# generate a Pigeons log potential
 FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, :inversion, -floatmax(Float64)+1e10)) #, verbose = true))
 
 init_params = FS2000.parameter_values
