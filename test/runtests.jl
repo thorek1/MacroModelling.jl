@@ -1,7 +1,7 @@
 # using Revise
 test_set = ENV["TEST_SET"]
 using Preferences: set_preferences!
-set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation"
+set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation", "estimation_pigeons", "1st_order_inversion_estimation_pigeons", "2nd_order_estimation_pigeons", "pruned_2nd_order_estimation_pigeons", "3rd_order_estimation_pigeons", "pruned_3rd_order_estimation_pigeons"
 ] ? "disable" : "error")
 set_preferences!("MacroModelling", "dispatch_doctor_union_limit" => 4)
 using Test
@@ -87,6 +87,30 @@ end
 
 if test_set == "pruned_3rd_order_estimation"
     include("test_pruned_3rd_order_estimation.jl")
+end
+
+if test_set == "estimation_pigeons"
+    include("test_estimation_pigeons.jl")
+end
+
+if test_set == "1st_order_inversion_estimation_pigeons"
+    include("test_1st_order_inversion_filter_estimation_pigeons.jl")
+end
+
+if test_set == "2nd_order_estimation_pigeons"
+    include("test_2nd_order_estimation_pigeons.jl")
+end
+
+if test_set == "pruned_2nd_order_estimation_pigeons"
+    include("test_pruned_2nd_order_estimation_pigeons.jl")
+end
+
+if test_set == "3rd_order_estimation_pigeons"
+    include("test_3rd_order_estimation_pigeons.jl")
+end
+
+if test_set == "pruned_3rd_order_estimation_pigeons"
+    include("test_pruned_3rd_order_estimation_pigeons.jl")
 end
 
 
