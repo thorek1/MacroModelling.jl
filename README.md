@@ -33,7 +33,7 @@ As of now the package can:
 The package is not:
 
 - guaranteed to find the non-stochastic steady state (solving systems of nonlinear equations is an active area of research)
-- the fastest package around if you already have a fast way to find the NSSS (time to first plot is long, time to second plot (with new parameters) is very short)
+- the fastest package around if there is already a fast way to find the NSSS (time to first plot is long, time to second plot (with new parameters) is very short)
 
 For more details have a look at the [documentation](https://thorek1.github.io/MacroModelling.jl/stable).
 
@@ -43,7 +43,7 @@ For more details have a look at the [documentation](https://thorek1.github.io/Ma
 
 `MacroModelling.jl` requires [`julia`](https://julialang.org/downloads/) version 1.10 or higher and an IDE is recommended (e.g. [`VS Code`](https://code.visualstudio.com/download) with the [`julia extension`](https://marketplace.visualstudio.com/items?itemName=julialang.language-julia)).
 
-Once set up you can install `MacroModelling.jl` (and `StatsPlots` in order to plot) by typing the following in the Julia REPL:
+Once set up `MacroModelling.jl` can be installed (and `StatsPlots` in order to plot) by typing the following in the Julia REPL:
 
 ```julia
 using Pkg; Pkg.add(["MacroModelling", "StatsPlots"])
@@ -127,6 +127,6 @@ Villemot, S., (2011), "Solving rational expectations models at first order: what
 
 ## Questions and Contributions
 
-If you have questions regarding the usage or encounter unexpected behaviour please file an issue.
+If there are questions regarding the usage or unexpected behaviour is encountered please file an issue.
 
 Contributions are very welcome, as are feature requests and suggestions. Please open an issue or even better become a contributor and create a pull request.

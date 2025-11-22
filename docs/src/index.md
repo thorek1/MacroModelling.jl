@@ -1,6 +1,6 @@
 # `MacroModelling.jl`
 
-**Author: Thore Kockerols (@thorek1)**
+## Author: Thore Kockerols (@thorek1)
 
 `MacroModelling.jl` is a Julia package for developing and solving dynamic stochastic general equilibrium (DSGE) models.
 
@@ -23,7 +23,7 @@ As of now the package can:
 The package is not:
 
 - guaranteed to find the non-stochastic steady state
-- the fastest package around if you already have a fast way to find the NSSS
+- the fastest package around if there exists already a fast implementation to find the NSSS (e.g. an analytical solution)
 
 The former has to do with the fact that solving systems of nonlinear equations is hard (an active area of research). Especially in cases where the values of the solution are far apart (have a high standard deviation - e.g. `sol = [-46.324, .993457, 23523.3856]`), the algorithms have a hard time finding a solution. The recommended way to tackle this is to set bounds in the [`@parameters`](@ref) part (e.g. `r < 0.2`), so that the initial points are closer to the final solution (think of steady state interest rates not being higher than 20% - meaning not being higher than 0.2 or 1.2 depending on the definition).
 
@@ -53,19 +53,19 @@ The package contains the following models in the `models` folder:
 
 ||MacroModelling.jl|[dynare](https://www.dynare.org)|[DSGE.jl](https://github.com/FRBNY-DSGE/DSGE.jl)|[dolo.py](https://www.econforge.org/dolo.py/)|[SolveDSGE.jl](https://github.com/RJDennis/SolveDSGE.jl)|[DifferentiableStateSpaceModels.jl](https://github.com/HighDimensionalEconLab/DifferentiableStateSpaceModels.jl)|[StateSpaceEcon.jl](https://bankofcanada.github.io/DocsEcon.jl/dev/)|[IRIS](https://iris.igpmn.org)|[RISE](https://github.com/jmaih/RISE_toolbox)|[NBTOOLBOX](https://github.com/Coksp1/NBTOOLBOX/tree/main/Documentation)|[gEcon](http://gecon.r-forge.r-project.org)|[GDSGE](https://www.gdsge.com)|[Taylor Projection](https://sites.google.com/site/orenlevintal/taylor-projection)|
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-**Host language**|julia|MATLAB|julia|Python|julia|julia|julia|MATLAB|MATLAB|MATLAB|R|MATLAB|MATLAB|
-**Non-stochastic steady state solver**|*symbolic* or numerical solver of independent blocks; symbolic removal of variables redundant in steady state; inclusion of calibration equations in problem|numerical solver of independent blocks or user-supplied values/functions||numerical solver of independent blocks or user-supplied values/functions|numerical solver|numerical solver or user supplied values/equations|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|user-supplied steady state file or numerical solver|numerical solver; inclusion of calibration equations in problem|||
-**Automatic declaration of variables and parameters**|yes|||||||||||||
-**Derivatives wrt parameters**|yes|||||yes|||||||
-**Perturbation solution order**|1, 2, 3|k|1|1, 2, 3|1, 2, 3|1, 2|1|1|1 to 5|1|1||1 to 5|
-**Pruning**|yes|yes||||yes|||yes|||||
-**Automatic derivation of first order conditions**|||||||||||yes||
-**Occasionally binding constraints**|yes|yes|yes|yes|yes||||yes|||yes||
-**Global solution**||||yes|yes|||||||yes||
-**Estimation**|yes|yes|yes|||yes||yes|yes|yes|yes|||
-**Balanced growth path**||yes|yes||||yes|yes|yes|yes|||||
-**Model input**|macro (julia)|text file|text file|text file|text file|macro (julia)|module (julia)|text file|text file|text file|text file|text file|text file|
-**Timing convention**|end-of-period|end-of-period||end-of-period|start-of-period|start-of-period|end-of-period|end-of-period|end-of-period|end-of-period|end-of-period|start-of-period|start-of-period|
+|**Host language**|julia|MATLAB|julia|Python|julia|julia|julia|MATLAB|MATLAB|MATLAB|R|MATLAB|MATLAB|
+|**Non-stochastic steady state solver**|*symbolic* or numerical solver of independent blocks; symbolic removal of variables redundant in steady state; inclusion of calibration equations in problem|numerical solver of independent blocks or user-supplied values/functions||numerical solver of independent blocks or user-supplied values/functions|numerical solver|numerical solver or user supplied values/equations|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|numerical solver of independent blocks or user-supplied values/functions|user-supplied steady state file or numerical solver|numerical solver; inclusion of calibration equations in problem|||
+|**Automatic declaration of variables and parameters**|yes|||||||||||||
+|**Derivatives wrt parameters**|yes|||||yes||||||||
+|**Perturbation solution order**|1, 2, 3|k|1|1, 2, 3|1, 2, 3|1, 2|1|1|1 to 5|1|1||1 to 5|
+|**Pruning**|yes|yes||||yes|||yes|||||
+|**Automatic derivation of first order conditions**|||||||||||yes|||
+|**Occasionally binding constraints**|yes|yes|yes|yes|yes||||yes|||yes||
+|**Global solution**||||yes|yes|||||||yes||
+|**Estimation**|yes|yes|yes|||yes||yes|yes|yes|yes|||
+|**Balanced growth path**||yes|yes||||yes|yes|yes|yes||||
+|**Model input**|macro (julia)|text file|text file|text file|text file|macro (julia)|module (julia)|text file|text file|text file|text file|text file|text file|
+|**Timing convention**|end-of-period|end-of-period||end-of-period|start-of-period|start-of-period|end-of-period|end-of-period|end-of-period|end-of-period|end-of-period|start-of-period|start-of-period|
 
 ## Bibliography
 
