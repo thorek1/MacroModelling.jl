@@ -84,30 +84,30 @@ end
     constepinf = 0.7
     constebeta = 0.7420
     ctrend = 0.3982
-    z_ea	= 0.4618
-    z_eb	= 1.8513
-    z_eg	= 0.6090
-    z_em	= 0.2397
-    z_ew	= 0.2089
-    z_eqs	= 0.6017
-    z_epinf	= 0.1455
-    cpie 	= 1 + constepinf / 100         							# gross inflation rate
-    cgamma 	= 1 + ctrend / 100          							# gross growth rate
-    cbeta 	= 1 / (1 + constebeta / 100)    						# discount factor
-    clandap = cfc                									# fixed cost share/gross price markup
-    cbetabar= cbeta * cgamma ^ (-csigma)   							# growth-adjusted discount factor in Euler equation
-    cr 		= cpie / cbetabar  										# steady state gross real interest rate
-    crk 	= 1 / cbetabar - (1 - ctou) 							# steady state rental rate
-    cw 		= (calfa ^ calfa * (1 - calfa) ^ (1 - calfa) / (clandap * crk ^ calfa)) ^ (1 / (1 - calfa))	# steady state real wage
-    cikbar 	= 1 - (1 - ctou) / cgamma								# (1-k_1) in equation LOM capital, equation (8)
-    cik 	= cikbar * cgamma										# i_k: investment-capital ratio
-    clk 	= (1 - calfa) / calfa * crk / cw						# labor to capital ratio
-    cky 	= cfc * clk ^ (calfa - 1)								# k_y: steady state output ratio
-    ciy 	= cik * cky												# investment-output ratio
-    ccy 	= 1 - cg - cik * cky									# consumption-output ratio
-    crkky 	= crk * cky												# z_y=R_{*}^k*k_y
-    cwhlc 	= (1 / clandaw) * (1 - calfa) / calfa * crk * cky / ccy	# W^{h}_{*}*L_{*}/C_{*} used in c_2 in equation (2)
-    conster = (cr - 1) * 100										# steady state federal funds rate ($\bar r$)
+    z_ea    = 0.4618
+    z_eb    = 1.8513
+    z_eg    = 0.6090
+    z_em    = 0.2397
+    z_ew    = 0.2089
+    z_eqs   = 0.6017
+    z_epinf = 0.1455
+    cpie    = 1 + constepinf / 100                                                                      # gross inflation rate
+    cgamma  = 1 + ctrend / 100                                                                          # gross growth rate
+    cbeta   = 1 / (1 + constebeta / 100)                                                                # discount factor
+    clandap = cfc                                                                                       # fixed cost share/gross price markup
+    cbetabar= cbeta * cgamma ^ (-csigma)                                                                # growth-adjusted discount factor in Euler equation
+    cr      = cpie / cbetabar                                                                           # steady state gross real interest rate
+    crk     = 1 / cbetabar - (1 - ctou)                                                                 # steady state rental rate
+    cw      = (calfa ^ calfa * (1 - calfa) ^ (1 - calfa) / (clandap * crk ^ calfa)) ^ (1 / (1 - calfa)) # steady state real wage
+    cikbar  = 1 - (1 - ctou) / cgamma                                                                   # (1-k_1) in equation LOM capital, equation (8)
+    cik     = cikbar * cgamma                                                                           # i_k: investment-capital ratio
+    clk     = (1 - calfa) / calfa * crk / cw                                                            # labor to capital ratio
+    cky     = cfc * clk ^ (calfa - 1)                                                                   # k_y: steady state output ratio
+    ciy     = cik * cky                                                                                 # investment-output ratio
+    ccy     = 1 - cg - cik * cky                                                                        # consumption-output ratio
+    crkky   = crk * cky                                                                                 # z_y=R_{*}^k*k_y
+    cwhlc   = (1 / clandaw) * (1 - calfa) / calfa * crk * cky / ccy                                     # W^{h}_{*}*L_{*}/C_{*} used in c_2 in equation (2)
+    conster = (cr - 1) * 100                                                                            # steady state federal funds rate ($\bar r$)
 end
 ```
 

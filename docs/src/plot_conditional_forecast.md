@@ -78,6 +78,7 @@ The `plot_conditional_forecast!` function (note the exclamation mark `!`) adds a
 When using `plot_conditional_forecast!`, the new conditional forecast can be either overlaid for comparison (default) or stacked to show cumulative effects, depending on the `plot_type` argument (see [Plot Type](#plot-type)). Condition markers adopt the corresponding line color for easy identification.
 
 **Legend and table behavior:**
+
 - When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
 - When inputs differ in **multiple dimensions** (e.g., both conditions and parameters change), the legend shows sequential numbers (1, 2, 3, ...) with a running ID to reference different sets of conditions and inputs. A table below the plot details all input differences for each numbered scenario.
 - Additional tables below show the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.

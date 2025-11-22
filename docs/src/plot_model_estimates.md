@@ -80,6 +80,7 @@ The `plot_model_estimates!` function (note the exclamation mark `!`) adds additi
 When using `plot_model_estimates!`, the new estimates are overlaid on the existing plot with a different color. Note that when combining multiple plots, shock decomposition is automatically disabled to avoid visual clutter - only the line plots showing the estimates are displayed.
 
 **Legend and table behavior:**
+
 - When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
 - When inputs differ in **multiple dimensions** (e.g., different datasets and parameters), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.
 - Different data inputs are indexed with a running number in the legend for easy reference.
@@ -510,7 +511,7 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 model estimates - selected variables (Y, Pi)](../assets/estimates_vars__Gali_2015_chapter_3_nonlinear__1.png)
 
-The plot now displays the two selected variables (sorted alphabetically) as well as the corresponding shocks. 
+The plot now displays the two selected variables (sorted alphabetically) as well as the corresponding shocks.
 
 The same can be done using a `Tuple`:
 

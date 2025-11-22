@@ -74,6 +74,7 @@ The `plot_solution!` function (note the exclamation mark `!`) adds additional po
 When using `plot_solution!`, the new policy function is overlaid on the existing plot with a different color. Both the policy function line and the steady state marker (circle) use the same color to make identification easier.
 
 **Legend and table behavior:**
+
 - When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
 - When inputs differ in **multiple dimensions** (e.g., both algorithm and parameters change), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.
 - Tables below the plot show relevant information such as input differences and steady state values to help identify differences across scenarios.

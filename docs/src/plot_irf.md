@@ -63,9 +63,10 @@ The plots display every endogenous variable affected for each exogenous shock. E
 
 The `plot_irf!` function (note the exclamation mark `!`) adds additional IRFs to an existing plot created with `plot_irf`, enabling direct comparison between different scenarios. Any input argument that affects the model's output (such as solution algorithm, parameter values, shocks, or initial states) can be varied to compare how these changes influence the impulse response functions. See the respective subsections below (e.g., [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
 
-When using `plot_irf!`, the new IRF can be either overlaid for comparison (default) or stacked to show cumulative effects, depending on the `plot_type` argument (see [Plot Type](#plot-type)). 
+When using `plot_irf!`, the new IRF can be either overlaid for comparison (default) or stacked to show cumulative effects, depending on the `plot_type` argument (see [Plot Type](#plot-type)).
 
 **Legend and table behavior:**
+
 - When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
 - When inputs differ in **multiple dimensions** (e.g., both algorithm and parameters change), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.
 - A separate table below shows the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.
