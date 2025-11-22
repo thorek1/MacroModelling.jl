@@ -1,4 +1,5 @@
 using MacroModelling
+using Test
 import Turing, Pigeons
 import ADTypes: AutoZygote
 import Turing: NUTS, sample, logpdf

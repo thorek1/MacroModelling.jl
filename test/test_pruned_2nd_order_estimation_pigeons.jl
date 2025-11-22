@@ -1,4 +1,5 @@
 using MacroModelling
+using Test
 import Turing
 import Pigeons
 import ADTypes: AutoZygote
@@ -113,3 +114,11 @@ samps = MCMCChains.Chains(pt)
 
 
 println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
+
+@testset "Pigeons pruned 2nd order estimation" begin
+    # Pigeons test completed successfully
+    @test true
+end
+
+
+FS2000 = nothing

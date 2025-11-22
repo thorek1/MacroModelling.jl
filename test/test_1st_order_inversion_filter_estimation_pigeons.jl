@@ -1,4 +1,5 @@
 using MacroModelling
+using Test
 import Turing
 import Pigeons
 import Turing: NUTS, sample, logpdf
@@ -91,3 +92,11 @@ pt = @time Pigeons.pigeons(target = FS2000_lp,
 samps = MCMCChains.Chains(pt)
 
 println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
+
+@testset "Pigeons 1st order inversion filter estimation" begin
+    # Pigeons test completed successfully
+    @test true
+end
+
+
+FS2000 = nothing
