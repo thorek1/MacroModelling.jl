@@ -84,6 +84,7 @@ if isfinite(LLH)
 
     pt = Pigeons.pigeons(target = FS2000_pruned2nd_lp, n_rounds = 0, n_chains = 1)
 else
+    pt = Pigeons.pigeons(target = FS2000_pruned2nd_lp, n_rounds = 0, n_chains = 1)
     replica = pt.replicas[end]
     XMAX = deepcopy(replica.state)
     LPmax = FS2000_pruned2nd_lp(XMAX)
