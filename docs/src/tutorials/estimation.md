@@ -116,12 +116,12 @@ prior_distributions = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, model)
+Turing.@model function FS2000_loglikelihood_function(prior_distributions, data, m; verbose = false)
     parameters ~ Turing.arraydist(prior_distributions)
 
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(model, data, parameters)
-    end
+    Turing.@addlogprob! get_loglikelihood(m, 
+                                data, 
+                                parameters)
 end
 ```
 
@@ -132,20 +132,23 @@ The No-U-Turn Sampler (NUTS) is used to obtain the posterior distribution of the
 First the loglikelihood model is defined with the specific data, and model. Next, 1000 samples are drawn from the model:
 
 ```@repl tutorial_2
-FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000);
+FS2000_loglikelihood = FS2000_loglikelihood_function(prior_distributions, data, FS2000)
 
 n_samples = 1000
 
-chain_NUTS  = sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = false);
+chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = FS2000.parameter_values)
 ```
 
 ### Inspect posterior
 
 In order to understand the posterior distribution and the sequence of samples they are plotted:
 
-```@repl tutorial_2; setup = :(chain_NUTS = read("../assets/chain_FS2000.jls", Chains))
+```@repl tutorial_2; setup = :(using HDF5; using MCMCChainsStorage; chain_NUTS = h5open("../assets/chain_NUTS.h5", "r") do f read(f, Chains) end)
 using StatsPlots
-plot(chain_NUTS);
+
+chain_NUTS_rn = replacenames(chain_NUTS, Dict(["parameters[$i]" for i in 1:length(FS2000.parameters)] .=> FS2000.parameters))
+
+plot(chain_NUTS_rn);
 ```
 
 ![NUTS chain](../assets/FS2000_chain_NUTS.png)
@@ -246,16 +249,6 @@ Last but not least, the model estimates and the shock decomposition can also be 
 plot_model_estimates(FS2000, data)
 ```
 
-![Model estimates](../assets/estimation__m__2.png)
+![Model estimates](../assets/estimate_tutorial__FS2000__2.png)
 
-shows the variables of the model (blue), the estimated shocks (in the last panel), and the data (red) used to estimate the model.
-
-The shock decomposition can be plotted using `plot_shock_decomposition`:
-
-```@repl tutorial_2
-plot_shock_decomposition(FS2000, data)
-```
-
-![Shock decomposition](../assets/estimation_shock_decomp__m__2.png)
-
-and it shows the contribution of the shocks and the contribution of the initial value to the deviations of the variables.
+shows the variables of the model (blue), data (red), the shock decomposition for each endogenous variable and in the last panel the estimated shocks used to estimate the model.

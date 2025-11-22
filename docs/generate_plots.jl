@@ -2877,3 +2877,195 @@ plot_model_estimates(Backus_Kehoe_Kydland_1992,
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_rename_dict_string)
 
 # ![Backus, Kehoe, Kydland 1992 conditional forecast - E{H} shock with rename dictionary](../assets/cnd_fcst_rename_dict_string__Backus_Kehoe_Kydland_1992__1.png)
+
+
+
+# Estimation
+
+using Random
+Random.seed!(3)
+
+using MacroModelling
+
+using StatsPlots
+using CSV, DataFrames, AxisKeys
+import DynamicPPL
+import Turing
+import Turing: NUTS, sample, logpdf
+import ADTypes: AutoZygote
+# import Zygote
+import MCMCChains: Chains
+
+using HDF5
+
+using MCMCChainsStorage
+
+@model FS2000 begin
+    dA[0] = exp(gam + z_e_a  *  e_a[x])
+
+    log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+
+    - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+
+    W[0] = l[0] / n[0]
+
+    - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+
+    R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+
+    1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+
+    c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+
+    P[0] * c[0] = m[0]
+
+    m[0] - 1 + d[0] = l[0]
+
+    e[0] = exp(z_e_a  *  e_a[x])
+
+    y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+
+    gy_obs[0] = dA[0] * y[0] / y[-1]
+
+    gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+
+    log_gy_obs[0] = log(gy_obs[0])
+
+    log_gp_obs[0] = log(gp_obs[0])
+end
+
+@parameters FS2000 begin  
+    alp     = 0.356
+    bet     = 0.993
+    gam     = 0.0085
+    mst     = 1.0002
+    rho     = 0.129
+    psi     = 0.65
+    del     = 0.01
+    z_e_a   = 0.035449
+    z_e_m   = 0.008862
+end
+
+# load data
+dat = CSV.read("docs/src/assets/FS2000_data.csv", DataFrame)
+data = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
+data = log.(data)
+
+# declare observables
+observables = sort(Symbol.("log_".*names(dat)))
+
+# subset observables in data
+data = data(observables,:)
+
+
+prior_distributions = [
+    Beta(0.356, 0.02, μσ = true),           # alp
+    Beta(0.993, 0.002, μσ = true),          # bet
+    Normal(0.0085, 0.003),                  # gam
+    Normal(1.0002, 0.007),                  # mst
+    Beta(0.129, 0.223, μσ = true),          # rho
+    Beta(0.65, 0.05, μσ = true),            # psi
+    Beta(0.01, 0.005, μσ = true),           # del
+    InverseGamma(0.035449, Inf, μσ = true), # z_e_a
+    InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
+]
+
+Turing.@model function FS2000_loglikelihood_function(prior_distributions, data, m; verbose = false)
+    parameters ~ Turing.arraydist(prior_distributions)
+
+    # if DynamicPPL.leafcontext(DynamicPPL.__context__) !== DynamicPPL.PriorContext() 
+        Turing.@addlogprob! get_loglikelihood(m, 
+                                data, 
+                                parameters)
+    # end
+end
+
+
+FS2000_loglikelihood = FS2000_loglikelihood_function(prior_distributions, data, FS2000)
+
+# n_samples = 100
+
+# chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = FS2000.parameter_values)
+
+# h5open("docs/src/assets/chain_NUTS.h5", "w") do f
+#   write(f, chain_NUTS)
+# end
+
+chain_NUTS = h5open("docs/src/assets/chain_NUTS.h5", "r") do f read(f, Chains) end
+
+
+chain_NUTS_rn = replacenames(chain_NUTS, Dict(["parameters[$i]" for i in 1:length(FS2000.parameters)] .=> FS2000.parameters))
+
+chain_NUTS = replacenames(chain_NUTS, Dict(FS2000.parameters .=> ["parameters[$i]" for i in 1:length(FS2000.parameters)]))
+
+# ensure output directory exists and save the chain plot as PNG
+p = plot(chain_NUTS_rn)
+savefig(p, joinpath("./docs/src/assets", "FS2000_chain_NUTS.png"))
+
+# ![NUTS chain](../assets/FS2000_chain_NUTS.png)
+
+
+using ComponentArrays, MCMCChains
+import DynamicPPL: logjoint
+
+parameter_mean = mean(chain_NUTS)
+
+pars = ComponentArray([parameter_mean.nt[2]], Axis(:parameters));
+
+logjoint(FS2000_loglikelihood, pars)
+
+function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
+    orig_pars[1][pars_syms] = [par1, par2]
+    logjoint(model, orig_pars)
+end
+
+granularity = 32;
+
+par1 = :del;
+par2 = :gam;
+
+paridx1 = indexin([par1], FS2000.parameters)[1];
+paridx2 = indexin([par2], FS2000.parameters)[1];
+
+par_range1 = collect(range(minimum(chain_NUTS[Symbol("parameters[$paridx1]")]), stop = maximum(chain_NUTS[Symbol("parameters[$paridx1]")]), length = granularity));
+par_range2 = collect(range(minimum(chain_NUTS[Symbol("parameters[$paridx2]")]), stop = maximum(chain_NUTS[Symbol("parameters[$paridx2]")]), length = granularity));
+
+p = surface(par_range1, par_range2, 
+            (x,y) -> calculate_log_probability(x, y, [paridx1, paridx2], pars, FS2000_loglikelihood),
+            camera=(30, 65),
+            colorbar=false,
+            color=:inferno);
+
+joint_loglikelihood = [logjoint(FS2000_loglikelihood, ComponentArray([reduce(hcat, get(chain_NUTS, :parameters)[1])[s,:]], Axis(:parameters))) for s in 1:length(chain_NUTS)];
+
+scatter3d!(vec(collect(chain_NUTS[Symbol("parameters[$paridx1]")])),
+            vec(collect(chain_NUTS[Symbol("parameters[$paridx2]")])),
+            joint_loglikelihood,
+            mc = :viridis, 
+            marker_z = collect(1:length(chain_NUTS)), 
+            msw = 0,
+            legend = false, 
+            colorbar = false, 
+            xlabel = string(par1),
+            ylabel = string(par2),
+            zlabel = "Log probability",
+            alpha = 0.5);
+
+p
+savefig(p, joinpath("./docs/src/assets", "FS2000_posterior_surface.png"))
+
+
+# ![Posterior surface](../assets/FS2000_posterior_surface.png)
+
+
+modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
+                                        # adtype = AutoZygote(), 
+                                        initial_params = FS2000.parameter_values)
+
+get_estimated_shocks(FS2000, data, parameters = collect(modeFS2000.values))
+
+plot_model_estimates(FS2000, data,
+                        save_plots = true, 
+                        save_plots_format = :png, 
+                        save_plots_path = "./docs/src/assets", 
+                        save_plots_name = :estimation_tutorial)
