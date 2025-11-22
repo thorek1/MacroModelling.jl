@@ -313,6 +313,23 @@ plot_irf(Gali_2015_chapter_3_nonlinear,
             save_plots_format = :png, 
             save_plots_name = :default_irf)
 
+
+# Plot with baseline parameters
+plot_irf(Gali_2015_chapter_3_nonlinear,
+    parameters = :β => 0.99,
+    shocks = :eps_a)
+
+# Add with different algorithm AND parameters
+plot_irf!(Gali_2015_chapter_3_nonlinear,
+    parameters = :β => 0.95,
+    shocks = :eps_a,
+    algorithm = :second_order, 
+            save_plots = true, 
+            save_plots_path = "./docs/src/assets", 
+            save_plots_format = :png, 
+            save_plots_name = :compare_beta_and_orders)
+
+
 ### Algorithm 
 plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :second_order, save_plots = true, save_plots_path = "./docs/src/assets", save_plots_format = :png, save_plots_name = :second_order_irf)
 
