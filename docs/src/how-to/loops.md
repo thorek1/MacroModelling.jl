@@ -6,13 +6,13 @@ Programmatic model writing is a powerful tool to write complex models using conc
 
 ### for loops for time indices
 
-In practice this means that you no longer need to write this:
+In practice this means that this is no longer needed:
 
 ```julia
 Y_annual[0] = Y[0] + Y[-1] + Y[-2] + Y[-3]
 ```
 
-but instead you can write this:
+but instead this can be written:
 
 ```julia
 Y_annual[0] = for lag in -3:0 Y[lag] end
@@ -20,7 +20,7 @@ Y_annual[0] = for lag in -3:0 Y[lag] end
 
 In the background the package expands the `for` loop and adds up the elements for the different values of `lag`.
 
-In case you don't want the elements to be added up but multiply the items you can do so:
+In case the elements should not be added up but multiplied this can be done:
 
 ```julia
 R_annual[0] = for operator = :*, lag in -3:0 R[lag] end
@@ -47,7 +47,7 @@ Note that the package internally writes out the for loop and creates two equatio
 
 ### Example model block
 
-Putting these these elements together we can write the multi-country model equations of the Backus, Kehoe and Kydland (1992) model like this:
+Putting these elements together the multi-country model equations of the Backus, Kehoe and Kydland (1992) model can be written like this:
 
 ```@setup howto_loops
 ENV["GKSwstype"] = "100"
@@ -97,9 +97,9 @@ end
 
 ## Parameter block
 
-Having defined parameters and variables with indices in the model block we can also declare parameter values, including by means of calibration equations, in the parameter block.
+Having defined parameters and variables with indices in the model block parameter values can also be declared, including by means of calibration equations, in the parameter block.
 
-In the above example we defined the production function for countries `H` and `F`. Implicitly we have two parameters `alpha` and we can define their value individually by setting
+In the above example the production function was defined for countries `H` and `F`. Implicitly there are two parameters `alpha` and their value can be defined individually by setting
 
 ```julia
 alpha{H} = 0.3
@@ -121,13 +121,13 @@ y{H}[ss] = 1 | alpha{H}
 y{F}[ss] = 1 | alpha{F}
 ```
 
-to find the value of `alpha` that corresponds to `y` being equal to 1 in the non-stochastic steady state. Alternatively we can not use indices and the package understands that we refer to both indices:
+to find the value of `alpha` that corresponds to `y` being equal to 1 in the non-stochastic steady state. Alternatively indices can be omitted and the package understands that both indices are referred to:
 
 ```julia
 y[ss] = 1 | alpha
 ```
 
-Making use of the indices we could also target a level of `y` for country `H` with `alpha` for country `H` and target ratio of the two `y`s with the `alpha` for country `F`:
+Making use of the indices a level of `y` for country `H` with `alpha` for country `H` could also be targeted and the ratio of the two `y`s targeted with the `alpha` for country `F`:
 
 ```julia
 y{H}[ss] = 1 | alpha{H}
@@ -137,7 +137,7 @@ y_ratio =  0.9
 
 ### Example parameter block
 
-Making use of this and continuing the example of the Backus, Kehoe and Kydland (1992) model we can define the parameters as follows:
+Making use of this and continuing the example of the Backus, Kehoe and Kydland (1992) model the parameters can be defined as follows:
 
 ```@repl howto_loops
 @parameters Backus_Kehoe_Kydland_1992 begin
