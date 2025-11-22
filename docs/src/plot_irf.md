@@ -59,11 +59,11 @@ plot_irf(Gali_2015_chapter_3_nonlinear)
 
 The plots display every endogenous variable affected for each exogenous shock. One plot/page consists of multiple subplots, one per variable, and shows the response for one shock at a time (mentioned in the title). The title includes the model name, shock identifier, sign of the impulse (positive by default), and the page indicator (e.g., `(1/3)`). Each subplot shows the steady state as a horizontal reference line (non-stochastic for first-order solutions, stochastic for higher orders). For strictly positive variables, a secondary axis displays percentage deviations.
 
-## Combine IRFs with `plot_irf!`
+## Combine or compare IRFs with `plot_irf!`
 
 The `plot_irf!` function (note the exclamation mark `!`) adds additional IRFs to an existing plot created with `plot_irf`, enabling direct comparison between different scenarios. You can vary any input argument that affects the model's output (such as solution algorithm, parameter values, shocks, or initial states) to compare how these changes influence the impulse response functions. See the respective subsections below (e.g., [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
 
-When using `plot_irf!`, the new IRF is overlaid on the existing plot with a different color. 
+When using `plot_irf!`, the new IRF can be either overlaid for comparison (default) or stacked to show cumulative effects, depending on the `plot_type` argument (see [Plot Type](#plot-type)). 
 
 **Legend and table behavior:**
 - When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
