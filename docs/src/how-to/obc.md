@@ -12,7 +12,7 @@ Beyond the examples outlined in this guide there is a version of Smets and Woute
 
 ### Writing a model with occasionally binding constraints
 
-Let us take the [gali2015; Chapter 3](@citet) model containing a Taylor rule and implement an effective lower bound on interest rates. The Taylor rule in the model: `R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])` needs to be modified so that `R[0]` never goes below an effective lower bound `R̄`. This can be done using the `max` operator: `R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))`
+Taking the [gali2015; Chapter 3](@citet) model containing a Taylor rule and implementing an effective lower bound on interest rates. The Taylor rule in the model: `R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])` needs to be modified so that `R[0]` never goes below an effective lower bound `R̄`. This can be done using the `max` operator: `R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))`
 
 The model definition after the change of the Taylor rule looks like this:
 
@@ -279,7 +279,7 @@ plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, parameters = :R̄ => 1.0)
 
 As can be seen `R` remains above the effective lower bound in the first period.
 
-Next, let us simulate the model using a series of shocks. E.g. three positive shocks to `eps_z` in periods 5, 10, and 15 in decreasing magnitude:
+Next, the model is simulated using a series of shocks. E.g. three positive shocks to `eps_z` in periods 5, 10, and 15 in decreasing magnitude:
 
 ```@repl howto_obc
 shcks = zeros(1,15)
@@ -337,7 +337,7 @@ The mean of output is lower in the model with effective lower bound compared to 
 
 ### Model definition
 
-Let us start with a consumption-saving model containing a borrowing constraint (see [@citet cuba2019likelihood] for details). Output is exogenously given, and households can only borrow up to a fraction of output and decide between saving and consumption. The first order conditions of the model are:
+Starting with a consumption-saving model containing a borrowing constraint (see [@citet cuba2019likelihood] for details). Output is exogenously given, and households can only borrow up to a fraction of output and decide between saving and consumption. The first order conditions of the model are:
 
 ```math
 \begin{align*}

@@ -347,4 +347,4 @@ sol = Optim.optimize(distance_to_target,
 sol.minimizer
 ```
 
-Given the new value for `std_a` and optimising over `σ` allows us to match the target exactly.
+Given the new value for `std_a` and optimising over `σ` allows matching the target exactly.
