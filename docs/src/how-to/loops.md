@@ -47,7 +47,7 @@ Note that the package internally writes out the for loop and creates two equatio
 
 ### Example model block
 
-Putting these elements together the multi-country model equations of the Backus, Kehoe and Kydland (1992) model can be written like this:
+Putting these elements together the multi-country model equations of the Backus, Kehoe, and Kydland (1992) model can be written like this:
 
 ```@setup howto_loops
 ENV["GKSwstype"] = "100"
