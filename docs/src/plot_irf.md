@@ -61,20 +61,16 @@ The plots display every endogenous variable affected for each exogenous shock. O
 
 ## Overlaying IRFs with `plot_irf!`
 
-The `plot_irf!` function (note the exclamation mark `!`) adds additional IRFs to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
-- Different solution algorithms (e.g., first-order vs. second-order perturbation)
-- Different parameter values
-- Different shock specifications
-- Different initial states
+The `plot_irf!` function (note the exclamation mark `!`) adds additional IRFs to an existing plot, enabling direct comparison between different scenarios. You can vary any input argument that affects the model's output (such as solution algorithm, parameter values, shocks, or initial states) to compare how these changes influence the impulse response functions. See the respective subsections below (e.g., [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
 
-When using `plot_irf!`, the new IRF is overlaid on the existing plot with a different color. The legend below the plot automatically updates to indicate which line corresponds to which scenario. 
+When using `plot_irf!`, the new IRF is overlaid on the existing plot with a different color. 
 
 **Legend and table behavior:**
 - When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
 - When inputs differ in **multiple dimensions** (e.g., both algorithm and parameters change), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.
 - A separate table below shows the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.
 
-For example, to compare first-order and second-order solutions (one dimension):
+For example, to compare first-order and second-order solutions:
 
 ```julia
 # Plot first-order solution
@@ -87,7 +83,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
     algorithm = :second_order)
 ```
 
-This will create a single plot showing both IRFs with different colored lines. The legend will display `:first_order` and `:second_order` to identify each line. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+The `!` convention is consistent across all plotting functions in MacroModelling.jl.
 
 ## Solution Algorithm
 

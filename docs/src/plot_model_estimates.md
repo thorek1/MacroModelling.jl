@@ -75,14 +75,9 @@ This produces the same output as `plot_model_estimates` with `shock_decompositio
 
 ## Overlaying Model Estimates with `plot_model_estimates!`
 
-The `plot_model_estimates!` function (note the exclamation mark `!`) adds additional model estimates to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
-- Different datasets
-- Different solution algorithms (e.g., first-order vs. second-order perturbation)
-- Different parameter values
-- Different filtering methods (Kalman filter vs. inversion filter)
-- Smoothed vs. filtered estimates
+The `plot_model_estimates!` function (note the exclamation mark `!`) adds additional model estimates to an existing plot, enabling direct comparison between different scenarios. You can vary any input argument that affects the model's output (such as datasets, solution algorithm, parameter values, filtering methods, or smoothing options) to compare how these changes influence the estimates. See the respective subsections below (e.g., [Data](#data-required), [Filter](#filter), [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
 
-When using `plot_model_estimates!`, the new estimates are overlaid on the existing plot with a different color. The legend below the plot automatically updates to indicate which line corresponds to which scenario. Note that when combining multiple plots, shock decomposition is automatically disabled to avoid visual clutter - only the line plots showing the estimates are displayed.
+When using `plot_model_estimates!`, the new estimates are overlaid on the existing plot with a different color. Note that when combining multiple plots, shock decomposition is automatically disabled to avoid visual clutter - only the line plots showing the estimates are displayed.
 
 **Legend and table behavior:**
 - When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
@@ -90,7 +85,7 @@ When using `plot_model_estimates!`, the new estimates are overlaid on the existi
 - Different data inputs are indexed with a running number in the legend for easy reference.
 - Additional tables below show the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.
 
-For example, to compare estimates from different datasets (one dimension):
+For example, to compare estimates from different datasets:
 
 ```julia
 # Plot estimates using actual data
@@ -105,7 +100,7 @@ sim_data = simulate(FS2000)([:log_gy_obs,:log_gp_obs],:,:simulate)
 plot_model_estimates!(FS2000, sim_data)
 ```
 
-Or to compare different solution algorithms (one dimension):
+Or to compare different solution algorithms:
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
@@ -119,7 +114,7 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      algorithm = :second_order)
 ```
 
-This will create a single plot showing both sets of estimates with different colored lines. In the first example, the legend will show running numbers (1, 2) since different datasets are used. In the second example, the legend will display `:first_order` and `:second_order` to identify each line. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+The `!` convention is consistent across all plotting functions in MacroModelling.jl.
 
 ## Data (Required)
 
