@@ -47,13 +47,11 @@ dists = [
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood)
     all_params ~ Turing.arraydist(dists)
 
-    if DynamicPPL.leafcontext(@__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, 
-                                                data, 
-                                                all_params, 
-                                                algorithm = :third_order, 
-                                                on_failure_loglikelihood = on_failure_loglikelihood)
-    end
+    Turing.@addlogprob! (; loglikelihood=get_loglikelihood(m, 
+                                            data, 
+                                            all_params, 
+                                            algorithm = :third_order, 
+                                            on_failure_loglikelihood = on_failure_loglikelihood))
 end
 
 
