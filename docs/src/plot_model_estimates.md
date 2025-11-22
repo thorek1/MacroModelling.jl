@@ -1,6 +1,6 @@
 # Model Estimates
 
-`plot_model_estimates` visualizes the variables that enter an estimation problem, the corresponding filtered or smoothed estimates of endogenous variables and exogenous shocks, and optionally the contribution of each shock to the endogenous variables. Every subplot displays a variable or shock (line) and optionally the contribution of a shock (stacked bars) measured against the non‑stochastic or stochastic steady state that is relevant for the chosen solution algorithm. Occasionally binding constraints are not uspported in this function. The function returns a `Vector{Plots.Plot}` so one can display the figures, save them, or combine them further.
+`plot_model_estimates` visualizes the variables used in an estimation problem: the filtered or smoothed estimates of endogenous variables and exogenous shocks, and optionally the contribution of each shock to the endogenous variables. Each subplot shows a variable or shock as a line and, when enabled, shock contributions as stacked bars measured against the non‑stochastic or stochastic steady state relevant for the selected solution algorithm. Occasionally binding constraints are not supported by this function. The function returns a `Vector{Plots.Plot}`, enabling the figures to be displayed, saved, or combined further.
 
 The figures are built with StatsPlots.jl/Plots.jl and expect a `KeyedArray` from the AxisKeys package as data input. Axis 1 must contain the observable names, axis 2 the period labels. Observables are automatically matched to model variables, renamed (if desired), and sorted alphabetically in the plot legends. Period labels can be of any format compatible with Plots.jl and are used to fill the x-axis of the plots.
 
@@ -176,7 +176,7 @@ plot_model_estimates(FS2000, data_rekey)
 
 The function generates the date labels by starting from a given date and adding three months for each subsequent period. The `rekey` function from AxisKeys is then used to replace the second axis of the `KeyedArray` with the generated date labels. The resulting plot now has dates on the x-axis. Note that any input type for the second axis that `Plots.jl` can handle is valid.
 
-One can also compare estimates based on different data:
+Estimates based on different data can also be compared:
 
 ```julia
 sim_data = simulate(FS2000)([:log_gy_obs,:log_gp_obs],:,:simulate)
@@ -201,9 +201,9 @@ data = log.(data)
 plot_model_estimates(FS2000, data)
 ```
 
-One can use data in absolute deviations from the non-stochastic steady state as follows.
+Data in absolute deviations from the non-stochastic steady state can be used as follows.
 
-One way to create data in deviation from the non-stochastic steady state is to use the `simulate` function with the argument `levels = false`. This will generate random data in deviations for all endogenous variables, of which in the below example only `R` and `y` are used:
+A practical way to create data in deviation from the non-stochastic steady state is to use the `simulate` function with the argument `levels = false`. This generates random data in deviations for all endogenous variables, of which in the example below only `R` and `y` are used:
 
 ```julia
 sim = simulate(FS2000, levels = false)
@@ -305,7 +305,7 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 model estimates - smoothing options](../assets/estimates_smooth__Gali_2015_chapter_3_nonlinear__2.png)
 
-additionally one can compare with filtered estimates using the inversion filter (with `smooth = false` being the default for the inversion filter which doesn't need to be specified explicitly):
+additionally the filtered estimates can be compared using the inversion filter (with `smooth = false` being the default for the inversion filter which doesn't need to be specified explicitly):
 
 ```julia
 plot_model_estimates!(Gali_2015_chapter_3_nonlinear, 
@@ -318,9 +318,9 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 
 ## Presample periods
 
-The `presample_periods` argument [Default: `0`, Type: `Int`] specifies the number of periods at the beginning of the data that are not shown in the plots but are used for filtering. This is useful if one wants to view only later periods in the sample, while still using the earlier periods for filtering.
+The `presample_periods` argument [Default: `0`, Type: `Int`] specifies the number of periods at the beginning of the data that are not shown in the plots but are used for filtering. This is useful if the goal is to view only later periods in the sample, while still using the earlier periods for filtering.
 
-For example, to exclude the first 20 periods from the plots, while still using them for filtering, one can do:
+For example, to exclude the first 20 periods from the plots, while still using them for filtering, run:
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
@@ -335,7 +335,7 @@ Note that now only 20 periods of the 40 periods in the data are shown in the plo
 
 The `shock_decomposition` argument [Type: `Bool`] specifies whether to include shock decompositions in the plots. By default, it is set to `true` for first order, pruned second order, and pruned third order solutions. For second order and third order solutions `shock_decomposition = false`, as the algorithm is not designed to handle it. If set to `true`, stacked bar charts showing the contribution of each shock to the variable's deviation from its steady state are included below the line plots for each variable.
 
-Shock decompositions are included by default in the plots (except for second and third order solutions), and one can specify it explicitly as follows:
+Shock decompositions are included by default in the plots (except for second and third order solutions), and it can be specified explicitly as follows:
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
@@ -360,7 +360,7 @@ This shows only the line plots without the stacked bar charts for shock contribu
 
 The `shocks` argument determines the shocks shown in the plots as subplots and in the shock decomposition. By default, all shocks are included (`:all`).  Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `"eps_a"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:none` means no shocks are shown, and `:all` shows all shocks. If not all shocks are shown, then their respective subplot is ommitted and if a shock decomposition was intended to be shown, the ommitted shocks will be summarised and netted under the label `Other shocks (net)`.
 
-In order to recall the shocks of a model one can use the `get_shocks` function:
+To recall the shocks of a model use the `get_shocks` function:
 
 ```julia
 get_shocks(Gali_2015_chapter_3_nonlinear)
@@ -370,7 +370,7 @@ get_shocks(Gali_2015_chapter_3_nonlinear)
 #  "eps_z"
 ```
 
-To plot only a subset of shocks, one can specify them as follows, using a `Vector` of `Symbol`s:
+To plot only a subset of shocks, specify them as follows, using a `Vector` of `Symbol`s:
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)

@@ -240,7 +240,7 @@ sol.minimizer
 
 slightly lower for both parameters (in line with the previous insights from the sensitivities).
 
-One can combine the method of moments with estimation by simply adding the distance to the target to the posterior loglikelihood.
+Combine the method of moments with estimation by adding the distance to the target as a penalty term to the posterior log-likelihood.
 
 ## Nonlinear solutions
 

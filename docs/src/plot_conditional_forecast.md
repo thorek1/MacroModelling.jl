@@ -178,7 +178,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast 10 periods](../assets/cnd_fcst_10_periods__Gali_2015_chapter_3_nonlinear__2.png)
 
-The plot shows the conditional paths and conditions. On the last page one can see the shocks used to enforce the paths. Since there is one condition (per period), and three shocks the mix of the three shocks with smallest magnitudes is selected.
+The plot shows the conditional paths and the specified conditions. The last page displays the shocks used to enforce these paths. Because there is a single condition per period and three available shocks, the combination of the three shocks with the smallest magnitudes is selected.
 
 ![Gali 2015 conditional forecast 10 periods](../assets/cnd_fcst_10_periods__Gali_2015_chapter_3_nonlinear__3.png)
 
@@ -205,7 +205,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 The paths on both variables are enforced and in the 8th period the paths of the endogenous variables and shocks differ to the previous example.
 
-One can make this even more clear by overlaying the two conditional forecasts with their different conditions:
+This becomes even clearer by overlaying the two conditional forecasts with their different conditions:
 
 ```julia
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,  
@@ -245,7 +245,7 @@ The `shocks` argument [Default: `nothing`, Type: `Union{Matrix{Union{Nothing,Flo
 
 The input can have multiple formats, but for all types of entries, the first dimension corresponds to shocks and the second dimension to the number of periods. `shocks` can be specified using a matrix of type `Matrix{Union{Nothing,Float64}}`. In this case the shocks are matrix elements of type `Float64` and all remaining (free) entries are `nothing`.
 
-Given conditions on `Y` for the first 8 periods, one can restrict the shocks to fulfill this conditions by setting all but one shock to zero. The number of shocks can be retrieved as follows:
+Given conditions on `Y` for the first 8 periods, the shocks can be restricted to fulfill these conditions by setting all but one shock to zero. The number of shocks can be retrieved as follows:
 
 ```julia
 get_shocks(Gali_2015_chapter_3_nonlinear)
@@ -263,7 +263,7 @@ shocks[2,:] .= 0
 shocks[3,:] .= 0
 ```
 
-Together with the conditions one can then plot the conditional forecast:
+Together with the conditions the conditional forecast can then be plotted:
 
 ```julia
 conditions = Matrix{Union{Nothing,Float64}}(undef,23,8)
@@ -302,7 +302,7 @@ The paths clearly differ and are even directionally different due to the restric
 
 A `SparseMatrixCSC{Float64}` can also be used as input. In this case only non-zero elements are taken as certain shock values. Note that conditioning shocks to be zero using a `SparseMatrixCSC{Float64}` as input is not possible (use other input formats to do so).
 
-Using the previous example for the conditions on multiple variables across multiple periods, one can do the same for the `shocks`:
+Using the previous example for the conditions on multiple variables across multiple periods, the same can be done for the `shocks`:
 
 ```julia
 shocks_sp = spzeros(3,3)
@@ -311,7 +311,7 @@ shocks_sp[2,2] = 0.1
 shocks_sp[3,3] = 0.1
 ```
 
-Given this non-zero path for the shocks, two of the three shocks remain to fulfill the conditions. There was one conditions per period so that the least square solution will be selected:
+Given this non-zero path for the shocks, two of the three shocks remain to fulfill the conditions. There was one condition per period so that the least square solution will be selected:
 
 ```julia
 conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
@@ -332,7 +332,7 @@ This mixture of known and unknown shocks, and known conditions on endogenous var
 
 Another possibility to input known shocks is by using a `KeyedArray`. The `KeyedArray` type is provided by the `AxisKeys` package. A `KeyedArray{Union{Nothing,Float64}}` can be used where, similar to `Matrix{Union{Nothing,Float64}}`, all entries of type `Float64` are recognised as known shocks and all other entries have to be `nothing`. Furthermore, in the primary axis a subset of shocks (of type `Symbol` or `String`) for which values are specified can be included and all other shocks are considered free. The same goes for the case when using `KeyedArray{Float64}}` as input, whereas in this case the values for the specified shocks bind for all periods specified in the `KeyedArray`, because there are no `nothing` entries permitted with this type.
 
-Working with the same conditions one can restrict shocks to zero using this input type. Doing so for one shock per period works as follows:
+Working with the same conditions the shocks can be restricted to zero using this input type. Doing so for one shock per period works as follows:
 
 ```julia
 shocks_ka = KeyedArray(Matrix{Float64}(undef,1,3),
@@ -341,7 +341,7 @@ shocks_ka = KeyedArray(Matrix{Float64}(undef,1,3),
 shocks_ka .= 0.0
 ```
 
-Combined with conditions on the endogenous variables one can plot the conditional forecast:
+Combined with conditions on the endogenous variables the conditional forecast can be plotted:
 
 ```julia
 conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,3,3),
@@ -358,7 +358,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast - shocks KeyedArray input](../assets/cnd_fcst_shocks_ka__Gali_2015_chapter_3_nonlinear__1.png)
 
-To see the influence of the shocks (which is similar to conditional forecasts) one can compare the last two examples. One has non zero shocks and the other zero shocks they conditions on:
+To see the influence of the shocks (which is similar to conditional forecasts) compare the last two examples. One scenario has non zero shocks and the other zero shocks they condition on:
 
 ```julia
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
@@ -918,7 +918,7 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 
 ## Conditions in levels
 
-Conditions are assumed to be in levels by default. One can also provide them in differences to the relevant steady state (non-stochastic or stochastic steady state).
+Conditions are assumed to be in levels by default. They can also be provided in differences to the relevant steady state (non-stochastic or stochastic steady state).
 
 Starting with conditions in levels:
 
@@ -947,7 +947,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast - conditions not in levels](../assets/cnd_fcst_no_levels__Gali_2015_chapter_3_nonlinear__2.png)
 
-The same works for higher order solutions, where then the conditions are interpreted as in difference to the stochastic steady state. To see the influence of risk and the nonlinear solution one can overlay the second order solution on top of the first order solution:
+The same works for higher order solutions, where then the conditions are interpreted as in difference to the stochastic steady state. The influence of risk and the nonlinear solution can be seen by overlaying the second order solution on top of the first order solution:
 
 ```julia
 plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,

@@ -142,7 +142,7 @@ The plot shows the responses of the endogenous variables (`c`, `k`, `q`, and `z`
 
 ## Explore other parameter values
 
-Playing around with the model can be especially insightful in the early phase of model development. The package facilitates this process to the extent possible. Typically one wants to try different parameter values and see how the IRFs change. This can be done by using the `parameters` argument of the [`plot_irf`](@ref) function. A `Pair` is passed with the `Symbol` of the parameter (`:` in front of the parameter name) to change and its new value to the `parameter` argument (e.g. `:α => 0.3`).
+Experimenting with the model can be especially insightful in the early phase of development. The package facilitates this process as much as possible. Typically, users try different parameter values to see how the IRFs change. This can be done by using the `parameters` argument of the [`plot_irf`](@ref) function. Pass a Pair with the `Symbol` of the parameter (prefixed by `:`) and its new value to the `parameter` argument (for example `:α => 0.3`).
 
 ```@repl tutorial_1
 plot_irf(RBC, parameters = :α => 0.3)
@@ -166,7 +166,7 @@ The plots show the models endogenous variables in response to random draws for a
 
 ## Plot specific series of shocks
 
-Sometimes one has a specific series of shocks in mind and wants to see the corresponding model response of endogenous variables. This can be achieved by passing a `Matrix` or a `KeyedArray` (the `KeyedArray` type is provided by the `AxisKeys` package) of the series of shocks to the `shocks` argument of the [`plot_irf`](@ref) function:
+To examine a specific series of shocks and the resulting responses of the endogenous variables, pass a `Matrix` or a `KeyedArray` (the `KeyedArray` type is provided by the `AxisKeys` package) containing the shock series to the `shocks` argument of the [`plot_irf`](@ref) function:
 
 ```@repl tutorial_1
 shock_series = zeros(1,4)
