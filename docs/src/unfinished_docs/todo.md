@@ -2,6 +2,7 @@
 
 ## High priority
 
+- [ ] separate estimation test using Pigeons from normal tests so that newest version of Turing can be tested and maintained
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
 - [ ] make sympy optional (maybe even an extension) and use Symbolics where possible
 - [ ] collect helper function only used in statsplots extension in that script
