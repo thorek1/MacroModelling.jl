@@ -3069,3 +3069,103 @@ plot_model_estimates(FS2000, data,
                         save_plots_format = :png, 
                         save_plots_path = "./docs/src/assets", 
                         save_plots_name = :estimation_tutorial)
+
+
+## RBC tutorial
+
+using SparseArrays
+using AxisKeys
+import StatsPlots
+using MacroModelling
+
+Random.seed!(10)
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+
+    q[0] = exp(z[0]) * k[-1]^α
+
+    z[0] = ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
+end
+
+@parameters RBC begin
+    σᶻ= 0.01
+    ρᶻ= 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+## Plot impulse response functions (IRFs)
+
+plot_irf(RBC,
+        save_plots = true, 
+        save_plots_format = :png, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_name = :tutorial_irf)
+
+# ![RBC IRF](../assets/irf__RBC__eps_z__1.png)
+
+
+## Explore other parameter values
+
+plot_irf(RBC, parameters = :α => 0.3,
+        save_plots = true, 
+        save_plots_format = :png, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_name = :tutorial_irf_alpha_0_3)
+
+# ![IRF plot](../assets/irf__RBC_new__eps_z__1.png)
+
+## Plot model simulation
+
+plot_simulations(RBC,
+        save_plots = true, 
+        save_plots_format = :png, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_name = :tutorial_sim)
+
+# ![Simulate RBC](../assets/irf__RBC_sim__eps_z__1.png)
+
+## Plot specific series of shocks
+
+shock_series = zeros(1,4)
+shock_series[1,2] = 1
+shock_series[1,4] = -1
+plot_irf(RBC, shocks = shock_series,
+        save_plots = true, 
+        save_plots_format = :png, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_name = :tutorial_shock_matrix)
+
+# ![Series of shocks RBC](../assets/irf__RBC__shock_matrix__1.png)
+
+## Model solution
+plot_solution(RBC, :k,
+        save_plots = true, 
+        save_plots_format = :png, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_name = :tutorial_solution)
+
+# ![RBC solution](../assets/solution__RBC__1.png)
+
+## Conditional forecasts
+
+
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,4),Variables = [:c], Periods = 1:4)
+conditions[1:4] .= [-.01,0,.01,.02];
+
+shocks = spzeros(1,5)
+shocks[1,5] = -1;
+
+
+plot_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels = false,
+        save_plots = true, 
+        save_plots_format = :png, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_name = :tutorial_cond_fcst)
+
+
+# ![RBC conditional forecast](../assets/conditional_fcst__RBC__conditional_forecast__1.png)

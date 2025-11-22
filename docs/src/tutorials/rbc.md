@@ -133,7 +133,7 @@ import StatsPlots
 plot_irf(RBC)
 ```
 
-![RBC IRF](../assets/irf__RBC__eps_z__1.png)
+![RBC IRF](../assets/tutorial_irf__RBC__ϵᶻ__1.png)
 
 When the model is solved the first time (in this case by calling [`plot_irf`](@ref)), the package breaks down the steady state problem into independent blocks and first attempts to solve them symbolically and if that fails numerically.
 
@@ -147,7 +147,7 @@ Experimenting with the model can be especially insightful in the early phase of 
 plot_irf(RBC, parameters = :α => 0.3)
 ```
 
-![IRF plot](../assets/irf__RBC_new__eps_z__1.png)
+![IRF plot](../assets/tutorial_irf_alpha_0_3__RBC__ϵᶻ__1.png)
 
 First, the package finds the new steady state, solves the model dynamics around it and saves the new parameters and solution in the model object. Second, note that the shape of the curves in the plot and the y-axis values changed. Updating the plot for new parameters is significantly faster than calling it the first time. This is because the first call triggers compilations of the model functions, and once compiled the user benefits from the performance of the specialised compiled code.
 
@@ -159,7 +159,7 @@ Another insightful output is simulations of the model. The [`plot_simulations`](
 plot_simulations(RBC)
 ```
 
-![Simulate RBC](../assets/irf__RBC_sim__eps_z__1.png)
+![Simulate RBC](../assets/tutorial_sim__RBC__ϵᶻ__1.png)
 
 The plots show the models endogenous variables in response to random draws for all exogenous shocks over 100 periods.
 
@@ -174,7 +174,7 @@ shock_series[1,4] = -1
 plot_irf(RBC, shocks = shock_series)
 ```
 
-![Series of shocks RBC](../assets/irf__RBC__shock_matrix__1.png)
+![Series of shocks RBC](../assets/tutorial_shock_matrix__RBC__ϵᶻ__1.png)
 
 The plot shows the two shocks hitting the economy in periods 2 and 4 and then continues the simulation for 40 more quarters.
 
@@ -238,7 +238,7 @@ There is also the possibility to visually inspect the solution. Note that the `S
 plot_solution(RBC, :k)
 ```
 
-![RBC solution](../assets/solution__RBC__1.png)
+![RBC solution](../assets/tutorial_solution__RBC__k__1.png)
 
 The chart shows the first order perturbation solution mapping from the past state `k` to the present variables of the model. The state variable covers a range of two standard deviations around the non-stochastic steady state and all other states remain in the non-stochastic steady state.
 
@@ -301,7 +301,7 @@ The conditional forecast can also be plotted. Note that the `StatsPlots` package
 plot_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels = false)
 ```
 
-![RBC conditional forecast](../assets/conditional_fcst__RBC__conditional_forecast__1.png)
+![RBC conditional forecast](../assets/tutorial_cond_fcst__RBC__1.png)
 
 and `conditions_in_levels = false` needs to be set since the conditions are defined in deviations.
 
