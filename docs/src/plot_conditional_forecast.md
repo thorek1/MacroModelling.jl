@@ -105,6 +105,8 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
                           parameters = :β => 0.95)
 ```
 
+![Gali 2015 conditional forecast - comparing β values](../assets/cnd_fcst_one_diff__Gali_2015_chapter_3_nonlinear__2.png)
+
 The legend will display the `β` values (0.99 and 0.95) to identify each forecast.
 
 **Example with multiple input differences:**
@@ -123,6 +125,8 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
                           parameters = :β => 0.95,
                           algorithm = :second_order)
 ```
+
+![Gali 2015 conditional forecast - comparing β values across algorithms](../assets/cnd_fcst_two_diff__Gali_2015_chapter_3_nonlinear__2.png)
 
 The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
 

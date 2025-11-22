@@ -9,6 +9,258 @@ import StatsPlots
 using AxisKeys
 import Random; Random.seed!(10) # For reproducibility of :simulate
 
+
+## README
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+
+plot_irf(RBC, 
+        save_plots = true, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_format = :png, 
+        # save_plots_name = :readme_irf
+        )
+
+## OBC
+@model Gali_2015_chapter_3_obc begin
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
+
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+
+    R[0] = 1 / Q[0]
+
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+
+    R[0] = Pi[1] * realinterest[0]
+
+    C[0] = Y[0]
+
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+
+    log_y[0] = log(Y[0])
+
+    log_W_real[0] = log(W_real[0])
+
+    log_N[0] = log(N[0])
+
+    pi_ann[0] = 4 * log(Pi[0])
+
+    i_ann[0] = 4 * log(R[0])
+
+    r_real_ann[0] = 4 * log(realinterest[0])
+
+    M_real[0] = Y[0] / R[0] ^ η
+
+    R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+
+end
+
+@parameters Gali_2015_chapter_3_obc begin
+    R̄ = 1.0
+
+    σ = 1
+
+    φ = 5
+
+    ϕᵖⁱ = 1.5
+
+    ϕʸ = 0.125
+
+    θ = 0.75
+
+    ρ_ν = 0.5
+
+    ρ_z = 0.5
+
+    ρ_a = 0.9
+
+    β = 0.99
+
+    η = 3.77
+
+    α = 0.25
+
+    ϵ = 9
+
+    τ = 0
+
+    std_a = .01
+
+    std_z = .05
+
+    std_nu = .0025
+
+    R > 1.000001
+end
+
+
+Random.seed!(20)
+plot_simulations(Gali_2015_chapter_3_obc, 
+        save_plots = true, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_format = :png, 
+        save_plots_name = :sim_obc
+        )
+
+
+# ![Simulation_elb](../assets/Gali_2015_chapter_3_obc__simulation__1.png)
+
+Random.seed!(20)
+plot_simulations(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.99, 
+        save_plots = true, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_format = :png, 
+        save_plots_name = :sim_obc_elb
+        )
+
+
+# ![Simulation_elb2](../assets/Gali_2015_chapter_3_obc__simulation__2.png)
+
+
+Random.seed!(20)
+plot_simulations(Gali_2015_chapter_3_obc, ignore_obc = true, 
+        save_plots = true, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_format = :png, 
+        save_plots_name = :sim_ignore_obc
+        )
+
+
+# ![Simulation_no_elb](../assets/Gali_2015_chapter_3_obc__simulation__no.png)
+
+Random.seed!(20)
+plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, parameters = :R̄ => 1.0, 
+        save_plots = true, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_format = :png, 
+        save_plots_name = :obc_irf_higher_bound
+        )
+
+
+# ![IRF_elb](../assets/Gali_2015_chapter_3_obc__eps_z.png)
+
+
+shcks = zeros(1,15)
+shcks[5] =  3.0
+shcks[10] = 2.0
+shcks[15] = 1.0
+
+sks = KeyedArray(shcks;  Shocks = [:eps_z], Periods = 1:15)  # KeyedArray is provided by the `AxisKeys` package
+
+plot_irf(Gali_2015_chapter_3_obc, 
+        shocks = sks, 
+        periods = 10, 
+        save_plots = true, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_format = :png, 
+        save_plots_name = :obc_irf
+        )
+
+
+# ![Shock_series_elb](../assets/Gali_2015_chapter_3_obc__shock_matrix__1.png)
+
+@model borrowing_constraint begin
+    Y[0] + B[0] = C[0] + R * B[-1]
+
+    log(Y[0]) = ρ * log(Y[-1]) + σ * ε[x]
+
+    C[0]^(-γ) = β * R * C[1]^(-γ) + λ[0]
+
+    0 = max(B[0] - m * Y[0], -λ[0])
+end
+
+@parameters borrowing_constraint begin
+    R = 1.05
+    β = 0.945
+    ρ = 0.9
+    σ = 0.05
+    m = 1
+    γ = 1
+end
+SS(borrowing_constraint)
+
+plot_irf(borrowing_constraint, 
+        save_plots = true, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_format = :png, 
+        save_plots_name = :obc_irf
+        )
+
+
+# ![Positive_shock](../assets/borrowing_constraint__ε_pos.png)
+
+plot_irf(borrowing_constraint, 
+        negative_shock = true, 
+        save_plots = true, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_format = :png, 
+        save_plots_name = :obc_neg_irf
+        )
+
+
+# ![Negative_shock](../assets/borrowing_constraint__ε_neg.png)
+
+shcks = zeros(1,30)
+shcks[10] =  .6
+shcks[30] = -.6
+
+sks = KeyedArray(shcks;  Shocks = [:ε], Periods = 1:30)  # KeyedArray is provided by the `AxisKeys` package
+
+plot_irf(borrowing_constraint, 
+        shocks = sks, 
+        periods = 50, 
+        save_plots = true, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_format = :png, 
+        save_plots_name = :obc_shocks_irf
+        )
+
+
+# ![Simulation](../assets/borrowing_constraint__obc.png)
+
+plot_irf(borrowing_constraint, 
+        shocks = sks, 
+        periods = 50, 
+        ignore_obc = true, 
+        save_plots = true, 
+        save_plots_path = "./docs/src/assets", 
+        save_plots_format = :png, 
+        save_plots_name = :obc_shocks_irf_no_obc
+        )
+
+
+# ![Simulation](../assets/borrowing_constraint__no_obc.png)
+
+
+## Impulse response functions (IRF)
 # Load a model
 @model Gali_2015_chapter_3_nonlinear begin
 	W_real[0] = C[0] ^ σ * N[0] ^ φ
@@ -55,8 +307,11 @@ end
     std_nu = .0025
 end
 
-## Impulse response functions (IRF)
-plot_irf(Gali_2015_chapter_3_nonlinear, save_plots = true, save_plots_path = "./docs/src/assets", save_plots_format = :png, save_plots_name = :default_irf)
+plot_irf(Gali_2015_chapter_3_nonlinear, 
+            save_plots = true, 
+            save_plots_path = "./docs/src/assets", 
+            save_plots_format = :png, 
+            save_plots_name = :default_irf)
 
 ### Algorithm 
 plot_irf(Gali_2015_chapter_3_nonlinear, shocks = :eps_a, algorithm = :second_order, save_plots = true, save_plots_path = "./docs/src/assets", save_plots_format = :png, save_plots_name = :second_order_irf)
@@ -1300,7 +1555,44 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
                             conditions,
     save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets")
 
+# Set up conditions
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
+                    Variables = [:Y], 
+                    Periods = 1:1)
+conditions_ka[1,1] = 1.0
 
+# Plot conditional forecast with baseline parameters
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         parameters = :β => 0.99)
+
+# Add conditional forecast with different discount factor
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                          conditions_ka,
+                          parameters = :β => 0.95,
+    save_plots = true, 
+    save_plots_format = :png, 
+    save_plots_path = "./docs/src/assets", 
+    save_plots_name = :cnd_fcst_one_diff)
+
+
+# Plot with baseline settings
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         parameters = :β => 0.99)
+
+# Add with different algorithm AND parameters
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                          conditions_ka,
+                          parameters = :β => 0.95,
+                          algorithm = :second_order,
+    save_plots = true, 
+    save_plots_format = :png, 
+    save_plots_path = "./docs/src/assets", 
+    save_plots_name = :cnd_fcst_two_diff)
+
+
+                          
 conditions = Matrix{Union{Nothing,Float64}}(undef,23,8)
 conditions[12,1] = 1.0
 conditions[12,2] = 1.1
