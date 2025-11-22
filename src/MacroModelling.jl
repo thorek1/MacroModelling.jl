@@ -6623,7 +6623,7 @@ function solve!(𝓂::ℳ;
             state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                             shock]
-                return S₁ * aug_state # you need a return statement for forwarddiff to work
+                return S₁ * aug_state # return statement needed for forwarddiff to work
             end
             
             if obc

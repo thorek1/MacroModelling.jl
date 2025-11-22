@@ -1,6 +1,6 @@
 # Write your first model - simple RBC
 
-The following tutorial will walk you through the steps of writing down a model and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial. For the purpose of this tutorial we will work with a simplified version of a real business cycle (RBC) model. The model laid out below examines capital accumulation, consumption, and random technological progress. Households maximise lifetime utility from consumption, weighing current against future consumption. Firms produce using capital and a stochastic technology factor, setting capital rental rates based on marginal productivity. The model integrates households' decisions, firms' production, and random technological shifts to understand economic growth and dynamics.
+This tutorial walks through the steps of writing down a model and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial. For the purpose of this tutorial a simplified version of a real business cycle (RBC) model is used. The model laid out below examines capital accumulation, consumption, and random technological progress. Households maximise lifetime utility from consumption, weighing current against future consumption. Firms produce using capital and a stochastic technology factor, setting capital rental rates based on marginal productivity. The model integrates households' decisions, firms' production, and random technological shifts to understand economic growth and dynamics.
 
 ## RBC - derivation of model equations
 
@@ -85,7 +85,7 @@ z_{t} = \rho^z z_{t-1} + \sigma^z \epsilon^z_{t}
 
 The first step is always to name the model and write down the equations. Taking the RBC model described above this would go as follows.
 
-First, we load the package and then use the [`@model`](@ref) macro to define our model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which we write down between `begin` and `end`. One equation per line and timing of endogenous variables are expressed in the square brackets following the variable name. Exogenous variables (shocks) are followed by a keyword in square brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julias unicode capabilities (`alpha` can be written as `α`).
+First, the package is loaded and then the [`@model`](@ref) macro is used to define the model. The first argument after [`@model`](@ref) is the model name and will be the name of the object in the global environment containing all information regarding the model. The second argument to the macro are the equations, which are written down between `begin` and `end`. One equation per line and timing of endogenous variables are expressed in the square brackets following the variable name. Exogenous variables (shocks) are followed by a keyword in square brackets indicating them being exogenous (in this case `[x]`). Note that names can leverage julias unicode capabilities (`alpha` can be written as `α`).
 
 ```@setup tutorial_1
 ENV["GKSwstype"] = "100"
@@ -104,11 +104,11 @@ using MacroModelling
 end
 ```
 
-After the model is parsed we get some info on the model variables, and parameters.
+After the model is parsed some info on the model variables, and parameters are displayed.
 
 ## Define the parameters
 
-Next we need to add the parameters of the model. The macro [`@parameters`](@ref) takes care of this:
+Next the parameters of the model need to be added. The macro [`@parameters`](@ref) takes care of this:
 
 ```@repl tutorial_1
 @parameters RBC begin
@@ -120,13 +120,13 @@ Next we need to add the parameters of the model. The macro [`@parameters`](@ref)
 end
 ```
 
-Parameter definitions are similar to assigning values in julia. Note that we have to write one parameter definition per line.
+Parameter definitions are similar to assigning values in julia. Note that one parameter definition per line is required.
 
 Given the equations and parameters, the package will first attempt to solve the system of nonlinear equations symbolically (including possible calibration equations - see next tutorial for an example). If an analytical solution is not possible, numerical solution methods are used to try and solve it. There is no guarantee that a solution can be found, but it is highly likely, given that a solution exists. The problem setup tries to incorporate parts of the structure of the problem, e.g. bounds on variables: if one equation contains `log(k)` it must be that `k > 0`. Nonetheless, the user can also provide useful information such as variable bounds or initial guesses. Bounds can be set by adding another expression to the parameter block e.g.: `c > 0`. Large values are typically a problem for numerical solvers. Therefore, providing a guess for these values will increase the speed of the solver. Guesses can be provided as a `Dict` after the model name and before the parameter definitions block, e.g.: `@parameters RBC guess = Dict(k => 10) begin ... end`.
 
 ## Plot impulse response functions (IRFs)
 
-A useful output to analyse are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Please note that you need to import the `StatsPlots` packages once before the first plot. In the background the package solves (symbolically in this simple case) for the non-stochastic steady state (SS) and calculates the first order perturbation solution.
+A useful output to analyse are IRFs for the exogenous shocks. Calling [`plot_irf`](@ref) (different names for the same function are also supported: [`plot_irfs`](@ref), or [`plot_IRF`](@ref)) will take care of this. Note that the `StatsPlots` package needs to be imported once before the first plot. In the background the package solves (symbolically in this simple case) for the non-stochastic steady state (SS) and calculates the first order perturbation solution.
 
 
 ```@repl tutorial_1
@@ -138,11 +138,11 @@ plot_irf(RBC)
 
 When the model is solved the first time (in this case by calling [`plot_irf`](@ref)), the package breaks down the steady state problem into independent blocks and first attempts to solve them symbolically and if that fails numerically.
 
-The plot shows the responses of the endogenous variables (`c`, `k`, `q`, and `z`) to a one standard deviation positive (indicated by Shock⁺ in chart title) unanticipated shock in  `eps_z`. Therefore there are as many subplots as there are combinations of shocks and endogenous variables (which are impacted by the shock). Plots are composed of up to 9 subplots and the plot title shows the model name followed by the name of the shock and which plot we are seeing out of the plots for this shock (e.g. (1/3) means we see the first out of three plots for this shock). Subplots show the sorted endogenous variables with the left y-axis showing the level of the respective variable and the right y-axis showing the percent deviation from the SS (if variable is strictly positive). The horizontal black line marks the SS.
+The plot shows the responses of the endogenous variables (`c`, `k`, `q`, and `z`) to a one standard deviation positive (indicated by Shock⁺ in chart title) unanticipated shock in  `eps_z`. Therefore there are as many subplots as there are combinations of shocks and endogenous variables (which are impacted by the shock). Plots are composed of up to 9 subplots and the plot title shows the model name followed by the name of the shock and which plot is being displayed out of the plots for this shock (e.g. (1/3) means the first out of three plots for this shock is shown). Subplots show the sorted endogenous variables with the left y-axis showing the level of the respective variable and the right y-axis showing the percent deviation from the SS (if variable is strictly positive). The horizontal black line marks the SS.
 
 ## Explore other parameter values
 
-Playing around with the model can be especially insightful in the early phase of model development. The package tries to facilitates this process to the extent possible. Typically one wants to try different parameter values and see how the IRFs change. This can be done by using the `parameters` argument of the [`plot_irf`](@ref) function. We pass a `Pair` with the `Symbol` of the parameter (`:` in front of the parameter name) we want to change and its new value to the `parameter` argument (e.g. `:α => 0.3`).
+Playing around with the model can be especially insightful in the early phase of model development. The package facilitates this process to the extent possible. Typically one wants to try different parameter values and see how the IRFs change. This can be done by using the `parameters` argument of the [`plot_irf`](@ref) function. A `Pair` is passed with the `Symbol` of the parameter (`:` in front of the parameter name) to change and its new value to the `parameter` argument (e.g. `:α => 0.3`).
 
 ```@repl tutorial_1
 plot_irf(RBC, parameters = :α => 0.3)
@@ -154,7 +154,7 @@ First, the package finds the new steady state, solves the model dynamics around 
 
 ## Plot model simulation
 
-Another insightful output is simulations of the model. Here we can use the [`plot_simulations`](@ref) function. Please note that you need to import the `StatsPlots` packages once before the first plot. To the same effect we can use the [`plot_irf`](@ref) function and specify in the `shocks` argument that we want to `:simulate` the model and set the `periods` argument to 100.
+Another insightful output is simulations of the model. The [`plot_simulations`](@ref) function can be used here. Note that the `StatsPlots` package needs to be imported once before the first plot. To the same effect the [`plot_irf`](@ref) function can be used and in the `shocks` argument `:simulate` is specified to simulate the model and the `periods` argument set to 100.
 
 ```@repl tutorial_1
 plot_simulations(RBC)
@@ -181,25 +181,25 @@ The plot shows the two shocks hitting the economy in periods 2 and 4 and then co
 
 ## Model statistics
 
-The package solves for the SS automatically and we got an idea of the SS values in the plots. If we want to see the SS values we can call [`get_steady_state`](@ref):
+The package solves for the SS automatically and the SS values can be seen in the plots. To see the SS values [`get_steady_state`](@ref) can be called:
 
 ```@repl tutorial_1
 get_steady_state(RBC)
 ```
 
-to get the SS and the derivatives of the SS with respect to the model parameters. The first column of the returned matrix shows the SS while the second to last columns show the derivatives of the SS values (indicated in the rows) with respect to the parameters (indicated in the columns). For example, the derivative of `k` with respect to `β` is 165.319. This means that if we increase `β` by 1, `k` would increase by 165.319 approximately. Let's see how this plays out by changing `β` from 0.95 to 0.951 (a change of +0.001):
+to get the SS and the derivatives of the SS with respect to the model parameters. The first column of the returned matrix shows the SS while the second to last columns show the derivatives of the SS values (indicated in the rows) with respect to the parameters (indicated in the columns). For example, the derivative of `k` with respect to `β` is 165.319. This means that if `β` is increased by 1, `k` would increase by 165.319 approximately. How this plays out can be seen by changing `β` from 0.95 to 0.951 (a change of +0.001):
 
 ```@repl tutorial_1
 get_steady_state(RBC,parameters = :β => .951)
 ```
 
-Note that [`get_steady_state`](@ref) like all other get functions has the `parameters` argument. Hence, whatever output we are looking at we can change the parameters of the model.
+Note that [`get_steady_state`](@ref) like all other get functions has the `parameters` argument. Hence, for whatever output is being examined the parameters of the model can be changed.
 
 The new value of `β` changed the SS as expected and `k` increased by 0.168. The elasticity (0.168/0.001) comes close to the partial derivative previously calculated. The derivatives help understanding the effect of parameter changes on the steady state and make for easier navigation of the parameter space.
 
 ### Standard deviations
 
-Next to the SS we can also show the model implied standard deviations of the model. [`get_standard_deviation`](@ref) takes care of this. Additionally we will set the parameter values to what they were in the beginning by passing on a `Tuple` of `Pair`s containing the `Symbol`s of the parameters to be changed and their new (initial) values (e.g. `(:α => 0.5, :β => .95)`).
+Next to the SS the model implied standard deviations of the model can also be displayed. [`get_standard_deviation`](@ref) takes care of this. Additionally the parameter values will be set to what they were in the beginning by passing on a `Tuple` of `Pair`s containing the `Symbol`s of the parameters to be changed and their new (initial) values (e.g. `(:α => 0.5, :β => .95)`).
 
 ```@repl tutorial_1
 get_standard_deviation(RBC, parameters = (:α => 0.5, :β => .95))
@@ -209,7 +209,7 @@ The function returns the model implied standard deviations of the model variable
 
 ### Correlations
 
-Another useful statistic is the model implied correlation of variables. We use [`get_correlation`](@ref) for this:
+Another useful statistic is the model implied correlation of variables. [`get_correlation`](@ref) is used for this:
 
 ```@repl tutorial_1
 get_correlation(RBC)
@@ -217,7 +217,7 @@ get_correlation(RBC)
 
 ### Autocorrelations
 
-Last but not least, we have a look at the model implied autocorrelations of model variables using the [`get_autocorrelation`](@ref) function:
+Last but not least, the model implied autocorrelations of model variables can be examined using the [`get_autocorrelation`](@ref) function:
 
 ```@repl tutorial_1
 get_autocorrelation(RBC)
@@ -225,7 +225,7 @@ get_autocorrelation(RBC)
 
 ## Model solution
 
-A further insightful output are the policy and transition functions of the first order perturbation solution. To retrieve the solution we call the function [`get_solution`](@ref):
+A further insightful output are the policy and transition functions of the first order perturbation solution. To retrieve the solution the function [`get_solution`](@ref) can be called:
 
 ```@repl tutorial_1
 get_solution(RBC)
@@ -233,7 +233,7 @@ get_solution(RBC)
 
 The solution provides information about how past states and present shocks impact present variables. The first row contains the SS for the variables denoted in the columns. The second to last rows contain the past states, with the time index `₍₋₁₎`, and present shocks, with exogenous variables denoted by `₍ₓ₎`. For example, the immediate impact of a shock to `eps_z` on `q` is 0.0688.
 
-There is also the possibility to visually inspect the solution. Please note that you need to import the `StatsPlots` packages once before the first plot. We can use the [`plot_solution`](@ref) function:
+There is also the possibility to visually inspect the solution. Note that the `StatsPlots` package needs to be imported once before the first plot. The [`plot_solution`](@ref) function can be used:
 
 ```@repl tutorial_1
 plot_solution(RBC, :k)
@@ -245,7 +245,7 @@ The chart shows the first order perturbation solution mapping from the past stat
 
 ## Obtain array of IRFs or model simulations
 
-Last but not least the user might want to obtain simulated time series of the model or IRFs without plotting them.
+Last but not least simulated time series of the model or IRFs might be of interest without plotting them.
 For IRFs this is possible by calling [`get_irf`](@ref):
 
 ```@repl tutorial_1
@@ -266,9 +266,9 @@ which returns the simulated data in levels in a 3-dimensional `KeyedArray` (prov
 
 Conditional forecasting is a useful tool to incorporate for example forecasts into a model and then add shocks on top.
 
-For example we might be interested in the model dynamics given a path for `c` for the first 4 quarters and the next quarter a negative shock to `eps_z` arrives. This can be implemented using the `get_conditional_forecast` function and visualised with the `plot_conditional_forecast` function.
+For example the model dynamics might be of interest given a path for `c` for the first 4 quarters and the next quarter a negative shock to `eps_z` arrives. This can be implemented using the `get_conditional_forecast` function and visualised with the `plot_conditional_forecast` function.
 
-First, we define the conditions on the endogenous variables as deviations from the non-stochastic steady state (`c` in this case) using a `KeyedArray` from the `AxisKeys` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions):
+First, the conditions on the endogenous variables are defined as deviations from the non-stochastic steady state (`c` in this case) using a `KeyedArray` from the `AxisKeys` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions):
 
 ```@repl tutorial_1
 using AxisKeys
@@ -278,7 +278,7 @@ conditions[1:4] .= [-.01,0,.01,.02];
 
 Note that all other endogenous variables not part of the `KeyedArray` (provided by the `AxisKeys` package) are also not conditioned on.
 
-Next, we define the conditions on the shocks (`eps_z` in this case) using a `SparseArrayCSC` from the `SparseArrays` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions on the shocks):
+Next, the conditions on the shocks (`eps_z` in this case) are defined using a `SparseArrayCSC` from the `SparseArrays` package (check [`get_conditional_forecast`](@ref) for other ways to define the conditions on the shocks):
 
 ```@repl tutorial_1
 using SparseArrays
@@ -288,7 +288,7 @@ shocks[1,5] = -1;
 
 Note that for the first 4 periods the shock has no predetermined value and is determined by the conditions on the endogenous variables.
 
-Finally we can get the conditional forecast:
+Finally the conditional forecast can be obtained:
 
 ```@repl tutorial_1
 get_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels = false)
@@ -296,7 +296,7 @@ get_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels 
 
 The function returns a `KeyedArray` (provided by the `AxisKeys` package) with the values of the endogenous variables and shocks matching the conditions exactly.
 
-We can also plot the conditional forecast. Please note that you need to import the `StatsPlots` packages once before the first plot. In order to plot we can use:
+The conditional forecast can also be plotted. Note that the `StatsPlots` package needs to be imported once before the first plot. In order to plot this can be used:
 
 ```@repl tutorial_1
 plot_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels = false)
@@ -304,6 +304,6 @@ plot_conditional_forecast(RBC, conditions, shocks = shocks, conditions_in_levels
 
 ![RBC conditional forecast](../assets/conditional_fcst__RBC__conditional_forecast__1.png)
 
-and we need to set `conditions_in_levels = false` since the conditions are defined in deviations.
+and `conditions_in_levels = false` needs to be set since the conditions are defined in deviations.
 
 Note that the stars indicate the values the model is conditioned on.
