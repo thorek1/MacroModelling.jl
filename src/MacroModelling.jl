@@ -234,42 +234,59 @@ end # dispatch_doctor
 
 # ── norminvcdf, norminv & qnorm ──
 # d/dp (norminvcdf(p)) = 1 / normpdf(norminvcdf(p))
-function Symbolics.derivative(::typeof(norminvcdf), args::NTuple{1,Any}, ::Val{1})
-    p = args[1]
-    1 / normpdf(norminvcdf(p))
-end
-# norminv and qnorm are aliases of norminvcdf, so they share the same rule:
-Symbolics.derivative(::typeof(norminv), args::NTuple{1,Any}, ::Val{1}) = 
-    Symbolics.derivative(norminvcdf, args, Val{1}())
-Symbolics.derivative(::typeof(qnorm),  args::NTuple{1,Any}, ::Val{1}) =
-    Symbolics.derivative(norminvcdf, args, Val{1}())
+@static if isdefined(Symbolics, Symbol("@register_derivative"))
+    Symbolics.@register_derivative norminvcdf(p) 1 1 / normpdf(norminvcdf(p))
+    # norminv and qnorm are aliases of norminvcdf, so they share the same rule:
+    Symbolics.@register_derivative norminv(p) 1 1 / normpdf(norminvcdf(p))
+    Symbolics.@register_derivative qnorm(p) 1 1 / normpdf(norminvcdf(p))
 
-# ── normlogpdf ──
-# d/dz (normlogpdf(z)) = −z
-function Symbolics.derivative(::typeof(normlogpdf), args::NTuple{1,Any}, ::Val{1})
-    z = args[1]
-    -z
-end
+    # ── normlogpdf ──
+    # d/dz (normlogpdf(z)) = −z
+    Symbolics.@register_derivative normlogpdf(z) 1 -z
 
-# ── normpdf & dnorm ──
-# normpdf(z) = (1/√(2π)) e^(−z²/2) ⇒ derivative = −z * normpdf(z)
-function Symbolics.derivative(::typeof(normpdf), args::NTuple{1,Any}, ::Val{1})
-    z = args[1]
-    -z * normpdf(z)
-end
-# alias:
-Symbolics.derivative(::typeof(dnorm), args::NTuple{1,Any}, ::Val{1}) = 
-    Symbolics.derivative(normpdf, args, Val{1}())
+    # ── normpdf & dnorm ──
+    # normpdf(z) = (1/√(2π)) e^(−z²/2) ⇒ derivative = −z * normpdf(z)
+    Symbolics.@register_derivative normpdf(z) 1 -z * normpdf(z)
+    # alias:
+    Symbolics.@register_derivative dnorm(z) 1 -z * normpdf(z)
 
-# ── normcdf & pnorm ──
-# d/dz (normcdf(z)) = normpdf(z)
-function Symbolics.derivative(::typeof(normcdf), args::NTuple{1,Any}, ::Val{1})
-    z = args[1]
-    normpdf(z)
+    # ── normcdf & pnorm ──
+    # d/dz (normcdf(z)) = normpdf(z)
+    Symbolics.@register_derivative normcdf(z) 1 normpdf(z)
+    # alias:
+    Symbolics.@register_derivative pnorm(z) 1 normpdf(z)
+else
+    function Symbolics.derivative(::typeof(norminvcdf), args::NTuple{1,Any}, ::Val{1})
+        p = args[1]
+        1 / normpdf(norminvcdf(p))
+    end
+    Symbolics.derivative(::typeof(norminv), args::NTuple{1,Any}, ::Val{1}) =
+        Symbolics.derivative(norminvcdf, args, Val{1}())
+    Symbolics.derivative(::typeof(qnorm),  args::NTuple{1,Any}, ::Val{1}) =
+        Symbolics.derivative(norminvcdf, args, Val{1}())
+
+    # ── normlogpdf ──
+    function Symbolics.derivative(::typeof(normlogpdf), args::NTuple{1,Any}, ::Val{1})
+        z = args[1]
+        -z
+    end
+
+    # ── normpdf & dnorm ──
+    function Symbolics.derivative(::typeof(normpdf), args::NTuple{1,Any}, ::Val{1})
+        z = args[1]
+        -z * normpdf(z)
+    end
+    Symbolics.derivative(::typeof(dnorm), args::NTuple{1,Any}, ::Val{1}) =
+        Symbolics.derivative(normpdf, args, Val{1}())
+
+    # ── normcdf & pnorm ──
+    function Symbolics.derivative(::typeof(normcdf), args::NTuple{1,Any}, ::Val{1})
+        z = args[1]
+        normpdf(z)
+    end
+    Symbolics.derivative(::typeof(pnorm), args::NTuple{1,Any}, ::Val{1}) =
+        Symbolics.derivative(normcdf, args, Val{1}())
 end
-# alias:
-Symbolics.derivative(::typeof(pnorm), args::NTuple{1,Any}, ::Val{1}) = 
-    Symbolics.derivative(normcdf, args, Val{1}())
 
 @stable default_mode = "disable" begin
 
