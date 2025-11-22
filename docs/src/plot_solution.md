@@ -85,13 +85,14 @@ When only one input differs (e.g., the solution algorithm), the legend shows the
 
 ```julia
 # Plot first-order solution
-plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    algorithm = :first_order)
+plot_solution(Gali_2015_chapter_3_nonlinear, :A)
 
 # Add second-order solution to the same plot
 plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     algorithm = :second_order)
 ```
+
+![Gali 2015 solution - first and second order](../assets/mult_algorithms__Gali_2015_chapter_3_nonlinear__A__2.png)
 
 The legend will display `:first_order` and `:second_order` to identify each policy function.
 
@@ -109,6 +110,8 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     parameters = :β => 0.95,
     algorithm = :second_order)
 ```
+
+![Gali 2015 solution - comparing β values across algorithms](../assets/compare_beta_and_orders_solution__Gali_2015_chapter_3_nonlinear__A__2.png)
 
 The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
 
@@ -325,8 +328,7 @@ Compare different solution algorithms by overlaying plots with `plot_solution!`.
 
 ```julia
 # Plot first-order policy function
-plot_solution(Gali_2015_chapter_3_nonlinear, :A,
-    algorithm = :first_order)
+plot_solution(Gali_2015_chapter_3_nonlinear, :A)
 
 # Overlay second-order to compare
 plot_solution!(Gali_2015_chapter_3_nonlinear, :A,

@@ -869,6 +869,20 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 
 # The function plots each endogenous variable in period `t` against the state variable `A` in `t-1`. Each subplot shows how the variable changes on the y-axis as `A` varies within the specified range over the x-axis. The relevant steady state is indicated by a circle of the same color as the line. The title of each subplot indicates the variable name and the title of the overall plot indicates the model name, and page number (if multiple pages are needed). The legend below the plots indicate the solution algorithm used and the nature of the steady state (stochastic or non-stochastic).
 
+# Plot with baseline parameters
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β => 0.99)
+
+# Add with different algorithm AND parameters
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β => 0.95,
+    algorithm = :second_order,
+    save_plots = true, 
+    save_plots_format = :png, 
+    save_plots_path = "./docs/src/assets", 
+    save_plots_name = :compare_beta_and_orders_solution)
+
+
 ## Function Arguments
 
 plot_solution(Gali_2015_chapter_3_nonlinear, :A,
@@ -2293,6 +2307,23 @@ plot_model_estimates(FS2000, data,
 
 
 # ![FS2000 model estimates](../assets/estimates__FS2000__3.png)
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+
+# Plot with baseline parameters
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                    sim_data,
+                    parameters = :β => 0.99)
+
+# Add with different algorithm AND parameters
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β => 0.95,
+                     algorithm = :second_order,
+                     save_plots = true, 
+                     save_plots_format = :png, 
+                     save_plots_path = "./docs/src/assets", 
+                     save_plots_name = :estimates_compare_beta_and_orders)
 
 
 ## Data (Required)

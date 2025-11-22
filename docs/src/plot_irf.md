@@ -107,7 +107,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
     algorithm = :second_order)
 ```
 
-![Gali 2015 IRF - eps_a shock (different β with first and second order)](../assets/compare_beta_and_orders__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
+![Gali 2015 IRF - eps_a shock (comparing β values across algorithms)](../assets/compare_beta_and_orders__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
 The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
 

@@ -102,6 +102,8 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      algorithm = :second_order)
 ```
 
+![Gali 2015 model estimates - first and second order](../assets/estimates_first_and_second_order__Gali_2015_chapter_3_nonlinear__2.png)
+
 The legend will display `:first_order` and `:second_order` to identify each estimate.
 
 **Example with multiple input differences:**
@@ -120,6 +122,8 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      parameters = :β => 0.95,
                      algorithm = :second_order)
 ```
+
+![Gali 2015 model estimates - comparing β values across algorithms](../assets/estimates_compare_beta_and_orders__Gali_2015_chapter_3_nonlinear__2.png)
 
 The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
 
