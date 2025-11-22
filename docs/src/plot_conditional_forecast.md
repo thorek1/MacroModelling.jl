@@ -71,18 +71,23 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 The function plots the paths of each endogenous variable conditional on fulfilling the specified conditions. If there was a condition provided for a variable it is represented by a marker (also indicated in the legend below the subplots). The title of the overall plot indicates the model name, and page number (if multiple pages are needed) and the title of each subplot indicates the variable name.
 
-## Using `plot_conditional_forecast!` to Overlay Multiple Conditional Forecasts
+## Overlaying Conditional Forecasts with `plot_conditional_forecast!`
 
-The `plot_conditional_forecast!` function (note the exclamation mark `!`) allows you to add additional conditional forecasts to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
+The `plot_conditional_forecast!` function (note the exclamation mark `!`) adds additional conditional forecasts to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
 - Different conditions on endogenous variables
 - Different shock assumptions
 - Different solution algorithms (e.g., first-order vs. second-order perturbation)
 - Different parameter values
 - Different initial states
 
-When using `plot_conditional_forecast!`, the new conditional forecast is overlaid on the existing plot with a different color. Condition markers also adopt the corresponding line color for easy identification. The legend below the plot automatically updates to indicate which line corresponds to which scenario, with a running ID number to reference different sets of conditions. If the scenarios differ in multiple dimensions, the legend references a table that shows all input differences.
+When using `plot_conditional_forecast!`, the new conditional forecast is overlaid on the existing plot with a different color. Condition markers also adopt the corresponding line color for easy identification. The legend below the plot automatically updates to indicate which line corresponds to which scenario.
 
-For example, to compare conditional forecasts with different parameter values:
+**Legend and table behavior:**
+- When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
+- When inputs differ in **multiple dimensions** (e.g., both conditions and parameters change), the legend shows sequential numbers (1, 2, 3, ...) with a running ID to reference different sets of conditions and inputs. A table below the plot details all input differences for each numbered scenario.
+- Additional tables below show the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.
+
+For example, to compare conditional forecasts with different parameter values (one dimension):
 
 ```julia
 # Plot conditional forecast with baseline parameters
@@ -101,7 +106,7 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
                           parameters = :β => 0.95)
 ```
 
-This will create a single plot showing both conditional forecasts with different colored lines and condition markers, making it easy to compare how parameter changes affect the model's conditional paths. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+This will create a single plot showing both conditional forecasts with different colored lines and condition markers. The legend will display the `β` values (0.99 and 0.95) to identify each line. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
 
 ## Conditions (Required)
 

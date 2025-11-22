@@ -73,18 +73,24 @@ plot_shock_decomposition(FS2000, data)
 
 This produces the same output as `plot_model_estimates` with `shock_decomposition = true`, which is the default setting for first order, pruned second order, and pruned third order solution algorithms.
 
-## Using `plot_model_estimates!` to Overlay Multiple Model Estimates
+## Overlaying Model Estimates with `plot_model_estimates!`
 
-The `plot_model_estimates!` function (note the exclamation mark `!`) allows you to add additional model estimates to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
+The `plot_model_estimates!` function (note the exclamation mark `!`) adds additional model estimates to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
 - Different datasets
 - Different solution algorithms (e.g., first-order vs. second-order perturbation)
 - Different parameter values
 - Different filtering methods (Kalman filter vs. inversion filter)
 - Smoothed vs. filtered estimates
 
-When using `plot_model_estimates!`, the new estimates are overlaid on the existing plot with a different color. The legend below the plot automatically updates to indicate which line corresponds to which scenario. Note that when combining multiple plots, shock decomposition is automatically disabled to avoid visual clutter - only the line plots showing the estimates are displayed. Different data inputs are indexed with a running number in the legend for easy reference.
+When using `plot_model_estimates!`, the new estimates are overlaid on the existing plot with a different color. The legend below the plot automatically updates to indicate which line corresponds to which scenario. Note that when combining multiple plots, shock decomposition is automatically disabled to avoid visual clutter - only the line plots showing the estimates are displayed.
 
-For example, to compare estimates from different datasets:
+**Legend and table behavior:**
+- When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
+- When inputs differ in **multiple dimensions** (e.g., different datasets and parameters), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.
+- Different data inputs are indexed with a running number in the legend for easy reference.
+- Additional tables below show the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.
+
+For example, to compare estimates from different datasets (one dimension):
 
 ```julia
 # Plot estimates using actual data
@@ -99,7 +105,7 @@ sim_data = simulate(FS2000)([:log_gy_obs,:log_gp_obs],:,:simulate)
 plot_model_estimates!(FS2000, sim_data)
 ```
 
-Or to compare different solution algorithms:
+Or to compare different solution algorithms (one dimension):
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
@@ -113,7 +119,7 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      algorithm = :second_order)
 ```
 
-This will create a single plot showing both sets of estimates with different colored lines, making it easy to compare how different specifications affect the filtered/smoothed estimates. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+This will create a single plot showing both sets of estimates with different colored lines. In the first example, the legend will show running numbers (1, 2) since different datasets are used. In the second example, the legend will display `:first_order` and `:second_order` to identify each line. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
 
 ## Data (Required)
 

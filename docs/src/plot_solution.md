@@ -67,17 +67,22 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A)
 
 The function plots each endogenous variable in period `t` against the state variable `A` in `t-1`. Each subplot shows how the variable changes on the y-axis as `A` varies within the specified range over the x-axis. The relevant steady state is indicated by a circle of the same color as the line. The title of each subplot indicates the variable name and the title of the overall plot indicates the model name, and page number (if multiple pages are needed). The legend below the plots indicate the solution algorithm used and the nature of the steady state (stochastic or non-stochastic).
 
-## Using `plot_solution!` to Overlay Multiple Policy Functions
+## Overlaying Policy Functions with `plot_solution!`
 
-The `plot_solution!` function (note the exclamation mark `!`) allows you to add additional policy functions to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
+The `plot_solution!` function (note the exclamation mark `!`) adds additional policy functions to an existing plot, enabling direct comparison between different scenarios. This is particularly useful for comparing:
 - Different solution algorithms (e.g., first-order vs. second-order vs. third-order perturbation)
 - Different parameter values
 - Models with and without occasionally binding constraints (OBC)
 - Different model specifications
 
-When using `plot_solution!`, the new policy function is overlaid on the existing plot with a different color. Both the policy function line and the steady state marker (circle) use the same color to make identification easier. The legend below the plot automatically updates to indicate which line corresponds to which scenario. If the scenarios differ in multiple dimensions (e.g., both algorithm and parameters), the legend references a table that shows all input differences.
+When using `plot_solution!`, the new policy function is overlaid on the existing plot with a different color. Both the policy function line and the steady state marker (circle) use the same color to make identification easier. The legend below the plot automatically updates to indicate which line corresponds to which scenario.
 
-For example, to compare multiple solution algorithms:
+**Legend and table behavior:**
+- When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
+- When inputs differ in **multiple dimensions** (e.g., both algorithm and parameters change), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.
+- Tables below the plot show relevant information such as input differences and steady state values to help identify differences across scenarios.
+
+For example, to compare multiple solution algorithms (one dimension):
 
 ```julia
 # Plot first-order solution
@@ -93,7 +98,7 @@ plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     algorithm = :pruned_third_order)
 ```
 
-This will create a single plot showing all three policy functions with different colored lines and steady state markers, making it easy to visualize how different solution methods affect the model's dynamics. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+This will create a single plot showing all three policy functions with different colored lines and steady state markers. The legend will display `:first_order`, `:pruned_second_order`, and `:pruned_third_order` to identify each line. The `!` convention is consistent across all plotting functions in MacroModelling.jl.
 
 ## State Variable (Required)
 
