@@ -82,15 +82,18 @@ When using `plot_conditional_forecast!`, the new conditional forecast can be eit
 - When inputs differ in **multiple dimensions** (e.g., both conditions and parameters change), the legend shows sequential numbers (1, 2, 3, ...) with a running ID to reference different sets of conditions and inputs. A table below the plot details all input differences for each numbered scenario.
 - Additional tables below show the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.
 
-For example, to compare conditional forecasts with different parameter values:
+**Example with single input difference:**
+
+When only one input differs (e.g., parameter values), the legend shows the parameter values directly:
 
 ```julia
-# Plot conditional forecast with baseline parameters
+# Set up conditions
 conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
                     Variables = [:Y], 
                     Periods = 1:1)
 conditions_ka[1,1] = 1.0
 
+# Plot conditional forecast with baseline parameters
 plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
                          conditions_ka,
                          parameters = :β => 0.99)
@@ -101,7 +104,26 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
                           parameters = :β => 0.95)
 ```
 
-The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+The legend will display the `β` values (0.99 and 0.95) to identify each forecast.
+
+**Example with multiple input differences:**
+
+When multiple inputs differ (e.g., both algorithm and parameters), the legend shows sequential numbers and a table details the differences:
+
+```julia
+# Plot with baseline settings
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         parameters = :β => 0.99)
+
+# Add with different algorithm AND parameters
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                          conditions_ka,
+                          parameters = :β => 0.95,
+                          algorithm = :second_order)
+```
+
+The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
 
 ## Conditions (Required)
 

@@ -70,7 +70,9 @@ When using `plot_irf!`, the new IRF is overlaid on the existing plot with a diff
 - When inputs differ in **multiple dimensions** (e.g., both algorithm and parameters change), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.
 - A separate table below shows the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.
 
-For example, to compare first-order and second-order solutions:
+**Example with single input difference:**
+
+When only one input differs (e.g., the solution algorithm), the legend shows the algorithm names directly:
 
 ```julia
 # Plot first-order solution
@@ -83,7 +85,26 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
     algorithm = :second_order)
 ```
 
-The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+The legend will display `:first_order` and `:second_order` to identify each line.
+
+**Example with multiple input differences:**
+
+When multiple inputs differ (e.g., both algorithm and parameters), the legend shows sequential numbers and a table details the differences:
+
+```julia
+# Plot with baseline parameters
+plot_irf(Gali_2015_chapter_3_nonlinear,
+    parameters = :β => 0.99,
+    shocks = :eps_a)
+
+# Add with different algorithm AND parameters
+plot_irf!(Gali_2015_chapter_3_nonlinear,
+    parameters = :β => 0.95,
+    shocks = :eps_a,
+    algorithm = :second_order)
+```
+
+The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
 
 ## Solution Algorithm
 

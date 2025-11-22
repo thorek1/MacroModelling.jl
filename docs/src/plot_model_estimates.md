@@ -85,22 +85,9 @@ When using `plot_model_estimates!`, the new estimates are overlaid on the existi
 - Different data inputs are indexed with a running number in the legend for easy reference.
 - Additional tables below show the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.
 
-For example, to compare estimates from different datasets:
+**Example with single input difference:**
 
-```julia
-# Plot estimates using actual data
-dat = CSV.read("test/data/FS2000_data.csv", DataFrame)
-data = KeyedArray(Array(dat)', Variable = Symbol.("log_".*names(dat)), Time = 1:size(dat)[1])
-data = log.(data)
-
-plot_model_estimates(FS2000, data)
-
-# Add estimates using simulated data
-sim_data = simulate(FS2000)([:log_gy_obs,:log_gp_obs],:,:simulate)
-plot_model_estimates!(FS2000, sim_data)
-```
-
-Or to compare different solution algorithms:
+When only one input differs (e.g., the solution algorithm), the legend shows the algorithm names directly:
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
@@ -114,7 +101,26 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      algorithm = :second_order)
 ```
 
-The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+The legend will display `:first_order` and `:second_order` to identify each estimate.
+
+**Example with multiple input differences:**
+
+When multiple inputs differ (e.g., both algorithm and parameters), the legend shows sequential numbers and a table details the differences:
+
+```julia
+# Plot with baseline parameters
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                    sim_data,
+                    parameters = :β => 0.99)
+
+# Add with different algorithm AND parameters
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β => 0.95,
+                     algorithm = :second_order)
+```
+
+The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
 
 ## Data (Required)
 

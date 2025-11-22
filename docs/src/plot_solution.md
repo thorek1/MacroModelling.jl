@@ -78,7 +78,9 @@ When using `plot_solution!`, the new policy function is overlaid on the existing
 - When inputs differ in **multiple dimensions** (e.g., both algorithm and parameters change), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.
 - Tables below the plot show relevant information such as input differences and steady state values to help identify differences across scenarios.
 
-For example, to compare multiple solution algorithms:
+**Example with single input difference:**
+
+When only one input differs (e.g., the solution algorithm), the legend shows the algorithm names directly:
 
 ```julia
 # Plot first-order solution
@@ -88,13 +90,26 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A,
 # Add second-order solution to the same plot
 plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
     algorithm = :second_order)
-
-# Add third-order solution to the same plot
-plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
-    algorithm = :pruned_third_order)
 ```
 
-The `!` convention is consistent across all plotting functions in MacroModelling.jl.
+The legend will display `:first_order` and `:second_order` to identify each policy function.
+
+**Example with multiple input differences:**
+
+When multiple inputs differ (e.g., both algorithm and parameters), the legend shows sequential numbers and a table details the differences:
+
+```julia
+# Plot with baseline parameters
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β => 0.99)
+
+# Add with different algorithm AND parameters
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β => 0.95,
+    algorithm = :second_order)
+```
+
+The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
 
 ## State Variable (Required)
 
