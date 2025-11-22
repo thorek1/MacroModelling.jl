@@ -57,7 +57,54 @@ plot_irf(Gali_2015_chapter_3_nonlinear)
 
 ![Gali 2015 IRF - eps_a shock](../assets/default_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-The plots display every endogenous variable affected for each exogenous shock. One plot/page consists of multiple subplots, one per variable, and shows the repsonse for one shock at a time (mentioned in the title). The title includes the model name, shock identifier, sign of the impulse (positive by default), and the page indicator (e.g., `(1/3)`). Each subplot shows the steady state as a horizontal reference line (non-stochastic for first-order solutions, stochastic for higher orders). For strictly positive variables, a secondary axis displays percentage deviations.
+The plots display every endogenous variable affected for each exogenous shock. One plot/page consists of multiple subplots, one per variable, and shows the response for one shock at a time (mentioned in the title). The title includes the model name, shock identifier, sign of the impulse (positive by default), and the page indicator (e.g., `(1/3)`). Each subplot shows the steady state as a horizontal reference line (non-stochastic for first-order solutions, stochastic for higher orders). For strictly positive variables, a secondary axis displays percentage deviations.
+
+## Combine or compare IRFs with `plot_irf!`
+
+The `plot_irf!` function (note the exclamation mark `!`) adds additional IRFs to an existing plot created with `plot_irf`, enabling direct comparison between different scenarios. Any input argument that affects the model's output (such as solution algorithm, parameter values, shocks, or initial states) can be varied to compare how these changes influence the impulse response functions. See the respective subsections below (e.g., [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
+
+When using `plot_irf!`, the new IRF can be either overlaid for comparison (default) or stacked to show cumulative effects, depending on the `plot_type` argument (see [Plot Type](#plot-type)). 
+
+**Legend and table behavior:**
+- When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
+- When inputs differ in **multiple dimensions** (e.g., both algorithm and parameters change), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.
+- A separate table below shows the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.
+
+**Example with single input difference:**
+
+When only one input differs (e.g., the solution algorithm), the legend shows the algorithm names directly:
+
+```julia
+# Plot first-order solution
+plot_irf(Gali_2015_chapter_3_nonlinear,
+    shocks = :eps_a)
+
+# Add second-order solution to the same plot
+plot_irf!(Gali_2015_chapter_3_nonlinear,
+    shocks = :eps_a,
+    algorithm = :second_order)
+```
+
+The legend will display `:first_order` and `:second_order` to identify each line.
+
+**Example with multiple input differences:**
+
+When multiple inputs differ (e.g., both algorithm and parameters), the legend shows sequential numbers and a table details the differences:
+
+```julia
+# Plot with baseline parameters
+plot_irf(Gali_2015_chapter_3_nonlinear,
+    parameters = :β => 0.99,
+    shocks = :eps_a)
+
+# Add with different algorithm AND parameters
+plot_irf!(Gali_2015_chapter_3_nonlinear,
+    parameters = :β => 0.95,
+    shocks = :eps_a,
+    algorithm = :second_order)
+```
+
+The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
 
 ## Solution Algorithm
 

@@ -73,6 +73,55 @@ plot_shock_decomposition(FS2000, data)
 
 This produces the same output as `plot_model_estimates` with `shock_decomposition = true`, which is the default setting for first order, pruned second order, and pruned third order solution algorithms.
 
+## Combine Model Estimates with `plot_model_estimates!`
+
+The `plot_model_estimates!` function (note the exclamation mark `!`) adds additional model estimates to an existing plot created with `plot_model_estimates`, enabling direct comparison between different scenarios. Any input argument that affects the model's output (such as datasets, solution algorithm, parameter values, filtering methods, or smoothing options) can be varied to compare how these changes influence the estimates. See the respective subsections below (e.g., [Data](#data-required), [Filter](#filter), [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
+
+When using `plot_model_estimates!`, the new estimates are overlaid on the existing plot with a different color. Note that when combining multiple plots, shock decomposition is automatically disabled to avoid visual clutter - only the line plots showing the estimates are displayed.
+
+**Legend and table behavior:**
+- When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
+- When inputs differ in **multiple dimensions** (e.g., different datasets and parameters), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.
+- Different data inputs are indexed with a running number in the legend for easy reference.
+- Additional tables below show the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.
+
+**Example with single input difference:**
+
+When only one input differs (e.g., the solution algorithm), the legend shows the algorithm names directly:
+
+```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+
+# Plot first-order estimates
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data)
+
+# Add second-order estimates to the same plot
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :second_order)
+```
+
+The legend will display `:first_order` and `:second_order` to identify each estimate.
+
+**Example with multiple input differences:**
+
+When multiple inputs differ (e.g., both algorithm and parameters), the legend shows sequential numbers and a table details the differences:
+
+```julia
+# Plot with baseline parameters
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                    sim_data,
+                    parameters = :β => 0.99)
+
+# Add with different algorithm AND parameters
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β => 0.95,
+                     algorithm = :second_order)
+```
+
+The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
+
 ## Data (Required)
 
 The `data` argument [Type: `KeyedArray{Float64}`] contains the data used for filtering or smoothing the model estimates. The first axis must contain variable names (as `Symbol`s or `String`s) and the second axis must contain period labels (as any format compatible with Plots.jl). Note that the second axis is used to fill the x-axis of the plots.

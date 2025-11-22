@@ -67,6 +67,50 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A)
 
 The function plots each endogenous variable in period `t` against the state variable `A` in `t-1`. Each subplot shows how the variable changes on the y-axis as `A` varies within the specified range over the x-axis. The relevant steady state is indicated by a circle of the same color as the line. The title of each subplot indicates the variable name and the title of the overall plot indicates the model name, and page number (if multiple pages are needed). The legend below the plots indicate the solution algorithm used and the nature of the steady state (stochastic or non-stochastic).
 
+## Combine Policy Functions with `plot_solution!`
+
+The `plot_solution!` function (note the exclamation mark `!`) adds additional policy functions to an existing plot created with `plot_solution`, enabling direct comparison between different scenarios. Any input argument that affects the model's output (such as solution algorithm, parameter values, or occasionally binding constraints) can be varied to compare how these changes influence the policy functions. See the respective subsections below (e.g., [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values), [Ignoring Occasionally Binding Constraints](#ignoring-occasionally-binding-constraints)) for details on specific arguments.
+
+When using `plot_solution!`, the new policy function is overlaid on the existing plot with a different color. Both the policy function line and the steady state marker (circle) use the same color to make identification easier.
+
+**Legend and table behavior:**
+- When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
+- When inputs differ in **multiple dimensions** (e.g., both algorithm and parameters change), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.
+- Tables below the plot show relevant information such as input differences and steady state values to help identify differences across scenarios.
+
+**Example with single input difference:**
+
+When only one input differs (e.g., the solution algorithm), the legend shows the algorithm names directly:
+
+```julia
+# Plot first-order solution
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    algorithm = :first_order)
+
+# Add second-order solution to the same plot
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    algorithm = :second_order)
+```
+
+The legend will display `:first_order` and `:second_order` to identify each policy function.
+
+**Example with multiple input differences:**
+
+When multiple inputs differ (e.g., both algorithm and parameters), the legend shows sequential numbers and a table details the differences:
+
+```julia
+# Plot with baseline parameters
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β => 0.99)
+
+# Add with different algorithm AND parameters
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β => 0.95,
+    algorithm = :second_order)
+```
+
+The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
+
 ## State Variable (Required)
 
 The `state` argument (type: `Union{Symbol, String}`) specifies which state variable to vary. This must be a state variable from the model (variables with lagged values). If a state variable is provided that is not part of the model's state vector, an error is raised and the valid state variables are listed.

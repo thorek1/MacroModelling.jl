@@ -71,6 +71,60 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 The function plots the paths of each endogenous variable conditional on fulfilling the specified conditions. If there was a condition provided for a variable it is represented by a marker (also indicated in the legend below the subplots). The title of the overall plot indicates the model name, and page number (if multiple pages are needed) and the title of each subplot indicates the variable name.
 
+## Combine or compare Conditional Forecasts with `plot_conditional_forecast!`
+
+The `plot_conditional_forecast!` function (note the exclamation mark `!`) adds additional conditional forecasts to an existing plot created with `plot_conditional_forecast`, enabling direct comparison between different scenarios. Any input argument that affects the model's output (such as conditions, shocks, solution algorithm, parameter values, or initial states) can be varied to compare how these changes influence the conditional forecasts. See the respective subsections below (e.g., [Conditions](#conditions-required), [Shocks](#shocks), [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
+
+When using `plot_conditional_forecast!`, the new conditional forecast can be either overlaid for comparison (default) or stacked to show cumulative effects, depending on the `plot_type` argument (see [Plot Type](#plot-type)). Condition markers adopt the corresponding line color for easy identification.
+
+**Legend and table behavior:**
+- When inputs differ in **one dimension** (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., `:first_order`, `:second_order`).
+- When inputs differ in **multiple dimensions** (e.g., both conditions and parameters change), the legend shows sequential numbers (1, 2, 3, ...) with a running ID to reference different sets of conditions and inputs. A table below the plot details all input differences for each numbered scenario.
+- Additional tables below show the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.
+
+**Example with single input difference:**
+
+When only one input differs (e.g., parameter values), the legend shows the parameter values directly:
+
+```julia
+# Set up conditions
+conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
+                    Variables = [:Y], 
+                    Periods = 1:1)
+conditions_ka[1,1] = 1.0
+
+# Plot conditional forecast with baseline parameters
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         parameters = :β => 0.99)
+
+# Add conditional forecast with different discount factor
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                          conditions_ka,
+                          parameters = :β => 0.95)
+```
+
+The legend will display the `β` values (0.99 and 0.95) to identify each forecast.
+
+**Example with multiple input differences:**
+
+When multiple inputs differ (e.g., both algorithm and parameters), the legend shows sequential numbers and a table details the differences:
+
+```julia
+# Plot with baseline settings
+plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
+                         conditions_ka,
+                         parameters = :β => 0.99)
+
+# Add with different algorithm AND parameters
+plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
+                          conditions_ka,
+                          parameters = :β => 0.95,
+                          algorithm = :second_order)
+```
+
+The legend will show `1` and `2`, with a table below the plot listing the parameter and algorithm values for each scenario.
+
 ## Conditions (Required)
 
 The `conditions` argument [Type: `Union{Matrix{Union{Nothing,Float64}}, SparseMatrixCSC{Float64}, KeyedArray{Union{Nothing,Float64}}, KeyedArray{Float64}}`] defines conditions for which to find the corresponding shocks. The input can have multiple formats, but for all types of entries the first dimension corresponds to variables and the second dimension to the number of periods. The conditions can be specified using a matrix of type `Matrix{Union{Nothing,Float64}}`. In this case the conditions are matrix elements of type `Float64` and all remaining (free) entries are `nothing`.
