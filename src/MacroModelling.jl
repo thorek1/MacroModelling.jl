@@ -2842,10 +2842,10 @@ function simplify(ex::Expr)::Union{Expr,Symbol,Int}
 
     for x in get_symbols(ex_ss)
         sym_value = SPyPyC.symbols(string(x), real = true, finite = true)
-	    Core.eval(SymPyWorkspace, :($x = $sym_value))
+        Core.eval(SymPyWorkspace, :($x = $sym_value))
     end
 
-	parsed = ex_ss |> x -> Core.eval(SymPyWorkspace, x) |> string |> Meta.parse
+    parsed = ex_ss |> x -> Core.eval(SymPyWorkspace, x) |> string |> Meta.parse
 
     postwalk(x ->   x isa Expr ? 
                         x.args[1] == :conjugate ? 
