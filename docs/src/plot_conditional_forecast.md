@@ -71,9 +71,9 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
 
 The function plots the paths of each endogenous variable conditional on fulfilling the specified conditions. If there was a condition provided for a variable it is represented by a marker (also indicated in the legend below the subplots). The title of the overall plot indicates the model name, and page number (if multiple pages are needed) and the title of each subplot indicates the variable name.
 
-## Overlaying Conditional Forecasts with `plot_conditional_forecast!`
+## Combine or compare Conditional Forecasts with `plot_conditional_forecast!`
 
-The `plot_conditional_forecast!` function (note the exclamation mark `!`) adds additional conditional forecasts to an existing plot, enabling direct comparison between different scenarios. You can vary any input argument that affects the model's output (such as conditions, shocks, solution algorithm, parameter values, or initial states) to compare how these changes influence the conditional forecasts. See the respective subsections below (e.g., [Conditions](#conditions-required), [Shocks](#shocks), [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
+The `plot_conditional_forecast!` function (note the exclamation mark `!`) adds additional conditional forecasts to an existing plot created with `plot_conditional_forecast`, enabling direct comparison between different scenarios. You can vary any input argument that affects the model's output (such as conditions, shocks, solution algorithm, parameter values, or initial states) to compare how these changes influence the conditional forecasts. See the respective subsections below (e.g., [Conditions](#conditions-required), [Shocks](#shocks), [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
 
 When using `plot_conditional_forecast!`, the new conditional forecast can be either overlaid for comparison (default) or stacked to show cumulative effects, depending on the `plot_type` argument (see [Plot Type](#plot-type)). Condition markers adopt the corresponding line color for easy identification.
 

@@ -67,9 +67,9 @@ plot_solution(Gali_2015_chapter_3_nonlinear, :A)
 
 The function plots each endogenous variable in period `t` against the state variable `A` in `t-1`. Each subplot shows how the variable changes on the y-axis as `A` varies within the specified range over the x-axis. The relevant steady state is indicated by a circle of the same color as the line. The title of each subplot indicates the variable name and the title of the overall plot indicates the model name, and page number (if multiple pages are needed). The legend below the plots indicate the solution algorithm used and the nature of the steady state (stochastic or non-stochastic).
 
-## Overlaying Policy Functions with `plot_solution!`
+## Combine Policy Functions with `plot_solution!`
 
-The `plot_solution!` function (note the exclamation mark `!`) adds additional policy functions to an existing plot, enabling direct comparison between different scenarios. You can vary any input argument that affects the model's output (such as solution algorithm, parameter values, or occasionally binding constraints) to compare how these changes influence the policy functions. See the respective subsections below (e.g., [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values), [Ignoring Occasionally Binding Constraints](#ignoring-occasionally-binding-constraints)) for details on specific arguments.
+The `plot_solution!` function (note the exclamation mark `!`) adds additional policy functions to an existing plot created with `plot_solution`, enabling direct comparison between different scenarios. You can vary any input argument that affects the model's output (such as solution algorithm, parameter values, or occasionally binding constraints) to compare how these changes influence the policy functions. See the respective subsections below (e.g., [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values), [Ignoring Occasionally Binding Constraints](#ignoring-occasionally-binding-constraints)) for details on specific arguments.
 
 When using `plot_solution!`, the new policy function is overlaid on the existing plot with a different color. Both the policy function line and the steady state marker (circle) use the same color to make identification easier.
 
