@@ -74,13 +74,11 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
 
     ctou, clandaw, cg, curvp, curvw = fixed_parameters
 
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+    parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
-        llh = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4, initial_covariance = :diagonal, filter = filter)
+    llh = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4, initial_covariance = :diagonal, filter = filter)
 
-        Turing.@addlogprob! llh
-    end
+    Turing.@addlogprob! (; loglikelihood=llh)
 end
 
 # estimate linear model
@@ -100,7 +98,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.SimulatedAnnealing())#,
-# #                                         initial_params = inits)
+# #                                         initial_params = (all_params = inits,))
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
@@ -116,7 +114,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear
 n_samples = 1000
 
 samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, 
-                            # initial_params = inits,
+                            # initial_params = (all_params = inits,),
                             progress = true)
 
 println(samps)
@@ -138,7 +136,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.SimulatedAnnealing())#,
-# #                                         initial_params = inits)
+# #                                         initial_params = (all_params = inits,))
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
@@ -153,7 +151,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 n_samples = 1000
 
 samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, 
-                            # initial_params = inits,
+                            # initial_params = (all_params = inits,),
                             progress = true)
 
 println(samps)
