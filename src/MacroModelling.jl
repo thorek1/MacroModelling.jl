@@ -732,7 +732,8 @@ function transform_obc(ex::Expr; avoid_solve::Bool = false)
     transformed_expr, reverse_dict = transform_expression(ex)
 
     for symbs in get_symbols(transformed_expr)
-        Core.eval(SymPyWorkspace, :($symbs = $SPyPyC.symbols($(string(symbs)), real = true, finite = true)))
+        sym_value = SPyPyC.symbols(string(symbs), real = true, finite = true)
+        Core.eval(SymPyWorkspace, :($symbs = $sym_value))
     end
 
     eq = Core.eval(SymPyWorkspace, transformed_expr)
@@ -2840,7 +2841,8 @@ function simplify(ex::Expr)::Union{Expr,Symbol,Int}
     ex_ss = convert_to_ss_equation(ex)
 
     for x in get_symbols(ex_ss)
-	    Core.eval(SymPyWorkspace, :($x = $SPyPyC.symbols($(string(x)), real = true, finite = true)))
+        sym_value = SPyPyC.symbols(string(x), real = true, finite = true)
+	    Core.eval(SymPyWorkspace, :($x = $sym_value))
     end
 
 	parsed = ex_ss |> x -> Core.eval(SymPyWorkspace, x) |> string |> Meta.parse
@@ -3401,13 +3403,16 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
 
     # Create symbols in SymPyWorkspace instead of MacroModelling namespace
     for pos in symbols_pos
-        Core.eval(SymPyWorkspace, :($pos = $SPyPyC.symbols($(string(pos)), real = true, finite = true, positive = true)))
+        sym_value = SPyPyC.symbols(string(pos), real = true, finite = true, positive = true)
+        Core.eval(SymPyWorkspace, :($pos = $sym_value))
     end
     for neg in symbols_neg
-        Core.eval(SymPyWorkspace, :($neg = $SPyPyC.symbols($(string(neg)), real = true, finite = true, negative = true)))
+        sym_value = SPyPyC.symbols(string(neg), real = true, finite = true, negative = true)
+        Core.eval(SymPyWorkspace, :($neg = $sym_value))
     end
     for none in symbols_none
-        Core.eval(SymPyWorkspace, :($none = $SPyPyC.symbols($(string(none)), real = true, finite = true)))
+        sym_value = SPyPyC.symbols(string(none), real = true, finite = true)
+        Core.eval(SymPyWorkspace, :($none = $sym_value))
     end
 
     symbolics(map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.ss_aux_equations),
