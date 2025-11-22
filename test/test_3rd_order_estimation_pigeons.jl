@@ -3,9 +3,10 @@ using Test
 import Turing
 import ADTypes: AutoZygote
 import Pigeons
-import Turing: NUTS, sample, logpdf, PG, IS, InitFromParams
+import Turing: NUTS, sample, logpdf, PG, IS
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
+import DynamicPPL
 
 # estimate highly nonlinear model
 
@@ -48,11 +49,13 @@ dists = [
 Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_failure_loglikelihood)
     all_params ~ Turing.arraydist(dists)
 
-    Turing.@addlogprob! (; loglikelihood=get_loglikelihood(m, 
-                                            data, 
-                                            all_params, 
-                                            algorithm = :third_order, 
-                                            on_failure_loglikelihood = on_failure_loglikelihood))
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        Turing.@addlogprob! get_loglikelihood(m, 
+                                                data, 
+                                                all_params, 
+                                                algorithm = :third_order, 
+                                                on_failure_loglikelihood = on_failure_loglikelihood)
+    end
 end
 
 
@@ -68,7 +71,7 @@ mode_estimateNM = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood,
                                                 Optim.NelderMead(),
                                                 iterations = 100,
                                                 # show_trace = true,
-                                                initial_params = InitFromParams((all_params = Caldara_et_al_2012_estim.parameter_values,)))
+                                                initial_params = Caldara_et_al_2012_estim.parameter_values)
 
 mode_estimateLBFGS = Turing.maximum_a_posteriori(Caldara_et_al_2012_loglikelihood, 
                                                 Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
@@ -83,7 +86,7 @@ println("Mode variable values (L-BFGS): $init_params")
 
 n_samples = 100
 
-samps = sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = AutoZygote()), n_samples, progress = true, initial_params = InitFromParams((all_params = init_params,)))
+samps = sample(Caldara_et_al_2012_loglikelihood, NUTS(250, 0.65, adtype = AutoZygote()), n_samples, progress = true, initial_params = init_params)
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
 
@@ -141,11 +144,3 @@ samps = MCMCChains.Chains(pt)
 
 
 println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
-
-@testset "Pigeons 3rd order estimation" begin
-    # Pigeons test completed successfully
-    @test true
-end
-
-
-FS2000 = nothing

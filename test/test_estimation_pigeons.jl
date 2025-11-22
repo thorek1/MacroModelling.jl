@@ -2,8 +2,9 @@ using MacroModelling
 using Test
 import Turing, Pigeons
 import ADTypes: AutoZygote
-import Turing: NUTS, sample, logpdf, InitFromParams
+import Turing: NUTS, sample, logpdf
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
+import DynamicPPL
 
 include("../models/FS2000.jl")
 
@@ -35,15 +36,17 @@ dists = [
 Turing.@model function FS2000_loglikelihood_function(data, m, on_failure_loglikelihood; verbose = false)
     all_params ~ Turing.arraydist(dists)
 
-    llh = get_loglikelihood(m, 
-                             data, 
-                             all_params, 
-                             on_failure_loglikelihood = on_failure_loglikelihood)
-    if verbose
-        @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
-    end
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        llh = get_loglikelihood(m, 
+                                 data, 
+                                 all_params, 
+                                 on_failure_loglikelihood = on_failure_loglikelihood)
+        if verbose
+            @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
+        end
 
-    Turing.@addlogprob! (; loglikelihood=llh)
+        Turing.@addlogprob! llh
+    end
 end
 
 # generate a Pigeons log potential

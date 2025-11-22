@@ -2,10 +2,11 @@ using MacroModelling
 using Test
 import Turing
 import Pigeons
-import Turing: NUTS, sample, logpdf, InitFromParams
+import Turing: NUTS, sample, logpdf
 import ADTypes: AutoZygote
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
+import DynamicPPL
 
 include("../models/FS2000.jl")
 
@@ -35,21 +36,23 @@ dists = [
 Turing.@model function FS2000_loglikelihood_function(data, m, filter, on_failure_loglikelihood; verbose = false)
     all_params ~ Turing.arraydist(dists)
 
-    llh = get_loglikelihood(m, 
-                            data, 
-                            all_params, 
-                            filter = filter,
-                            on_failure_loglikelihood = on_failure_loglikelihood)
-    if verbose
-        @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
-    end
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        llh = get_loglikelihood(m, 
+                                data, 
+                                all_params, 
+                                filter = filter,
+                                on_failure_loglikelihood = on_failure_loglikelihood)
+        if verbose
+            @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
+        end
 
-    Turing.@addlogprob! (; loglikelihood=llh)
+        Turing.@addlogprob! llh
+    end
 end
 
 n_samples = 1000
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = InitFromParams((all_params = FS2000.parameter_values,)))
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
@@ -59,7 +62,7 @@ sample_nuts = mean(samps).nt.mean
 modeFS2000i = Turing.maximum_a_posteriori(FS2000_loglikelihood_function(data, FS2000, :inversion, -Inf), 
                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
                                         adtype = AutoZygote(), 
-                                        initial_params = InitFromParams((all_params = FS2000.parameter_values,)))
+                                        initial_params = FS2000.parameter_values)
 
 println("Mode variable values: $(modeFS2000i.values); Mode loglikelihood: $(modeFS2000i.lp)")
 
@@ -89,11 +92,3 @@ pt = @time Pigeons.pigeons(target = FS2000_lp,
 samps = MCMCChains.Chains(pt)
 
 println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
-
-@testset "Pigeons 1st order inversion filter estimation" begin
-    # Pigeons test completed successfully
-    @test true
-end
-
-
-FS2000 = nothing

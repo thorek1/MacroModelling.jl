@@ -3,9 +3,10 @@ using Test
 import Turing
 import Pigeons
 import ADTypes: AutoZygote
-import Turing: NUTS, sample, logpdf, InitFromParams
+import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
+import DynamicPPL
 
 include("../models/FS2000.jl")
 
@@ -36,11 +37,13 @@ dists = [
 Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_loglikelihood)
     all_params ~ Turing.arraydist(dists)
 
-    Turing.@addlogprob! (; loglikelihood=get_loglikelihood(m, 
-                                            data, 
-                                            all_params, 
-                                            algorithm = algorithm, 
-                                            on_failure_loglikelihood = on_failure_loglikelihood))
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        Turing.@addlogprob! get_loglikelihood(m, 
+                                                data, 
+                                                all_params, 
+                                                algorithm = algorithm, 
+                                                on_failure_loglikelihood = on_failure_loglikelihood)
+    end
 end
 
 
@@ -48,7 +51,7 @@ Random.seed!(30)
 
 n_samples = 500
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = InitFromParams((all_params = FS2000.parameter_values,)))
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :second_order, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
@@ -107,11 +110,3 @@ samps = MCMCChains.Chains(pt)
 
 
 println("Mean variable values (second order): $(mean(samps).nt.mean)")
-
-@testset "Pigeons 2nd order estimation" begin
-    # Pigeons test completed successfully
-    @test true
-end
-
-
-FS2000 = nothing

@@ -3,9 +3,10 @@ using Test
 import Turing
 import Pigeons
 import ADTypes: AutoZygote
-import Turing: NUTS, sample, logpdf, InitFromParams
+import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
+import DynamicPPL
 
 include("../models/FS2000.jl")
 
@@ -36,16 +37,18 @@ dists = [
 Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_failure_loglikelihood; verbose = false)
     all_params ~ Turing.arraydist(dists)
 
-    llh = get_loglikelihood(m, 
-                             data, 
-                             all_params, 
-                             algorithm = algorithm, 
-                             on_failure_loglikelihood = on_failure_loglikelihood)
-    if verbose
-        @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
-    end
+    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
+        llh = get_loglikelihood(m, 
+                                 data, 
+                                 all_params, 
+                                 algorithm = algorithm, 
+                                 on_failure_loglikelihood = on_failure_loglikelihood)
+        if verbose
+            @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
+        end
 
-    Turing.@addlogprob! (; loglikelihood=llh)
+        Turing.@addlogprob! llh
+    end
 end
 
 
@@ -53,7 +56,7 @@ Random.seed!(30)
 
 n_samples = 500
 
-samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = InitFromParams((all_params = FS2000.parameter_values,)))
+samps = @time sample(FS2000_loglikelihood_function(data, FS2000, :pruned_second_order, -Inf), NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
@@ -81,7 +84,7 @@ if isfinite(LLH)
 
     pt = Pigeons.pigeons(target = FS2000_pruned2nd_lp, n_rounds = 0, n_chains = 1)
 else
-    pt = Pigeons.pigeons(target = FS2000_pruned2nd_lp, n_rounds = 0, n_chains = 1)
+    pt = Pigeons.pigeons(target = FS2000_2nd_lp, n_rounds = 0, n_chains = 1)
     replica = pt.replicas[end]
     XMAX = deepcopy(replica.state)
     LPmax = FS2000_pruned2nd_lp(XMAX)
@@ -112,11 +115,3 @@ samps = MCMCChains.Chains(pt)
 
 
 println("Mean variable values (pruned second order): $(mean(samps).nt.mean)")
-
-@testset "Pigeons pruned 2nd order estimation" begin
-    # Pigeons test completed successfully
-    @test true
-end
-
-
-FS2000 = nothing
