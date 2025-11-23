@@ -1,10 +1,9 @@
 using MacroModelling
 import ADTypes: AutoZygote
-import Turing, Pigeons
+import Turing
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL
 
 # load data
 dat = CSV.read("data/usmodel.csv", DataFrame)
@@ -74,13 +73,11 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
 
     ctou, clandaw, cg, curvp, curvw = fixed_parameters
 
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
+    parameters_combined = [ctou, clandaw, cg, curvp, curvw, calfa, csigma, cfc, cgy, csadjcost, chabb, cprobw, csigl, cprobp, cindw, cindp, czcap, crpi, crr, cry, crdy, crhoa, crhob, crhog, crhoqs, crhoms, crhopinf, crhow, cmap, cmaw, constelab, constepinf, constebeta, ctrend, z_ea, z_eb, z_eg, z_em, z_ew, z_eqs, z_epinf]
 
-        llh = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4, initial_covariance = :diagonal, filter = filter)
+    llh = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4, initial_covariance = :diagonal, filter = filter)
 
-        Turing.@addlogprob! llh
-    end
+    Turing.@addlogprob! llh
 end
 
 # estimate linear model
