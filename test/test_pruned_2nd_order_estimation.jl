@@ -43,7 +43,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m, algorithm, on_fail
         @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
     end
 
-    Turing.@addlogprob! (; loglikelihood=llh)
+    Turing.@addlogprob! llh
 end
 
 

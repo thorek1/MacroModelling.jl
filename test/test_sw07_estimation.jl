@@ -77,7 +77,7 @@ Turing.@model function SW07_loglikelihood_function(data, m, observables, fixed_p
 
     llh = get_loglikelihood(m, data(observables), parameters_combined, presample_periods = 4, initial_covariance = :diagonal, filter = filter)
 
-    Turing.@addlogprob! (; loglikelihood=llh)
+    Turing.@addlogprob! llh
 end
 
 # estimate linear model

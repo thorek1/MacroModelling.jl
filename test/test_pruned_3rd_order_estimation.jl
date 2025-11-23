@@ -55,7 +55,7 @@ Turing.@model function Caldara_et_al_2012_loglikelihood_function(data, m, on_fai
         @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
     end
 
-    Turing.@addlogprob! (; loglikelihood=llh)
+    Turing.@addlogprob! llh
 end
 
 
