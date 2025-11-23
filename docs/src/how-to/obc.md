@@ -408,7 +408,7 @@ import StatsPlots
 plot_irf(borrowing_constraint, negative_shock = true)
 ```
 
-![Negative_shock](../assets/borrowing_constraint__ε_neg.png)
+![Negative_shock](../assets/obc_neg_irf__borrowing_constraint__ε__1.png)
 
 and indeed in this case they move by the same amount. The difference between a positive and negative shock demonstrates the influence of the occasionally binding constraint.
 
@@ -424,7 +424,7 @@ sks = KeyedArray(shcks;  Shocks = [:ε], Periods = 1:30)  # KeyedArray is provid
 plot_irf(borrowing_constraint, shocks = sks, periods = 50)
 ```
 
-![Simulation](../assets/borrowing_constraint__obc.png)
+![Simulation](../assets/obc_shocks_irf__borrowing_constraint__shock_matrix__1.png)
 
 In this case the difference between the shocks and the impact of the constraint become quite obvious. Comparing this with a version of the model that ignores the occasionally binding constraint, in order to plot the impulse response functions without dynamically enforcing the constraint simply write:
 
@@ -432,7 +432,7 @@ In this case the difference between the shocks and the impact of the constraint 
 plot_irf(borrowing_constraint, shocks = sks, periods = 50, ignore_obc = true)
 ```
 
-![Simulation](../assets/borrowing_constraint__no_obc.png)
+![Simulation](../assets/obc_shocks_irf_no_obc__borrowing_constraint__shock_matrix__1.png)
 
 Another interesting statistic is model moments. As there are no theoretical moments reliance on simulated data is necessary:
 
