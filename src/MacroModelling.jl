@@ -71,8 +71,16 @@ Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, sp
 
 # Baremodule for SymPy symbol workspace to avoid polluting MacroModelling namespace
 baremodule SymPyWorkspace
-# This baremodule provides an isolated namespace for SymPy symbols
-# so they don't conflict with MacroModelling internals
+    # This baremodule provides an isolated namespace for SymPy symbols
+    # so they don't conflict with MacroModelling internals
+    
+    # Import essential operators and functions from Base that are needed for
+    # evaluating expressions containing SymPy symbols
+    import Base: +, -, *, /, ^, ==, !=, <, <=, >, >=
+    import Base: exp, log, sin, cos, tan, sqrt, abs, min, max
+    import Base: sum, prod, length
+    # Import Core essentials
+    using Core: Expr, Symbol
 end
 
 # Type definitions
