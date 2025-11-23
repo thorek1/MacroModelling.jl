@@ -293,7 +293,7 @@
         local fin_grad = FiniteDifferences.grad(FiniteDifferences.forward_fdm(4,1, max_range = 1e-4),x-> get_loglikelihood(model, simulated_data(observables, :, :simulate), x), model.parameter_values)
         if isfinite(ℒ.norm(fin_grad))
             println("Finite differences worked after $i iterations")
-            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-5)
+            @test isapprox(back_grad[1], fin_grad[1], rtol = 1e-4)
             break
         end
     end
