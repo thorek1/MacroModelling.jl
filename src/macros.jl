@@ -721,6 +721,15 @@ macro model(𝓂,ex...)
 
     @assert length(intersect(union(var,exo),parameters_in_equations)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(union(var,exo),parameters_in_equations)...]))
 
+    # Check that no variable, shock, or parameter names conflict with SymPyWorkspace reserved names
+    reserved_conflicts_vars = intersect(var, SYMPYWORKSPACE_RESERVED_NAMES)
+    reserved_conflicts_exo = intersect(exo, SYMPYWORKSPACE_RESERVED_NAMES)
+    reserved_conflicts_params = intersect(parameters_in_equations, SYMPYWORKSPACE_RESERVED_NAMES)
+    
+    @assert length(reserved_conflicts_vars) == 0 "The following variable names are reserved and cannot be used: " * repr(sort([reserved_conflicts_vars...]))
+    @assert length(reserved_conflicts_exo) == 0 "The following shock names are reserved and cannot be used: " * repr(sort([reserved_conflicts_exo...]))
+    @assert length(reserved_conflicts_params) == 0 "The following parameter names are reserved and cannot be used: " * repr(sort([reserved_conflicts_params...]))
+
     @assert !any(isnothing, future_not_past_and_mixed_idx) "The following variables appear in the future only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
 
     @assert !any(isnothing, past_not_future_and_mixed_idx) "The following variables appear in the past only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
@@ -1194,6 +1203,11 @@ macro parameters(𝓂,ex...)
     parameter_definitions)
     
     @assert length(par_defined_more_than_once) == 0 "Parameters can only be defined once. This is not the case for: " * repr([par_defined_more_than_once...])
+    
+    # Check that no parameter names conflict with SymPyWorkspace reserved names
+    all_params = union(calib_parameters, calib_parameters_no_var, calib_eq_parameters)
+    reserved_conflicts_params = intersect(all_params, SYMPYWORKSPACE_RESERVED_NAMES)
+    @assert length(reserved_conflicts_params) == 0 "The following parameter names are reserved and cannot be used: " * repr(sort([reserved_conflicts_params...]))
     
     # evaluate inputs where they are of the type: log(1/3) (no variables but need evaluation to becoe a Float64)
     for (i, v) in enumerate(calib_values_no_var)

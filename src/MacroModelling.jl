@@ -111,6 +111,27 @@ baremodule SymPyWorkspace
     Min = min
 end
 
+# Reserved names that cannot be used as variables, shocks, or parameters
+# These are functions and operators available in SymPyWorkspace
+const SYMPYWORKSPACE_RESERVED_NAMES = Set([
+    # Operators
+    Symbol("+"), Symbol("-"), Symbol("*"), Symbol("/"), Symbol("^"),
+    Symbol("=="), Symbol("!="), Symbol("<"), Symbol("<="), Symbol(">"), Symbol(">="),
+    # Mathematical functions
+    :exp, :log, :sin, :cos, :tan, :sqrt, :abs, :min, :max,
+    :sum, :prod, :length, :abs2,
+    # Special functions
+    :erfcinv, :erfc,
+    # Density functions
+    :norminvcdf, :norminv, :qnorm,
+    :normlogpdf, :normpdf, :normcdf,
+    :pnorm, :dnorm,
+    # Aliases
+    :Max, :Min,
+    # Core types
+    :Expr, :Symbol
+])
+
 # Type definitions
 const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
 const String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
