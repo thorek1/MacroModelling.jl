@@ -2636,7 +2636,7 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      parameters = [:β => 0.98, :τ => 0.25],
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_multi_params_2)
 
-params = get_parameters(Gali_2015_chapter_3_nonlinear, values = true)
+# params = get_parameters(Gali_2015_chapter_3_nonlinear, values = true)
 # 16-element Vector{Pair{String, Float64}}:
 #       "σ" => 1.0
 #       "φ" => 5.0
@@ -2655,7 +2655,7 @@ params = get_parameters(Gali_2015_chapter_3_nonlinear, values = true)
 #   "std_z" => 0.05
 #  "std_nu" => 0.0025
 
-param_vals = [p[2] for p in params]
+# param_vals = [p[2] for p in params]
 # 16-element Vector{Float64}:
 #  1.0
 #  5.0
@@ -2674,10 +2674,10 @@ param_vals = [p[2] for p in params]
 #  0.05
 #  0.0025
 
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
-                     sim_data,
-                     parameters = param_vals,
-                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_multi_params_3)
+# plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+#                      sim_data,
+#                      parameters = param_vals,
+#                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_multi_params_3)
 
 
 ## Plot Labels
@@ -2697,27 +2697,27 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 
 # ![Gali 2015 conditional forecast - custom labels](../assets/cnd_fcst_label__Gali_2015_chapter_3_nonlinear__2.png)
 
-plot_model_estimates(Gali_2015_chapter_3_nonlinear,
-                     sim_data,
-                     parameters = (:β => 0.99, :τ => 0.0),
-                     label = :standard)
+# plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+#                      sim_data,
+#                      parameters = (:β => 0.99, :τ => 0.0),
+#                      label = :standard)
 
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
-    sim_data,
-    parameters = (:β => 0.95, :τ => 0.5),
-    label = :alternative,
-                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_labels_symbol)
+# plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+#     sim_data,
+#     parameters = (:β => 0.95, :τ => 0.5),
+#     label = :alternative,
+#                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_labels_symbol)
 
-plot_model_estimates(Gali_2015_chapter_3_nonlinear,
-    sim_data,
-    parameters = (:β => 0.99, :τ => 0.0),
-    label = 0.99)
+# plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+#     sim_data,
+#     parameters = (:β => 0.99, :τ => 0.0),
+#     label = 0.99)
 
-plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
-    sim_data,
-    parameters = (:β => 0.95, :τ => 0.5),
-    label = 0.95,
-                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_labels_value)
+# plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+#     sim_data,
+#     parameters = (:β => 0.95, :τ => 0.5),
+#     label = 0.95,
+#                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_labels_value)
 
 
 ## Plot Attributes

@@ -4,7 +4,7 @@ The `plot_solution` function visualizes the solution of the model (mapping of pa
 
 The relevant steady state is plotted along with the mapping from the chosen past state to one present variable per subplot. All other (non-chosen) states remain in the relevant steady state.
 
-In the case of pruned higher order solutions there are as many (latent) state vectors as the perturbation order. The first and third order baseline state vectors are the non-stochastic steady state and the second order baseline state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order baseline state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non-stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of infinitely many possible mappings.
+In the case of pruned higher order solutions there are as many (latent) state vectors as the perturbation order. The first and third order state vectors are the non-stochastic steady state and the second order state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order state. The plot shows the mapping from `σ` standard deviations (first order) added to the first order non-stochastic steady state and the present variables. Note that there is no unique mapping from the "pruned" states and the "actual" reported state. Hence, the plots shown are just one realisation of infinitely many possible mappings.
 
 If the model contains occasionally binding constraints and `ignore_obc = false` they are enforced using shocks.
 

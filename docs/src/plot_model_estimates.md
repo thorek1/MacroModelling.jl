@@ -73,7 +73,7 @@ plot_shock_decomposition(FS2000, data)
 
 This produces the same output as `plot_model_estimates` with `shock_decomposition = true`, which is the default setting for first order, pruned second order, and pruned third order solution algorithms.
 
-## Combine Model Estimates with `plot_model_estimates!`
+## Compare Model Estimates with `plot_model_estimates!`
 
 The `plot_model_estimates!` function (note the exclamation mark `!`) adds additional model estimates to an existing plot created with `plot_model_estimates`, enabling direct comparison between different scenarios. Any input argument that affects the model's output (such as datasets, solution algorithm, parameter values, filtering methods, or smoothing options) can be varied to compare how these changes influence the estimates. See the respective subsections below (e.g., [Data](#data-required), [Filter](#filter), [Solution Algorithm](#solution-algorithm), [Parameter Values](#parameter-values)) for details on specific arguments.
 
@@ -105,6 +105,8 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
 ![Gali 2015 model estimates - first and second order](../assets/estimates_first_and_second_order__Gali_2015_chapter_3_nonlinear__2.png)
 
 The legend will display `:first_order` and `:second_order` to identify each estimate.
+
+The subplot y-axis labels change depending on the steady state values and data availability for each scenario. If the steady state values differ across scenarios and there is no data for a variable, the y-axis label will indicate that the lines are in absolute deviations from the steady state. In that case no percent deviation is shown on the secondary y-axis, as the steady state values differ. In case the steady state values are the same across scenarios or there is data for a variable, the y-axis label indicates absolute levels on the primary y-axis. If the steady state values are the same and if the values are strictly positive the secondary y-axis shows the percent deviation scale. In case the steady state values differ but there is data for a variable, then levels are shown without percent deviation as the secondary axis and the steady states are shown as horizontal black lines.
 
 **Example with multiple input differences:**
 
@@ -790,8 +792,6 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
                      parameters = param_vals)
 ```
 
-![Gali 2015 model estimates - multiple parameter changes (3)](../assets/estimates_multi_params_3__Gali_2015_chapter_3_nonlinear__2.png)
-
 ## Plot Labels
 
 The `label` argument (type: `Union{String,Symbol,Real}`) controls labels that appear in plots when using the `plot_conditional_forecast!` function to overlay multiple conditional forecasts. By default, labels take on the values of the one dimensional input that differs and are sequential numbers in case the input differs along more than one dimension. Furthermore, custom labels can be provided using this argument. Acceptable inputs are a `String`, `Symbol`, or a `Real`.
@@ -831,8 +831,6 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
     label = :alternative)
 ```
 
-![Gali 2015 model estimates - custom labels (Symbol)](../assets/estimates_labels_symbol__Gali_2015_chapter_3_nonlinear__2.png)
-
 or with `Real` inputs:
 
 ```julia
@@ -846,8 +844,6 @@ plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
     parameters = (:β => 0.95, :τ => 0.5),
     label = 0.95)
 ```
-
-![Gali 2015 model estimates - custom labels (Value)](../assets/estimates_labels_value__Gali_2015_chapter_3_nonlinear__2.png)
 
 ## Plot Attributes
 

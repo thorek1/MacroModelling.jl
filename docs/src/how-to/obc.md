@@ -70,7 +70,6 @@ using MacroModelling
     M_real[0] = Y[0] / R[0] ^ η
 
     R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
-
 end
 ```
 
@@ -113,7 +112,6 @@ Next the parameters are defined including the new parameter defining the effecti
     std_z = .05
 
     std_nu = .0025
-
 end
 ```
 
@@ -126,13 +124,13 @@ SS(Gali_2015_chapter_3_obc)
 SS(Gali_2015_chapter_3_obc)(:R,:)
 ```
 
-There are a few things to note here. First, the NSSS values of the auxiliary variables related to the occasionally binding constraint are shown. Second, the NSSS value of `R` is 1, and thereby the effective lower bound is binding in the NSSS. While this is a viable NSSS it is not a viable approximation point for perturbation. A perturbation solution can only be found if the effective lower bound is not binding in NSSS. Calling `get_solution` reveals that there is no stable solution at this NSSS:
+There are a few things to note here. First, the NSSS values of the auxiliary variables related to the occasionally binding constraint are shown. Second, the NSSS value of `R` is 1.010101, and thereby the effective lower bound (ELB) is not binding in the NSSS. If the ELB were not binding, then the NSSS would not be a viable approximation point for perturbation. A perturbation solution can only be found if the effective lower bound is not binding in NSSS. Calling `get_solution` reveals that there is a stable solution at this NSSS:
 
 ```@repl howto_obc
 get_solution(Gali_2015_chapter_3_obc)
 ```
 
-In order to get the other viable NSSS the values of R need to be restricted to be larger than the effective lower bound. This can be done by adding a constraint on the variable in the `@parameter` section. The model can be redefined:
+In case of a model or parameterisation that results in a NSSS where the ELB is binding, it is possible to add a restriction on the NSSS values so that the NSSS with binding ELB is excluded. With the above model, in order to exclude the non-viable NSSS the values of `R` needs to be restricted to be larger than the effective lower bound. This can be done by adding a constraint on the variable in the `@parameter` section. The model can be redefined:
 
 ```@repl howto_obc
 @model Gali_2015_chapter_3_obc begin
@@ -181,7 +179,6 @@ In order to get the other viable NSSS the values of R need to be restricted to b
     M_real[0] = Y[0] / R[0] ^ η
 
     R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
-
 end
 
 @parameters Gali_2015_chapter_3_obc begin
@@ -242,6 +239,8 @@ Having defined the system with an occasionally binding constraint the model can 
 
 ```@repl howto_obc
 import StatsPlots
+import Random
+Random.seed!(20)
 plot_simulations(Gali_2015_chapter_3_obc)
 ```
 
@@ -252,6 +251,7 @@ In the background an optimisation problem is set up to find the smallest shocks 
 Next the effective lower bound will be changed to `0.99` and plotted once more:
 
 ```@repl howto_obc
+Random.seed!(20)
 plot_simulations(Gali_2015_chapter_3_obc, parameters = :R̄ => 0.99)
 ```
 
@@ -262,6 +262,7 @@ Now, the effect of the effective lower bound becomes less important as it binds 
 If the occasionally binding constraint should be ignored simply call:
 
 ```@repl howto_obc
+Random.seed!(20)
 plot_simulations(Gali_2015_chapter_3_obc, ignore_obc = true)
 ```
 
@@ -275,7 +276,7 @@ The impulse response functions can be plotted for the `eps_z` shock, while setti
 plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, parameters = :R̄ => 1.0)
 ```
 
-![IRF_elb](../assets/obc_irf_higher_bound__Gali_2015_chapter_3_obc__simulation__1.png)
+![IRF_elb](../assets/obc_irf_higher_bound__Gali_2015_chapter_3_obc__eps_z__1.png)
 
 As can be seen `R` remains above the effective lower bound in the first period.
 
@@ -301,7 +302,12 @@ The effective lower bound is binding after all three shocks but the length of th
 Last but not least, the simulated moments of the model can be obtained (theoretical moments are not available):
 
 ```@repl howto_obc
-sims = get_irf(Gali_2015_chapter_3_obc, periods = 1000, shocks = :simulate, levels = true)
+Random.seed!(922)
+sims = get_irf(Gali_2015_chapter_3_obc, 
+                parameters = :R̄ => 0.99, 
+                periods = 500, 
+                shocks = :simulate, 
+                levels = true)
 ```
 
 The mean and standard deviation of output can be examined:
@@ -393,7 +399,7 @@ This can be checked by getting the NSSS:
 SS(borrowing_constraint)
 ```
 
-A common task is to plot impulse response function for positive and negative shocks. This should allow understanding the role of the constraint.
+A common task is to plot impulse response functions for positive and negative shocks. This should allow understanding the role of the constraint.
 
 First, the StatsPlots package needs to be imported and then the positive shock can be plotted.
 
@@ -402,7 +408,7 @@ import StatsPlots
 plot_irf(borrowing_constraint)
 ```
 
-![Positive_shock](../assets/borrowing_constraint__ε_pos.png)
+![Positive_shock](../assets/obc_irf__borrowing_constraint__ε__1.png)
 
 The constraint is no longer binding in the first five periods because `Y` and `B` do not increase by the same amount. They should move by the same amount in the case of a negative shock:
 
@@ -411,7 +417,7 @@ import StatsPlots
 plot_irf(borrowing_constraint, negative_shock = true)
 ```
 
-![Negative_shock](../assets/borrowing_constraint__ε_neg.png)
+![Negative_shock](../assets/obc_neg_irf__borrowing_constraint__ε__1.png)
 
 and indeed in this case they move by the same amount. The difference between a positive and negative shock demonstrates the influence of the occasionally binding constraint.
 
@@ -427,7 +433,7 @@ sks = KeyedArray(shcks;  Shocks = [:ε], Periods = 1:30)  # KeyedArray is provid
 plot_irf(borrowing_constraint, shocks = sks, periods = 50)
 ```
 
-![Simulation](../assets/borrowing_constraint__obc.png)
+![Simulation](../assets/obc_shocks_irf__borrowing_constraint__shock_matrix__1.png)
 
 In this case the difference between the shocks and the impact of the constraint become quite obvious. Comparing this with a version of the model that ignores the occasionally binding constraint, in order to plot the impulse response functions without dynamically enforcing the constraint simply write:
 
@@ -435,12 +441,16 @@ In this case the difference between the shocks and the impact of the constraint 
 plot_irf(borrowing_constraint, shocks = sks, periods = 50, ignore_obc = true)
 ```
 
-![Simulation](../assets/borrowing_constraint__no_obc.png)
+![Simulation](../assets/obc_shocks_irf_no_obc__borrowing_constraint__shock_matrix__1.png)
 
 Another interesting statistic is model moments. As there are no theoretical moments reliance on simulated data is necessary:
 
 ```@repl howto_obc
-sims = get_irf(borrowing_constraint, periods = 1000, shocks = :simulate, levels = true)
+Random.seed!(17339053787832050337)
+sims = get_irf(borrowing_constraint, 
+                periods = 300, 
+                shocks = :simulate, 
+                levels = true)
 ```
 
 Let's look at the mean and standard deviation of borrowing:
@@ -468,4 +478,4 @@ and the theoretical standard deviation:
 get_std(borrowing_constraint)
 ```
 
-The mean of borrowing is lower in the model with occasionally binding constraints compared to the model without and the standard deviation is higher.
+The mean and standard deviation of borrowing is lower in the model with occasionally binding constraints compared to the model without.

@@ -142,7 +142,7 @@ plot_fevd(Smets_Wouters_2007_linear, periods = 12)
 
 The `variables` argument (default: `:all`) specifies for which variables to show results. Variable names can be specified as either a `Symbol` or `String` (e.g. `:y` or `"y"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). `:all_excluding_obc` includes all variables except those related to occasionally binding constraints. `:all` includes all variables.
 
-Specific variables can be selected to plot. The following example selects output (`Y`), consumption (`c`), investment (`inve`), inflation (`pinf`), wages (`w`), and labor (`lab`) using a `Vector` of `Symbol`s:
+Specific variables can be selected to plot. The following example selects output `Y`, consumption `c`, investment `inve`, inflation `pinf`, wages `w`, and labor `lab` using a `Vector` of `Symbol`s:
 
 ```julia
 plot_fevd(Smets_Wouters_2007_linear,
@@ -269,7 +269,7 @@ plot_fevd(Smets_Wouters_2007_linear,
 
 ![Smets and Wouters 2007 FEVD - different parameter values](../assets/param_change__Smets_Wouters_2007_linear__2.png)
 
-The shock contributions changed as a result of changing the discount factor.
+The shock contributions changed as a result of changing the shock standard deviation.
 
 Multiple parameters can also be changed simultaneously. This example changes `z_eg` to 1.5 and `crpi` to 1.75 using a `Tuple` of `Pair`s and define the variables with `Symbol`s:
 
@@ -384,7 +384,7 @@ Related arguments control the saving behavior:
 - `save_plots_path` (default: `"."`, type: `String`): path where plots are saved. If the path does not exist, it will be created automatically.
 - `save_plots_name` (default: `"fevd"`, type: `Union{String, Symbol}`): prefix prepended to the filename when saving plots.
 
-Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., `fevd__ModelName__shock__1.pdf`).
+Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., `fevd__ModelName__1.pdf`).
 
 The following example saves all policy functions for the `Smets_Wouters_2007_linear` model as PNG files in the `../plots` directory with `fevd_plot` as the filename prefix:
 
@@ -406,7 +406,15 @@ For example, to rename variables for clearer display:
 
 ```julia
 plot_fevd(Smets_Wouters_2007_linear,
-    rename_dictionary = Dict(:y => "Output", :pinfobs => "Inflation", :robs => "Interest Rate", :inve => "Investment", :c => "Consumption", :w => "Wages", :lab => "Labor"))
+        rename_dictionary = Dict(
+            :y => "Output", 
+            :pinfobs => "Inflation", 
+            :robs => "Interest Rate", 
+            :inve => "Investment", 
+            :c => "Consumption", 
+            :w => "Wages", 
+            :lab => "Labor"
+        ))
 ```
 
 ![Smets and Wouters 2007 FEVD - rename dictionary](../assets/rename_dict_fevd__Smets_Wouters_2007_linear__1.png)
