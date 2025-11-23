@@ -51,14 +51,14 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, -Inf)
 
 n_samples = 1000
 
-samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = FS2000.parameter_values)
-
-println("Mean variable values (ForwardDiff): $(mean(samps).nt.mean)")
-
 samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
 
-
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+
+samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = FS2000.parameter_values)
+
+
+println("Mean variable values (ForwardDiff): $(mean(samps).nt.mean)")
 
 sample_nuts = mean(samps).nt.mean
 
