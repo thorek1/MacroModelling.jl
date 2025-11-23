@@ -1,7 +1,7 @@
 using MacroModelling
 import Turing
 import ADTypes: AutoZygote
-import Turing: NUTS, sample, logpdf, InitFromParams
+import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
 
@@ -51,11 +51,11 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, -Inf)
 
 n_samples = 1000
 
-samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = InitFromParams((all_params = FS2000.parameter_values,)))
+samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = (all_params = FS2000.parameter_values,))
 
 println("Mean variable values (ForwardDiff): $(mean(samps).nt.mean)")
 
-samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = InitFromParams((all_params = FS2000.parameter_values,)))
+samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = (all_params = FS2000.parameter_values,))
 
 
 println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
@@ -71,7 +71,7 @@ modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
                                         # maxiters = 100,
                                         # lb = [0,0,-10,-10,0,0,0,0,0], 
                                         # ub = [1,1,10,10,1,1,1,100,100], 
-                                        initial_params = InitFromParams((all_params = FS2000.parameter_values,)))
+                                        initial_params = (all_params = FS2000.parameter_values,))
 
 println("Mode variable values: $(modeFS2000.values); Mode loglikelihood: $(modeFS2000.lp)")
 
