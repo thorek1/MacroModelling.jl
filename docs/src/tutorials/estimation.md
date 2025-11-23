@@ -118,9 +118,7 @@ prior_distributions = [
 Turing.@model function FS2000_loglikelihood_function(prior_distributions, data, m; verbose = false)
     parameters ~ Turing.arraydist(prior_distributions)
 
-    Turing.@addlogprob! get_loglikelihood(m, 
-                                data, 
-                                parameters)
+    Turing.@addlogprob! get_loglikelihood(m, data, parameters)
 end
 ```
 

@@ -272,7 +272,7 @@ The impulse response functions can be plotted for the `eps_z` shock, while setti
 plot_irf(Gali_2015_chapter_3_obc, shocks = :eps_z, parameters = :R̄ => 1.0)
 ```
 
-![IRF_elb](../assets/obc_irf_higher_bound__Gali_2015_chapter_3_obc__simulation__1.png)
+![IRF_elb](../assets/obc_irf_higher_bound__Gali_2015_chapter_3_obc__eps_z__1.png)
 
 As can be seen `R` remains above the effective lower bound in the first period.
 
@@ -297,8 +297,12 @@ The effective lower bound is binding after all three shocks but the length of th
 
 Last but not least, the simulated moments of the model can be obtained (theoretical moments are not available):
 
-```@repl howto_obc
-sims = get_irf(Gali_2015_chapter_3_obc, periods = 1000, shocks = :simulate, levels = true)
+```@repl howto_obc; setup = :(Random.seed!(922))
+sims = get_irf(Gali_2015_chapter_3_obc, 
+                parameters = :R̄ => 0.99, 
+                periods = 500, 
+                shocks = :simulate, 
+                levels = true)
 ```
 
 The mean and standard deviation of output can be examined:
@@ -436,8 +440,11 @@ plot_irf(borrowing_constraint, shocks = sks, periods = 50, ignore_obc = true)
 
 Another interesting statistic is model moments. As there are no theoretical moments reliance on simulated data is necessary:
 
-```@repl howto_obc
-sims = get_irf(borrowing_constraint, periods = 1000, shocks = :simulate, levels = true)
+```@repl howto_obc; setup = :(Random.seed!(17339053787832050337))
+sims = get_irf(borrowing_constraint, 
+                periods = 300, 
+                shocks = :simulate, 
+                levels = true)
 ```
 
 Let's look at the mean and standard deviation of borrowing:
@@ -465,4 +472,4 @@ and the theoretical standard deviation:
 get_std(borrowing_constraint)
 ```
 
-The mean of borrowing is lower in the model with occasionally binding constraints compared to the model without and the standard deviation is higher.
+The mean and standard deviation of borrowing is lower in the model with occasionally binding constraints compared to the model without.
