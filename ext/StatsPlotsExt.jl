@@ -336,12 +336,12 @@ function plot_model_estimates(𝓂::ℳ,
     data_in_deviations                          .+= SSS_delta[obs_idx]
 
     # Compute unconditional forecast if forecast_periods > 0
-    forecast_data = nothing
     forecast_irf = nothing
+    forecast_data = nothing
     extended_x_axis = x_axis
     if forecast_periods > 0
         # Get the final state from the last period of filtered data
-        final_state = variables_to_plot[:, end]
+        final_filtered_state = variables_to_plot[:, end]
         
         # Compute the unconditional forecast (IRF with no shocks from the final state)
         forecast_irf = get_irf(𝓂,
@@ -349,7 +349,7 @@ function plot_model_estimates(𝓂::ℳ,
                                algorithm = algorithm,
                                shocks = :none,
                                periods = forecast_periods,
-                               initial_state = final_state .- reference_steady_state,
+                               initial_state = final_filtered_state .- reference_steady_state,
                                levels = true,
                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                sylvester_algorithm = sylvester_algorithm,
@@ -947,12 +947,12 @@ function plot_model_estimates!(𝓂::ℳ,
     data_in_deviations                          .+= SSS_delta[obs_idx]
 
     # Compute unconditional forecast if forecast_periods > 0
+    forecast_irf = nothing
     forecast_data = nothing
     extended_x_axis = x_axis
-    forecast_irf = nothing
     if forecast_periods > 0
         # Get the final state from the last period of filtered data
-        final_state = variables_to_plot[:, end]
+        final_filtered_state = variables_to_plot[:, end]
         
         # Compute the unconditional forecast (IRF with no shocks from the final state)
         forecast_irf = get_irf(𝓂,
@@ -960,7 +960,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                algorithm = algorithm,
                                shocks = :none,
                                periods = forecast_periods,
-                               initial_state = final_state .- reference_steady_state,
+                               initial_state = final_filtered_state .- reference_steady_state,
                                levels = true,
                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                sylvester_algorithm = sylvester_algorithm,
