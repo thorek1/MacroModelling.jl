@@ -6,9 +6,14 @@ using Zygote, ForwardDiff
 import MacroModelling: clear_solution_caches!
 
 # TODO: 
+# - continue model estimates after data
 # - write dling, info warnings
+# - check that tests are reflected in docs
+# - go through docstrings once more of the plotting functions
+# - check the point about certinaty equivalence, risk effects, and precautionary motives at certain orders
 
 # DONE:
+# - mention ! options early on in docs
 # - write tests and docs for the new functions
 # - revisit plot_solution + ! version of it
 # - inform user when settings have no effect (and reset them) e.g. warmup iterations is only relevant for inversion filter
@@ -41,7 +46,14 @@ m = Backus_Kehoe_Kydland_1992
 
 include("models/Caldara_et_al_2012_estim.jl")
 m2 = Caldara_et_al_2012_estim
+get_variables(m2)
+kk = get_statistics(m2, m2.parameter_values,covariance = [[:y, :c], [:k, :i]],variance = [:k, :i])
+get_covariance(m2)
+kk[:covariance]
 
+get_conditional_variance_decomposition(m)
+
+kk[:variance]
 algorithm = :first_order
 
 
