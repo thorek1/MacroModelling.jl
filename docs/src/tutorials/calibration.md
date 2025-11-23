@@ -61,7 +61,6 @@ using MacroModelling
     r_real_ann[0] = 4 * log(realinterest[0])
 
     M_real[0] = Y[0] / R[0] ^ η
-
 end
 ```
 
@@ -104,7 +103,6 @@ Next the parameters of the model need to be added. The macro [`@parameters`](@re
     std_z = .05
 
     std_nu = .0025
-
 end
 ```
 

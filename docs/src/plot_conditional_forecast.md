@@ -109,6 +109,8 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 
 The legend will display the `β` values (0.99 and 0.95) to identify each forecast.
 
+The subplot y-axis labels change depending on the steady state values for each scenario. If the steady state values differ for a variable across scenarios, the y-axis label will indicate that the lines are in absolute deviations from the steady state. In that case no percent deviation is shown on the secondary y-axis, as the steady state values differ. In case the steady state values are the same across scenarios, the y-axis label indicates absolute levels on the primary y-axis and if the values are strictly positive the secondary y-axis shows the percent deviation scale.
+
 **Example with multiple input differences:**
 
 When multiple inputs differ (e.g., both algorithm and parameters), the legend shows sequential numbers and a table details the differences:
@@ -394,7 +396,7 @@ plot_conditional_forecast(Gali_2015_chapter_3_nonlinear,
                          algorithm = :second_order)
 ```
 
-![Gali 2015 conditional forecast - second order](../assets/cnd_fcst_second_order__Gali_2015_chapter_3_nonlinear__1.png)
+![Gali 2015 conditional forecast - second order](../assets/cnd_fcst_second_order__Gali_2015_chapter_3_nonlinear__2.png)
 
 The most notable difference is that at second order, dynamics are observed for `S`, which remains constant at first order (under certainty equivalence). Additionally, the steady state levels change because the stochastic steady state incorporates precautionary behavior (see horizontal lines). This has consequences for the conditions as they are in levels.
 
@@ -1028,7 +1030,7 @@ The `plot_type` argument (default: `:compare`, type: `Symbol`) determines how co
 
 The `:stack` option is particularly useful when analyzing scenarios composed of differnt conditions or shock inputs. The `:compare` option is better suited for comparing conditional forecasts across different parameter values or model specifications.
 
-### Using `:stack` for Layered Shock Scenarios
+### Using `:stack` to layer scenarios
 
 When analyzing a scenario composed of different conditions or shocks, `:stack` visualizes the cumulative impact. For example, plot two conditions on endogenous variables:
 
@@ -1056,11 +1058,11 @@ plot_conditional_forecast!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 conditional forecast - stacked](../assets/cnd_fcst_stack__Gali_2015_chapter_3_nonlinear__2.png)
 
-The `:stack` visualization shows how each condition contributes to the combined path, with the second condition's effect layered on top of the first.
+The `:stack` visualization shows how each condition contributes to the combined path, with the second condition's effect layered on top of the first, and the solid black line representing the total effect.
 
-### Using `:compare` for Parameter Comparisons
+### Using `:compare` for scenario comparisons
 
-When comparing conditional forecasts across different parameter values, `:compare` displays the responses as separate lines:
+When comparing conditional forecasts across different scenarios, `:compare` displays the paths as separate lines:
 
 ```julia
 conditions_ka = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,1,1),
@@ -1199,7 +1201,7 @@ Related arguments control the saving behavior:
 - `save_plots_path` (default: `"."`, type: `String`): path where plots are saved. If the path does not exist, it will be created automatically.
 - `save_plots_name` (default: `"conditional_forecast"`, type: `Union{String, Symbol}`): prefix prepended to the filename when saving plots.
 
-Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., `conditional_forecast__ModelName__shock__1.pdf`).
+Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., `conditional_forecast__ModelName__1.pdf`).
 
 The following example saves all conditional forecasts for the `Gali_2015_chapter_3_nonlinear` model as PNG files in the `../plots` directory with `cond_fcst` as the filename prefix:
 

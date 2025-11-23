@@ -51,6 +51,8 @@ end
 end
 ```
 
+Now, plot the IRFs using the default settings:
+
 ```julia
 plot_irf(Gali_2015_chapter_3_nonlinear)
 ```
@@ -89,6 +91,8 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 ![Gali 2015 IRF - eps_a shock (first vs second order)](../assets/compare_orders_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
 The legend will display `:first_order` and `:second_order` to identify each line.
+
+The subplot y-axis labels change depending on the steady state values for each scenario. If the steady state values differ for a variable across scenarios, the y-axis label will indicate that the lines are in absolute deviations from the steady state. In that case no percent deviation is shown on the secondary y-axis, as the steady state values differ. In case the steady state values are the same across scenarios, the y-axis label indicates absolute levels on the primary y-axis and if the values are strictly positive the secondary y-axis shows the percent deviation scale.
 
 **Example with multiple input differences:**
 
@@ -145,7 +149,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock (first vs second order)](../assets/compare_orders_irf__Gali_2015_chapter_3_nonlinear__eps_a__1.png)
 
-The plots now show both solution methods overlaid. The first-order solution is shown in blue, the second-order solution in orange, as indicated in the legend below the plot. Note that the steady state levels can be different for the two solution methods. For variables where the relevant steady state is the same for both methods (e.g., `A`), the level appears on the left axis and percentage deviations on the right axis. For variables where the steady state differs between methods (e.g., `C`), only absolute level deviations (`abs. Δ`) appear on the left axis. The relevant steady state levels are shown in a table below the plot for reference (rounded to help identify differences).
+The plots now show both solution methods overlaid. The first-order solution is shown in blue, the second-order solution in red, as indicated in the legend below the plot. Note that the steady state levels can be different for the two solution methods. For variables where the relevant steady state is the same for both methods (e.g., `A`), the level appears on the left axis and percentage deviations on the right axis. For variables where the steady state differs between methods (e.g., `C`), only absolute level deviations (`abs. Δ`) appear on the left axis. The relevant steady state levels are shown in a table below the plot for reference (rounded to help identify differences).
 
 Additional solution methods can be added to the same plot:
 
@@ -221,7 +225,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - stacked initial state and eps_a shock](../assets/stacked_init_irf__Gali_2015_chapter_3_nonlinear__multiple_shocks__1.png)
 
-The two components are shown with labels explained in the table below. The blue line represents the first input (no shock, non-zero initial state), while the red line corresponds to the second input (starting from the steady state with an `eps_a` shock). Both components add up to the solid line that is the same as in the case of combining the `eps_a` shock with the initial state.
+The two components are shown with labels explained in the table below. The blue bars represent the first input (no shock, non-zero initial state), while the red bars correspond to the second input (starting from the steady state with an `eps_a` shock). Both components add up to the solid line that is the same as in the case of combining the `eps_a` shock with the initial state.
 
 The same approach works for higher order solutions. Start with the second order solution. First, obtain the initial state in levels from the second order solution:
 
@@ -612,7 +616,7 @@ The x-axis adjusts to 35 periods, with the first plot ending after 10 periods an
 
 ## Shock Size
 
-The `shock_size` argument (default: `1.0`, type: `Real`) controls the size of the shocks in standard deviations. Only affects shocks not provided as a matrix or `KeyedArray` or set to `:none`. Negative values flip the sign of the shock.
+The `shock_size` argument (default: `1.0`, type: `Real`) controls the size of the shocks in standard deviations. Only affects shocks not provided as a `Matrix` or `KeyedArray` or set to `:none`. Negative values flip the sign of the shock.
 
 The shock size can be set using the `shock_size` argument. The following example sets it to -2 standard deviations:
 
@@ -815,7 +819,7 @@ plot_irf(Gali_2015_chapter_3_obc,
 The OBC-related variables appear in the last subplot.
 Note that with the `eps_z` shock, the interest rate `R` hits the effective lower bound in period 1:
 
-![Gali 2015 OBC IRF - eps_z shock hitting lower bound](../assets/with_obc_vars_irf__Gali_2015_chapter_3_obc__eps_z__2.png)
+![Gali 2015 OBC IRF - eps_z shock hitting lower bound](../assets/with_obc_vars_irf__Gali_2015_chapter_3_obc__eps_z__1.png)
 
 The effective lower bound is enforced using shocks to the equation containing the `max` statement. See the documentation for details on constructing occasionally binding constraints. For this specific model, examine the equations the parser generated to enforce the OBC:
 
@@ -958,7 +962,7 @@ plot_irf!(Gali_2015_chapter_3_obc,
 
 ![Gali 2015 OBC IRF - eps_z shock comparing with and without OBC](../assets/compare_obc_irf__Gali_2015_chapter_3_obc__eps_z__1.png)
 
-The legend indicates which color corresponds to which `ignore_obc` value. Note how the interest rate `R` hits the effective lower bound in periods 1-3 when OBC is enforced (blue line) but not when OBC is ignored (orange line). The dynamics of other variables also change when OBC is enforced. Enforcing the OBC results in a deeper and longer recession. The length of the lower bound period depends on the size of the shock.
+The legend indicates which color corresponds to which `ignore_obc` value. Note how the interest rate `R` hits the effective lower bound in periods 1-3 when OBC is enforced (blue line) but not when OBC is ignored (red line). The dynamics of other variables also change when OBC is enforced. Enforcing the OBC results in a deeper and longer recession. The length of the lower bound period depends on the size of the shock.
 
 ## Generalized Impulse Response Functions
 
@@ -989,7 +993,7 @@ plot_irf!(Gali_2015_chapter_3_obc,
 
 ![Gali 2015 OBC IRF - eps_z shock comparing GIRF vs standard](../assets/obc_girf_compare_irf__Gali_2015_chapter_3_obc__eps_z__1.png)
 
-The legend indicates which color corresponds to which `generalised_irf` value. Note how the interest rate `R` hits the effective lower bound in periods 1-3 when using the standard IRF (orange line). This suggests that the GIRF's accepted draws include many cases where the OBC is not binding. This can be confirmed by also overlaying the IRF ignoring the OBC.
+The legend indicates which color corresponds to which `generalised_irf` value. Note how the interest rate `R` hits the effective lower bound in periods 1-3 when using the standard IRF (red line). This suggests that the GIRF's accepted draws include many cases where the OBC is not binding. This can be confirmed by also overlaying the IRF ignoring the OBC.
 
 ```julia
 plot_irf!(Gali_2015_chapter_3_obc,
@@ -1086,7 +1090,7 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - eps_a shock GIRF with 5000 draws and 500 warmup](../assets/girf_5000_500_irf__Gali_2015_chapter_3_nonlinear__eps_a__2.png)
 
-With this configuration, the difference between the GIRF and standard IRF is minimal. This suggests the average IRF (using suffiecient amount of draws and warmup) is similar to the standard IRF but there is substantial state dependence in the model with a second-order pruned solution for a one-standard-deviation `eps_a` shock.
+With this configuration, the difference between the GIRF and standard IRF is minimal. This suggests the average IRF (using sufficient amount of draws as well as warmup draws) is similar to the standard IRF but there is substantial state dependence in the model with a second-order pruned solution for a one-standard-deviation `eps_a` shock.
 
 ## Plot Labels
 
@@ -1148,7 +1152,7 @@ The `plot_type` argument (default: `:compare`, type: `Symbol`) determines how IR
 
 The `:stack` option is particularly useful when analyzing scenarios composed of multiple shock series, as it shows how different shocks contribute to the overall response. The `:compare` option is better suited for comparing IRFs across different parameter values or model specifications.
 
-### Using `:stack` for Layered Shock Scenarios
+### Using `:stack` to layer scenarios
 
 When analyzing a scenario composed of multiple shocks, `:stack` visualizes the cumulative impact. For example, plot the combined effect of `eps_a` and `nu` shocks:
 
@@ -1165,11 +1169,11 @@ plot_irf!(Gali_2015_chapter_3_nonlinear,
 
 ![Gali 2015 IRF - stacked shocks (eps_a and eps_nu)](../assets/stack__Gali_2015_chapter_3_nonlinear__multiple_shocks__2.png)
 
-The `:stack` visualization shows how each shock contributes to the total response, with the second shock's effect layered on top of the first.
+The `:stack` visualization shows how each shock contributes to the total response, with the second shock's effect layered on top of the first, and the solid black line representing the total effect.
 
-### Using `:compare` for Parameter Comparisons
+### Using `:compare` for scenario comparisons
 
-When comparing IRFs across different parameter values, `:compare` displays the responses as separate lines:
+When comparing IRFs across different scenarios, `:compare` displays the responses as separate lines:
 
 ```julia
 # Baseline parameterization
