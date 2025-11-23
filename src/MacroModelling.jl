@@ -77,7 +77,7 @@ baremodule SymPyWorkspace
     # Import essential operators and functions from Base that are needed for
     # evaluating expressions containing SymPy symbols
     import Base: +, -, *, /, ^, ==, !=, <, <=, >, >=
-    import Base: exp, log, sin, cos, tan, sqrt, abs, min, max
+    import Base: exp, log, sin, cos, tan, asin, acos, atan, asinh, acosh, atanh, sqrt, abs, min, max
     import Base: sum, prod, length, abs2
     # Import Core essentials
     using Core: Expr, Symbol
@@ -96,7 +96,7 @@ baremodule SymPyWorkspace
     function normlogpdf(z::T)::T where T
         -(abs2(z) + 1.8378770664093453) / 2
     end
-    
+
     function normpdf(z::T)::T where T
         exp(-abs2(z)/2) * 0.3989422804014327
     end
@@ -114,11 +114,8 @@ end
 # Reserved names that cannot be used as variables, shocks, or parameters
 # These are functions and operators available in SymPyWorkspace
 const SYMPYWORKSPACE_RESERVED_NAMES = Set([
-    # Operators
-    Symbol("+"), Symbol("-"), Symbol("*"), Symbol("/"), Symbol("^"),
-    Symbol("=="), Symbol("!="), Symbol("<"), Symbol("<="), Symbol(">"), Symbol(">="),
     # Mathematical functions
-    :exp, :log, :sin, :cos, :tan, :sqrt, :abs, :min, :max,
+    :exp, :log, :sin, :cos, :tan, :asin, :acos, :atan, :asinh, :acosh, :atanh, :sqrt, :abs, :min, :max,
     :sum, :prod, :length, :abs2,
     # Special functions
     :erfcinv, :erfc,
