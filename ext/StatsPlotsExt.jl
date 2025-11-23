@@ -3,7 +3,7 @@ module StatsPlotsExt
 using MacroModelling
 
 import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
-import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION
+import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
 
@@ -19,7 +19,7 @@ import SparseArrays: SparseMatrixCSC
 import NLopt
 using DispatchDoctor
 
-import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs
+import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs, get_irf
 
 import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!, plot_solution!
 
@@ -134,6 +134,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots and in the shock decompositions. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model. If not all shocks are shown, the ommitted shocks will be summarised and netted under the label `Other shocks (net)` in the shock decomposition.
 - `presample_periods` [Default: `0`, Type: `Int`]: number of initial periods in the data omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod.
+- `forecast_periods` [Default: `$DEFAULT_FORECAST_PERIODS`, Type: `Int`]: number of periods of unconditional forecast to add after the last period of data. The forecast is shown as a dotted line to distinguish it from the model estimates.
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `true` for algorithms supporting shock decompositions (`:first_order`, `:pruned_second_order`, `:pruned_third_order`), otherwise `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks. When an unsupported algorithm is chosen the argument automatically falls back to `false`.
 - $SMOOTH®
@@ -199,6 +200,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
                                 presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
+                                forecast_periods::Int = DEFAULT_FORECAST_PERIODS,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 shock_decomposition::Bool = DEFAULT_SHOCK_DECOMPOSITION_SELECTOR(algorithm),
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
@@ -332,6 +334,39 @@ function plot_model_estimates(𝓂::ℳ,
     
     variables_to_plot                           .+= SSS_delta
     data_in_deviations                          .+= SSS_delta[obs_idx]
+
+    # Compute unconditional forecast if forecast_periods > 0
+    forecast_data = nothing
+    extended_x_axis = x_axis
+    if forecast_periods > 0
+        # Get the final state from the last period of filtered data
+        final_state = variables_to_plot[:, end]
+        
+        # Compute the unconditional forecast (IRF with no shocks from the final state)
+        forecast_irf = get_irf(𝓂,
+                               parameters = parameters,
+                               algorithm = algorithm,
+                               shocks = :none,
+                               periods = forecast_periods,
+                               initial_state = final_state .- reference_steady_state,
+                               levels = true,
+                               quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                               sylvester_algorithm = sylvester_algorithm,
+                               lyapunov_algorithm = lyapunov_algorithm,
+                               tol = tol,
+                               verbose = verbose)
+        
+        forecast_data = collect(forecast_irf)
+        
+        # Create extended x-axis for plotting (including forecast periods)
+        last_x = x_axis[end]
+        if last_x isa Int
+            extended_x_axis = vcat(x_axis, (last_x+1):(last_x+forecast_periods))
+        else
+            # If x_axis is not integer, just append indices
+            extended_x_axis = vcat(x_axis, (length(x_axis)+1):(length(x_axis)+forecast_periods))
+        end
+    end
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
@@ -472,6 +507,19 @@ function plot_model_estimates(𝓂::ℳ,
                             label = "",
                             color = shock_decomposition ? data_color : pal[2])
                     end
+                    
+                    # Add forecast if available
+                    if forecast_periods > 0 && !isnothing(forecast_data)
+                        forecast_var_idx = findfirst(==(𝓂.timings.var[var_idx[i]]), axiskeys(forecast_irf, 1))
+                        if !isnothing(forecast_var_idx)
+                            StatsPlots.plot!(p,
+                                extended_x_axis[(end-forecast_periods+1):end],
+                                forecast_data[forecast_var_idx, :],
+                                linestyle = :dot,
+                                label = "",
+                                color = estimate_color)
+                        end
+                    end
                 else
                     p = standard_subplot(variables_to_plot[var_idx[i],periods], 
                                         SS, 
@@ -486,6 +534,19 @@ function plot_model_estimates(𝓂::ℳ,
                             shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
                             label = "",
                             color = shock_decomposition ? data_color : pal[2])
+                    end
+                    
+                    # Add forecast if available
+                    if forecast_periods > 0 && !isnothing(forecast_data)
+                        forecast_var_idx = findfirst(==(𝓂.timings.var[var_idx[i]]), axiskeys(forecast_irf, 1))
+                        if !isnothing(forecast_var_idx)
+                            StatsPlots.plot!(p,
+                                extended_x_axis[(end-forecast_periods+1):end],
+                                forecast_data[forecast_var_idx, :],
+                                linestyle = :dot,
+                                label = "",
+                                color = shock_decomposition ? estimate_color : pal[1])
+                        end
                     end
                 end
                         
@@ -515,6 +576,14 @@ function plot_model_estimates(𝓂::ℳ,
                             [NaN], 
                             label = "Data", 
                             color = shock_decomposition ? data_color : pal[2])
+
+            if forecast_periods > 0
+                StatsPlots.plot!(pl,
+                                [NaN], 
+                                label = "Forecast", 
+                                linestyle = :dot,
+                                color = shock_decomposition ? estimate_color : pal[1])
+            end
 
             if shock_decomposition
                 additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
@@ -577,6 +646,14 @@ function plot_model_estimates(𝓂::ℳ,
                         [NaN], 
                         label = "Data", 
                         color = shock_decomposition ? data_color : pal[2])
+
+        if forecast_periods > 0
+            StatsPlots.plot!(pl,
+                            [NaN], 
+                            label = "Forecast", 
+                            linestyle = :dot,
+                            color = shock_decomposition ? estimate_color : pal[1])
+        end
 
         if shock_decomposition
             additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
@@ -652,6 +729,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model.
 - `presample_periods` [Default: `0`, Type: `Int`]: number of initial periods in the data omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod.
+- `forecast_periods` [Default: `$DEFAULT_FORECAST_PERIODS`, Type: `Int`]: number of periods of unconditional forecast to add after the last period of data. The forecast is shown as a dotted line to distinguish it from the model estimates.
 - $DATA_IN_LEVELS®
 - $LABEL®
 - $RENAME_DICTIONARY®
@@ -735,6 +813,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
                                 presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
+                                forecast_periods::Int = DEFAULT_FORECAST_PERIODS,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
                                 label::Union{Real, String, Symbol} = length(model_estimates_active_plot_container) + 1,
@@ -865,6 +944,40 @@ function plot_model_estimates!(𝓂::ℳ,
 
     variables_to_plot                           .+= SSS_delta
     data_in_deviations                          .+= SSS_delta[obs_idx]
+
+    # Compute unconditional forecast if forecast_periods > 0
+    forecast_data = nothing
+    extended_x_axis = x_axis
+    forecast_irf = nothing
+    if forecast_periods > 0
+        # Get the final state from the last period of filtered data
+        final_state = variables_to_plot[:, end]
+        
+        # Compute the unconditional forecast (IRF with no shocks from the final state)
+        forecast_irf = get_irf(𝓂,
+                               parameters = parameters,
+                               algorithm = algorithm,
+                               shocks = :none,
+                               periods = forecast_periods,
+                               initial_state = final_state .- reference_steady_state,
+                               levels = true,
+                               quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                               sylvester_algorithm = sylvester_algorithm,
+                               lyapunov_algorithm = lyapunov_algorithm,
+                               tol = tol,
+                               verbose = verbose)
+        
+        forecast_data = collect(forecast_irf)
+        
+        # Create extended x-axis for plotting (including forecast periods)
+        last_x = x_axis[end]
+        if last_x isa Int
+            extended_x_axis = vcat(x_axis, (last_x+1):(last_x+forecast_periods))
+        else
+            # If x_axis is not integer, just append indices
+            extended_x_axis = vcat(x_axis, (length(x_axis)+1):(length(x_axis)+forecast_periods))
+        end
+    end
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
