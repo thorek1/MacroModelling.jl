@@ -70,7 +70,6 @@ using MacroModelling
     M_real[0] = Y[0] / R[0] ^ η
 
     R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
-
 end
 ```
 
@@ -113,7 +112,6 @@ Next the parameters are defined including the new parameter defining the effecti
     std_z = .05
 
     std_nu = .0025
-
 end
 ```
 
@@ -181,7 +179,6 @@ In order to get the other viable NSSS the values of R need to be restricted to b
     M_real[0] = Y[0] / R[0] ^ η
 
     R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
-
 end
 
 @parameters Gali_2015_chapter_3_obc begin
@@ -402,7 +399,7 @@ import StatsPlots
 plot_irf(borrowing_constraint)
 ```
 
-![Positive_shock](../assets/borrowing_constraint__ε_pos.png)
+![Positive_shock](../assets/obc_irf__borrowing_constraint__ε__1.png)
 
 The constraint is no longer binding in the first five periods because `Y` and `B` do not increase by the same amount. They should move by the same amount in the case of a negative shock:
 
