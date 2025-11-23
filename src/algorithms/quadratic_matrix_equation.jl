@@ -22,8 +22,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         X = initial_guess
 
         AXX = A * X^2
-        
-        AXXnorm = ℒ.norm(AXX)
+
+        AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
         
         ℒ.mul!(AXX, B, X, 1, 1)
 
@@ -190,7 +190,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     AXX = A * X^2
     
-    AXXnorm = ℒ.norm(AXX)
+    AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
     
     ℒ.mul!(AXX, B, X, 1, 1)
 
@@ -380,7 +380,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     AXX = A * X^2
     
-    AXXnorm = ℒ.norm(AXX)
+    AXXnorm = max(ℒ.norm(AXX), ℒ.norm(C))
     
     ℒ.mul!(AXX, B, X, 1, 1)
 
