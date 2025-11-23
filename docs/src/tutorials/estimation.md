@@ -136,7 +136,7 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(prior_distributions, data, 
 
 n_samples = 1000
 
-chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = (parameters = FS2000.parameter_values,))
+chain_NUTS = sample(FS2000_loglikelihood, NUTS(), n_samples, progress = false, initial_params = FS2000.parameter_values)
 ```
 
 ### Inspect posterior
@@ -214,7 +214,7 @@ Other than the mean and median of the posterior distribution the mode can also b
 ```@repl tutorial_2
 modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
                                         adtype = AutoZygote(), 
-                                        initial_params = (parameters = FS2000.parameter_values,))
+                                        initial_params = FS2000.parameter_values)
 ```
 
 ## Model estimates given the data and the model solution

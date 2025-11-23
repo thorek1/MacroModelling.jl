@@ -97,7 +97,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.SimulatedAnnealing())#,
-# #                                         initial_params = (all_params = inits,))
+# #                                         initial_params = inits)
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
@@ -113,7 +113,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007_linear
 n_samples = 1000
 
 samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, 
-                            # initial_params = (all_params = inits,)),
+                            # initial_params = inits),
                             progress = true)
 
 println(samps)
@@ -135,7 +135,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.SimulatedAnnealing())#,
-# #                                         initial_params = (all_params = inits,))
+# #                                         initial_params = inits)
 
 # modeSW2007 = Turing.maximum_a_posteriori(SW07_loglikelihood, 
 #                                         Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)),
@@ -150,7 +150,7 @@ SW07_loglikelihood = SW07_loglikelihood_function(data, Smets_Wouters_2007, obser
 n_samples = 1000
 
 samps = @time Turing.sample(SW07_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, 
-                            # initial_params = (all_params = inits,)),
+                            # initial_params = inits),
                             progress = true)
 
 println(samps)
