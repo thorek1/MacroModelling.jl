@@ -78,9 +78,34 @@ baremodule SymPyWorkspace
     # evaluating expressions containing SymPy symbols
     import Base: +, -, *, /, ^, ==, !=, <, <=, >, >=
     import Base: exp, log, sin, cos, tan, sqrt, abs, min, max
-    import Base: sum, prod, length
+    import Base: sum, prod, length, abs2
     # Import Core essentials
     using Core: Expr, Symbol
+    
+    # Import SpecialFunctions
+    using ..SpecialFunctions: erfcinv, erfc
+    
+    # Define density-related functions directly in the workspace
+    # These need to be available for symbolic expressions
+    function norminvcdf(p::T) where T
+        -erfcinv(2*p) * 1.4142135623730951
+    end
+    norminv(p) = norminvcdf(p)
+    qnorm(p) = norminvcdf(p)
+    
+    function normlogpdf(z::T) where T
+        -(abs2(z) + 1.8378770664093453) / 2
+    end
+    
+    function normpdf(z::T) where T
+        exp(-abs2(z)/2) * 0.3989422804014327
+    end
+    
+    function normcdf(z::T) where T
+        erfc(-z * 0.7071067811865475) / 2
+    end
+    pnorm(p) = normcdf(p)
+    dnorm(p) = normpdf(p)
 end
 
 # Type definitions
