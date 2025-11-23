@@ -77,7 +77,7 @@ baremodule SymPyWorkspace
     # Import essential operators and functions from Base that are needed for
     # evaluating expressions containing SymPy symbols
     import Base: +, -, *, /, ^, ==, !=, <, <=, >, >=
-    import Base: exp, log, sin, cos, tan, asin, acos, atan, asinh, acosh, atanh, sqrt, abs, min, max
+    import Base: exp, exp2, exp10, log, log2, log10, sin, cos, tan, asin, atan, asinh, acosh, atanh, sqrt, abs, min, max
     import Base: sum, prod, length, abs2
     # Import Core essentials
     using Core: Expr, Symbol
@@ -115,7 +115,7 @@ end
 # These are functions and operators available in SymPyWorkspace
 const SYMPYWORKSPACE_RESERVED_NAMES = Set([
     # Mathematical functions
-    :exp, :log, :sin, :cos, :tan, :asin, :acos, :atan, :asinh, :acosh, :atanh, :sqrt, :abs, :min, :max,
+    :exp, :exp2, :exp10, :log, :log2, :log10, :sin, :cos, :tan, :asin, :atan, :asinh, :acosh, :atanh, :sqrt, :abs, :min, :max,
     :sum, :prod, :length, :abs2,
     # Special functions
     :erfcinv, :erfc,
