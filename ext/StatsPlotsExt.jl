@@ -296,7 +296,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     legend_columns = 1
 
-    legend_items = length(shock_idx) + 3 + pruning
+    legend_items = length(shock_idx) + 3 + pruning + (forecast_periods > 0 ? 1 : 0)
 
     max_columns = min(legend_items, max_elements_per_legend_row)
     
@@ -337,6 +337,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     # Compute unconditional forecast if forecast_periods > 0
     forecast_data = nothing
+    forecast_irf = nothing
     extended_x_axis = x_axis
     if forecast_periods > 0
         # Get the final state from the last period of filtered data
@@ -907,7 +908,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     legend_columns = 1
 
-    legend_items = length(shock_idx) + 3 + pruning
+    legend_items = length(shock_idx) + 3 + pruning + (forecast_periods > 0 ? 1 : 0)
 
     max_columns = min(legend_items, max_elements_per_legend_row)
     
