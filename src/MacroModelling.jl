@@ -69,6 +69,65 @@ import Reexport
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
+# Baremodule for SymPy symbol workspace to avoid polluting MacroModelling namespace
+baremodule SymPyWorkspace
+    # This baremodule provides an isolated namespace for SymPy symbols
+    # so they don't conflict with MacroModelling internals
+    
+    # Import essential operators and functions from Base that are needed for
+    # evaluating expressions containing SymPy symbols
+    import Base: +, -, *, /, ^, ==, !=, <, <=, >, >=
+    import Base: exp, exp2, exp10, log, log2, log10, sin, cos, tan, asin, atan, asinh, acosh, atanh, sqrt, abs, min, max
+    import Base: sum, prod, length, abs2
+    # Import Core essentials
+    using Core: Expr, Symbol
+    
+    # Import SpecialFunctions
+    using ..SpecialFunctions: erfcinv, erfc
+    
+    # Define density-related functions directly in the workspace
+    # These need to be available for symbolic expressions
+    function norminvcdf(p::T)::T where T
+        -erfcinv(2*p) * 1.4142135623730951
+    end
+    norminv(p) = norminvcdf(p)
+    qnorm(p) = norminvcdf(p)
+
+    function normlogpdf(z::T)::T where T
+        -(abs2(z) + 1.8378770664093453) / 2
+    end
+
+    function normpdf(z::T)::T where T
+        exp(-abs2(z)/2) * 0.3989422804014327
+    end
+
+    function normcdf(z::T)::T where T
+        erfc(-z * 0.7071067811865475) / 2
+    end
+    pnorm(p) = normcdf(p)
+    dnorm(p) = normpdf(p)
+
+    Max = max
+    Min = min
+end
+
+# Reserved names that cannot be used as variables, shocks, or parameters
+# These are functions and operators available in SymPyWorkspace
+const SYMPYWORKSPACE_RESERVED_NAMES = Set([
+    # Mathematical functions
+    :exp, :exp2, :exp10, :log, :log2, :log10, :sin, :cos, :tan, :asin, :atan, :asinh, :acosh, :atanh, :sqrt, :abs, :min, :max,
+    :sum, :prod, :length, :abs2,
+    # Special functions
+    :erfcinv, :erfc,
+    # Density functions
+    :norminvcdf, :norminv, :qnorm,
+    :normlogpdf, :normpdf, :normcdf,
+    :pnorm, :dnorm,
+    # Aliases
+    :Max, :Min,
+    # Core types
+    :Expr, :Symbol
+])
 
 # Type definitions
 const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
@@ -727,15 +786,16 @@ function transform_obc(ex::Expr; avoid_solve::Bool = false)
     transformed_expr, reverse_dict = transform_expression(ex)
 
     for symbs in get_symbols(transformed_expr)
-        eval(:($symbs = SPyPyC.symbols($(string(symbs)), real = true, finite = true)))
+        sym_value = SPyPyC.symbols(string(symbs), real = true, finite = true)
+        Core.eval(SymPyWorkspace, :($symbs = $sym_value))
     end
 
-    eq = eval(transformed_expr)
+    eq = Core.eval(SymPyWorkspace, transformed_expr)
 
     if avoid_solve || count_ops(Meta.parse(string(eq))) > 15
         soll = nothing
     else
-        soll = solve_symbolically(eq, eval(:minmax__P))
+        soll = solve_symbolically(eq, Core.eval(SymPyWorkspace, :minmax__P))
     end
 
     if !isempty(soll)
@@ -2835,10 +2895,11 @@ function simplify(ex::Expr)::Union{Expr,Symbol,Int}
     ex_ss = convert_to_ss_equation(ex)
 
     for x in get_symbols(ex_ss)
-	    eval(:($x = SPyPyC.symbols($(string(x)), real = true, finite = true)))
+        sym_value = SPyPyC.symbols(string(x), real = true, finite = true)
+        Core.eval(SymPyWorkspace, :($x = $sym_value))
     end
 
-	parsed = ex_ss |> eval |> string |> Meta.parse
+    parsed = ex_ss |> x -> Core.eval(SymPyWorkspace, x) |> string |> Meta.parse
 
     postwalk(x ->   x isa Expr ? 
                         x.args[1] == :conjugate ? 
@@ -3367,7 +3428,7 @@ end
 
 
 function create_symbols_eqs!(𝓂::ℳ)::symbolics
-    # create symbols in module scope
+    # create symbols in SymPyWorkspace to avoid polluting MacroModelling namespace
     symbols_in_dynamic_equations = reduce(union,get_symbols.(𝓂.dyn_equations))
 
     symbols_in_dynamic_equations_wo_subscripts = Symbol.(replace.(string.(symbols_in_dynamic_equations),r"₍₋?(₀|₁|ₛₛ|ₓ)₎$"=>""))
@@ -3394,63 +3455,67 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
         end
     end
 
+    # Create symbols in SymPyWorkspace instead of MacroModelling namespace
     for pos in symbols_pos
-        eval(:($pos = SPyPyC.symbols($(string(pos)), real = true, finite = true, positive = true)))
+        sym_value = SPyPyC.symbols(string(pos), real = true, finite = true, positive = true)
+        Core.eval(SymPyWorkspace, :($pos = $sym_value))
     end
     for neg in symbols_neg
-        eval(:($neg = SPyPyC.symbols($(string(neg)), real = true, finite = true, negative = true)))
+        sym_value = SPyPyC.symbols(string(neg), real = true, finite = true, negative = true)
+        Core.eval(SymPyWorkspace, :($neg = $sym_value))
     end
     for none in symbols_none
-        eval(:($none = SPyPyC.symbols($(string(none)), real = true, finite = true)))
+        sym_value = SPyPyC.symbols(string(none), real = true, finite = true)
+        Core.eval(SymPyWorkspace, :($none = $sym_value))
     end
 
-    symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
-                map(x->eval(:($x)),𝓂.dyn_equations),
-                # map(x->eval(:($x)),𝓂.dyn_equations_future),
+    symbolics(map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.ss_aux_equations),
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations),
+                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations_future),
 
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_present_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_past_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_future_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_present_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_past_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_future_list),
 
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift2_var_past_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift2_var_past_list),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_present_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_past_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_future_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_ss_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_present_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_past_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_future_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_ss_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_list),
 
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_future_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_present_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_past_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_future_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_present_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_past_list),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_future_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_present_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_past_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_future_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_present_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_past_list),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_present_list_aux_SS),
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_past_list_aux_SS),
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_future_list_aux_SS),
-                map(x->Set(eval(:([$(x...)]))),𝓂.ss_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_present_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_past_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_future_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.ss_list_aux_SS),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_list_aux_SS),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_future_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.par_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_list_aux_SS),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_future_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.par_list_aux_SS),
 
-                map(x->eval(:($x)),𝓂.calibration_equations),
-                map(x->eval(:($x)),𝓂.calibration_equations_parameters),
-                # map(x->eval(:($x)),𝓂.parameters),
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.calibration_equations),
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.calibration_equations_parameters),
+                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.parameters),
 
-                # Set(eval(:([$(𝓂.var_present...)]))),
-                # Set(eval(:([$(𝓂.var_past...)]))),
-                # Set(eval(:([$(𝓂.var_future...)]))),
-                Set(eval(:([$(𝓂.vars_in_ss_equations...)]))),
-                Set(eval(:([$(𝓂.var...)]))),
-                Set(eval(:([$(𝓂.➕_vars...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_present...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_past...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_future...)]))),
+                Set(Core.eval(SymPyWorkspace, :([$(𝓂.vars_in_ss_equations...)]))),
+                Set(Core.eval(SymPyWorkspace, :([$(𝓂.var...)]))),
+                Set(Core.eval(SymPyWorkspace, :([$(𝓂.➕_vars...)]))),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.ss_calib_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.par_calib_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.ss_calib_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.par_calib_list),
 
                 [Set() for _ in 1:length(𝓂.ss_aux_equations)],
                 # [Set() for _ in 1:length(𝓂.calibration_equations)],
