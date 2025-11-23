@@ -87,25 +87,28 @@ baremodule SymPyWorkspace
     
     # Define density-related functions directly in the workspace
     # These need to be available for symbolic expressions
-    function norminvcdf(p::T) where T
+    function norminvcdf(p::T)::T where T
         -erfcinv(2*p) * 1.4142135623730951
     end
     norminv(p) = norminvcdf(p)
     qnorm(p) = norminvcdf(p)
-    
-    function normlogpdf(z::T) where T
+
+    function normlogpdf(z::T)::T where T
         -(abs2(z) + 1.8378770664093453) / 2
     end
     
-    function normpdf(z::T) where T
+    function normpdf(z::T)::T where T
         exp(-abs2(z)/2) * 0.3989422804014327
     end
-    
-    function normcdf(z::T) where T
+
+    function normcdf(z::T)::T where T
         erfc(-z * 0.7071067811865475) / 2
     end
     pnorm(p) = normcdf(p)
     dnorm(p) = normpdf(p)
+
+    Max = max
+    Min = min
 end
 
 # Type definitions
