@@ -46,6 +46,7 @@ Turing.@model function FS2000_loglikelihood_function(data, m, on_failure_loglike
         end
 
         Turing.@addlogprob! llh
+        # with Turing >= 0.40 this becomes: Turing.@addlogprob! (; loglikelihood = llh)
     end
 end
 
@@ -55,6 +56,7 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, -Inf)
 n_samples = 1000
 
 samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = FS2000.parameter_values)
+# with Turing >= 0.41 this: initial_params = FS2000.parameter_values becomes: initial_params = InitFromParams(all_params = FS2000.parameter_values,)); # need to import InitFromParams
 
 println("Mean variable values (ForwardDiff): $(mean(samps).nt.mean)")
 
