@@ -1518,33 +1518,29 @@ function plot_model_estimates!(𝓂::ℳ,
                     var_indx = findfirst(==(var), k[:variable_names])
                     
                     if !isnothing(var_indx)
-                        forecast_var_idx = findfirst(==(k[:variable_names][var_indx]), axiskeys(k[:forecast_data], 1))
+                        # Create forecast array with NaN padding using extended_combined_x_axis
+                        forecast_full = fill(NaN, length(extended_combined_x_axis))
                         
-                        if !isnothing(forecast_var_idx)
-                            # Create forecast array with NaN padding using extended_combined_x_axis
-                            forecast_full = fill(NaN, length(extended_combined_x_axis))
-                            
-                            if common_axis == []
-                                last_idx = length(k[:x_axis])
-                            else
-                                idx_x = indexin(k[:x_axis], combined_x_axis)
-                                last_idx = maximum(idx_x)
-                            end
-                            
-                            # Connection point (last filtered value)
-                            forecast_full[last_idx] = k[:variables_to_plot][var_indx, end]
-                            # Forecast values
-                            forecast_start = length(combined_x_axis) + 1
-                            forecast_end = length(combined_x_axis) + k[:forecast_periods]
-                            forecast_full[forecast_start:forecast_end] = k[:forecast_data][forecast_var_idx, :]
-                            
-                            StatsPlots.plot!(p,
-                                extended_combined_x_axis,
-                                forecast_full,
-                                linestyle = :dash,
-                                label = "",
-                                color = pal[idx])
+                        if common_axis == []
+                            last_idx = length(k[:x_axis])
+                        else
+                            idx_x = indexin(k[:x_axis], combined_x_axis)
+                            last_idx = maximum(idx_x)
                         end
+                        
+                        # Connection point (last filtered value)
+                        forecast_full[last_idx] = k[:variables_to_plot][var_indx, end]
+                        # Forecast values
+                        forecast_start = length(combined_x_axis) + 1
+                        forecast_end = length(combined_x_axis) + k[:forecast_periods]
+                        forecast_full[forecast_start:forecast_end] = k[:forecast_data][var_indx, :]
+                        
+                        StatsPlots.plot!(p,
+                            extended_combined_x_axis,
+                            forecast_full,
+                            linestyle = :dash,
+                            label = "",
+                            color = pal[idx])
                     end
                 end
             end
