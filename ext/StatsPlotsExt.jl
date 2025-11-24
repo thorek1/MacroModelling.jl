@@ -341,7 +341,7 @@ function plot_model_estimates(𝓂::ℳ,
     extended_x_axis = x_axis
     if forecast_periods > 0
         # Get the final state from the last period of filtered data
-        final_filtered_state = variables_to_plot[:, end]
+        final_filtered_state = variables_to_plot[:, end] .+ NSSS .- SSS_delta
         
         # Compute the unconditional forecast (IRF with no shocks from the final state)
         forecast_irf = get_irf(𝓂,
@@ -349,7 +349,7 @@ function plot_model_estimates(𝓂::ℳ,
                                algorithm = algorithm,
                                shocks = :none,
                                periods = forecast_periods,
-                               initial_state = final_filtered_state .+ NSSS,
+                               initial_state = final_filtered_state,
                                levels = false,
                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                sylvester_algorithm = sylvester_algorithm,
@@ -586,7 +586,7 @@ function plot_model_estimates(𝓂::ℳ,
                             
                             StatsPlots.plot!(p,
                                 extended_x_axis,
-                                forecast_full,
+                                shock_decomposition ? forecast_full : forecast_full .+ SS,
                                 linestyle = :dash,
                                 label = "",
                                 color = shock_decomposition ? estimate_color : pal[1])
@@ -616,11 +616,6 @@ function plot_model_estimates(𝓂::ℳ,
                             label = "Estimate", 
                             color = shock_decomposition ? estimate_color : pal[1])
 
-            StatsPlots.plot!(pl,
-                            [NaN], 
-                            label = "Data", 
-                            color = shock_decomposition ? data_color : pal[2])
-
             if forecast_periods > 0
                 StatsPlots.plot!(pl,
                                 [NaN], 
@@ -628,6 +623,11 @@ function plot_model_estimates(𝓂::ℳ,
                                 linestyle = :dash,
                                 color = shock_decomposition ? estimate_color : pal[1])
             end
+
+            StatsPlots.plot!(pl,
+                            [NaN], 
+                            label = "Data", 
+                            color = shock_decomposition ? data_color : pal[2])
 
             if shock_decomposition
                 additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
@@ -686,11 +686,6 @@ function plot_model_estimates(𝓂::ℳ,
                         label = "Estimate", 
                         color = shock_decomposition ? estimate_color : pal[1])
 
-        StatsPlots.plot!(pl,
-                        [NaN], 
-                        label = "Data", 
-                        color = shock_decomposition ? data_color : pal[2])
-
         if forecast_periods > 0
             StatsPlots.plot!(pl,
                             [NaN], 
@@ -698,6 +693,12 @@ function plot_model_estimates(𝓂::ℳ,
                             linestyle = :dash,
                             color = shock_decomposition ? estimate_color : pal[1])
         end
+
+        StatsPlots.plot!(pl,
+                        [NaN], 
+                        label = "Data", 
+                        color = shock_decomposition ? data_color : pal[2])
+
 
         if shock_decomposition
             additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
@@ -995,7 +996,7 @@ function plot_model_estimates!(𝓂::ℳ,
     extended_x_axis = x_axis
     if forecast_periods > 0
         # Get the final state from the last period of filtered data
-        final_filtered_state = variables_to_plot[:, end]
+        final_filtered_state = variables_to_plot[:, end] .+ NSSS .- SSS_delta
         
         # Compute the unconditional forecast (IRF with no shocks from the final state)
         forecast_irf = get_irf(𝓂,
@@ -1003,7 +1004,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                algorithm = algorithm,
                                shocks = :none,
                                periods = forecast_periods,
-                               initial_state = final_filtered_state .+ NSSS,
+                               initial_state = final_filtered_state,
                                levels = false,
                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                sylvester_algorithm = sylvester_algorithm,
@@ -2246,13 +2247,13 @@ function standard_subplot(::Val{:stack},
     maxlen = maximum(length.(plot_dat))
 
     # pad shorter vectors with 0
-    padded = [vcat(collect(v), fill(0, maxlen - length(v))) for v in plot_dat]
+    padded = [vcat(collect(v), fill(0.0, maxlen - length(v))) for v in plot_dat]
 
     # now you can hcat
     plot_data = reduce(hcat, padded)
 
     p = StatsPlots.plot(xvals,
-                    sum(x -> isfinite(x) ? x : 0.0, plot_data, dims = 2), 
+                    sum(x -> isfinite(x) ? x : NaN, plot_data, dims = 2), 
                     color = color_total, 
                     label = "",
                     xrotation = xrotation)
@@ -2295,7 +2296,7 @@ function standard_subplot(::Val{:stack},
                         color = :black, 
                         label = "")
                         
-    StatsPlots.plot!(sum(x -> isfinite(x) ? x : 0.0, plot_data, dims = 2), 
+    StatsPlots.plot!(sum(x -> isfinite(x) ? x : NaN, plot_data, dims = 2), 
                     color = color_total, 
                     label = "")
 
