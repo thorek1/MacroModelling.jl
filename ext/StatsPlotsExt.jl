@@ -1199,6 +1199,19 @@ function plot_model_estimates!(𝓂::ℳ,
     else
         combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container]) # model_estimates_active_plot_container[end][:x_axis]
     end
+    
+    # Create extended combined x-axis that includes forecast periods from all scenarios
+    max_forecast_periods = maximum([get(k, :forecast_periods, 0) for k in model_estimates_active_plot_container])
+    if max_forecast_periods > 0
+        last_x = combined_x_axis[end]
+        if last_x isa Int
+            extended_combined_x_axis = vcat(combined_x_axis, (last_x+1):(last_x+max_forecast_periods))
+        else
+            extended_combined_x_axis = vcat(combined_x_axis, (length(combined_x_axis)+1):(length(combined_x_axis)+max_forecast_periods))
+        end
+    else
+        extended_combined_x_axis = combined_x_axis
+    end
        
     for k in setdiff(keys(args_and_kwargs), 
                         [
@@ -1360,7 +1373,8 @@ function plot_model_estimates!(𝓂::ℳ,
                         idx = indexin(k[:x_axis], combined_x_axis)
                     end
                     
-                    shocks_to_plot = fill(NaN, length(combined_x_axis))
+                    # Use extended_combined_x_axis length for padding
+                    shocks_to_plot = fill(NaN, length(extended_combined_x_axis))
                     shocks_to_plot[idx] = k[:shocks_to_plot][shock_idx, periods]
                     # shocks_to_plot[idx][1:k[:presample_periods]] .= NaN
                     push!(shocks_to_plot_s, shocks_to_plot) # k[:shocks_to_plot][shock_idx, periods])
@@ -1381,9 +1395,9 @@ function plot_model_estimates!(𝓂::ℳ,
                         idx = indexin(k[:x_axis], combined_x_axis)
                     end
                     
-                    variables_to_plot = fill(NaN, length(combined_x_axis))
+                    # Use extended_combined_x_axis length for padding (NaN for forecast periods)
+                    variables_to_plot = fill(NaN, length(extended_combined_x_axis))
                     variables_to_plot[idx] = k[:variables_to_plot][var_idx, periods]
-                    # variables_to_plot[idx][1:k[:presample_periods]] .= NaN
 
                     push!(variables_to_plot_s, variables_to_plot)#k[:variables_to_plot][var_idx, periods])
                 end
@@ -1427,7 +1441,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                     gr_back,
                                     same_ss,
                                     pal = pal,
-                                    xvals = combined_x_axis, # TODO: check different data length or presample periods. to be fixed
+                                    xvals = extended_combined_x_axis,
                                     # transparency = transparency
                                     has_data = has_data
                                     )
@@ -1452,12 +1466,13 @@ function plot_model_estimates!(𝓂::ℳ,
                         idx = indexin(k[:x_axis], combined_x_axis)
                     end
 
-                    data_in_deviations = fill(NaN, length(combined_x_axis))
+                    # Use extended_combined_x_axis length for padding
+                    data_in_deviations = fill(NaN, length(extended_combined_x_axis))
                     data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)), periods]
                     # data_in_deviations[idx][1:k[:presample_periods]] .= NaN
 
                     StatsPlots.plot!(p,
-                        combined_x_axis,
+                        extended_combined_x_axis,
                         data_in_deviations .+ k[:reference_steady_state][var_indx],
                         label = "",
                         color = pal[length(model_estimates_active_plot_container) + i]
@@ -1477,12 +1492,15 @@ function plot_model_estimates!(𝓂::ℳ,
                 var_indx = findfirst(==(var), k[:variable_names]) 
 
                 if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
-                    data_in_deviations = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)),:]
-                    data_in_deviations[1:k[:presample_periods]] .= NaN
+                    # Use extended_combined_x_axis length for padding
+                    data_in_deviations_padded = fill(NaN, length(extended_combined_x_axis))
+                    data_vals = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)),:]
+                    data_vals[1:k[:presample_periods]] .= NaN
+                    data_in_deviations_padded[1:length(combined_x_axis)] = data_vals[periods]
                     
                     StatsPlots.plot!(p,
-                        combined_x_axis,
-                        data_in_deviations[periods] .+ k[:reference_steady_state][var_indx],
+                        extended_combined_x_axis,
+                        data_in_deviations_padded .+ k[:reference_steady_state][var_indx],
                         label = "",
                         color = data_color
                     )
@@ -1490,7 +1508,7 @@ function plot_model_estimates!(𝓂::ℳ,
             end
         end
 
-        # Add forecast if available for any run
+        # Add forecast if available for any run - plot as dashed line
         if i <= length(joint_non_zero_variables)  # Only plot forecast for variables, not shocks
             for (idx, k) in enumerate(model_estimates_active_plot_container)
                 if k[:forecast_periods] > 0 && !isnothing(k[:forecast_data])
@@ -1500,35 +1518,25 @@ function plot_model_estimates!(𝓂::ℳ,
                         forecast_var_idx = findfirst(==(k[:variable_names][var_indx]), axiskeys(k[:forecast_data], 1))
                         
                         if !isnothing(forecast_var_idx)
-                            # Create forecast array with NaN padding
+                            # Create forecast array with NaN padding using extended_combined_x_axis
+                            forecast_full = fill(NaN, length(extended_combined_x_axis))
+                            
                             if common_axis == []
-                                # Extended axis includes forecast periods
-                                forecast_full = vcat(
-                                    fill(NaN, length(k[:x_axis]) - 1),
-                                    k[:variables_to_plot][var_indx, end],
-                                    k[:forecast_data][forecast_var_idx, :]
-                                )
-                                forecast_x_axis = k[:extended_x_axis]
+                                last_idx = length(k[:x_axis])
                             else
-                                # Need to align with combined_x_axis
                                 idx_x = indexin(k[:x_axis], combined_x_axis)
                                 last_idx = maximum(idx_x)
-                                
-                                forecast_full = fill(NaN, length(combined_x_axis) + k[:forecast_periods])
-                                forecast_full[last_idx] = k[:variables_to_plot][var_indx, end]
-                                forecast_full[(last_idx+1):(last_idx+k[:forecast_periods])] = k[:forecast_data][forecast_var_idx, :]
-                                
-                                # Extend combined x-axis if needed
-                                last_x = combined_x_axis[end]
-                                if last_x isa Int
-                                    forecast_x_axis = vcat(combined_x_axis, (last_x+1):(last_x+k[:forecast_periods]))
-                                else
-                                    forecast_x_axis = vcat(combined_x_axis, (length(combined_x_axis)+1):(length(combined_x_axis)+k[:forecast_periods]))
-                                end
                             end
                             
+                            # Connection point (last filtered value)
+                            forecast_full[last_idx] = k[:variables_to_plot][var_indx, end]
+                            # Forecast values
+                            forecast_start = length(combined_x_axis) + 1
+                            forecast_end = length(combined_x_axis) + k[:forecast_periods]
+                            forecast_full[forecast_start:forecast_end] = k[:forecast_data][forecast_var_idx, :]
+                            
                             StatsPlots.plot!(p,
-                                forecast_x_axis,
+                                extended_combined_x_axis,
                                 forecast_full,
                                 linestyle = :dash,
                                 label = "",
