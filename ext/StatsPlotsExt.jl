@@ -349,14 +349,14 @@ function plot_model_estimates(𝓂::ℳ,
                                algorithm = algorithm,
                                shocks = :none,
                                periods = forecast_periods,
-                               initial_state = final_filtered_state .- reference_steady_state,
-                               levels = true,
+                               initial_state = final_filtered_state .+ NSSS,
+                               levels = false,
                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                sylvester_algorithm = sylvester_algorithm,
                                lyapunov_algorithm = lyapunov_algorithm,
                                tol = tol,
                                verbose = verbose)
-        
+
         forecast_data = collect(forecast_irf)
         
         # Create extended x-axis for plotting (including forecast periods)
@@ -516,7 +516,7 @@ function plot_model_estimates(𝓂::ℳ,
                             StatsPlots.plot!(p,
                                 extended_x_axis[(end-forecast_periods+1):end],
                                 forecast_data[forecast_var_idx, :],
-                                linestyle = :dot,
+                                linestyle = :dash,
                                 label = "",
                                 color = estimate_color)
                         end
@@ -960,8 +960,8 @@ function plot_model_estimates!(𝓂::ℳ,
                                algorithm = algorithm,
                                shocks = :none,
                                periods = forecast_periods,
-                               initial_state = final_filtered_state .- reference_steady_state,
-                               levels = true,
+                               initial_state = final_filtered_state .+ NSSS,
+                               levels = false,
                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                sylvester_algorithm = sylvester_algorithm,
                                lyapunov_algorithm = lyapunov_algorithm,
