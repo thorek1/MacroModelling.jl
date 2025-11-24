@@ -1373,8 +1373,8 @@ function plot_model_estimates!(𝓂::ℳ,
                         idx = indexin(k[:x_axis], combined_x_axis)
                     end
                     
-                    # Use extended_combined_x_axis length for padding
-                    shocks_to_plot = fill(NaN, length(extended_combined_x_axis))
+                    # Shocks use combined_x_axis only, not extended (no forecast for shocks)
+                    shocks_to_plot = fill(NaN, length(combined_x_axis))
                     shocks_to_plot[idx] = k[:shocks_to_plot][shock_idx, periods]
                     # shocks_to_plot[idx][1:k[:presample_periods]] .= NaN
                     push!(shocks_to_plot_s, shocks_to_plot) # k[:shocks_to_plot][shock_idx, periods])
@@ -1434,6 +1434,9 @@ function plot_model_estimates!(𝓂::ℳ,
             end
         end
 
+        # Use combined_x_axis for shocks, extended_combined_x_axis for variables
+        subplot_x_axis = i > length(joint_non_zero_variables) ? combined_x_axis : extended_combined_x_axis
+        
         p = standard_subplot(Val(:compare),
                                     plot_data, 
                                     SSs, 
@@ -1441,7 +1444,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                     gr_back,
                                     same_ss,
                                     pal = pal,
-                                    xvals = extended_combined_x_axis,
+                                    xvals = subplot_x_axis,
                                     # transparency = transparency
                                     has_data = has_data
                                     )
