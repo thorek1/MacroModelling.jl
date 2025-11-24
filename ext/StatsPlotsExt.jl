@@ -1537,7 +1537,7 @@ function plot_model_estimates!(𝓂::ℳ,
                         
                         StatsPlots.plot!(p,
                             extended_combined_x_axis,
-                            forecast_full,
+                            (has_data || same_ss) ? forecast_full .+ k[:reference_steady_state][var_indx] : forecast_full,
                             linestyle = :dash,
                             label = "",
                             color = pal[idx])
