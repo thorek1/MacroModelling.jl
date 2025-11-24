@@ -513,9 +513,14 @@ function plot_model_estimates(𝓂::ℳ,
                     if forecast_periods > 0 && !isnothing(forecast_data)
                         forecast_var_idx = findfirst(==(𝓂.timings.var[var_idx[i]]), axiskeys(forecast_irf, 1))
                         if !isnothing(forecast_var_idx)
+                            # Prepend the last filtered value to connect the forecast to the estimates
+                            last_filtered_value = variables_to_plot[var_idx[i], end]
+                            forecast_values_with_connection = vcat(last_filtered_value, forecast_data[forecast_var_idx, :])
+                            forecast_x_axis = extended_x_axis[(end-forecast_periods):end]
+                            
                             StatsPlots.plot!(p,
-                                extended_x_axis[(end-forecast_periods+1):end],
-                                forecast_data[forecast_var_idx, :],
+                                forecast_x_axis,
+                                forecast_values_with_connection,
                                 linestyle = :dash,
                                 label = "",
                                 color = estimate_color)
@@ -541,9 +546,14 @@ function plot_model_estimates(𝓂::ℳ,
                     if forecast_periods > 0 && !isnothing(forecast_data)
                         forecast_var_idx = findfirst(==(𝓂.timings.var[var_idx[i]]), axiskeys(forecast_irf, 1))
                         if !isnothing(forecast_var_idx)
+                            # Prepend the last filtered value to connect the forecast to the estimates
+                            last_filtered_value = variables_to_plot[var_idx[i], end]
+                            forecast_values_with_connection = vcat(last_filtered_value, forecast_data[forecast_var_idx, :])
+                            forecast_x_axis = extended_x_axis[(end-forecast_periods):end]
+                            
                             StatsPlots.plot!(p,
-                                extended_x_axis[(end-forecast_periods+1):end],
-                                forecast_data[forecast_var_idx, :],
+                                forecast_x_axis,
+                                forecast_values_with_connection,
                                 linestyle = :dot,
                                 label = "",
                                 color = shock_decomposition ? estimate_color : pal[1])
