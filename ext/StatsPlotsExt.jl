@@ -427,7 +427,7 @@ function plot_model_estimates(𝓂::ℳ,
                            :shock_names => shock_names_display,
                            :x_axis => x_axis,
                            :extended_x_axis => extended_x_axis,
-                           :forecast_data => forecast_data,
+                           :forecast_data => forecast_irf,
                            :forecast_periods => forecast_periods,
                            :rename_dictionary => processed_rename_dictionary
                            )
@@ -1078,7 +1078,7 @@ function plot_model_estimates!(𝓂::ℳ,
                            :shock_names => shock_names_display,
                            :x_axis => x_axis,
                            :extended_x_axis => extended_x_axis,
-                           :forecast_data => forecast_data,
+                           :forecast_data => forecast_irf,
                            :forecast_periods => forecast_periods,
                            :rename_dictionary => processed_rename_dictionary
                            )
@@ -1220,7 +1220,7 @@ function plot_model_estimates!(𝓂::ℳ,
                             :tol, :label, #:presample_periods,
                             :shocks, :shock_names,
                             :variables, :variable_names,
-                            :rename_dictionary,
+                            :rename_dictionary, :forecast_periods, :forecast_data, :extended_x_axis
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
                         ]
                     )
