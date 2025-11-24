@@ -426,6 +426,9 @@ function plot_model_estimates(𝓂::ℳ,
                            :variable_names => variable_names_display,
                            :shock_names => shock_names_display,
                            :x_axis => x_axis,
+                           :extended_x_axis => extended_x_axis,
+                           :forecast_data => forecast_data,
+                           :forecast_periods => forecast_periods,
                            :rename_dictionary => processed_rename_dictionary
                            )
 
@@ -513,14 +516,16 @@ function plot_model_estimates(𝓂::ℳ,
                     if forecast_periods > 0 && !isnothing(forecast_data)
                         forecast_var_idx = findfirst(==(𝓂.timings.var[var_idx[i]]), axiskeys(forecast_irf, 1))
                         if !isnothing(forecast_var_idx)
-                            # Prepend the last filtered value to connect the forecast to the estimates
-                            last_filtered_value = variables_to_plot[var_idx[i], end]
-                            forecast_values_with_connection = vcat(last_filtered_value, forecast_data[forecast_var_idx, :])
-                            forecast_x_axis = extended_x_axis[(end-forecast_periods):end]
+                            # Create full forecast array with NaN padding for historical periods
+                            forecast_full = vcat(
+                                fill(NaN, length(x_axis) - 1),  # NaN for all periods except the last
+                                variables_to_plot[var_idx[i], end],  # Last filtered value for connection
+                                forecast_data[forecast_var_idx, :]  # Forecast values
+                            )
                             
                             StatsPlots.plot!(p,
-                                forecast_x_axis,
-                                forecast_values_with_connection,
+                                extended_x_axis,
+                                forecast_full,
                                 linestyle = :dash,
                                 label = "",
                                 color = estimate_color)
@@ -546,15 +551,17 @@ function plot_model_estimates(𝓂::ℳ,
                     if forecast_periods > 0 && !isnothing(forecast_data)
                         forecast_var_idx = findfirst(==(𝓂.timings.var[var_idx[i]]), axiskeys(forecast_irf, 1))
                         if !isnothing(forecast_var_idx)
-                            # Prepend the last filtered value to connect the forecast to the estimates
-                            last_filtered_value = variables_to_plot[var_idx[i], end]
-                            forecast_values_with_connection = vcat(last_filtered_value, forecast_data[forecast_var_idx, :])
-                            forecast_x_axis = extended_x_axis[(end-forecast_periods):end]
+                            # Create full forecast array with NaN padding for historical periods
+                            forecast_full = vcat(
+                                fill(NaN, length(x_axis) - 1),  # NaN for all periods except the last
+                                variables_to_plot[var_idx[i], end],  # Last filtered value for connection
+                                forecast_data[forecast_var_idx, :]  # Forecast values
+                            )
                             
                             StatsPlots.plot!(p,
-                                forecast_x_axis,
-                                forecast_values_with_connection,
-                                linestyle = :dot,
+                                extended_x_axis,
+                                forecast_full,
+                                linestyle = :dash,
                                 label = "",
                                 color = shock_decomposition ? estimate_color : pal[1])
                         end
@@ -592,7 +599,7 @@ function plot_model_estimates(𝓂::ℳ,
                 StatsPlots.plot!(pl,
                                 [NaN], 
                                 label = "Forecast", 
-                                linestyle = :dot,
+                                linestyle = :dash,
                                 color = shock_decomposition ? estimate_color : pal[1])
             end
 
@@ -662,7 +669,7 @@ function plot_model_estimates(𝓂::ℳ,
             StatsPlots.plot!(pl,
                             [NaN], 
                             label = "Forecast", 
-                            linestyle = :dot,
+                            linestyle = :dash,
                             color = shock_decomposition ? estimate_color : pal[1])
         end
 
@@ -1043,6 +1050,9 @@ function plot_model_estimates!(𝓂::ℳ,
                            :variable_names => variable_names_display,
                            :shock_names => shock_names_display,
                            :x_axis => x_axis,
+                           :extended_x_axis => extended_x_axis,
+                           :forecast_data => forecast_data,
+                           :forecast_periods => forecast_periods,
                            :rename_dictionary => processed_rename_dictionary
                            )
 
@@ -1449,6 +1459,55 @@ function plot_model_estimates!(𝓂::ℳ,
                         label = "",
                         color = data_color
                     )
+                end
+            end
+        end
+
+        # Add forecast if available for any run
+        if i <= length(joint_non_zero_variables)  # Only plot forecast for variables, not shocks
+            for (idx, k) in enumerate(model_estimates_active_plot_container)
+                if k[:forecast_periods] > 0 && !isnothing(k[:forecast_data])
+                    var_indx = findfirst(==(var), k[:variable_names])
+                    
+                    if !isnothing(var_indx)
+                        forecast_var_idx = findfirst(==(k[:variable_names][var_indx]), axiskeys(k[:forecast_data], 1))
+                        
+                        if !isnothing(forecast_var_idx)
+                            # Create forecast array with NaN padding
+                            if common_axis == []
+                                # Extended axis includes forecast periods
+                                forecast_full = vcat(
+                                    fill(NaN, length(k[:x_axis]) - 1),
+                                    k[:variables_to_plot][var_indx, end],
+                                    k[:forecast_data][forecast_var_idx, :]
+                                )
+                                forecast_x_axis = k[:extended_x_axis]
+                            else
+                                # Need to align with combined_x_axis
+                                idx_x = indexin(k[:x_axis], combined_x_axis)
+                                last_idx = maximum(idx_x)
+                                
+                                forecast_full = fill(NaN, length(combined_x_axis) + k[:forecast_periods])
+                                forecast_full[last_idx] = k[:variables_to_plot][var_indx, end]
+                                forecast_full[(last_idx+1):(last_idx+k[:forecast_periods])] = k[:forecast_data][forecast_var_idx, :]
+                                
+                                # Extend combined x-axis if needed
+                                last_x = combined_x_axis[end]
+                                if last_x isa Int
+                                    forecast_x_axis = vcat(combined_x_axis, (last_x+1):(last_x+k[:forecast_periods]))
+                                else
+                                    forecast_x_axis = vcat(combined_x_axis, (length(combined_x_axis)+1):(length(combined_x_axis)+k[:forecast_periods]))
+                                end
+                            end
+                            
+                            StatsPlots.plot!(p,
+                                forecast_x_axis,
+                                forecast_full,
+                                linestyle = :dash,
+                                label = "",
+                                color = pal[idx])
+                        end
+                    end
                 end
             end
         end
