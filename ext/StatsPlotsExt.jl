@@ -2247,7 +2247,7 @@ function standard_subplot(::Val{:stack},
     maxlen = maximum(length.(plot_dat))
 
     # pad shorter vectors with 0
-    padded = [vcat(collect(v), fill(0.0, maxlen - length(v))) for v in plot_dat]
+    padded = [vcat(collect(v), fill(NaN, maxlen - length(v))) for v in plot_dat]
 
     # now you can hcat
     plot_data = reduce(hcat, padded)
