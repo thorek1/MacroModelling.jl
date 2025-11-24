@@ -493,21 +493,34 @@ function plot_model_estimates(𝓂::ℳ,
 
                     additional_indices = pruning ? [size(decomp,1)-1, size(decomp,1)-2] : [size(decomp,1)-1]
                     
+                    # Prepare data with NaN padding for forecast extension
+                    decomp_padded = if forecast_periods > 0
+                        [vcat(decomp[k,:], fill(NaN, forecast_periods)) for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))]
+                    else
+                        [decomp[k,:] for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))]
+                    end
+                    
                     p = standard_subplot(Val(:stack),
-                                        [decomp[k,:] for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))], 
+                                        decomp_padded, 
                                         [SS for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))], 
                                         variable_names_display[i], 
                                         gr_back,
                                         true, # same_ss,
                                         transparency = transparency,
-                                        xvals = x_axis,
+                                        xvals = extended_x_axis,
                                         pal = pal,
                                         color_total = estimate_color)
                                         
                     if var_idx[i] ∈ obs_idx
+                        # Pad data with NaN for forecast period
+                        data_padded = if forecast_periods > 0
+                            vcat(vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods]), fill(NaN, forecast_periods))
+                        else
+                            vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods])
+                        end
                         StatsPlots.plot!(p,
-                            # x_axis,
-                            shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
+                            extended_x_axis,
+                            shock_decomposition ? data_padded : data_padded .+ SS,
                             label = "",
                             color = shock_decomposition ? data_color : pal[2])
                     end
@@ -532,17 +545,30 @@ function plot_model_estimates(𝓂::ℳ,
                         end
                     end
                 else
-                    p = standard_subplot(variables_to_plot[var_idx[i],periods], 
+                    # Pad variables_to_plot with NaN for forecast extension
+                    var_data_padded = if forecast_periods > 0
+                        vcat(variables_to_plot[var_idx[i],periods], fill(NaN, forecast_periods))
+                    else
+                        variables_to_plot[var_idx[i],periods]
+                    end
+                    
+                    p = standard_subplot(var_data_padded, 
                                         SS, 
                                         variable_names_display[i], 
                                         gr_back,
                                         pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
-                                        xvals = x_axis)
+                                        xvals = extended_x_axis)
 
                     if var_idx[i] ∈ obs_idx
+                        # Pad data with NaN for forecast period
+                        data_padded = if forecast_periods > 0
+                            vcat(vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods]), fill(NaN, forecast_periods))
+                        else
+                            vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods])
+                        end
                         StatsPlots.plot!(p,
-                            x_axis,
-                            shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
+                            extended_x_axis,
+                            shock_decomposition ? data_padded : data_padded .+ SS,
                             label = "",
                             color = shock_decomposition ? data_color : pal[2])
                     end
