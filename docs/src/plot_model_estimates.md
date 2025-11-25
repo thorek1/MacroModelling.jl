@@ -340,7 +340,7 @@ Note that now only 20 periods of the 40 periods in the data are shown in the plo
 
 ## Forecast periods
 
-The `forecast_periods` argument [Default: `12`, Type: `Int`] specifies the number of unconditional forecast periods to display after the last data period. The forecast shows the model's expected dynamics as it returns to its steady state, starting from the final filtered state. The forecast is displayed as a dashed line to distinguish it from the model estimates, and a "Forecast" entry is added to the legend.
+The `forecast_periods` argument [Default: `12`, Type: `Int`] specifies the number of unconditional forecast periods to display after the last data period. The forecast shows the model's expected dynamics without further exogenous shocks, starting from the final filtered state. The forecast is displayed as a dashed line to distinguish it from the model estimates, and a "Forecast" entry is added to the legend.
 
 To plot model estimates with the default 12-period forecast:
 
@@ -362,7 +362,7 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, forecast_periods =
 
 ![Gali 2015 model estimates - 24 period forecast](../assets/estimates_forecast_24__Gali_2015_chapter_3_nonlinear__2.png)
 
-To disable the forecast and show only model estimates (original behavior), set `forecast_periods = 0`:
+To disable the forecast and show only model estimates, set `forecast_periods = 0`:
 
 ```julia
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
