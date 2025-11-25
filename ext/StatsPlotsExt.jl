@@ -1255,6 +1255,18 @@ function plot_model_estimates!(𝓂::ℳ,
         foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
     end
 
+    # Add Forecast legend entries for scenarios that have forecasts
+    for (i,k) in enumerate(model_estimates_active_plot_container)
+        if k[:forecast_periods] > 0 && !isnothing(k[:forecast_data])
+            lbl = "$(k[:label]) Forecast"
+            StatsPlots.plot!(legend_plot,
+                            [NaN], 
+                            linestyle = :dash,
+                            label = lbl,
+                            color = pal[mod1.(i, length(pal))]')
+        end
+    end
+
     if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
         for (i,k) in enumerate(model_estimates_active_plot_container)
             if length(data_idx) > 0
@@ -1275,18 +1287,6 @@ function plot_model_estimates!(𝓂::ℳ,
                                 [NaN], 
                                 label = "Data",
                                 color = data_color)
-    end
-
-    # Add Forecast legend entries for scenarios that have forecasts
-    for (i,k) in enumerate(model_estimates_active_plot_container)
-        if k[:forecast_periods] > 0 && !isnothing(k[:forecast_data])
-            lbl = "$(k[:label]) Forecast"
-            StatsPlots.plot!(legend_plot,
-                            [NaN], 
-                            linestyle = :dash,
-                            label = lbl,
-                            color = pal[mod1.(i, length(pal))]')
-        end
     end
 
     sort!(joint_shocks, by = normalize_superscript)
