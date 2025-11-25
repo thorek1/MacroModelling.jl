@@ -2430,6 +2430,26 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods 
                          save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_presample)
 
 
+## Forecast periods
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_forecast_default)
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, forecast_periods = 24,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_forecast_24)
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, forecast_periods = 0,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_forecast_0)
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, parameters = :β => 0.99)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, parameters = :β => 0.95, forecast_periods = 18,
+                         save_plots = true, save_plots_format = :png, save_plots_path = "./docs/src/assets", save_plots_name = :estimates_forecast_compare)
+
+
 ## Shock decomposition
 
 sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
