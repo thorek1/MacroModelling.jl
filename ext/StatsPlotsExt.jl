@@ -1,9 +1,8 @@
 module StatsPlotsExt
 
 using MacroModelling
-using Dates
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, infer_step
 import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -350,6 +349,7 @@ function plot_model_estimates(𝓂::ℳ,
                                algorithm = algorithm,
                                shocks = :none,
                                periods = forecast_periods,
+                               variables = :all,
                                initial_state = final_filtered_state,
                                levels = false,
                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -362,21 +362,9 @@ function plot_model_estimates(𝓂::ℳ,
         
         # Create extended x-axis for plotting (including forecast periods)
         last_x = x_axis[end]
-        if last_x isa Int
-            extended_x_axis = vcat(x_axis, (last_x+1):(last_x+forecast_periods))
-        elseif last_x isa TimeType
-            # For Date/DateTime types, calculate the period and extend appropriately
-            if length(x_axis) > 1
-                period = x_axis[end] - x_axis[end-1]
-                extended_x_axis = vcat(x_axis, [last_x + i * period for i in 1:forecast_periods])
-            else
-                # Default to monthly if only one date
-                extended_x_axis = vcat(x_axis, [last_x + Month(i) for i in 1:forecast_periods])
-            end
-        else
-            # If x_axis is not integer or date, just append indices
-            extended_x_axis = vcat(x_axis, (length(x_axis)+1):(length(x_axis)+forecast_periods))
-        end
+        
+        period = infer_step(x_axis)
+        extended_x_axis = vcat(x_axis, [last_x + i * period for i in 1:forecast_periods])
     end
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
@@ -437,7 +425,7 @@ function plot_model_estimates(𝓂::ℳ,
                            :shock_names => shock_names_display,
                            :x_axis => x_axis,
                            :extended_x_axis => extended_x_axis,
-                           :forecast_data => forecast_irf,
+                           :forecast_data => isnothing(forecast_irf) ? forecast_irf : forecast_irf[var_idx, :, :],
                            :forecast_periods => forecast_periods,
                            :rename_dictionary => processed_rename_dictionary
                            )
@@ -520,7 +508,6 @@ function plot_model_estimates(𝓂::ℳ,
                                         xvals = extended_x_axis,
                                         pal = pal,
                                         color_total = estimate_color)
-                                        
                     if var_idx[i] ∈ obs_idx
                         # Pad data with NaN for forecast period
                         data_padded = if forecast_periods > 0
@@ -529,7 +516,7 @@ function plot_model_estimates(𝓂::ℳ,
                             vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods])
                         end
                         StatsPlots.plot!(p,
-                            extended_x_axis,
+                            # extended_x_axis,
                             shock_decomposition ? data_padded : data_padded .+ SS,
                             label = "",
                             color = shock_decomposition ? data_color : pal[2])
@@ -537,22 +524,19 @@ function plot_model_estimates(𝓂::ℳ,
                     
                     # Add forecast if available
                     if forecast_periods > 0 && !isnothing(forecast_data)
-                        forecast_var_idx = findfirst(==(𝓂.timings.var[var_idx[i]]), axiskeys(forecast_irf, 1))
-                        if !isnothing(forecast_var_idx)
-                            # Create full forecast array with NaN padding for historical periods
-                            forecast_full = vcat(
-                                fill(NaN, length(x_axis) - 1),  # NaN for all periods except the last
-                                variables_to_plot[var_idx[i], end],  # Last filtered value for connection
-                                forecast_data[forecast_var_idx, :]  # Forecast values
-                            )
-                            
-                            StatsPlots.plot!(p,
-                                extended_x_axis,
-                                forecast_full,
-                                linestyle = :dash,
-                                label = "",
-                                color = estimate_color)
-                        end
+                        # Create full forecast array with NaN padding for historical periods
+                        forecast_full = vcat(
+                            fill(NaN, length(x_axis) - 1),  # NaN for all periods except the last
+                            variables_to_plot[var_idx[i], end],  # Last filtered value for connection
+                            forecast_data[var_idx[i], :]  # Forecast values
+                        )
+                        
+                        StatsPlots.plot!(p,
+                            # extended_x_axis,
+                            forecast_full,
+                            linestyle = :dash,
+                            label = "",
+                            color = estimate_color)
                     end
                 else
                     # Pad variables_to_plot with NaN for forecast extension
@@ -561,7 +545,6 @@ function plot_model_estimates(𝓂::ℳ,
                     else
                         variables_to_plot[var_idx[i],periods]
                     end
-                    
                     p = standard_subplot(var_data_padded, 
                                         SS, 
                                         variable_names_display[i], 
@@ -585,22 +568,19 @@ function plot_model_estimates(𝓂::ℳ,
                     
                     # Add forecast if available
                     if forecast_periods > 0 && !isnothing(forecast_data)
-                        forecast_var_idx = findfirst(==(𝓂.timings.var[var_idx[i]]), axiskeys(forecast_irf, 1))
-                        if !isnothing(forecast_var_idx)
-                            # Create full forecast array with NaN padding for historical periods
-                            forecast_full = vcat(
-                                fill(NaN, length(x_axis) - 1),  # NaN for all periods except the last
-                                variables_to_plot[var_idx[i], end],  # Last filtered value for connection
-                                forecast_data[forecast_var_idx, :]  # Forecast values
-                            )
-                            
-                            StatsPlots.plot!(p,
-                                extended_x_axis,
-                                shock_decomposition ? forecast_full : forecast_full .+ SS,
-                                linestyle = :dash,
-                                label = "",
-                                color = shock_decomposition ? estimate_color : pal[1])
-                        end
+                        # Create full forecast array with NaN padding for historical periods
+                        forecast_full = vcat(
+                            fill(NaN, length(x_axis) - 1),  # NaN for all periods except the last
+                            variables_to_plot[var_idx[i], end],  # Last filtered value for connection
+                            forecast_data[var_idx[i], :]  # Forecast values
+                        )
+                        
+                        StatsPlots.plot!(p,
+                            extended_x_axis,
+                            shock_decomposition ? forecast_full : forecast_full .+ SS,
+                            linestyle = :dash,
+                            label = "",
+                            color = shock_decomposition ? estimate_color : pal[1])
                     end
                 end
                         
@@ -1014,6 +994,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                algorithm = algorithm,
                                shocks = :none,
                                periods = forecast_periods,
+                               variables = :all,
                                initial_state = final_filtered_state,
                                levels = false,
                                quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
@@ -1026,21 +1007,9 @@ function plot_model_estimates!(𝓂::ℳ,
         
         # Create extended x-axis for plotting (including forecast periods)
         last_x = x_axis[end]
-        if last_x isa Int
-            extended_x_axis = vcat(x_axis, (last_x+1):(last_x+forecast_periods))
-        elseif last_x isa TimeType
-            # For Date/DateTime types, calculate the period and extend appropriately
-            if length(x_axis) > 1
-                period = x_axis[end] - x_axis[end-1]
-                extended_x_axis = vcat(x_axis, [last_x + i * period for i in 1:forecast_periods])
-            else
-                # Default to monthly if only one date
-                extended_x_axis = vcat(x_axis, [last_x + Month(i) for i in 1:forecast_periods])
-            end
-        else
-            # If x_axis is not integer or date, just append indices
-            extended_x_axis = vcat(x_axis, (length(x_axis)+1):(length(x_axis)+forecast_periods))
-        end
+
+        period = infer_step(x_axis)
+        extended_x_axis = vcat(x_axis, [last_x + i * period for i in 1:forecast_periods])
     end
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
@@ -1097,7 +1066,7 @@ function plot_model_estimates!(𝓂::ℳ,
                            :shock_names => shock_names_display,
                            :x_axis => x_axis,
                            :extended_x_axis => extended_x_axis,
-                           :forecast_data => forecast_irf,
+                           :forecast_data => isnothing(forecast_irf) ? forecast_irf : forecast_irf[var_idx, :, :],
                            :forecast_periods => forecast_periods,
                            :rename_dictionary => processed_rename_dictionary
                            )
@@ -1223,21 +1192,9 @@ function plot_model_estimates!(𝓂::ℳ,
     max_forecast_periods = maximum([get(k, :forecast_periods, 0) for k in model_estimates_active_plot_container])
     if max_forecast_periods > 0
         last_x = combined_x_axis[end]
-        if last_x isa Int
-            extended_combined_x_axis = vcat(combined_x_axis, (last_x+1):(last_x+max_forecast_periods))
-        elseif last_x isa TimeType
-            # For Date/DateTime types, calculate the period and extend appropriately
-            if length(combined_x_axis) > 1
-                period = combined_x_axis[end] - combined_x_axis[end-1]
-                extended_combined_x_axis = vcat(combined_x_axis, [last_x + i * period for i in 1:max_forecast_periods])
-            else
-                # Default to monthly if only one date
-                extended_combined_x_axis = vcat(combined_x_axis, [last_x + Month(i) for i in 1:max_forecast_periods])
-            end
-        else
-            extended_combined_x_axis = vcat(combined_x_axis, (length(combined_x_axis)+1):(length(combined_x_axis)+max_forecast_periods))
-        end
-    else
+
+        period = infer_step(combined_x_axis)
+        extended_combined_x_axis = vcat(combined_x_axis, [last_x + i * period for i in 1:max_forecast_periods])    else
         extended_combined_x_axis = combined_x_axis
     end
        
@@ -1291,7 +1248,7 @@ function plot_model_estimates!(𝓂::ℳ,
             StatsPlots.plot!(legend_plot,
                             [NaN], 
                             linestyle = :dash,
-                            label = "$lbl Forecast",
+                            label = "Forecast $lbl",
                             color = pal[mod1.(i, length(pal))]')
         end
     end
@@ -1337,7 +1294,7 @@ function plot_model_estimates!(𝓂::ℳ,
         not_zero_anywhere = false
 
         for k in model_estimates_active_plot_container
-            var_idx = findfirst(==(var), k[:variable_names])
+            var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
             periods = k[:presample_periods] + 1:size(k[:data], 2)
 
             if isnothing(var_idx) || not_zero_anywhere
@@ -1399,7 +1356,7 @@ function plot_model_estimates!(𝓂::ℳ,
             periods = (1:length(k[:x_axis])) .+ k[:presample_periods]
 
             if i > length(joint_non_zero_variables)
-                shock_idx = findfirst(==(var), k[:shock_names])
+                shock_idx = findfirst(==(var), apply_custom_name.(k[:shock_names], Ref(Dict(k[:rename_dictionary]))))
                 if isnothing(shock_idx)
                     # If the variable or shock is not present in the current plot_container,
                     # we skip this iteration.
@@ -1421,7 +1378,7 @@ function plot_model_estimates!(𝓂::ℳ,
                     push!(shocks_to_plot_s, shocks_to_plot) # k[:shocks_to_plot][shock_idx, periods])
                 end
             else
-                var_idx = findfirst(==(var), k[:variable_names])
+                var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
                 if isnothing(var_idx)
                     # If the variable or shock is not present in the current plot_container,
                     # we skip this iteration.
@@ -1468,7 +1425,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
             obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
 
-            var_indx = findfirst(==(var), k[:variable_names]) 
+            var_indx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
 
             if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
                 has_data = true || has_data
@@ -1501,7 +1458,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
                 obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
 
-                var_indx = findfirst(==(var), k[:variable_names])
+                var_indx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
 
                 if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
                     if common_axis == []
@@ -1516,7 +1473,7 @@ function plot_model_estimates!(𝓂::ℳ,
                     # data_in_deviations[idx][1:k[:presample_periods]] .= NaN
 
                     StatsPlots.plot!(p,
-                        extended_combined_x_axis,
+                        # extended_combined_x_axis,
                         data_in_deviations .+ k[:reference_steady_state][var_indx],
                         label = "",
                         color = pal[length(model_estimates_active_plot_container) + i]
@@ -1533,7 +1490,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
                 obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
 
-                var_indx = findfirst(==(var), k[:variable_names]) 
+                var_indx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary])))) 
 
                 if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
                     # Use extended_combined_x_axis length for padding
@@ -1543,7 +1500,7 @@ function plot_model_estimates!(𝓂::ℳ,
                     data_in_deviations_padded[1:length(combined_x_axis)] = data_vals[periods]
                     
                     StatsPlots.plot!(p,
-                        extended_combined_x_axis,
+                        # extended_combined_x_axis,
                         data_in_deviations_padded .+ k[:reference_steady_state][var_indx],
                         label = "",
                         color = data_color
@@ -1556,8 +1513,7 @@ function plot_model_estimates!(𝓂::ℳ,
         if i <= length(joint_non_zero_variables)  # Only plot forecast for variables, not shocks
             for (idx, k) in enumerate(model_estimates_active_plot_container)
                 if k[:forecast_periods] > 0 && !isnothing(k[:forecast_data])
-                    var_indx = findfirst(==(var), k[:variable_names])
-                    
+                    var_indx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
                     if !isnothing(var_indx)
                         # Create forecast array with NaN padding using extended_combined_x_axis
                         forecast_full = fill(NaN, length(extended_combined_x_axis))
@@ -1572,12 +1528,12 @@ function plot_model_estimates!(𝓂::ℳ,
                         # Connection point (last filtered value)
                         forecast_full[last_idx] = k[:variables_to_plot][var_indx, end]
                         # Forecast values
-                        forecast_start = length(combined_x_axis) + 1
-                        forecast_end = length(combined_x_axis) + k[:forecast_periods]
+                        forecast_start = last_idx + 1
+                        forecast_end = last_idx + k[:forecast_periods]
                         forecast_full[forecast_start:forecast_end] = k[:forecast_data][var_indx, :]
                         
                         StatsPlots.plot!(p,
-                            extended_combined_x_axis,
+                            # extended_combined_x_axis,
                             (has_data || same_ss) ? forecast_full .+ k[:reference_steady_state][var_indx] : forecast_full,
                             linestyle = :dash,
                             label = "",
@@ -2116,8 +2072,9 @@ function standard_subplot(irf_data::AbstractVector{S},
                             gr_back::Bool;
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
                             xvals = 1:length(irf_data)) where {S <: AbstractFloat, R <: Union{String, Symbol}}
-    can_dual_axis = gr_back && all((irf_data .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
-    
+    finite_vals = filter(isfinite, irf_data)
+    can_dual_axis = gr_back && !isempty(finite_vals) && all((finite_vals .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
+
     xrotation = length(string(xvals[1])) > 5 ? 30 : 0
 
     p = StatsPlots.plot(xvals,
