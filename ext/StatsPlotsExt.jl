@@ -1582,7 +1582,7 @@ function plot_model_estimates!(𝓂::ℳ,
             
             plot_elements = [ppp, legend_plot]
 
-            layout_heights = [15,1]
+            layout_heights = [15, length(annotate_diff_input)]
             
             if length(annotate_diff_input) > 2
                 annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
@@ -1652,7 +1652,7 @@ function plot_model_estimates!(𝓂::ℳ,
         
         plot_elements = [ppp, legend_plot]
 
-        layout_heights = [15,1]
+        layout_heights = [15, length(annotate_diff_input)]
         
         if length(annotate_diff_input) > 2
             annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
@@ -5895,7 +5895,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
             plot_elements = [ppp, legend_plot]
 
-            layout_heights = [15,1]
+            layout_heights = [15, length(annotate_diff_input)]
             
             if length(annotate_diff_input) > 2
                 annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
@@ -5965,7 +5965,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
         plot_elements = [ppp, legend_plot]
 
-        layout_heights = [15,1]
+        layout_heights = [15, length(annotate_diff_input)]
         
         if length(annotate_diff_input) > 2
             annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
