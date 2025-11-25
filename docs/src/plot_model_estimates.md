@@ -338,6 +338,51 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods 
 
 Note that now only 20 periods of the 40 periods in the data are shown in the plots, starting from period 21, while the first 20 periods were used in the filtering process.
 
+## Forecast periods
+
+The `forecast_periods` argument [Default: `12`, Type: `Int`] specifies the number of unconditional forecast periods to display after the last data period. The forecast shows the model's expected dynamics as it returns to its steady state, starting from the final filtered state. The forecast is displayed as a dashed line to distinguish it from the model estimates, and a "Forecast" entry is added to the legend.
+
+To plot model estimates with the default 12-period forecast:
+
+```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data)
+```
+
+![Gali 2015 model estimates - default forecast](../assets/estimates_forecast_default__Gali_2015_chapter_3_nonlinear__2.png)
+
+The dashed line shows the unconditional forecast extending 12 periods beyond the last data point.
+
+To specify a custom forecast horizon, for example 24 periods:
+
+```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, forecast_periods = 24)
+```
+
+![Gali 2015 model estimates - 24 period forecast](../assets/estimates_forecast_24__Gali_2015_chapter_3_nonlinear__2.png)
+
+To disable the forecast and show only model estimates (original behavior), set `forecast_periods = 0`:
+
+```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, forecast_periods = 0)
+```
+
+![Gali 2015 model estimates - no forecast](../assets/estimates_forecast_0__Gali_2015_chapter_3_nonlinear__2.png)
+
+The forecast also works with `plot_model_estimates!` for comparing multiple scenarios. Each scenario can have its own forecast horizon:
+
+```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, parameters = :β => 0.99)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, parameters = :β => 0.95, forecast_periods = 18)
+```
+
+![Gali 2015 model estimates - forecast comparison](../assets/estimates_forecast_compare__Gali_2015_chapter_3_nonlinear__2.png)
+
+The legend shows each scenario with its corresponding forecast as a dashed line in the same color.
+
 ## Shock decomposition
 
 The `shock_decomposition` argument [Type: `Bool`] specifies whether to include shock decompositions in the plots. By default, it is set to `true` for first order, pruned second order, and pruned third order solutions. For second order and third order solutions `shock_decomposition = false`, as the algorithm is not designed to handle it. If set to `true`, stacked bar charts showing the contribution of each shock to the variable's deviation from its steady state are included below the line plots for each variable.
