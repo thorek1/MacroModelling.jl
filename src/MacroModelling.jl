@@ -192,7 +192,7 @@ export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations, ge
 export get_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS, ss, sss
-export get_non_stochastic_steady_state_residuals, get_residuals, check_residuals
+export get_non_stochastic_steady_state_residuals, get_residuals, check_residuals, get_dynamic_residuals
 export get_moments, get_statistics, get_covariance, get_standard_deviation, get_variance, get_var, get_std, get_stdev, get_cov, var, std, stdev, cov, get_mean #, mean
 export get_autocorrelation, get_correlation, get_variance_decomposition, get_corr, get_autocorr, get_var_decomp, corr, autocorr
 export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditional_variance_decomposition
@@ -7466,7 +7466,6 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
         end
     end
 
-
     for v in 𝓂.calibration_equations_no_var
         push!(calib_vars, v.args[1])
         push!(calib_expr, v.args[2])
@@ -7520,6 +7519,112 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                                             expression = Val(false))::Tuple{<:Function, <:Function}
 
     𝓂.jacobian = buffer, func_exprs
+
+    # Generate dynamic equations function
+    # This function evaluates the dynamic equations themselves (not derivatives)
+    # and fills a pre-allocated residual vector
+    # Also includes calibration equations (concatenated) to support stochastic steady state cases
+    
+    # Create separate symbolic variable arrays for FULL vectors
+    # The generated function will handle indexing internally
+    n_params = length(𝓂.parameters)
+    n_calib_params = length(𝓂.calibration_equations_parameters)
+    n_vars = length(𝓂.var)
+    n_ss = n_vars
+    n_exo = length(𝓂.exo)
+    
+    # Create symbolic arrays for full vectors (not indexed subsets)
+    Symbolics.@variables params_sym[1:n_params] calib_params_sym[1:n_calib_params] ss_sym[1:n_ss] future_sym[1:n_vars] present_sym[1:n_vars] past_sym[1:n_vars] shocks_sym[1:n_exo]
+    
+    # Create substitution mapping directly from original equation symbols to new separate variables
+    # Start from 𝓂.dyn_equations and 𝓂.calibration_equations
+    direct_substitution_dict = Dict{Symbol, Symbolics.Num}()
+    
+    # Map parameters
+    for (i, param) in enumerate(𝓂.parameters)
+        direct_substitution_dict[param] = params_sym[i]
+    end
+    
+    # Map calibration parameters
+    for (i, calib_param) in enumerate(𝓂.calibration_equations_parameters)
+        direct_substitution_dict[calib_param] = calib_params_sym[i]
+    end
+    
+    # Map variables with timing indices
+    # For dynamic equations: map k₍₀₎, k₍₋₁₎, k₍₁₎ to present, past, future
+    # For calibration equations: also map steady state variables k₍ₛₛ₎
+    for (var_idx, var) in enumerate(𝓂.var)
+        var_str = string(var)
+        
+        # Future timing: k₍₁₎ -> future_sym[var_idx]
+        direct_substitution_dict[Symbol(var_str * "₍₁₎")] = future_sym[var_idx]
+        
+        # Present timing: k₍₀₎ -> present_sym[var_idx]
+        direct_substitution_dict[Symbol(var_str * "₍₀₎")] = present_sym[var_idx]
+        
+        # Past timing: k₍₋₁₎ -> past_sym[var_idx]
+        direct_substitution_dict[Symbol(var_str * "₍₋₁₎")] = past_sym[var_idx]
+    end
+    
+    # Map steady state variables (for calibration equations)
+    # Find which variables appear in steady state and map them to ss_sym
+    for (i, var) in enumerate(𝓂.var)
+        var_str = string(var)
+        # Steady state: k₍ₛₛ₎ -> ss_sym[i]
+        direct_substitution_dict[Symbol(var_str * "₍ₛₛ₎")] = ss_sym[i]
+    end
+    
+    # Map shocks
+    for (i, shock) in enumerate(𝓂.exo)
+        shock_str = string(shock)
+        direct_substitution_dict[Symbol(shock_str * "₍ₓ₎")] = shocks_sym[i]
+    end
+    
+    # Process dynamic equations: apply calibration replacements first, then direct substitution
+    dyn_eqs_direct = 𝓂.dyn_equations |> 
+        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+        x -> replace_symbols.(x, Ref(direct_substitution_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__))
+    
+    # Process calibration equations: replace timing indices with steady state first
+    # In calibration equations, variables with timing (k₍₀₎, k₍₋₁₎, k₍₁₎) should become k₍ₛₛ₎
+    timing_to_ss_dict = Dict{Symbol, Symbol}()
+    for var in 𝓂.var
+        var_str = string(var)
+        timing_to_ss_dict[var] = Symbol(var_str * "₍ₛₛ₎")
+    end
+
+    calib_eqs_direct = 𝓂.calibration_equations |> 
+        x -> replace_symbols.(x, Ref(timing_to_ss_dict)) |>  # Convert timing to steady state
+        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+        x -> replace_symbols.(x, Ref(direct_substitution_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__))
+        
+    dyn_eqs_substituted = vcat(dyn_eqs_direct, calib_eqs_direct)
+    
+    lennz_dyn_eqs = length(dyn_eqs_substituted)
+    
+    if lennz_dyn_eqs > nnz_parallel_threshold
+        parallel_dyn = Symbolics.ShardedForm(1500,4)
+    else
+        parallel_dyn = Symbolics.SerialForm()
+    end
+    
+    # Generate function with full vector inputs - indexing handled symbolically
+    # Signature: func!(residual, parameters, calib_params, steady_state, future, present, past, shocks)
+    # Calibration parameters are included as they may depend on stochastic steady state in the future
+    _, func_dyn_eqs_core = Symbolics.build_function(dyn_eqs_substituted, 
+                                            params_sym, calib_params_sym, ss_sym, 
+                                            future_sym, present_sym, past_sym, shocks_sym,
+                                            cse = cse, 
+                                            skipzeros = skipzeros, 
+                                            parallel = parallel_dyn,
+                                            expression_module = @__MODULE__,
+                                            expression = Val(false))::Tuple{<:Function, <:Function}
+    
+    # Store the generated function directly
+    # User must provide calibration parameters (they cannot be pre-determined)
+    𝓂.dyn_equations_func = func_dyn_eqs_core
 
 
     ∇₁_parameters = derivatives[1][2][:,1:nps]
