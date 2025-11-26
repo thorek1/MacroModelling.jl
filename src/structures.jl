@@ -411,6 +411,8 @@ mutable struct ℳ
     calibration_equations::Vector{Expr}
     calibration_equations_parameters::Vector{Symbol}
 
+    calibration_equations_revision_history::Vector{Tuple{String, Vector{Expr}, Vector{Symbol}}}
+
     bounds::Dict{Symbol,Tuple{Float64,Float64}}
 
     jacobian::Tuple{AbstractMatrix{<: Real},Function}
