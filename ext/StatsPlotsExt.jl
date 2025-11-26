@@ -1248,7 +1248,7 @@ function plot_model_estimates!(𝓂::ℳ,
             push!(annotate_diff_input, "Shock name" => map(x->x[1], diffdict[:shock_names]))
         end
     end
-
+    
     legend_plot = StatsPlots.plot(framestyle = :none, 
                                     legend = :inside, 
                                     palette = pal,
@@ -1256,13 +1256,13 @@ function plot_model_estimates!(𝓂::ℳ,
     
     joint_shocks = OrderedSet{String}()
     joint_variables = OrderedSet{String}()
-    
+    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(model_estimates_active_plot_container)))) && length(model_estimates_active_plot_container) > 1
     for (i,k) in enumerate(model_estimates_active_plot_container)
         StatsPlots.plot!(legend_plot,
                         [NaN],
                         color = pal[mod1.(i, length(pal))]',
-                        legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                        label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                        legend_title = plt_lab_switch ? nothing : annotate_diff_input[2][1],
+                        label = plt_lab_switch ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
 
         foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
         foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
@@ -1271,7 +1271,7 @@ function plot_model_estimates!(𝓂::ℳ,
     # Add Forecast legend entries for scenarios that have forecasts
     for (i,k) in enumerate(model_estimates_active_plot_container)
         if k[:forecast_periods] > 0 && !isnothing(k[:forecast_data])
-            lbl = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i]))
+            lbl = plt_lab_switch ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i]))
             
             StatsPlots.plot!(legend_plot,
                             [NaN], 
@@ -1284,7 +1284,7 @@ function plot_model_estimates!(𝓂::ℳ,
     if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
         for (i,k) in enumerate(model_estimates_active_plot_container)
             if length(data_idx) > 0
-                lbl = "Data $(data_idx[i])"
+                lbl = "Data #$(data_idx[i])"
             else
                 lbl = "Data $(k[:label])"
             end
@@ -1595,8 +1595,8 @@ function plot_model_estimates!(𝓂::ℳ,
             plot_elements = [ppp, legend_plot]
 
             layout_heights = [15, length(annotate_diff_input)]
-            
-            if length(annotate_diff_input) > 2
+
+            if plt_lab_switch
                 annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
@@ -1665,8 +1665,8 @@ function plot_model_estimates!(𝓂::ℳ,
         plot_elements = [ppp, legend_plot]
 
         layout_heights = [15, length(annotate_diff_input)]
-        
-        if length(annotate_diff_input) > 2
+
+        if plt_lab_switch
             annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
             ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
@@ -2855,22 +2855,23 @@ function plot_irf!(𝓂::ℳ;
     single_shock_per_irf = true
     
     max_periods = 0
+    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(irf_active_plot_container)))) && length(irf_active_plot_container) > 1
     for (i,k) in enumerate(irf_active_plot_container)
         if plot_type == :stack
             StatsPlots.bar!(legend_plot,
                             [NaN], 
-                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            legend_title = plt_lab_switch ? nothing : annotate_diff_input[2][1],
                             alpha = transparency,
                             lw = 0,  # This removes the lines around the bars
                             linecolor = :transparent,
                             color = pal[mod1.(i, length(pal))]',
-                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            label = plt_lab_switch ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         elseif plot_type == :compare
             StatsPlots.plot!(legend_plot,
                             [NaN], 
                             color = pal[mod1.(i, length(pal))]',
-                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            legend_title = plt_lab_switch ? nothing : annotate_diff_input[2][1],
+                            label = plt_lab_switch ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
 
         foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
@@ -3004,7 +3005,7 @@ function plot_irf!(𝓂::ℳ;
 
                 layout_heights = [15,1]
                 
-                if length(annotate_diff_input) > 2
+                if plt_lab_switch
                     annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                     ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
@@ -3095,7 +3096,7 @@ function plot_irf!(𝓂::ℳ;
 
             layout_heights = [15,1]
 
-            if length(annotate_diff_input) > 2
+            if plt_lab_switch
                 annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
@@ -4135,8 +4136,8 @@ function _plot_solution_from_container(;
 
     # Create legend with 2 columns so dynamics and steady state entries are side by side
     legend_plot = StatsPlots.plot(framestyle = :none, legend = :inside, legend_columns = 2) 
-    
-    if length(annotate_diff_input) > 2
+    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(solution_active_plot_container)))) && length(solution_active_plot_container) > 1
+    if plt_lab_switch
         # Multiple differences - use custom labels or plot labels
         for (i, container) in enumerate(solution_active_plot_container)
             label_text = container[:label] isa String ? container[:label] : string(container[:label])
@@ -4335,7 +4336,7 @@ function _plot_solution_from_container(;
                 layout_heights = [15, length(annotate_diff_input)]
                 
                 # Add relevant input differences table if multiple inputs differ
-                if length(annotate_diff_input) > 2 || (any_custom_label  && len_diff > 1)
+                if plt_lab_switch || (any_custom_label  && len_diff > 1)
                     annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
                     ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
                     push!(plot_elements, ppp_input_diff)
@@ -4379,7 +4380,7 @@ function _plot_solution_from_container(;
             layout_heights = [15, length(annotate_diff_input)]
             
             # Add relevant input differences table if multiple inputs differ
-            if length(annotate_diff_input) > 2 || (any_custom_label  && len_diff > 1)
+            if plt_lab_switch || (any_custom_label  && len_diff > 1)
                 annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
                 push!(plot_elements, ppp_input_diff)
@@ -5731,22 +5732,23 @@ function plot_conditional_forecast!(𝓂::ℳ,
     single_shock_per_irf = true
 
     max_periods = 0
+    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(conditional_forecast_active_plot_container)))) && length(conditional_forecast_active_plot_container) > 1
     for (i,k) in enumerate(conditional_forecast_active_plot_container)
         if plot_type == :stack
             StatsPlots.bar!(legend_plot,
                             [NaN], 
-                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            legend_title = plt_lab_switch ? nothing : annotate_diff_input[2][1],
                             linecolor = :transparent,
                             color = pal[mod1.(i, length(pal))]',
                             alpha = transparency,
                             linewidth = 0,
-                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            label = plt_lab_switch ? (k[:label] isa Symbol ? string(k[:label]) : k[:label]) : (annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i]))))
         elseif plot_type == :compare
             StatsPlots.plot!(legend_plot,
                             [NaN], 
-                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            legend_title = plt_lab_switch ? nothing : annotate_diff_input[2][1],
                             color = pal[mod1(i, length(pal))],
-                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            label = plt_lab_switch ? (k[:label] isa Symbol ? string(k[:label]) : k[:label]) : (annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i]))))
         end
 
         foreach(n -> push!(joint_variables, String(apply_custom_name(replace_indices_in_symbol(n), Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
@@ -5910,7 +5912,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
             layout_heights = [15, length(annotate_diff_input)]
             
-            if length(annotate_diff_input) > 2
+            if plt_lab_switch
                 annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
@@ -5979,8 +5981,8 @@ function plot_conditional_forecast!(𝓂::ℳ,
         plot_elements = [ppp, legend_plot]
 
         layout_heights = [15, length(annotate_diff_input)]
-        
-        if length(annotate_diff_input) > 2
+
+        if plt_lab_switch
             annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
             ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
