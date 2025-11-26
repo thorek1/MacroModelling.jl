@@ -1,6 +1,6 @@
 # Model Estimates
 
-`plot_model_estimates` visualizes the variables used in an estimation problem: the filtered or smoothed estimates of endogenous variables and exogenous shocks, and optionally the contribution of each shock to the endogenous variables. Each subplot shows a variable or shock as a line and, when enabled, shock contributions as stacked bars measured against the non‑stochastic or stochastic steady state relevant for the selected solution algorithm. Occasionally binding constraints are not supported by this function. The function returns a `Vector{Plots.Plot}`, enabling the figures to be displayed, saved, or combined further.
+`plot_model_estimates` visualizes the variables used in an estimation problem: the filtered or smoothed estimates of endogenous variables and exogenous shocks, an unconditional forecast extending beyond the last data period, and optionally the contribution of each shock to the endogenous variables. Each subplot shows a variable or shock as a line and, when enabled, shock contributions as stacked bars measured against the non‑stochastic or stochastic steady state relevant for the selected solution algorithm. The unconditional forecast (shown as a dashed line by default for 12 periods) displays the model's expected path absent any exongeos shocks starting from the final filtered state. Occasionally binding constraints are not supported by this function. The function returns a `Vector{Plots.Plot}`, enabling the figures to be displayed, saved, or combined further.
 
 The figures are built with StatsPlots.jl/Plots.jl and expect a `KeyedArray` from the AxisKeys package as data input. Axis 1 must contain the observable names, axis 2 the period labels. Observables are automatically matched to model variables, renamed (if desired), and sorted alphabetically in the plot legends. Period labels can be of any format compatible with Plots.jl and are used to fill the x-axis of the plots.
 
@@ -337,6 +337,51 @@ plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods 
 ![Gali 2015 model estimates - 20 presample periods](../assets/estimates_presample__Gali_2015_chapter_3_nonlinear__2.png)
 
 Note that now only 20 periods of the 40 periods in the data are shown in the plots, starting from period 21, while the first 20 periods were used in the filtering process.
+
+## Forecast periods
+
+The `forecast_periods` argument [Default: `12`, Type: `Int`] specifies the number of unconditional forecast periods to display after the last data period. The forecast shows the model's expected dynamics without further exogenous shocks, starting from the final filtered state. The forecast is displayed as a dashed line to distinguish it from the model estimates, and a "Forecast" entry is added to the legend.
+
+To plot model estimates with the default 12-period forecast:
+
+```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data)
+```
+
+![Gali 2015 model estimates - default forecast](../assets/estimates_forecast_default__Gali_2015_chapter_3_nonlinear__2.png)
+
+The dashed line shows the unconditional forecast extending 12 periods beyond the last data point.
+
+To specify a custom forecast horizon, for example 24 periods:
+
+```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, forecast_periods = 24)
+```
+
+![Gali 2015 model estimates - 24 period forecast](../assets/estimates_forecast_24__Gali_2015_chapter_3_nonlinear__2.png)
+
+To disable the forecast and show only model estimates, set `forecast_periods = 0`:
+
+```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, forecast_periods = 0)
+```
+
+![Gali 2015 model estimates - no forecast](../assets/estimates_forecast_0__Gali_2015_chapter_3_nonlinear__2.png)
+
+The forecast also works with `plot_model_estimates!` for comparing multiple scenarios. Each scenario can have its own forecast horizon:
+
+```julia
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, parameters = :β => 0.99)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, parameters = :β => 0.95, forecast_periods = 18)
+```
+
+![Gali 2015 model estimates - forecast comparison](../assets/estimates_forecast_compare__Gali_2015_chapter_3_nonlinear__2.png)
+
+The legend shows each scenario with its corresponding forecast as a dashed line in the same color.
 
 ## Shock decomposition
 

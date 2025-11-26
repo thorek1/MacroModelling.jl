@@ -405,6 +405,53 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             data_in_levels = false)
                 end
             end
+
+            # Test forecast_periods argument
+            for forecast_periods in [0, 6, 12, 24]
+                plot_model_estimates(m, data, 
+                                        algorithm = algorithm, 
+                                        data_in_levels = false,
+                                        forecast_periods = forecast_periods)
+            end
+
+            # Test forecast_periods with plot_model_estimates!
+            plot_model_estimates(m, data, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = false,
+                                    forecast_periods = 12)
+            
+            for forecast_periods in [0, 8, 18]
+                plot_model_estimates!(m, data_in_levels, 
+                                        algorithm = algorithm, 
+                                        data_in_levels = true,
+                                        forecast_periods = forecast_periods)
+            end
+
+            # Test forecast_periods with different filters
+            for filter in (algorithm == :first_order ? filters : [:inversion])
+                for forecast_periods in [0, 12]
+                    clear_solution_caches!(m, algorithm)
+                    
+                    plot_model_estimates(m, data, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = false,
+                                            filter = filter,
+                                            forecast_periods = forecast_periods)
+                end
+            end
+
+            # Test forecast_periods with shock_decomposition
+            if !(algorithm in [:second_order, :third_order])
+                for forecast_periods in [0, 12]
+                    clear_solution_caches!(m, algorithm)
+                    
+                    plot_model_estimates(m, data, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = false,
+                                            shock_decomposition = true,
+                                            forecast_periods = forecast_periods)
+                end
+            end
         end
 
         @testset "plot_solution" begin

@@ -2,8 +2,8 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options
-import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, infer_step
+import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
 
@@ -19,7 +19,7 @@ import SparseArrays: SparseMatrixCSC
 import NLopt
 using DispatchDoctor
 
-import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs
+import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs, get_irf
 
 import MacroModelling: plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_simulation!, plot_conditional_forecast!, plot_model_estimates!, plot_solution!
 
@@ -115,7 +115,7 @@ plotlyjs_backend(args...; kwargs...) = StatsPlots.plotlyjs(args...; kwargs...)
 
 """
 $(SIGNATURES)
-Plot model estimates of the variables given the data. The default plot shows the estimated variables, shocks, and the data underlying the estimates. The estimates are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model.
+Plot model estimates of the variables given the data. The default plot shows the estimated variables, shocks, the data underlying the estimates, and an unconditional forecast extending beyond the last data period. The estimates are based on the Kalman smoother or filter (depending on the `smooth` keyword argument) or inversion filter using the provided data and solution of the model. The unconditional forecast (shown as a dashed line) displays the model's expected path absent any exongeos shocks starting from the final filtered state.
 
 The left axis shows the level, and the right the deviation from the relevant steady state. The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. The horizontal black line indicates the relevant steady state. Variable names are above the subplots and the title provides information about the model, shocks, and number of pages per shock.
 In case `shock_decomposition = true`, the plot shows the variables, shocks, and data in absolute deviations from the relevant steady state as a stacked bar chart per period.
@@ -134,6 +134,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots and in the shock decompositions. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model. If not all shocks are shown, the ommitted shocks will be summarised and netted under the label `Other shocks (net)` in the shock decomposition.
 - `presample_periods` [Default: `0`, Type: `Int`]: number of initial periods in the data omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod.
+- `forecast_periods` [Default: `$DEFAULT_FORECAST_PERIODS`, Type: `Int`]: number of periods of unconditional forecast to add after the last period of data. The forecast is shown as a dotted line to distinguish it from the model estimates.
 - $DATA_IN_LEVELS®
 - `shock_decomposition` [Default: `true` for algorithms supporting shock decompositions (`:first_order`, `:pruned_second_order`, `:pruned_third_order`), otherwise `false`, Type: `Bool`]: whether to show the contribution of the shocks to the deviations from NSSS for each variable. If `false`, the plot shows the values of the selected variables, data, and shocks. When an unsupported algorithm is chosen the argument automatically falls back to `false`.
 - $SMOOTH®
@@ -199,6 +200,7 @@ function plot_model_estimates(𝓂::ℳ,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
                                 presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
+                                forecast_periods::Int = DEFAULT_FORECAST_PERIODS,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 shock_decomposition::Bool = DEFAULT_SHOCK_DECOMPOSITION_SELECTOR(algorithm),
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
@@ -294,7 +296,7 @@ function plot_model_estimates(𝓂::ℳ,
 
     legend_columns = 1
 
-    legend_items = length(shock_idx) + 3 + pruning
+    legend_items = length(shock_idx) + 3 + pruning + (forecast_periods > 0 ? 1 : 0)
 
     max_columns = min(legend_items, max_elements_per_legend_row)
     
@@ -332,6 +334,38 @@ function plot_model_estimates(𝓂::ℳ,
     
     variables_to_plot                           .+= SSS_delta
     data_in_deviations                          .+= SSS_delta[obs_idx]
+
+    # Compute unconditional forecast if forecast_periods > 0
+    forecast_irf = nothing
+    forecast_data = nothing
+    extended_x_axis = x_axis
+    if forecast_periods > 0
+        # Get the final state from the last period of filtered data
+        final_filtered_state = variables_to_plot[:, end] .+ NSSS .- SSS_delta
+        
+        # Compute the unconditional forecast (IRF with no shocks from the final state)
+        forecast_irf = get_irf(𝓂,
+                               parameters = parameters,
+                               algorithm = algorithm,
+                               shocks = :none,
+                               periods = forecast_periods,
+                               variables = :all,
+                               initial_state = final_filtered_state,
+                               levels = false,
+                               quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                               sylvester_algorithm = sylvester_algorithm,
+                               lyapunov_algorithm = lyapunov_algorithm,
+                               tol = tol,
+                               verbose = verbose)
+
+        forecast_data = collect(forecast_irf)
+        
+        # Create extended x-axis for plotting (including forecast periods)
+        last_x = x_axis[end]
+        
+        period = infer_step(x_axis)
+        extended_x_axis = vcat(x_axis, [last_x + i * period for i in 1:forecast_periods])
+    end
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
@@ -390,6 +424,9 @@ function plot_model_estimates(𝓂::ℳ,
                            :variable_names => variable_names_display,
                            :shock_names => shock_names_display,
                            :x_axis => x_axis,
+                           :extended_x_axis => extended_x_axis,
+                           :forecast_data => isnothing(forecast_irf) ? forecast_irf : forecast_irf[var_idx, :, :],
+                           :forecast_periods => forecast_periods,
                            :rename_dictionary => processed_rename_dictionary
                            )
 
@@ -454,38 +491,96 @@ function plot_model_estimates(𝓂::ℳ,
 
                     additional_indices = pruning ? [size(decomp,1)-1, size(decomp,1)-2] : [size(decomp,1)-1]
                     
+                    # Prepare data with NaN padding for forecast extension
+                    decomp_padded = if forecast_periods > 0
+                        [vcat(decomp[k,:], fill(NaN, forecast_periods)) for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))]
+                    else
+                        [decomp[k,:] for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))]
+                    end
+                    
                     p = standard_subplot(Val(:stack),
-                                        [decomp[k,:] for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))], 
+                                        decomp_padded, 
                                         [SS for k in vcat(additional_indices, 1:(size(decomp,1) - 2 - pruning))], 
                                         variable_names_display[i], 
                                         gr_back,
                                         true, # same_ss,
                                         transparency = transparency,
-                                        xvals = x_axis,
+                                        xvals = extended_x_axis,
                                         pal = pal,
                                         color_total = estimate_color)
-                                        
                     if var_idx[i] ∈ obs_idx
+                        # Pad data with NaN for forecast period
+                        data_padded = if forecast_periods > 0
+                            vcat(vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods]), fill(NaN, forecast_periods))
+                        else
+                            vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods])
+                        end
                         StatsPlots.plot!(p,
-                            # x_axis,
-                            shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
+                            # extended_x_axis,
+                            shock_decomposition ? data_padded : data_padded .+ SS,
                             label = "",
                             color = shock_decomposition ? data_color : pal[2])
                     end
+                    
+                    # Add forecast if available
+                    if forecast_periods > 0 && !isnothing(forecast_data)
+                        # Create full forecast array with NaN padding for historical periods
+                        forecast_full = vcat(
+                            fill(NaN, length(x_axis) - 1),  # NaN for all periods except the last
+                            variables_to_plot[var_idx[i], end],  # Last filtered value for connection
+                            forecast_data[var_idx[i], :]  # Forecast values
+                        )
+                        
+                        StatsPlots.plot!(p,
+                            # extended_x_axis,
+                            forecast_full,
+                            linestyle = :dash,
+                            label = "",
+                            color = estimate_color)
+                    end
                 else
-                    p = standard_subplot(variables_to_plot[var_idx[i],periods], 
+                    # Pad variables_to_plot with NaN for forecast extension
+                    var_data_padded = if forecast_periods > 0
+                        vcat(variables_to_plot[var_idx[i],periods], fill(NaN, forecast_periods))
+                    else
+                        variables_to_plot[var_idx[i],periods]
+                    end
+                    p = standard_subplot(var_data_padded, 
                                         SS, 
                                         variable_names_display[i], 
                                         gr_back,
                                         pal = shock_decomposition ? StatsPlots.palette([estimate_color]) : pal,
-                                        xvals = x_axis)
+                                        xvals = extended_x_axis)
 
                     if var_idx[i] ∈ obs_idx
+                        # Pad data with NaN for forecast period
+                        data_padded = if forecast_periods > 0
+                            vcat(vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods]), fill(NaN, forecast_periods))
+                        else
+                            vec(data_in_deviations[indexin([var_idx[i]],obs_idx),periods])
+                        end
                         StatsPlots.plot!(p,
-                            x_axis,
-                            shock_decomposition ? data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' : data_in_deviations[indexin([var_idx[i]],obs_idx),periods]' .+ SS,
+                            extended_x_axis,
+                            shock_decomposition ? data_padded : data_padded .+ SS,
                             label = "",
                             color = shock_decomposition ? data_color : pal[2])
+                    end
+                    
+                    # Add forecast if available
+                    if forecast_periods > 0 && !isnothing(forecast_data)
+                        # Create full forecast array with NaN padding for historical periods
+                        forecast_full = vcat(
+                            fill(NaN, length(x_axis) - 1),  # NaN for all periods except the last
+                            variables_to_plot[var_idx[i], end],  # Last filtered value for connection
+                            forecast_data[var_idx[i], :]  # Forecast values
+                        )
+                        
+                        StatsPlots.plot!(p,
+                            extended_x_axis,
+                            shock_decomposition ? forecast_full : forecast_full .+ SS,
+                            linestyle = :dash,
+                            label = "",
+                            color = shock_decomposition ? estimate_color : pal[1])
                     end
                 end
                         
@@ -510,6 +605,14 @@ function plot_model_estimates(𝓂::ℳ,
                             [NaN], 
                             label = "Estimate", 
                             color = shock_decomposition ? estimate_color : pal[1])
+
+            if forecast_periods > 0
+                StatsPlots.plot!(pl,
+                                [NaN], 
+                                label = "Forecast", 
+                                linestyle = :dash,
+                                color = shock_decomposition ? estimate_color : pal[1])
+            end
 
             StatsPlots.plot!(pl,
                             [NaN], 
@@ -573,10 +676,19 @@ function plot_model_estimates(𝓂::ℳ,
                         label = "Estimate", 
                         color = shock_decomposition ? estimate_color : pal[1])
 
+        if forecast_periods > 0
+            StatsPlots.plot!(pl,
+                            [NaN], 
+                            label = "Forecast", 
+                            linestyle = :dash,
+                            color = shock_decomposition ? estimate_color : pal[1])
+        end
+
         StatsPlots.plot!(pl,
                         [NaN], 
                         label = "Data", 
                         color = shock_decomposition ? data_color : pal[2])
+
 
         if shock_decomposition
             additional_labels = pruning ? ["Initial value", "Nonlinearities"] : ["Initial value"]
@@ -638,7 +750,7 @@ plot_shock_decomposition(args...; kwargs...) =  plot_model_estimates(args...; kw
 
 """
 $(SIGNATURES)
-This function allows comparison of the estimated variables, shocks, and the data underlying the estimates for any combination of inputs. In case the relevant steady state differs for a variable across the different calls, the plot shows the absolute deviations from the respective steady state for each call. The only exception being if the variable is observed in the data, in which case the data is always shown in levels, and the relevant steady states are indicated by black lines and mentioned in the table below the plot.
+This function allows comparison of the estimated variables, shocks, the data underlying the estimates, and unconditional forecasts for any combination of inputs. The unconditional forecast (shown as a dashed line) displays the model's expected path absent any exongeos shocks starting from the final filtered state. In case the relevant steady state differs for a variable across the different calls, the plot shows the absolute deviations from the respective steady state for each call. The only exception being if the variable is observed in the data, in which case the data is always shown in levels, and the relevant steady states are indicated by black lines and mentioned in the table below the plot.
 
 This function shares most of the signature and functionality of [`plot_model_estimates`](@ref). Its main purpose is to append plots based on the inputs to previous calls of this function and the last call of [`plot_model_estimates`](@ref). In the background it keeps a registry of the inputs and outputs and then plots the comparison.
 
@@ -652,6 +764,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - `shocks` [Default: `:all`]: shocks for which to plot the estimates in the respective subplots. Inputs can be either a `Symbol` or `String` (e.g. `:eps_a`, `\"eps_a\"`, or `:all`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. `:all` selects all shocks in the model. `:none` selects no shocks in the model.
 - `presample_periods` [Default: `0`, Type: `Int`]: number of initial periods in the data omitted from the plot. Useful when filtering the full sample while focusing on a later subperiod.
+- `forecast_periods` [Default: `$DEFAULT_FORECAST_PERIODS`, Type: `Int`]: number of periods of unconditional forecast to add after the last period of data. The forecast is shown as a dotted line to distinguish it from the model estimates.
 - $DATA_IN_LEVELS®
 - $LABEL®
 - $RENAME_DICTIONARY®
@@ -735,6 +848,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 shocks::Union{Symbol_input,String_input} = DEFAULT_SHOCK_SELECTION, 
                                 presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
+                                forecast_periods::Int = DEFAULT_FORECAST_PERIODS,
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                 smooth::Bool = DEFAULT_SMOOTH_SELECTOR(filter),
                                 label::Union{Real, String, Symbol} = length(model_estimates_active_plot_container) + 1,
@@ -828,7 +942,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
     legend_columns = 1
 
-    legend_items = length(shock_idx) + 3 + pruning
+    legend_items = length(shock_idx) + 3 + pruning + (forecast_periods > 0 ? 1 : 0)
 
     max_columns = min(legend_items, max_elements_per_legend_row)
     
@@ -865,6 +979,38 @@ function plot_model_estimates!(𝓂::ℳ,
 
     variables_to_plot                           .+= SSS_delta
     data_in_deviations                          .+= SSS_delta[obs_idx]
+
+    # Compute unconditional forecast if forecast_periods > 0
+    forecast_irf = nothing
+    forecast_data = nothing
+    extended_x_axis = x_axis
+    if forecast_periods > 0
+        # Get the final state from the last period of filtered data
+        final_filtered_state = variables_to_plot[:, end] .+ NSSS .- SSS_delta
+        
+        # Compute the unconditional forecast (IRF with no shocks from the final state)
+        forecast_irf = get_irf(𝓂,
+                               parameters = parameters,
+                               algorithm = algorithm,
+                               shocks = :none,
+                               periods = forecast_periods,
+                               variables = :all,
+                               initial_state = final_filtered_state,
+                               levels = false,
+                               quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                               sylvester_algorithm = sylvester_algorithm,
+                               lyapunov_algorithm = lyapunov_algorithm,
+                               tol = tol,
+                               verbose = verbose)
+        
+        forecast_data = collect(forecast_irf)
+        
+        # Create extended x-axis for plotting (including forecast periods)
+        last_x = x_axis[end]
+
+        period = infer_step(x_axis)
+        extended_x_axis = vcat(x_axis, [last_x + i * period for i in 1:forecast_periods])
+    end
 
     orig_pal = StatsPlots.palette(attributes_redux[:palette])
 
@@ -919,6 +1065,9 @@ function plot_model_estimates!(𝓂::ℳ,
                            :variable_names => variable_names_display,
                            :shock_names => shock_names_display,
                            :x_axis => x_axis,
+                           :extended_x_axis => extended_x_axis,
+                           :forecast_data => isnothing(forecast_irf) ? forecast_irf : forecast_irf[var_idx, :, :],
+                           :forecast_periods => forecast_periods,
                            :rename_dictionary => processed_rename_dictionary
                            )
 
@@ -1032,13 +1181,51 @@ function plot_model_estimates!(𝓂::ℳ,
     end
 
     common_axis = mapreduce(k -> k[:x_axis], intersect, model_estimates_active_plot_container)
-
     if length(common_axis) > 0
+        # Combine all unique x-axis values from all containers and sort them.
+        # This forms the baseline, observed x-axis.
         combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort
     else
-        combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container]) # model_estimates_active_plot_container[end][:x_axis]
+        # If no common axis (e.g., just sequential indices), determine the length
+        # by finding the maximum length of any base x_axis.
+        combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container])
     end
-       
+
+    # --- Determine the maximum *required* length for the extended axis ---
+    # 1. Calculate the length of each container's x_axis + its specific forecast_periods.
+    # 2. Find the maximum of these total required lengths.
+    max_extended_length = maximum([
+        length(k[:x_axis]) + get(k, :forecast_periods, 0)
+        for k in model_estimates_active_plot_container
+    ])
+
+    # The length of the combined_x_axis (the observed data portion).
+    combined_x_axis_length = length(combined_x_axis)
+
+    # Calculate the actual number of forecast periods needed on top of the combined_x_axis.
+    # This ensures the new axis is long enough to cover the longest single forecast.
+    # This should be at least max_extended_length - combined_x_axis_length, 
+    # but also at least the maximum of all individual forecast periods.
+    # Using the maximum difference is safer.
+    needed_forecast_periods = max_extended_length - combined_x_axis_length
+
+    # --- Create the extended combined x-axis ---
+
+    if needed_forecast_periods > 0
+        # Determine the step size for the extension
+        period = infer_step(combined_x_axis)
+        last_x = combined_x_axis[end]
+        
+        # Extend the combined_x_axis with the necessary number of periods
+        extended_combined_x_axis = vcat(
+            combined_x_axis, 
+            [last_x + i * period for i in 1:needed_forecast_periods]
+        )
+    else
+        # No extension needed if max_extended_length is <= combined_x_axis_length
+        extended_combined_x_axis = combined_x_axis
+    end
+
     for k in setdiff(keys(args_and_kwargs), 
                         [
                             :run_id, :parameters, :data, :data_in_levels,
@@ -1046,7 +1233,7 @@ function plot_model_estimates!(𝓂::ℳ,
                             :tol, :label, #:presample_periods,
                             :shocks, :shock_names,
                             :variables, :variable_names,
-                            :rename_dictionary,
+                            :rename_dictionary, :forecast_periods, :forecast_data, :extended_x_axis
                             # :periods, :quadratic_matrix_equation_algorithm, :sylvester_algorithm, :lyapunov_algorithm,
                         ]
                     )
@@ -1061,7 +1248,7 @@ function plot_model_estimates!(𝓂::ℳ,
             push!(annotate_diff_input, "Shock name" => map(x->x[1], diffdict[:shock_names]))
         end
     end
-
+    
     legend_plot = StatsPlots.plot(framestyle = :none, 
                                     legend = :inside, 
                                     palette = pal,
@@ -1069,22 +1256,35 @@ function plot_model_estimates!(𝓂::ℳ,
     
     joint_shocks = OrderedSet{String}()
     joint_variables = OrderedSet{String}()
-    
+    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(model_estimates_active_plot_container)))) && length(model_estimates_active_plot_container) > 1
     for (i,k) in enumerate(model_estimates_active_plot_container)
         StatsPlots.plot!(legend_plot,
                         [NaN],
                         color = pal[mod1.(i, length(pal))]',
-                        legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                        label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                        legend_title = plt_lab_switch ? nothing : annotate_diff_input[2][1],
+                        label = plt_lab_switch ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
 
         foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
         foreach(n -> push!(joint_shocks, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:shock_names] isa AbstractArray ? k[:shock_names] : (k[:shock_names],))
     end
 
+    # Add Forecast legend entries for scenarios that have forecasts
+    for (i,k) in enumerate(model_estimates_active_plot_container)
+        if k[:forecast_periods] > 0 && !isnothing(k[:forecast_data])
+            lbl = plt_lab_switch ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i]))
+            
+            StatsPlots.plot!(legend_plot,
+                            [NaN], 
+                            linestyle = :dash,
+                            label = "Forecast $lbl",
+                            color = pal[mod1.(i, length(pal))]')
+        end
+    end
+
     if haskey(diffdict, :data) || haskey(diffdict, :presample_periods)
         for (i,k) in enumerate(model_estimates_active_plot_container)
             if length(data_idx) > 0
-                lbl = "Data $(data_idx[i])"
+                lbl = "Data #$(data_idx[i])"
             else
                 lbl = "Data $(k[:label])"
             end
@@ -1122,7 +1322,7 @@ function plot_model_estimates!(𝓂::ℳ,
         not_zero_anywhere = false
 
         for k in model_estimates_active_plot_container
-            var_idx = findfirst(==(var), k[:variable_names])
+            var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
             periods = k[:presample_periods] + 1:size(k[:data], 2)
 
             if isnothing(var_idx) || not_zero_anywhere
@@ -1184,7 +1384,7 @@ function plot_model_estimates!(𝓂::ℳ,
             periods = (1:length(k[:x_axis])) .+ k[:presample_periods]
 
             if i > length(joint_non_zero_variables)
-                shock_idx = findfirst(==(var), k[:shock_names])
+                shock_idx = findfirst(==(var), apply_custom_name.(k[:shock_names], Ref(Dict(k[:rename_dictionary]))))
                 if isnothing(shock_idx)
                     # If the variable or shock is not present in the current plot_container,
                     # we skip this iteration.
@@ -1199,13 +1399,14 @@ function plot_model_estimates!(𝓂::ℳ,
                         idx = indexin(k[:x_axis], combined_x_axis)
                     end
                     
+                    # Shocks use combined_x_axis only, not extended (no forecast for shocks)
                     shocks_to_plot = fill(NaN, length(combined_x_axis))
                     shocks_to_plot[idx] = k[:shocks_to_plot][shock_idx, periods]
                     # shocks_to_plot[idx][1:k[:presample_periods]] .= NaN
                     push!(shocks_to_plot_s, shocks_to_plot) # k[:shocks_to_plot][shock_idx, periods])
                 end
             else
-                var_idx = findfirst(==(var), k[:variable_names])
+                var_idx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
                 if isnothing(var_idx)
                     # If the variable or shock is not present in the current plot_container,
                     # we skip this iteration.
@@ -1220,9 +1421,9 @@ function plot_model_estimates!(𝓂::ℳ,
                         idx = indexin(k[:x_axis], combined_x_axis)
                     end
                     
-                    variables_to_plot = fill(NaN, length(combined_x_axis))
+                    # Use extended_combined_x_axis length for padding (NaN for forecast periods)
+                    variables_to_plot = fill(NaN, length(extended_combined_x_axis))
                     variables_to_plot[idx] = k[:variables_to_plot][var_idx, periods]
-                    # variables_to_plot[idx][1:k[:presample_periods]] .= NaN
 
                     push!(variables_to_plot_s, variables_to_plot)#k[:variables_to_plot][var_idx, periods])
                 end
@@ -1252,13 +1453,16 @@ function plot_model_estimates!(𝓂::ℳ,
 
             obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
 
-            var_indx = findfirst(==(var), k[:variable_names]) 
+            var_indx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
 
             if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
                 has_data = true || has_data
             end
         end
 
+        # Use combined_x_axis for shocks, extended_combined_x_axis for variables
+        subplot_x_axis = i > length(joint_non_zero_variables) ? combined_x_axis : extended_combined_x_axis
+        
         p = standard_subplot(Val(:compare),
                                     plot_data, 
                                     SSs, 
@@ -1266,7 +1470,7 @@ function plot_model_estimates!(𝓂::ℳ,
                                     gr_back,
                                     same_ss,
                                     pal = pal,
-                                    xvals = combined_x_axis, # TODO: check different data length or presample periods. to be fixed
+                                    xvals = subplot_x_axis,
                                     # transparency = transparency
                                     has_data = has_data
                                     )
@@ -1282,7 +1486,7 @@ function plot_model_estimates!(𝓂::ℳ,
 
                 obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
 
-                var_indx = findfirst(==(var), k[:variable_names])
+                var_indx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
 
                 if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
                     if common_axis == []
@@ -1291,12 +1495,13 @@ function plot_model_estimates!(𝓂::ℳ,
                         idx = indexin(k[:x_axis], combined_x_axis)
                     end
 
-                    data_in_deviations = fill(NaN, length(combined_x_axis))
+                    # Use extended_combined_x_axis length for padding
+                    data_in_deviations = fill(NaN, length(extended_combined_x_axis))
                     data_in_deviations[idx] = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)), periods]
                     # data_in_deviations[idx][1:k[:presample_periods]] .= NaN
 
                     StatsPlots.plot!(p,
-                        combined_x_axis,
+                        extended_combined_x_axis,
                         data_in_deviations .+ k[:reference_steady_state][var_indx],
                         label = "",
                         color = pal[length(model_estimates_active_plot_container) + i]
@@ -1313,18 +1518,55 @@ function plot_model_estimates!(𝓂::ℳ,
 
                 obs_symbols_display = [replace_indices_in_symbol.(apply_custom_name(v, Dict(k[:rename_dictionary]))) for v in obs_symbols]
 
-                var_indx = findfirst(==(var), k[:variable_names]) 
+                var_indx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary])))) 
 
                 if var ∈ string.(obs_symbols_display) && !isnothing(var_indx)
-                    data_in_deviations = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)),:]
-                    data_in_deviations[1:k[:presample_periods]] .= NaN
+                    # Use extended_combined_x_axis length for padding
+                    data_in_deviations_padded = fill(NaN, length(extended_combined_x_axis))
+                    data_vals = k[:data_in_deviations][indexin([var], string.(obs_symbols_display)),:]
+                    data_vals[1:k[:presample_periods]] .= NaN
+                    data_in_deviations_padded[1:length(combined_x_axis)] = data_vals[periods]
                     
                     StatsPlots.plot!(p,
-                        combined_x_axis,
-                        data_in_deviations[periods] .+ k[:reference_steady_state][var_indx],
+                        extended_combined_x_axis,
+                        data_in_deviations_padded .+ k[:reference_steady_state][var_indx],
                         label = "",
                         color = data_color
                     )
+                end
+            end
+        end
+
+        # Add forecast if available for any run - plot as dashed line
+        if i <= length(joint_non_zero_variables)  # Only plot forecast for variables, not shocks
+            for (idx, k) in enumerate(model_estimates_active_plot_container)
+                if k[:forecast_periods] > 0 && !isnothing(k[:forecast_data])
+                    var_indx = findfirst(==(var), apply_custom_name.(k[:variable_names], Ref(Dict(k[:rename_dictionary]))))
+                    if !isnothing(var_indx)
+                        # Create forecast array with NaN padding using extended_combined_x_axis
+                        forecast_full = fill(NaN, length(extended_combined_x_axis))
+                        
+                        if common_axis == []
+                            last_idx = length(k[:x_axis])
+                        else
+                            idx_x = indexin(k[:x_axis], combined_x_axis)
+                            last_idx = maximum(idx_x)
+                        end
+                        
+                        # Connection point (last filtered value)
+                        forecast_full[last_idx] = k[:variables_to_plot][var_indx, end]
+                        # Forecast values
+                        forecast_start = last_idx + 1
+                        forecast_end = last_idx + k[:forecast_periods]
+                        forecast_full[forecast_start:forecast_end] = k[:forecast_data][var_indx, :]
+                        
+                        StatsPlots.plot!(p,
+                            extended_combined_x_axis,
+                            (has_data || same_ss) ? forecast_full .+ k[:reference_steady_state][var_indx] : forecast_full,
+                            linestyle = :dash,
+                            label = "",
+                            color = pal[idx])
+                    end
                 end
             end
         end
@@ -1352,9 +1594,9 @@ function plot_model_estimates!(𝓂::ℳ,
             
             plot_elements = [ppp, legend_plot]
 
-            layout_heights = [15,1]
-            
-            if length(annotate_diff_input) > 2
+            layout_heights = [15, length(annotate_diff_input)]
+
+            if plt_lab_switch
                 annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
@@ -1422,9 +1664,9 @@ function plot_model_estimates!(𝓂::ℳ,
         
         plot_elements = [ppp, legend_plot]
 
-        layout_heights = [15,1]
-        
-        if length(annotate_diff_input) > 2
+        layout_heights = [15, length(annotate_diff_input)]
+
+        if plt_lab_switch
             annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
             ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
@@ -1858,8 +2100,9 @@ function standard_subplot(irf_data::AbstractVector{S},
                             gr_back::Bool;
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
                             xvals = 1:length(irf_data)) where {S <: AbstractFloat, R <: Union{String, Symbol}}
-    can_dual_axis = gr_back && all((irf_data .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
-    
+    finite_vals = filter(isfinite, irf_data)
+    can_dual_axis = gr_back && !isempty(finite_vals) && all((finite_vals .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
+
     xrotation = length(string(xvals[1])) > 5 ? 30 : 0
 
     p = StatsPlots.plot(xvals,
@@ -2037,13 +2280,13 @@ function standard_subplot(::Val{:stack},
     maxlen = maximum(length.(plot_dat))
 
     # pad shorter vectors with 0
-    padded = [vcat(collect(v), fill(0, maxlen - length(v))) for v in plot_dat]
+    padded = [vcat(collect(v), fill(NaN, maxlen - length(v))) for v in plot_dat]
 
     # now you can hcat
     plot_data = reduce(hcat, padded)
 
     p = StatsPlots.plot(xvals,
-                    sum(x -> isfinite(x) ? x : 0.0, plot_data, dims = 2), 
+                    sum(x -> isfinite(x) ? x : NaN, plot_data, dims = 2), 
                     color = color_total, 
                     label = "",
                     xrotation = xrotation)
@@ -2086,7 +2329,7 @@ function standard_subplot(::Val{:stack},
                         color = :black, 
                         label = "")
                         
-    StatsPlots.plot!(sum(x -> isfinite(x) ? x : 0.0, plot_data, dims = 2), 
+    StatsPlots.plot!(sum(x -> isfinite(x) ? x : NaN, plot_data, dims = 2), 
                     color = color_total, 
                     label = "")
 
@@ -2612,22 +2855,23 @@ function plot_irf!(𝓂::ℳ;
     single_shock_per_irf = true
     
     max_periods = 0
+    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(irf_active_plot_container)))) && length(irf_active_plot_container) > 1
     for (i,k) in enumerate(irf_active_plot_container)
         if plot_type == :stack
             StatsPlots.bar!(legend_plot,
                             [NaN], 
-                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            legend_title = plt_lab_switch ? nothing : annotate_diff_input[2][1],
                             alpha = transparency,
                             lw = 0,  # This removes the lines around the bars
                             linecolor = :transparent,
                             color = pal[mod1.(i, length(pal))]',
-                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            label = plt_lab_switch ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         elseif plot_type == :compare
             StatsPlots.plot!(legend_plot,
                             [NaN], 
                             color = pal[mod1.(i, length(pal))]',
-                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
-                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            legend_title = plt_lab_switch ? nothing : annotate_diff_input[2][1],
+                            label = plt_lab_switch ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
         end
 
         foreach(n -> push!(joint_variables, String(apply_custom_name(n, Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
@@ -2761,7 +3005,7 @@ function plot_irf!(𝓂::ℳ;
 
                 layout_heights = [15,1]
                 
-                if length(annotate_diff_input) > 2
+                if plt_lab_switch
                     annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                     ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
@@ -2852,7 +3096,7 @@ function plot_irf!(𝓂::ℳ;
 
             layout_heights = [15,1]
 
-            if length(annotate_diff_input) > 2
+            if plt_lab_switch
                 annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
@@ -3892,8 +4136,8 @@ function _plot_solution_from_container(;
 
     # Create legend with 2 columns so dynamics and steady state entries are side by side
     legend_plot = StatsPlots.plot(framestyle = :none, legend = :inside, legend_columns = 2) 
-    
-    if length(annotate_diff_input) > 2
+    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(solution_active_plot_container)))) && length(solution_active_plot_container) > 1
+    if plt_lab_switch
         # Multiple differences - use custom labels or plot labels
         for (i, container) in enumerate(solution_active_plot_container)
             label_text = container[:label] isa String ? container[:label] : string(container[:label])
@@ -4092,7 +4336,7 @@ function _plot_solution_from_container(;
                 layout_heights = [15, length(annotate_diff_input)]
                 
                 # Add relevant input differences table if multiple inputs differ
-                if length(annotate_diff_input) > 2 || (any_custom_label  && len_diff > 1)
+                if plt_lab_switch || (any_custom_label  && len_diff > 1)
                     annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
                     ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
                     push!(plot_elements, ppp_input_diff)
@@ -4136,7 +4380,7 @@ function _plot_solution_from_container(;
             layout_heights = [15, length(annotate_diff_input)]
             
             # Add relevant input differences table if multiple inputs differ
-            if length(annotate_diff_input) > 2 || (any_custom_label  && len_diff > 1)
+            if plt_lab_switch || (any_custom_label  && len_diff > 1)
                 annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
                 push!(plot_elements, ppp_input_diff)
@@ -5488,22 +5732,23 @@ function plot_conditional_forecast!(𝓂::ℳ,
     single_shock_per_irf = true
 
     max_periods = 0
+    plt_lab_switch = ((length(annotate_diff_input) > 2) || (Dict(annotate_diff_input)["Plot label"] != collect(1:length(conditional_forecast_active_plot_container)))) && length(conditional_forecast_active_plot_container) > 1
     for (i,k) in enumerate(conditional_forecast_active_plot_container)
         if plot_type == :stack
             StatsPlots.bar!(legend_plot,
                             [NaN], 
-                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            legend_title = plt_lab_switch ? nothing : annotate_diff_input[2][1],
                             linecolor = :transparent,
                             color = pal[mod1.(i, length(pal))]',
                             alpha = transparency,
                             linewidth = 0,
-                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            label = plt_lab_switch ? (k[:label] isa Symbol ? string(k[:label]) : k[:label]) : (annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i]))))
         elseif plot_type == :compare
             StatsPlots.plot!(legend_plot,
                             [NaN], 
-                            legend_title = length(annotate_diff_input) > 2 ? nothing : annotate_diff_input[2][1],
+                            legend_title = plt_lab_switch ? nothing : annotate_diff_input[2][1],
                             color = pal[mod1(i, length(pal))],
-                            label = length(annotate_diff_input) > 2 ? k[:label] isa Symbol ? string(k[:label]) : k[:label] : annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i])))
+                            label = plt_lab_switch ? (k[:label] isa Symbol ? string(k[:label]) : k[:label]) : (annotate_diff_input[2][2][i] isa String ? annotate_diff_input[2][2][i] : String(Symbol(annotate_diff_input[2][2][i]))))
         end
 
         foreach(n -> push!(joint_variables, String(apply_custom_name(replace_indices_in_symbol(n), Dict(k[:rename_dictionary])))), k[:variable_names] isa AbstractArray ? k[:variable_names] : (k[:variable_names],))
@@ -5665,9 +5910,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
             plot_elements = [ppp, legend_plot]
 
-            layout_heights = [15,1]
+            layout_heights = [15, length(annotate_diff_input)]
             
-            if length(annotate_diff_input) > 2
+            if plt_lab_switch
                 annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
                 ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)
@@ -5735,9 +5980,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
 
         plot_elements = [ppp, legend_plot]
 
-        layout_heights = [15,1]
-        
-        if length(annotate_diff_input) > 2
+        layout_heights = [15, length(annotate_diff_input)]
+
+        if plt_lab_switch
             annotate_diff_input_plot = plot_df(annotate_diff_input; fontsize = attributes[:annotationfontsize], title = "Relevant Input Differences")
 
             ppp_input_diff = StatsPlots.plot(annotate_diff_input_plot; attributes..., framestyle = :box)

@@ -17,6 +17,7 @@ import Accessors
 # import Memoization: @memoize
 # import LRUCache: LRU
 
+import Dates
 # for find shocks
 # import JuMP
 # import MadNLP
@@ -1050,6 +1051,38 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     𝓂.solution.perturbation.third_order_solution = spzeros(0,0)
 
     return nothing
+end
+
+
+"""
+    infer_step(x_axis)
+
+Infer the step for an axis.
+
+For dates, if the last two points share the same day-of-month, the step is
+inferred in whole months (e.g. Month(1), Month(3), …). Otherwise the raw
+difference is used. For non time types, uses the plain difference.
+"""
+function infer_step(x_axis::AbstractVector{T}) where {T<:Number}
+    x_axis[end] - x_axis[end-1]
+end
+
+function infer_step(x_axis::AbstractVector{T}) where {T<:Dates.TimeType}
+    d1 = x_axis[end-1]
+    d2 = x_axis[end]
+
+    # try to infer a monthly step if aligned by day-of-month
+    if Dates.day(d1) == Dates.day(d2)
+        m1 = 12 * Dates.year(d1) + Dates.month(d1)
+        m2 = 12 * Dates.year(d2) + Dates.month(d2)
+        mstep = m2 - m1
+        if mstep != 0
+            return Dates.Month(mstep)
+        end
+    end
+
+    # fall back to the raw difference (in days, milliseconds, …)
+    return d2 - d1
 end
 
 function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
