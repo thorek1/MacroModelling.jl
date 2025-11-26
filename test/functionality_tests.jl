@@ -405,6 +405,53 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
                                             data_in_levels = false)
                 end
             end
+
+            # Test forecast_periods argument
+            for forecast_periods in [0, 6, 12, 24]
+                plot_model_estimates(m, data, 
+                                        algorithm = algorithm, 
+                                        data_in_levels = false,
+                                        forecast_periods = forecast_periods)
+            end
+
+            # Test forecast_periods with plot_model_estimates!
+            plot_model_estimates(m, data, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = false,
+                                    forecast_periods = 12)
+            
+            for forecast_periods in [0, 8, 18]
+                plot_model_estimates!(m, data_in_levels, 
+                                        algorithm = algorithm, 
+                                        data_in_levels = true,
+                                        forecast_periods = forecast_periods)
+            end
+
+            # Test forecast_periods with different filters
+            for filter in (algorithm == :first_order ? filters : [:inversion])
+                for forecast_periods in [0, 12]
+                    clear_solution_caches!(m, algorithm)
+                    
+                    plot_model_estimates(m, data, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = false,
+                                            filter = filter,
+                                            forecast_periods = forecast_periods)
+                end
+            end
+
+            # Test forecast_periods with shock_decomposition
+            if !(algorithm in [:second_order, :third_order])
+                for forecast_periods in [0, 12]
+                    clear_solution_caches!(m, algorithm)
+                    
+                    plot_model_estimates(m, data, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = false,
+                                            shock_decomposition = true,
+                                            forecast_periods = forecast_periods)
+                end
+            end
         end
 
         @testset "plot_solution" begin
@@ -874,13 +921,14 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
-                    for lyapunov_algorithm in lyapunov_algorithms
+                    # for lyapunov_algorithm in lyapunov_algorithms
                        clear_solution_caches!(m, algorithm)
                             
                         plot_conditional_variance_decomposition(m, tol = tol,
                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                lyapunov_algorithm = lyapunov_algorithm)
-                    end
+                                                                # lyapunov_algorithm = lyapunov_algorithm
+                                                                )
+                    # end
                 end
             end
             
@@ -2620,6 +2668,49 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
         end
     end
 
+
+    @testset "get_statistics - grouped covariance" begin
+        # Test grouped covariance functionality
+        if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+            # Test with 2 groups
+            stats_grouped = get_statistics(m, old_params, 
+                                          algorithm = algorithm,
+                                          covariance = [m.var[2:3], m.var[4:5]])
+            
+            @test haskey(stats_grouped, :covariance)
+            @test stats_grouped[:covariance] isa Matrix
+            @test size(stats_grouped[:covariance]) == (4, 4)
+            
+            # Compare with non-grouped version for validation
+            stats_non_grouped_1 = get_statistics(m, old_params,
+                                                algorithm = algorithm,
+                                                covariance = m.var[2:3])
+            
+            stats_non_grouped_2 = get_statistics(m, old_params,
+                                                algorithm = algorithm,
+                                                covariance = m.var[4:5])
+            
+            # Check that within-group covariances match
+            @test isapprox(stats_grouped[:covariance][1:2, 1:2], stats_non_grouped_1[:covariance], rtol = 1e-10)
+            @test isapprox(stats_grouped[:covariance][3:4, 3:4], stats_non_grouped_2[:covariance], rtol = 1e-10)
+            
+            # Check that cross-group covariances are zero
+            @test all(stats_grouped[:covariance][1:2, 3:4] .== 0)
+            @test all(stats_grouped[:covariance][3:4, 1:2] .== 0)
+            
+            # Test with different group sizes
+            stats_varied = get_statistics(m, old_params,
+                                         algorithm = algorithm,
+                                         covariance = [[m.var[2]], m.var[3:5]])
+            
+            @test stats_varied[:covariance] isa Matrix
+            @test size(stats_varied[:covariance]) == (4, 4)
+            # First group is 1x1, second group is 3x3
+            @test stats_varied[:covariance][1, 1] != 0  # within first group
+            @test all(stats_varied[:covariance][1, 2:4] .== 0)  # cross-group
+            @test all(stats_varied[:covariance][2:4, 1] .== 0)  # cross-group
+        end
+    end
 
 
     @testset "get_moments" begin

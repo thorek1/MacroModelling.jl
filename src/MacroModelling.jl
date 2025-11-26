@@ -17,6 +17,7 @@ import Accessors
 # import Memoization: @memoize
 # import LRUCache: LRU
 
+import Dates
 # for find shocks
 # import JuMP
 # import MadNLP
@@ -69,6 +70,54 @@ import Reexport
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
+# Module for SymPy symbol workspace to avoid polluting MacroModelling namespace
+module SymPyWorkspace
+    # Import SpecialFunctions
+    using ..SpecialFunctions: erfcinv, erfc
+    
+    # Define density-related functions directly in the workspace
+    # These need to be available for symbolic expressions
+    function norminvcdf(p::T)::T where T
+        -erfcinv(2*p) * 1.4142135623730951
+    end
+    norminv(p) = norminvcdf(p)
+    qnorm(p) = norminvcdf(p)
+
+    function normlogpdf(z::T)::T where T
+        -(abs2(z) + 1.8378770664093453) / 2
+    end
+
+    function normpdf(z::T)::T where T
+        exp(-abs2(z)/2) * 0.3989422804014327
+    end
+
+    function normcdf(z::T)::T where T
+        erfc(-z * 0.7071067811865475) / 2
+    end
+    pnorm(p) = normcdf(p)
+    dnorm(p) = normpdf(p)
+
+    Max = max
+    Min = min
+end
+
+# Reserved names that cannot be used as variables, shocks, or parameters
+# These are functions and operators available in SymPyWorkspace
+const SYMPYWORKSPACE_RESERVED_NAMES = Set([
+    # Mathematical functions
+    :exp, :exp2, :exp10, :log, :log2, :log10, :sin, :cos, :tan, :asin, :atan, :asinh, :acosh, :atanh, :sqrt, :abs, :min, :max,
+    :sum, :prod, :length, :abs2,
+    # Special functions
+    :erfcinv, :erfc,
+    # Density functions
+    :norminvcdf, :norminv, :qnorm,
+    :normlogpdf, :normpdf, :normcdf,
+    :pnorm, :dnorm,
+    # Aliases
+    :Max, :Min,
+    # Core types
+    :Expr, :Symbol
+])
 
 # Type definitions
 const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
@@ -234,42 +283,59 @@ end # dispatch_doctor
 
 # ── norminvcdf, norminv & qnorm ──
 # d/dp (norminvcdf(p)) = 1 / normpdf(norminvcdf(p))
-function Symbolics.derivative(::typeof(norminvcdf), args::NTuple{1,Any}, ::Val{1})
-    p = args[1]
-    1 / normpdf(norminvcdf(p))
-end
-# norminv and qnorm are aliases of norminvcdf, so they share the same rule:
-Symbolics.derivative(::typeof(norminv), args::NTuple{1,Any}, ::Val{1}) = 
-    Symbolics.derivative(norminvcdf, args, Val{1}())
-Symbolics.derivative(::typeof(qnorm),  args::NTuple{1,Any}, ::Val{1}) =
-    Symbolics.derivative(norminvcdf, args, Val{1}())
+@static if isdefined(Symbolics, Symbol("@register_derivative"))
+    Symbolics.@register_derivative norminvcdf(p) 1 1 / normpdf(norminvcdf(p))
+    # norminv and qnorm are aliases of norminvcdf, so they share the same rule:
+    Symbolics.@register_derivative norminv(p) 1 1 / normpdf(norminvcdf(p))
+    Symbolics.@register_derivative qnorm(p) 1 1 / normpdf(norminvcdf(p))
 
-# ── normlogpdf ──
-# d/dz (normlogpdf(z)) = −z
-function Symbolics.derivative(::typeof(normlogpdf), args::NTuple{1,Any}, ::Val{1})
-    z = args[1]
-    -z
-end
+    # ── normlogpdf ──
+    # d/dz (normlogpdf(z)) = −z
+    Symbolics.@register_derivative normlogpdf(z) 1 -z
 
-# ── normpdf & dnorm ──
-# normpdf(z) = (1/√(2π)) e^(−z²/2) ⇒ derivative = −z * normpdf(z)
-function Symbolics.derivative(::typeof(normpdf), args::NTuple{1,Any}, ::Val{1})
-    z = args[1]
-    -z * normpdf(z)
-end
-# alias:
-Symbolics.derivative(::typeof(dnorm), args::NTuple{1,Any}, ::Val{1}) = 
-    Symbolics.derivative(normpdf, args, Val{1}())
+    # ── normpdf & dnorm ──
+    # normpdf(z) = (1/√(2π)) e^(−z²/2) ⇒ derivative = −z * normpdf(z)
+    Symbolics.@register_derivative normpdf(z) 1 -z * normpdf(z)
+    # alias:
+    Symbolics.@register_derivative dnorm(z) 1 -z * normpdf(z)
 
-# ── normcdf & pnorm ──
-# d/dz (normcdf(z)) = normpdf(z)
-function Symbolics.derivative(::typeof(normcdf), args::NTuple{1,Any}, ::Val{1})
-    z = args[1]
-    normpdf(z)
+    # ── normcdf & pnorm ──
+    # d/dz (normcdf(z)) = normpdf(z)
+    Symbolics.@register_derivative normcdf(z) 1 normpdf(z)
+    # alias:
+    Symbolics.@register_derivative pnorm(z) 1 normpdf(z)
+else
+    function Symbolics.derivative(::typeof(norminvcdf), args::NTuple{1,Any}, ::Val{1})
+        p = args[1]
+        1 / normpdf(norminvcdf(p))
+    end
+    Symbolics.derivative(::typeof(norminv), args::NTuple{1,Any}, ::Val{1}) =
+        Symbolics.derivative(norminvcdf, args, Val{1}())
+    Symbolics.derivative(::typeof(qnorm),  args::NTuple{1,Any}, ::Val{1}) =
+        Symbolics.derivative(norminvcdf, args, Val{1}())
+
+    # ── normlogpdf ──
+    function Symbolics.derivative(::typeof(normlogpdf), args::NTuple{1,Any}, ::Val{1})
+        z = args[1]
+        -z
+    end
+
+    # ── normpdf & dnorm ──
+    function Symbolics.derivative(::typeof(normpdf), args::NTuple{1,Any}, ::Val{1})
+        z = args[1]
+        -z * normpdf(z)
+    end
+    Symbolics.derivative(::typeof(dnorm), args::NTuple{1,Any}, ::Val{1}) =
+        Symbolics.derivative(normpdf, args, Val{1}())
+
+    # ── normcdf & pnorm ──
+    function Symbolics.derivative(::typeof(normcdf), args::NTuple{1,Any}, ::Val{1})
+        z = args[1]
+        normpdf(z)
+    end
+    Symbolics.derivative(::typeof(pnorm), args::NTuple{1,Any}, ::Val{1}) =
+        Symbolics.derivative(normcdf, args, Val{1}())
 end
-# alias:
-Symbolics.derivative(::typeof(pnorm), args::NTuple{1,Any}, ::Val{1}) = 
-    Symbolics.derivative(normcdf, args, Val{1}())
 
 @stable default_mode = "disable" begin
 
@@ -727,15 +793,16 @@ function transform_obc(ex::Expr; avoid_solve::Bool = false)
     transformed_expr, reverse_dict = transform_expression(ex)
 
     for symbs in get_symbols(transformed_expr)
-        eval(:($symbs = SPyPyC.symbols($(string(symbs)), real = true, finite = true)))
+        sym_value = SPyPyC.symbols(string(symbs), real = true, finite = true)
+        Core.eval(SymPyWorkspace, :($symbs = $sym_value))
     end
 
-    eq = eval(transformed_expr)
+    eq = Core.eval(SymPyWorkspace, transformed_expr)
 
     if avoid_solve || count_ops(Meta.parse(string(eq))) > 15
         soll = nothing
     else
-        soll = solve_symbolically(eq, eval(:minmax__P))
+        soll = solve_symbolically(eq, Core.eval(SymPyWorkspace, :minmax__P))
     end
 
     if !isempty(soll)
@@ -973,6 +1040,38 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     𝓂.solution.perturbation.third_order_solution = spzeros(0,0)
 
     return nothing
+end
+
+
+"""
+    infer_step(x_axis)
+
+Infer the step for an axis.
+
+For dates, if the last two points share the same day-of-month, the step is
+inferred in whole months (e.g. Month(1), Month(3), …). Otherwise the raw
+difference is used. For non time types, uses the plain difference.
+"""
+function infer_step(x_axis::AbstractVector{T}) where {T<:Number}
+    x_axis[end] - x_axis[end-1]
+end
+
+function infer_step(x_axis::AbstractVector{T}) where {T<:Dates.TimeType}
+    d1 = x_axis[end-1]
+    d2 = x_axis[end]
+
+    # try to infer a monthly step if aligned by day-of-month
+    if Dates.day(d1) == Dates.day(d2)
+        m1 = 12 * Dates.year(d1) + Dates.month(d1)
+        m2 = 12 * Dates.year(d2) + Dates.month(d2)
+        mstep = m2 - m1
+        if mstep != 0
+            return Dates.Month(mstep)
+        end
+    end
+
+    # fall back to the raw difference (in days, milliseconds, …)
+    return d2 - d1
 end
 
 function fill_kron_adjoint!(∂A::AbstractMatrix{R}, 
@@ -2047,16 +2146,22 @@ function combine_pairs(v::Vector{Pair{Vector{Symbol}, Vector{Symbol}}})
     while i <= length(v)
         subset_found = false
         for j in i+1:length(v)
-            # Check if v[i].second is subset of v[j].second or vice versa
-            if all(elem -> elem in v[j].second, v[i].second) || all(elem -> elem in v[i].second, v[j].second)
-                # Combine the first elements and assign to the one with the larger second element
+            # Check if v[i].second and v[j].second are equal or if one is subset of the other
+            if v[i].second == v[j].second
+                # Exact match: combine first elements and remove duplicate
+                v[i] = v[i].first ∪ v[j].first => v[i].second
+                deleteat!(v, j)
+                subset_found = true
+                break
+            elseif all(elem -> elem in v[j].second, v[i].second) || all(elem -> elem in v[i].second, v[j].second)
+                # One is subset of the other: combine the first elements and assign to the one with the larger second element
                 if length(v[i].second) > length(v[j].second)
                     v[i] = v[i].first ∪ v[j].first => v[i].second
+                    deleteat!(v, j)
                 else
                     v[j] = v[i].first ∪ v[j].first => v[j].second
+                    deleteat!(v, i)
                 end
-                # Remove the one with the smaller second element
-                deleteat!(v, length(v[i].second) > length(v[j].second) ? j : i)
                 subset_found = true
                 break
             end
@@ -2072,6 +2177,7 @@ end
 function determine_efficient_order(𝐒₁::Matrix{<: Real}, 
                                     T::timings, 
                                     variables::Union{Symbol_input,String_input};
+                                    covariance::Union{Symbol_input,String_input} = Symbol[],
                                     tol::AbstractFloat = eps())
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
@@ -2085,17 +2191,422 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
         observables = T.var[var_idx]
     end
 
+    # Precompute state indices to avoid repeated indexin calls
+    state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var) .|> Int
+    𝐒₁_states = 𝐒₁[state_idx_in_var, 1:nˢ]
+
     for obs in observables
-        obs_in_var_idx = indexin([obs],T.var)
+        obs_in_var_idx = indexin([obs],T.var) .|> Int
         dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
 
-        while dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[indexin(T.past_not_future_and_mixed, T.var),1:nˢ]) .> tol) != dependencies_in_states
-            dependencies_in_states = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁[indexin(T.past_not_future_and_mixed, T.var),1:nˢ]) .> tol)
+        # Iterative propagation without redundant allocations
+        while true
+            new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states) .> tol)
+            if new_deps == dependencies_in_states
+                break
+            end
+            dependencies_in_states = new_deps
         end
 
         dependencies = T.past_not_future_and_mixed[dependencies_in_states]
 
         push!(orders,[obs] => sort(dependencies))
+    end
+    
+    # If covariance variables are specified, compute dependencies and add entries for those pairs
+    if !(covariance == Symbol[])
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
+        covariance_vars = T.var[covar_var_idx]
+        
+        # Compute dependencies for covariance variables (if not already computed)
+        for covar_var in covariance_vars
+            # Check if this variable's dependencies are already computed
+            if isnothing(findfirst(x -> covar_var in x.first, orders))
+                obs_in_var_idx = indexin([covar_var], T.var) .|> Int
+                dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
+
+                # Iterative propagation without redundant allocations
+                while true
+                    new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states) .> tol)
+                    if new_deps == dependencies_in_states
+                        break
+                    end
+                    dependencies_in_states = new_deps
+                end
+
+                dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+                push!(orders,[covar_var] => sort(dependencies))
+            end
+        end
+        
+        # Build lookup dictionary for faster searches
+        var_to_idx = Dict{Symbol, Int}()
+        for (idx, order) in enumerate(orders)
+            for var in order.first
+                var_to_idx[var] = idx
+            end
+        end
+        
+        # Add entries for all pairs of covariance variables
+        for i in 1:length(covariance_vars)
+            for j in (i+1):length(covariance_vars)
+                # Find dependencies for both variables using lookup dictionary
+                idx_i = var_to_idx[covariance_vars[i]]
+                idx_j = var_to_idx[covariance_vars[j]]
+                
+                deps_i = orders[idx_i].second
+                deps_j = orders[idx_j].second
+                # Union of dependencies for covariance computation
+                combined_deps = sort(union(deps_i, deps_j))
+                push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
+            end
+        end
+    end
+
+    sort!(orders, by = x -> length(x[2]), rev = true)
+
+    return combine_pairs(orders)
+end
+
+
+function determine_efficient_order(𝐒₁::Matrix{<: Real},
+                                    𝐒₂::AbstractMatrix{<: Real},
+                                    T::timings, 
+                                    variables::Union{Symbol_input,String_input};
+                                    covariance::Union{Symbol_input,String_input} = Symbol[],
+                                    tol::AbstractFloat = eps())
+
+    orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
+
+    nˢ = T.nPast_not_future_and_mixed
+    nᵉ = T.nExo
+    
+    if variables == :full_covar
+        return [T.var => T.past_not_future_and_mixed]
+    else
+        var_idx = MacroModelling.parse_variables_input_to_index(variables, T) |> sort
+        observables = T.var[var_idx]
+    end
+
+    # Build selector for state variables in the augmented state vector [states; 1; shocks]
+    s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
+    
+    # Kronecker product indices for state-state interactions
+    kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    
+    # Precompute state indices and matrix slices to avoid repeated operations
+    state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var) .|> Int
+    𝐒₁_states = 𝐒₁[state_idx_in_var, 1:nˢ]
+    𝐒₂_states = nnz(𝐒₂) > 0 ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
+
+    for obs in observables
+        obs_in_var_idx = indexin([obs],T.var) .|> Int
+        
+        # First order dependencies
+        dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
+        
+        # Second order dependencies from quadratic terms (s ⊗ s)
+        if nnz(𝐒₂) > 0
+            s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
+            
+            # Check which state variable pairs have influence
+            # Vectorized approach: reshape to nˢ×nˢ and check column/row sums
+            s_s_matrix = reshape(vec(sum(abs, s_s_to_y₂, dims=1) .> tol), nˢ, nˢ)
+            dependencies_in_states = dependencies_in_states .| vec(sum(s_s_matrix, dims=2) .> 0) .| vec(sum(s_s_matrix, dims=1) .> 0)
+        end
+
+        # Propagate dependencies through the system (iterative closure)
+        # considering both first and second order propagation
+        while true
+            prev_dependencies = dependencies_in_states
+            
+            # First order propagation
+            new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states) .> tol)
+            
+            # Second order propagation: if state i and state j are dependencies,
+            # their product can affect states
+            if !isnothing(𝐒₂_states)
+                # Generate selector vector for columns where both states are dependencies
+                selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
+                if any(selector)
+                    # Check which states are affected by the selected products
+                    affected = vec(sum(abs, 𝐒₂_states[:, selector], dims=2) .> tol)
+                    new_deps = new_deps .| affected
+                end
+            end
+            
+            if new_deps == dependencies_in_states
+                break
+            end
+            dependencies_in_states = new_deps
+        end
+
+        dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+
+        push!(orders,[obs] => sort(dependencies))
+    end
+    
+    # If covariance variables are specified, compute dependencies and add entries for those pairs
+    if !(covariance == Symbol[])
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
+        covariance_vars = T.var[covar_var_idx]
+        
+        # Compute dependencies for covariance variables (if not already computed)
+        for covar_var in covariance_vars
+            # Check if this variable's dependencies are already computed
+            if isnothing(findfirst(x -> covar_var in x.first, orders))
+                obs_in_var_idx = indexin([covar_var], T.var) .|> Int
+                
+                # First order dependencies
+                dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
+                
+                # Second order dependencies from quadratic terms (s ⊗ s)
+                if nnz(𝐒₂) > 0
+                    s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
+                    # Vectorized approach: reshape to nˢ×nˢ and check column/row sums
+                    s_s_matrix = reshape(vec(sum(abs, s_s_to_y₂, dims=1) .> tol), nˢ, nˢ)
+                    dependencies_in_states = dependencies_in_states .| vec(sum(s_s_matrix, dims=2) .> 0) .| vec(sum(s_s_matrix, dims=1) .> 0)
+                end
+
+                # Propagate dependencies through the system
+                # Precompute matrix slices
+                𝐒₁_states_local = 𝐒₁[state_idx_in_var, 1:nˢ]
+                𝐒₂_states_local = nnz(𝐒₂) > 0 ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
+                
+                while true
+                    prev_dependencies = dependencies_in_states
+                    
+                    # First order propagation
+                    new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states_local) .> tol)
+                    
+                    # Second order propagation
+                    if !isnothing(𝐒₂_states_local)
+                        # Generate selector vector for columns where both states are dependencies
+                        selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
+                        if any(selector)
+                            affected = vec(sum(abs, 𝐒₂_states_local[:, selector], dims=2) .> tol)
+                            new_deps = new_deps .| affected
+                        end
+                    end
+                    
+                    if new_deps == dependencies_in_states
+                        break
+                    end
+                    dependencies_in_states = new_deps
+                end
+
+                dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+                push!(orders,[covar_var] => sort(dependencies))
+            end
+        end
+        
+        # Add entries for all pairs of covariance variables
+        for i in 1:length(covariance_vars)
+            for j in (i+1):length(covariance_vars)
+                # Find dependencies for both variables (they should exist now)
+                idx_i = findfirst(x -> covariance_vars[i] in x.first, orders)
+                idx_j = findfirst(x -> covariance_vars[j] in x.first, orders)
+                
+                deps_i = orders[idx_i].second
+                deps_j = orders[idx_j].second
+                # Union of dependencies for covariance computation
+                combined_deps = sort(union(deps_i, deps_j))
+                push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
+            end
+        end
+    end
+
+    sort!(orders, by = x -> length(x[2]), rev = true)
+
+    return combine_pairs(orders)
+end
+
+
+function determine_efficient_order(𝐒₁::Matrix{<: Real},
+                                    𝐒₂::AbstractMatrix{<: Real},
+                                    𝐒₃::AbstractMatrix{<: Real},
+                                    T::timings, 
+                                    variables::Union{Symbol_input,String_input};
+                                    covariance::Union{Symbol_input,String_input} = Symbol[],
+                                    tol::AbstractFloat = eps())
+
+    orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
+
+    nˢ = T.nPast_not_future_and_mixed
+    nᵉ = T.nExo
+    
+    if variables == :full_covar
+        return [T.var => T.past_not_future_and_mixed]
+    else
+        var_idx = MacroModelling.parse_variables_input_to_index(variables, T) |> sort
+        observables = T.var[var_idx]
+    end
+
+    # Build selectors for state variables in the augmented state vector [states; 1; shocks]
+    s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
+    
+    # Kronecker product indices for interactions
+    kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_s_s_s = ℒ.kron(kron_s_s, s_in_s⁺)
+    
+    # Precompute state indices and matrix slices
+    state_idx_in_var = indexin(T.past_not_future_and_mixed, T.var) .|> Int
+    𝐒₁_states = 𝐒₁[state_idx_in_var, 1:nˢ]
+    𝐒₂_states = nnz(𝐒₂) > 0 ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
+    𝐒₃_states = nnz(𝐒₃) > 0 ? 𝐒₃[state_idx_in_var, kron_s_s_s] : nothing
+
+    for obs in observables
+        obs_in_var_idx = indexin([obs],T.var) .|> Int
+        
+        # First order dependencies
+        dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
+        
+        # Second order dependencies from quadratic terms (s ⊗ s)
+        if nnz(𝐒₂) > 0
+            s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
+            # Vectorized approach: reshape and check row/column sums
+            s_s_matrix = reshape(vec(sum(abs, s_s_to_y₂, dims=1) .> tol), nˢ, nˢ)
+            dependencies_in_states = dependencies_in_states .| vec(sum(s_s_matrix, dims=2) .> 0) .| vec(sum(s_s_matrix, dims=1) .> 0)
+        end
+        
+        # Third order dependencies from cubic terms (s ⊗ s ⊗ s)
+        if nnz(𝐒₃) > 0
+            s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx, kron_s_s_s]
+            # Vectorized approach: reshape to 3D and check along dimensions
+            s_s_s_tensor = reshape(vec(sum(abs, s_s_s_to_y₃, dims=1) .> tol), nˢ, nˢ, nˢ)
+            dependencies_in_states = dependencies_in_states .| vec(sum(s_s_s_tensor, dims=(2,3)) .> 0) .| 
+                                                             vec(sum(s_s_s_tensor, dims=(1,3)) .> 0) .| 
+                                                             vec(sum(s_s_s_tensor, dims=(1,2)) .> 0)
+        end
+
+        # Propagate dependencies through the system (iterative closure)
+        # considering first, second, and third order propagation
+        while true
+            prev_dependencies = dependencies_in_states
+            
+            # First order propagation
+            new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states) .> tol)
+            
+            # Second order propagation
+            if !isnothing(𝐒₂_states)
+                # Generate selector vector for columns where both states are dependencies
+                selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
+                if any(selector)
+                    affected = vec(sum(abs, 𝐒₂_states[:, selector], dims=2) .> tol)
+                    new_deps = new_deps .| affected
+                end
+            end
+            
+            # Third order propagation
+            if !isnothing(𝐒₃_states)
+                # Generate selector vector for columns where all three states are dependencies
+                selector = vec(ℒ.kron(ℒ.kron(prev_dependencies, prev_dependencies), prev_dependencies))
+                if any(selector)
+                    affected = vec(sum(abs, 𝐒₃_states[:, selector], dims=2) .> tol)
+                    new_deps = new_deps .| affected
+                end
+            end
+            
+            if new_deps == dependencies_in_states
+                break
+            end
+            dependencies_in_states = new_deps
+        end
+
+        dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+
+        push!(orders,[obs] => sort(dependencies))
+    end
+    
+    # If covariance variables are specified, compute dependencies and add entries for those pairs
+    if !(covariance == Symbol[])
+        covar_var_idx = MacroModelling.parse_variables_input_to_index(covariance, T) |> sort
+        covariance_vars = T.var[covar_var_idx]
+        
+        # Compute dependencies for covariance variables (if not already computed)
+        for covar_var in covariance_vars
+            # Check if this variable's dependencies are already computed
+            if isnothing(findfirst(x -> covar_var in x.first, orders))
+                obs_in_var_idx = indexin([covar_var], T.var) .|> Int
+                
+                # First order dependencies
+                dependencies_in_states = vec(sum(abs, 𝐒₁[obs_in_var_idx,1:nˢ], dims=1) .> tol) .> 0
+                
+                # Second order dependencies from quadratic terms (s ⊗ s)
+                if nnz(𝐒₂) > 0
+                    s_s_to_y₂ = 𝐒₂[obs_in_var_idx, kron_s_s]
+                    # Vectorized approach: reshape to nˢ×nˢ and check column/row sums
+                    s_s_matrix = reshape(vec(sum(abs, s_s_to_y₂, dims=1) .> tol), nˢ, nˢ)
+                    dependencies_in_states = dependencies_in_states .| vec(sum(s_s_matrix, dims=2) .> 0) .| vec(sum(s_s_matrix, dims=1) .> 0)
+                end
+                
+                # Third order dependencies from cubic terms (s ⊗ s ⊗ s)
+                if nnz(𝐒₃) > 0
+                    s_s_s_to_y₃ = 𝐒₃[obs_in_var_idx, kron_s_s_s]
+                    # Vectorized approach: reshape to 3D and check along dimensions
+                    s_s_s_tensor = reshape(vec(sum(abs, s_s_s_to_y₃, dims=1) .> tol), nˢ, nˢ, nˢ)
+                    dependencies_in_states = dependencies_in_states .| vec(sum(s_s_s_tensor, dims=(2,3)) .> 0) .| 
+                                                                     vec(sum(s_s_s_tensor, dims=(1,3)) .> 0) .| 
+                                                                     vec(sum(s_s_s_tensor, dims=(1,2)) .> 0)
+                end
+
+                # Propagate dependencies through the system
+                # Precompute matrix slices
+                𝐒₁_states_local = 𝐒₁[state_idx_in_var, 1:nˢ]
+                𝐒₂_states_local = nnz(𝐒₂) > 0 ? 𝐒₂[state_idx_in_var, kron_s_s] : nothing
+                𝐒₃_states_local = nnz(𝐒₃) > 0 ? 𝐒₃[state_idx_in_var, kron_s_s_s] : nothing
+                
+                while true
+                    prev_dependencies = dependencies_in_states
+                    
+                    # First order propagation
+                    new_deps = dependencies_in_states .| vec(abs.(dependencies_in_states' * 𝐒₁_states_local) .> tol)
+                    
+                    # Second order propagation
+                    if !isnothing(𝐒₂_states_local)
+                        # Generate selector vector for columns where both states are dependencies
+                        selector = vec(ℒ.kron(prev_dependencies, prev_dependencies))
+                        if any(selector)
+                            affected = vec(sum(abs, 𝐒₂_states_local[:, selector], dims=2) .> tol)
+                            new_deps = new_deps .| affected
+                        end
+                    end
+                    
+                    # Third order propagation
+                    if !isnothing(𝐒₃_states_local)
+                        # Generate selector vector for columns where all three states are dependencies
+                        selector = vec(ℒ.kron(ℒ.kron(prev_dependencies, prev_dependencies), prev_dependencies))
+                        if any(selector)
+                            affected = vec(sum(abs, 𝐒₃_states_local[:, selector], dims=2) .> tol)
+                            new_deps = new_deps .| affected
+                        end
+                    end
+                    
+                    if new_deps == dependencies_in_states
+                        break
+                    end
+                    dependencies_in_states = new_deps
+                end
+
+                dependencies = T.past_not_future_and_mixed[dependencies_in_states]
+                push!(orders,[covar_var] => sort(dependencies))
+            end
+        end
+        
+        # Add entries for all pairs of covariance variables
+        for i in 1:length(covariance_vars)
+            for j in (i+1):length(covariance_vars)
+                # Find dependencies for both variables (they should exist now)
+                idx_i = findfirst(x -> covariance_vars[i] in x.first, orders)
+                idx_j = findfirst(x -> covariance_vars[j] in x.first, orders)
+                
+                deps_i = orders[idx_i].second
+                deps_j = orders[idx_j].second
+                # Union of dependencies for covariance computation
+                combined_deps = sort(union(deps_i, deps_j))
+                push!(orders, [covariance_vars[i], covariance_vars[j]] => combined_deps)
+            end
+        end
     end
 
     sort!(orders, by = x -> length(x[2]), rev = true)
@@ -2423,10 +2934,11 @@ function simplify(ex::Expr)::Union{Expr,Symbol,Int}
     ex_ss = convert_to_ss_equation(ex)
 
     for x in get_symbols(ex_ss)
-	    eval(:($x = SPyPyC.symbols($(string(x)), real = true, finite = true)))
+        sym_value = SPyPyC.symbols(string(x), real = true, finite = true)
+        Core.eval(SymPyWorkspace, :($x = $sym_value))
     end
 
-	parsed = ex_ss |> eval |> string |> Meta.parse
+    parsed = ex_ss |> x -> Core.eval(SymPyWorkspace, x) |> string |> Meta.parse
 
     postwalk(x ->   x isa Expr ? 
                         x.args[1] == :conjugate ? 
@@ -2637,6 +3149,8 @@ end
 
 replace_indices(x::Symbol) = x
 
+replace_indices_special(x::Symbol) = x
+
 replace_indices(x::String) = Symbol(replace(x, "{" => "◖", "}" => "◗"))
 
 replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{", "◗" => "}")
@@ -2648,6 +3162,22 @@ function replace_indices(exxpr::Expr)::Union{Expr,Symbol}
         x isa Expr ?
             x.head == :curly ?
                 Symbol(string(x.args[1]) * "◖" * string(x.args[2]) * "◗") :
+            x :
+        x
+    end, exxpr)
+end
+
+function replace_indices_special(exxpr::Expr)::Union{Expr,Symbol}
+    postwalk(x -> begin
+        x isa Symbol ?
+            replace_indices(string(x)) :
+        x isa Expr ?
+            x.head == :curly ?
+                Symbol(string(x.args[1]) * "◖" * string(x.args[2]) * "◗") :
+            x.head == :call ?
+                x.args[1] == :(*) ?
+                    Symbol(string(x.args[2]), string(x.args[3])) :
+                x :
             x :
         x
     end, exxpr)
@@ -2937,7 +3467,7 @@ end
 
 
 function create_symbols_eqs!(𝓂::ℳ)::symbolics
-    # create symbols in module scope
+    # create symbols in SymPyWorkspace to avoid polluting MacroModelling namespace
     symbols_in_dynamic_equations = reduce(union,get_symbols.(𝓂.dyn_equations))
 
     symbols_in_dynamic_equations_wo_subscripts = Symbol.(replace.(string.(symbols_in_dynamic_equations),r"₍₋?(₀|₁|ₛₛ|ₓ)₎$"=>""))
@@ -2964,63 +3494,67 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
         end
     end
 
+    # Create symbols in SymPyWorkspace instead of MacroModelling namespace
     for pos in symbols_pos
-        eval(:($pos = SPyPyC.symbols($(string(pos)), real = true, finite = true, positive = true)))
+        sym_value = SPyPyC.symbols(string(pos), real = true, finite = true, positive = true)
+        Core.eval(SymPyWorkspace, :($pos = $sym_value))
     end
     for neg in symbols_neg
-        eval(:($neg = SPyPyC.symbols($(string(neg)), real = true, finite = true, negative = true)))
+        sym_value = SPyPyC.symbols(string(neg), real = true, finite = true, negative = true)
+        Core.eval(SymPyWorkspace, :($neg = $sym_value))
     end
     for none in symbols_none
-        eval(:($none = SPyPyC.symbols($(string(none)), real = true, finite = true)))
+        sym_value = SPyPyC.symbols(string(none), real = true, finite = true)
+        Core.eval(SymPyWorkspace, :($none = $sym_value))
     end
 
-    symbolics(map(x->eval(:($x)),𝓂.ss_aux_equations),
-                map(x->eval(:($x)),𝓂.dyn_equations),
-                # map(x->eval(:($x)),𝓂.dyn_equations_future),
+    symbolics(map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.ss_aux_equations),
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations),
+                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations_future),
 
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_present_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_past_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift_var_future_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_present_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_past_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_future_list),
 
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_shift2_var_past_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift2_var_past_list),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_present_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_past_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_var_future_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_ss_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_present_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_past_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_future_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_ss_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_list),
 
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_future_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_present_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dyn_exo_past_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_future_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_present_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_past_list),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_future_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_present_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.dyn_past_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_future_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_present_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_past_list),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_present_list_aux_SS),
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_past_list_aux_SS),
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_future_list_aux_SS),
-                map(x->Set(eval(:([$(x...)]))),𝓂.ss_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_present_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_past_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_future_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.ss_list_aux_SS),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.var_list_aux_SS),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_list),
-                # map(x->Set(eval(:([$(x...)]))),𝓂.dynamic_variables_future_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.par_list_aux_SS),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_list_aux_SS),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_list),
+                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_future_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.par_list_aux_SS),
 
-                map(x->eval(:($x)),𝓂.calibration_equations),
-                map(x->eval(:($x)),𝓂.calibration_equations_parameters),
-                # map(x->eval(:($x)),𝓂.parameters),
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.calibration_equations),
+                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.calibration_equations_parameters),
+                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.parameters),
 
-                # Set(eval(:([$(𝓂.var_present...)]))),
-                # Set(eval(:([$(𝓂.var_past...)]))),
-                # Set(eval(:([$(𝓂.var_future...)]))),
-                Set(eval(:([$(𝓂.vars_in_ss_equations...)]))),
-                Set(eval(:([$(𝓂.var...)]))),
-                Set(eval(:([$(𝓂.➕_vars...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_present...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_past...)]))),
+                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_future...)]))),
+                Set(Core.eval(SymPyWorkspace, :([$(𝓂.vars_in_ss_equations...)]))),
+                Set(Core.eval(SymPyWorkspace, :([$(𝓂.var...)]))),
+                Set(Core.eval(SymPyWorkspace, :([$(𝓂.➕_vars...)]))),
 
-                map(x->Set(eval(:([$(x...)]))),𝓂.ss_calib_list),
-                map(x->Set(eval(:([$(x...)]))),𝓂.par_calib_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.ss_calib_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.par_calib_list),
 
                 [Set() for _ in 1:length(𝓂.ss_aux_equations)],
                 # [Set() for _ in 1:length(𝓂.calibration_equations)],
@@ -3299,11 +3833,11 @@ function write_block_solution!(𝓂,
 
     prob = 𝒮.LinearProblem(chol_buff, ϵ, 𝒮.CholeskyFactorization())
 
-    chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+    chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     prob = 𝒮.LinearProblem(buffer, ϵ, 𝒮.LUFactorization())
 
-    lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+    lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
@@ -3364,11 +3898,11 @@ function write_block_solution!(𝓂,
 
     prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ, 𝒮.CholeskyFactorization())
 
-    ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+    ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ, 𝒮.LUFactorization())
 
-    ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+    ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
     if lennz > nnz_parallel_threshold
         parallel = Symbolics.ShardedForm(1500,4)
@@ -4071,7 +4605,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     eqs = hcat(Q, R̂)'
     
     # @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
-    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant euqations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationary variables are not supported as of now." # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
+    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant equations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationary variables are not supported as of now." # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
     
     n = n_blocks
 
@@ -4490,7 +5024,7 @@ function solve_steady_state!(𝓂::ℳ;
     vars = hcat(P, R̂)'
     eqs = hcat(Q, R̂)'
     # @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(𝓂.ss_equations,𝓂.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
-    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant euqations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationary variables are not supported as of now." # repr([vcat(𝓂.ss_equations,𝓂.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
+    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant equations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationary variables are not supported as of now." # repr([vcat(𝓂.ss_equations,𝓂.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
     
     n = n_blocks
 
@@ -4713,11 +5247,11 @@ function solve_steady_state!(𝓂::ℳ;
 
         prob = 𝒮.LinearProblem(chol_buff, ϵ, 𝒮.CholeskyFactorization())
 
-        chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+        chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
         prob = 𝒮.LinearProblem(buffer, ϵ, 𝒮.LUFactorization())
 
-        lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+        lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
         if lennz > nnz_parallel_threshold
             parallel = Symbolics.ShardedForm(1500,4)
@@ -4778,11 +5312,11 @@ function solve_steady_state!(𝓂::ℳ;
 
         prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ, 𝒮.CholeskyFactorization())
 
-        ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization())
+        ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
         prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ, 𝒮.LUFactorization())
 
-        ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization())
+        ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
 
         if lennz > nnz_parallel_threshold
             parallel = Symbolics.ShardedForm(1500,4)
@@ -5334,22 +5868,25 @@ function block_solver(parameters_and_solved_vars::Vector{T},
 
     if cold_start
         guesses = any(guess .< 1e12) ? [guess, fill(1e12, length(guess))] : [guess] # if guess were provided, loop over them, and then the starting points only
+        start_vals = (fail_fast_solvers_only ? [false] : Any[false, 1.206, 1.5, 0.7688, 2.0, 0.897])
 
         for g in guesses
             for p in parameters
                 for ext in [true, false] # try first the system where values and parameters can vary, next try the system where only values can vary
-                    if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
-                        if solved_yet continue end
+                    for s in start_vals
+                        if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
+                            if solved_yet continue end
 
-                        sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
-                        # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
-                                                            g, 
-                                                            p,
-                                                            ext,
-                                                            false)
-                                                            
-                        if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
-                            solved_yet = true
+                            sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                            # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
+                                                                g, 
+                                                                p,
+                                                                ext,
+                                                                s)
+                                                                
+                            if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
+                                solved_yet = true
+                            end
                         end
                     end
                 end
@@ -6190,7 +6727,7 @@ function solve!(𝓂::ℳ;
             state_update₁ = function(state::Vector{T}, shock::Vector{S}) where {T,S} 
                 aug_state = [state[𝓂.timings.past_not_future_and_mixed_idx]
                             shock]
-                return S₁ * aug_state # you need a return statement for forwarddiff to work
+                return S₁ * aug_state # return statement needed for forwarddiff to work
             end
             
             if obc
@@ -8580,8 +9117,13 @@ function girf(state_update::Function,
 end
 
 
-function parse_variables_input_to_index(variables::Union{Symbol_input,String_input}, T::timings)::Union{UnitRange{Int}, Vector{Int}}
-    variables = variables isa String_input ? variables .|> Meta.parse .|> replace_indices : variables
+function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, T::timings)::Union{UnitRange{Int}, Vector{Int}}
+    # Handle nested vector conversion separately
+    if variables isa Vector{Vector{String}}
+        variables = [group .|> Meta.parse .|> replace_indices for group in variables]
+    elseif variables isa String_input
+        variables = variables .|> Meta.parse .|> replace_indices
+    end
 
     if variables == :all_excluding_auxiliary_and_obc
         return Int.(indexin(setdiff(T.var[.!contains.(string.(T.var),"ᵒᵇᶜ")],union(T.aux, T.exo_present)),sort(union(T.var,T.aux,T.exo_present))))
@@ -8596,6 +9138,30 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
             return Int[]
         end
         return getindex(1:length(T.var),convert(Vector{Bool},vec(sum(variables .== T.var,dims= 2))))
+    elseif variables isa Vector{Vector{Symbol}}
+        # For grouped inputs, return union of all variables
+        all_vars = reduce(vcat, variables)
+        if length(setdiff(all_vars,T.var)) > 0
+            @warn "The following variables are not part of the model: " * join(string.(setdiff(all_vars,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
+            return Int[]
+        end
+        return Int.(indexin(unique(all_vars), T.var))
+    elseif variables isa Vector{Tuple{Symbol,Vararg{Symbol}}}
+        # For grouped inputs with tuples, return union of all variables
+        all_vars = reduce(vcat, [collect(group) for group in variables])
+        if length(setdiff(all_vars,T.var)) > 0
+            @warn "The following variables are not part of the model: " * join(string.(setdiff(all_vars,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
+            return Int[]
+        end
+        return Int.(indexin(unique(all_vars), T.var))
+    elseif variables isa Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}
+        # For grouped inputs with tuple of tuples, return union of all variables
+        all_vars = reduce(vcat, [collect(group) for group in variables])
+        if length(setdiff(all_vars,T.var)) > 0
+            @warn "The following variables are not part of the model: " * join(string.(setdiff(all_vars,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
+            return Int[]
+        end
+        return Int.(indexin(unique(all_vars), T.var))
     elseif variables isa Vector{Symbol}
         if length(setdiff(variables,T.var)) > 0
             @warn "The following variables are not part of the model: " * join(string.(setdiff(variables,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
@@ -8618,6 +9184,47 @@ function parse_variables_input_to_index(variables::Union{Symbol_input,String_inp
         @warn "Invalid `variables` argument. Provide a Symbol, Tuple, Vector, Matrix, or one of the documented selectors such as `:all`."
         return Int[]
     end
+end
+
+# Helper function to check if input is grouped covariance format
+function is_grouped_covariance_input(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}})::Bool
+    # Check if it's a nested structure (vector of vectors, vector of tuples, or tuple of tuples)
+    return variables isa Vector{Vector{Symbol}} || variables isa Vector{Vector{String}} ||
+           variables isa Vector{Tuple{Symbol,Vararg{Symbol}}} || variables isa Vector{Tuple{String,Vararg{String}}} ||
+           variables isa Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}} || 
+           variables isa Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}
+end
+
+# Function to parse grouped covariance input into groups of indices
+function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, T::timings)::Vector{Vector{Int}}
+    # Convert String_input to Symbol_input for nested structures
+    if variables isa Vector{Vector{String}}
+        variables = [group .|> Meta.parse .|> replace_indices for group in variables]
+    elseif variables isa Vector{Tuple{String,Vararg{String}}}
+        variables = [Tuple(group .|> Meta.parse .|> replace_indices) for group in variables]
+    elseif variables isa Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}
+        variables = Tuple(Tuple(group .|> Meta.parse .|> replace_indices) for group in variables)
+    end
+    
+    if !is_grouped_covariance_input(variables)
+        # Not grouped, return single group
+        idx = parse_variables_input_to_index(variables, T)
+        return [collect(idx)]
+    end
+    
+    # Parse each group (convert tuples to vectors for uniform handling)
+    groups = Vector{Vector{Int}}()
+    for group in variables
+        group_vec = group isa Tuple ? collect(group) : group
+        if length(setdiff(group_vec, T.var)) > 0
+            @warn "The following variables are not part of the model: " * join(string.(setdiff(group_vec,T.var)),", ") * ". Use `get_variables(𝓂)` to list valid names."
+            push!(groups, Int[])
+        else
+            push!(groups, Int.(indexin(group_vec, T.var)))
+        end
+    end
+    
+    return groups
 end
 
 

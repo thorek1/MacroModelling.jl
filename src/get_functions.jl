@@ -645,8 +645,8 @@ If occasionally binding constraints are present in the model, they are not taken
 - $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
-- $VARIABLES®
-- `conditions_in_levels` [Default: `true`, Type: `Bool`]: indicator whether the conditions are provided in levels. If `true` the input to the conditions argument will have the non-stochastic steady state subtracted.
+- $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
+- $CONDITIONS_IN_LEVELS®
 - `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
 - $ALGORITHM®
 - $QME®
@@ -1016,7 +1016,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PARAMETER_VALUES®
 # Keyword Arguments
 - $PERIODS®
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $SHOCKS®
 - $NEGATIVE_SHOCK®
 - $INITIAL_STATE®1
@@ -1151,7 +1151,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $PERIODS®
 - $ALGORITHM®
 - $PARAMETERS®
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $SHOCKS®
 - $NEGATIVE_SHOCK®
 - $GENERALISED_IRF®
@@ -2596,7 +2596,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
 - `variance` [Default: `false`, Type: `Bool`]: switch to return variance of endogenous variables
 - `covariance` [Default: `false`, Type: `Bool`]: switch to return covariance matrix of endogenous variables
-- $VARIABLES®
+- $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $DERIVATIVES®
 - $PARAMETER_DERIVATIVES®
 - $ALGORITHM®
@@ -3203,12 +3203,12 @@ If occasionally binding constraints are present in the model, they are not taken
 - `parameter_values` [Type: `Vector`]: Parameter values. If `parameter_names` is not explicitly defined, `parameter_values` are assumed to correspond to the parameters and the order of the parameters declared in the `@parameters` block.
 # Keyword Arguments
 - `parameters` [Type: `Vector{Symbol}`]: Corresponding names in the same order as `parameter_values`.
-- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the NSSS of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
-- `mean` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the mean of selected variables (the mean for the linearised solution is the NSSS). Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
-- `standard_deviation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the standard deviation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
-- `variance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the variance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
-- `covariance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the covariance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
-- `autocorrelation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the autocorrelation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or \"y\"), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
+- `non_stochastic_steady_state` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the NSSS of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
+- `mean` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the mean of selected variables (the mean for the linearised solution is the NSSS). Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
+- `standard_deviation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the standard deviation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
+- `variance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the variance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
+- `covariance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the covariance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. For grouped covariance computation, pass a `Vector` of `Vector`s (e.g. `[[:y, :c], [:k, :i]]`) to compute covariances only within each group, returning a single covariance matrix where cross-group covariances are set to zero. This allows more granular control over which covariances to compute. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all variables less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all variables less those related to occasionally binding constraints. `:all` will contain all variables.
+- `autocorrelation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the autocorrelation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
 - `autocorrelation_periods` [Default: `1:5`, Type = `UnitRange{Int}`]: periods for which to return the autocorrelation of selected variables
 - $ALGORITHM®
 - $QME®
@@ -3243,6 +3243,12 @@ get_statistics(RBC, RBC.parameter_values, parameters = RBC.parameters, standard_
 # output
 Dict{Symbol, AbstractArray{Float64}} with 1 entry:
   :standard_deviation => [0.0266642, 0.264677, 0.0739325, 0.0102062]
+
+# For grouped covariance (computing covariances only within specified groups):
+get_statistics(RBC, RBC.parameter_values, covariance = [[:c, :k], [:y, :i]])
+# output
+Dict{Symbol, AbstractArray{Float64}} with 1 entry:
+  :covariance => [...4x4 matrix with c-k covariances filled, y-i covariances filled, and cross-group elements set to zero...]
 ```
 """
 function get_statistics(𝓂,
@@ -3252,7 +3258,7 @@ function get_statistics(𝓂,
                         mean::Union{Symbol_input,String_input} = Symbol[],
                         standard_deviation::Union{Symbol_input,String_input} = Symbol[],
                         variance::Union{Symbol_input,String_input} = Symbol[],
-                        covariance::Union{Symbol_input,String_input} = Symbol[],
+                        covariance::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}} = Symbol[],
                         autocorrelation::Union{Symbol_input,String_input} = Symbol[],
                         autocorrelation_periods::UnitRange{Int} = DEFAULT_AUTOCORRELATION_PERIODS,
                         algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -3283,6 +3289,9 @@ function get_statistics(𝓂,
     var_var_idx = @ignore_derivatives parse_variables_input_to_index(variance, 𝓂.timings)
 
     covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂.timings)
+    
+    # Parse covariance groups if input is grouped format
+    covar_groups = @ignore_derivatives is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.timings) : nothing
 
     autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂.timings)
 
@@ -3316,13 +3325,13 @@ function get_statistics(𝓂,
     if algorithm == :pruned_third_order
 
         if !(autocorrelation == Symbol[])
-            second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx, covar_var_idx)
+            second_mom_third_order = union(autocorr_var_idx, std_var_idx, var_var_idx)
 
-            covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments_with_autocorrelation(all_parameters, 𝓂.var[second_mom_third_order], 𝓂, opts = opts, autocorrelation_periods = autocorrelation_periods)
+            covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments_with_autocorrelation(all_parameters, 𝓂.var[second_mom_third_order], 𝓂, covariance = 𝓂.var[covar_var_idx], opts = opts, autocorrelation_periods = autocorrelation_periods)
 
         elseif !(standard_deviation == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[])
 
-            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, 𝓂.var[union(std_var_idx, var_var_idx, covar_var_idx)], 𝓂, opts = opts)
+            covar_dcmp, state_μ, SS_and_pars, solved = calculate_third_order_moments(all_parameters, 𝓂.var[union(std_var_idx, var_var_idx)], 𝓂, covariance = 𝓂.var[covar_var_idx], opts = opts)
 
         end
 
@@ -3405,8 +3414,38 @@ function get_statistics(𝓂,
 
         # droptol!(covar_dcmp_sp,eps(Float64))
 
-        # push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
-        ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
+        if !isnothing(covar_groups)
+            # Extract only the specified covariance groups (block diagonal structure)
+            # Return a single matrix with zeros for non-computed covariances
+            if solved
+                # Initialize matrix with zeros
+                covar_result = zeros(T, length(covar_var_idx), length(covar_var_idx))
+                
+                # Fill in only the specified groups
+                for group in covar_groups
+                    for (i_idx, i) in enumerate(group)
+                        for (j_idx, j) in enumerate(group)
+                            # Find position in covar_var_idx
+                            i_pos = findfirst(==(i), covar_var_idx)
+                            j_pos = findfirst(==(j), covar_var_idx)
+                            if !isnothing(i_pos) && !isnothing(j_pos)
+                                covar_result[i_pos, j_pos] = covar_dcmp_sp[i, j]
+                            end
+                        end
+                    end
+                end
+                
+                ret[:covariance] = covar_result
+            else
+                # Return matrix with Inf-filled diagonal and zeros elsewhere
+                covar_result = fill(Inf * sum(abs2,parameter_values), length(covar_var_idx), length(covar_var_idx))
+                ret[:covariance] = covar_result
+            end
+        else
+            # Original behavior for non-grouped input
+            # push!(ret,covar_dcmp_sp[covar_var_idx,covar_var_idx])
+            ret[:covariance] = solved ? covar_dcmp_sp[covar_var_idx,covar_var_idx] : fill(Inf * sum(abs2,parameter_values),isnothing(covar_var_idx) ? 0 : length(covar_var_idx), isnothing(covar_var_idx) ? 0 : length(covar_var_idx))
+        end
     end
     if !(autocorrelation == Symbol[]) 
         # push!(ret,autocorr[autocorr_var_idx,:] )
@@ -3499,7 +3538,7 @@ function get_loglikelihood(𝓂::ℳ,
     #     sylvester_algorithm = :bicgstab
     # end
 
-    @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, you need to combine the estimated parameters with the other model parameters in one `Vector`. Make sure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
+    @assert length(parameter_values) == length(𝓂.parameters) "The number of parameter values provided does not match the number of parameters in the model. If this function is used in the context of estimation and not all parameters are estimated, the estimated parameters need to be combined with the other model parameters in one `Vector`. Ensure they have the same order they were declared in the `@parameters` block (check by calling `get_parameters`)."
 
     # checks to avoid errors further down the line and inform the user
     @assert initial_covariance ∈ [:theoretical, :diagonal] "Invalid method to initialise the Kalman filters covariance matrix. Supported methods are: the theoretical long run values (option `:theoretical`) or large values (10.0) along the diagonal (option `:diagonal`)."
