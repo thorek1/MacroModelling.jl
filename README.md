@@ -33,7 +33,7 @@ As of now the package can:
 The package is not:
 
 - guaranteed to find the non-stochastic steady state (solving systems of nonlinear equations is an active area of research)
-- the fastest package around if you already have a fast way to find the NSSS (time to first plot is long, time to second plot (with new parameters) is very short)
+- the fastest package around if there is already a fast way to find the NSSS (time to first plot is long, time to second plot (with new parameters) is very short)
 
 For more details have a look at the [documentation](https://thorek1.github.io/MacroModelling.jl/stable).
 
@@ -43,7 +43,7 @@ For more details have a look at the [documentation](https://thorek1.github.io/Ma
 
 `MacroModelling.jl` requires [`julia`](https://julialang.org/downloads/) version 1.10 or higher and an IDE is recommended (e.g. [`VS Code`](https://code.visualstudio.com/download) with the [`julia extension`](https://marketplace.visualstudio.com/items?itemName=julialang.language-julia)).
 
-Once set up you can install `MacroModelling.jl` (and `StatsPlots` in order to plot) by typing the following in the Julia REPL:
+Once set up `MacroModelling.jl` can be installed (and `StatsPlots` in order to plot) by typing the following in the Julia REPL:
 
 ```julia
 using Pkg; Pkg.add(["MacroModelling", "StatsPlots"])
@@ -80,8 +80,8 @@ plot_irf(RBC)
 The package contains the following models in the `models` folder:
 
 - [Aguiar and Gopinath (2007)](https://www.journals.uchicago.edu/doi/10.1086/511283) `Aguiar_Gopinath_2007.jl`
-- [Ascari and Sbordone (2014)](https://www.aeaweb.org/articles?id=10.1257/jel.52.3.679) `Ascari_sbordone_2014.jl`
-- [Backus, Kehoe, and Kydland (1992)](https://www.jstor.org/stable/2138686) `Backus_Kehoe_Kydland_1992`
+- [Ascari and Sbordone (2014)](https://www.aeaweb.org/articles?id=10.1257/jel.52.3.679) `Ascari_Sbordone_2014.jl`
+- [Backus, Kehoe, and Kydland (1992)](https://www.jstor.org/stable/2138686) `Backus_Kehoe_Kydland_1992.jl`
 - [Baxter and King (1993)](https://www.jstor.org/stable/2117521) `Baxter_King_1993.jl`
 - [Caldara et al. (2012)](https://www.sciencedirect.com/science/article/abs/pii/S1094202511000433) `Caldara_et_al_2012.jl`
 - [Gali (2015)](https://press.princeton.edu/books/hardcover/9780691164786/monetary-policy-inflation-and-the-business-cycle) - Chapter 3 `Gali_2015_chapter_3_nonlinear.jl`
@@ -127,6 +127,6 @@ Villemot, S., (2011), "Solving rational expectations models at first order: what
 
 ## Questions and Contributions
 
-If you have questions regarding the usage or encounter unexpected behaviour please file an issue.
+If there are questions regarding the usage or unexpected behaviour is encountered please file an issue.
 
 Contributions are very welcome, as are feature requests and suggestions. Please open an issue or even better become a contributor and create a pull request.

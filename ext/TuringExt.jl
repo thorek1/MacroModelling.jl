@@ -7,7 +7,7 @@ import Turing: truncated
 import Turing
 import DocStringExtensions: SIGNATURES
 using DispatchDoctor
-import MacroModelling: Normal, Beta, Cauchy, Gamma, InverseGamma
+import MacroModelling: Normal, Beta, Cauchy, Gamma, InverseGamma, DEFAULT_TURING_USE_MEAN_STD
 
 @stable default_mode = "disable" begin
 
@@ -26,7 +26,7 @@ Constructs a `Beta` distribution, optionally parameterized by its mean and stand
 # Keyword Arguments
 - `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the `α` and `β` parameters.
 """
-function Beta(μ::Real, σ::Real; μσ::Bool=false)
+function Beta(μ::Real, σ::Real; μσ::Bool=DEFAULT_TURING_USE_MEAN_STD)
     if μσ
         # Calculate alpha and beta from mean (μ) and standard deviation (σ)
         ν = μ * (1 - μ) / σ^2 - 1
@@ -51,7 +51,7 @@ Constructs a truncated `Beta` distribution, optionally parameterized by its mean
 # Keyword Arguments
 - `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the `α` and `β` parameters.
 """
-function Beta(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=false)
+function Beta(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=DEFAULT_TURING_USE_MEAN_STD)
     # Create the base distribution, then truncate it
     dist = Beta(μ, σ; μσ=μσ)
     return truncated(dist, lower_bound, upper_bound)
@@ -73,7 +73,7 @@ Constructs an `InverseGamma` distribution, optionally parameterized by its mean 
 # Keyword Arguments
 - `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `β` parameters.
 """
-function InverseGamma(μ::Real, σ::Real; μσ::Bool=false)
+function InverseGamma(μ::Real, σ::Real; μσ::Bool=DEFAULT_TURING_USE_MEAN_STD)
     if μσ
         # Calculate shape (α) and scale (β) from mean (μ) and standard deviation (σ)
         α = (μ / σ)^2 + 2
@@ -97,7 +97,7 @@ Constructs a truncated `InverseGamma` distribution, optionally parameterized by 
 # Keyword Arguments
 - `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `β` parameters.
 """
-function InverseGamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=false)
+function InverseGamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=DEFAULT_TURING_USE_MEAN_STD)
     # Create the base distribution, then truncate it
     dist = InverseGamma(μ, σ; μσ=μσ)
     return truncated(dist, lower_bound, upper_bound)
@@ -119,7 +119,7 @@ Constructs a `Gamma` distribution, optionally parameterized by its mean and stan
 # Keyword Arguments
 - `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `θ` parameters.
 """
-function Gamma(μ::Real, σ::Real; μσ::Bool=false)
+function Gamma(μ::Real, σ::Real; μσ::Bool=DEFAULT_TURING_USE_MEAN_STD)
     if μσ
         # Calculate shape (α) and scale (θ) from mean (μ) and standard deviation (σ)
         θ = σ^2 / μ
@@ -143,7 +143,7 @@ Constructs a truncated `Gamma` distribution, optionally parameterized by its mea
 # Keyword Arguments
 - `μσ` [Type: `Bool`, Default: `false`]: If `true`, `μ` and `σ` are interpreted as the mean and standard deviation to calculate the shape `α` and scale `θ` parameters.
 """
-function Gamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=false)
+function Gamma(μ::Real, σ::Real, lower_bound::Real, upper_bound::Real; μσ::Bool=DEFAULT_TURING_USE_MEAN_STD)
     # Create the base distribution, then truncate it
     dist = Gamma(μ, σ; μσ=μσ)
     return truncated(dist, lower_bound, upper_bound)

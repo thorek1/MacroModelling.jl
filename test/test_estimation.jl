@@ -1,10 +1,9 @@
 using MacroModelling
-import Turing, Pigeons
+import Turing
 import ADTypes: AutoZygote
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
-import DynamicPPL
 
 include("../models/FS2000.jl")
 
@@ -33,15 +32,19 @@ dists = [
     InverseGamma(0.008862, Inf, μσ = true)  # z_e_m
 ]
 
-Turing.@model function FS2000_loglikelihood_function(data, m, on_failure_loglikelihood)
+Turing.@model function FS2000_loglikelihood_function(data, m, on_failure_loglikelihood; verbose = false)
     all_params ~ Turing.arraydist(dists)
 
-    if DynamicPPL.leafcontext(__context__) !== DynamicPPL.PriorContext() 
-        Turing.@addlogprob! get_loglikelihood(m, 
-                                                data, 
-                                                all_params, 
-                                                on_failure_loglikelihood = on_failure_loglikelihood)
+    llh = get_loglikelihood(m, 
+                             data, 
+                             all_params, 
+                             on_failure_loglikelihood = on_failure_loglikelihood)
+    if verbose
+        @info "Loglikelihood: $llh and prior llh: $(Turing.logpdf(Turing.arraydist(dists), all_params)) with params $all_params"
     end
+
+    Turing.@addlogprob! llh
+    # with Turing >= 0.40 this becomes: Turing.@addlogprob! (; loglikelihood = llh)
 end
 
 FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, -Inf)
@@ -49,47 +52,16 @@ FS2000_loglikelihood = FS2000_loglikelihood_function(data, FS2000, -Inf)
 
 n_samples = 1000
 
+samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
+# with Turing >= 0.41 this: initial_params = FS2000.parameter_values becomes: initial_params = InitFromParams(all_params = FS2000.parameter_values,)); # need to import InitFromParams
+println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
+
 samps = @time sample(FS2000_loglikelihood, NUTS(), n_samples, progress = true, initial_params = FS2000.parameter_values)
+
 
 println("Mean variable values (ForwardDiff): $(mean(samps).nt.mean)")
 
-samps = @time sample(FS2000_loglikelihood, NUTS(adtype = AutoZygote()), n_samples, progress = true, initial_params = FS2000.parameter_values)
-
-
-println("Mean variable values (Zygote): $(mean(samps).nt.mean)")
-
 sample_nuts = mean(samps).nt.mean
-
-
-# generate a Pigeons log potential
-FS2000_lp = Pigeons.TuringLogPotential(FS2000_loglikelihood_function(data, FS2000, -floatmax(Float64)))
-
-init_params = FS2000.parameter_values
-
-const FS2000_LP = typeof(FS2000_lp)
-
-function Pigeons.initialization(target::FS2000_LP, rng::AbstractRNG, _::Int64)
-    result = DynamicPPL.VarInfo(rng, target.model, DynamicPPL.SampleFromPrior(), DynamicPPL.PriorContext())
-    # DynamicPPL.link!!(result, DynamicPPL.SampleFromPrior(), target.model)
-    
-    result = DynamicPPL.initialize_parameters!!(result, init_params, target.model)
-
-    return result
-end
-
-pt = Pigeons.pigeons(target = FS2000_lp, n_rounds = 0, n_chains = 1)
-
-pt = @time Pigeons.pigeons(target = FS2000_lp,
-            record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
-            n_chains = 1,
-            n_rounds = 10,
-            multithreaded = true)
-
-samps = MCMCChains.Chains(pt)
-
-println("Mean variable values (Pigeons): $(mean(samps).nt.mean)")
-
-sample_pigeons = mean(samps).nt.mean
 
 
 modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood, 
@@ -107,10 +79,7 @@ println("Mode variable values: $(modeFS2000.values); Mode loglikelihood: $(modeF
 @testset "Estimation results" begin
     # @test isapprox(modeFS2000.lp, 1281.669108730447, rtol = eps(Float32))
     @test isapprox(sample_nuts, [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
-    @test isapprox(sample_pigeons[1:length(sample_nuts)], [0.40248024934137033, 0.9905235783816697, 0.004618184988033483, 1.014268215459915, 0.8459140293740781, 0.6851143053372912, 0.0025570276255960107, 0.01373547787288702, 0.003343985776134218], rtol = 1e-2)
 end
-
-
 
 plot_model_estimates(FS2000, data, parameters = sample_nuts)
 plot_shock_decomposition(FS2000, data)

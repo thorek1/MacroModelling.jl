@@ -45,7 +45,11 @@ function translate_mod_file(path_to_mod_file::AbstractString)
 
     son = JSON.parsefile(tmp * "/" * directory_2 * "/model/json/modfile.json")
 
-    @assert son isa Dict "Failed to parse the model."
+    @static if isdefined(JSON, :Object)
+        @assert son isa Dict || son isa JSON.Object "Failed to parse the model."
+    else
+        @assert son isa Dict "Failed to parse the model."
+    end
 
     vars = [i["name"] for i in son["endogenous"]]
     shocks = [i["name"] for i in son["exogenous"]]

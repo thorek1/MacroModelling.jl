@@ -2,6 +2,12 @@ name: CI
 on:
   - push
 #   - pull_request
+
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   test:
     env: 
@@ -72,6 +78,10 @@ jobs:
             arch: arm64
             test_set: "plots_4"
           - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "plots_5"
+          - version: '1'
             os: macOS-latest
             arch: x64
             test_set: "estimate_sw07"
@@ -95,6 +105,30 @@ jobs:
             os: ubuntu-latest
             arch: x64
             test_set: "pruned_3rd_order_estimation"
+          - version: '1'
+            os: macOS-latest
+            arch: x64
+            test_set: "estimation_pigeons"
+          - version: '1'
+            os: macOS-latest
+            arch: x64
+            test_set: "1st_order_inversion_estimation_pigeons"
+          - version: '1'
+            os: macOS-latest
+            arch: x64
+            test_set: "2nd_order_estimation_pigeons"
+          - version: '1'
+            os: macOS-latest
+            arch: x64
+            test_set: "pruned_2nd_order_estimation_pigeons"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "3rd_order_estimation_pigeons"
+          - version: '1'
+            os: ubuntu-latest
+            arch: x64
+            test_set: "pruned_3rd_order_estimation_pigeons"
           - version: 'min'
             os: ubuntu-latest
             arch: x64
@@ -113,7 +147,7 @@ jobs:
             arch: x64
             test_set: "jet"
             allow_failure: true
-          - version: '1'
+          - version: '1.11'
             os: ubuntu-latest
             arch: x64
             test_set: "jet"
@@ -122,19 +156,30 @@ jobs:
             arch: x64
             test_set: "jet"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}  
-      # On the Julia “pre” matrix entries, drop the unsupported test-only package
-      - name: Strip JET references on pre Julia
-        if: matrix.version == 'pre'
+          arch: ${{ matrix.arch }}
+      - name: Remove Pigeons from non-pigeons runs
+        if: contains(matrix.test_set, 'pigeons') == false
+        shell: bash
         run: |
-          sed -i -e '/^[[:space:]]*JET[[:space:]]*=/d' \
-                 -e '/^\[targets\]/,$s/,[[:space:]]*"JET"//g' \
-                 -e '/^\[targets\]/,$s/"JET",[[:space:]]*//g' \
-                 Project.toml
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"Pigeons"//g' \
+            -e '/^\[targets\]/,$ s/"Pigeons",[[:space:]]*//g' \
+            Project.toml
+          rm -f Project.toml.bak
+
+      - name: Remove JET from estimation runs
+        if: contains(matrix.test_set, 'estimat') == true || contains(matrix.test_set, 'pigeons') == true
+        shell: bash
+        run: |
+          sed -i.bak \
+            -e '/^\[targets\]/,$ s/,[[:space:]]*"JET"//g' \
+            -e '/^\[targets\]/,$ s/"JET",[[:space:]]*//g' \
+            Project.toml
+          rm -f Project.toml.bak 
       - name: Set Custom Test Environment Variable (Windows)
         if: matrix.os == 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
@@ -142,18 +187,9 @@ jobs:
         if: matrix.os != 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" >> $GITHUB_ENV
       - name: Set JULIA_NUM_THREADS for estimation tests
-        if: (matrix.version == '1' && (matrix.test_set == 'estimation' || matrix.test_set == 'estimate_sw07' || matrix.test_set == '1st_order_inversion_estimation'))
+        if: (matrix.version == '1' && (matrix.test_set == 'estimation' || matrix.test_set == 'estimate_sw07' || matrix.test_set == '1st_order_inversion_estimation' || matrix.test_set == 'estimation_pigeons' || matrix.test_set == '1st_order_inversion_estimation_pigeons'))
         run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
-      - uses: actions/cache@v4
-        env:
-          cache-name: cache-artifacts
-        with:
-          path: ~/.julia/artifacts
-          key: ${{ runner.os }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-test-${{ env.cache-name }}-
-            ${{ runner.os }}-test-
-            ${{ runner.os }}-
+      - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
         with:

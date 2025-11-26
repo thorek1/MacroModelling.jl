@@ -27,7 +27,7 @@ Exogenous variables (shocks) can have the following:
 
 Parameters enter the equations without square brackets.
 
-If an equation contains a `max` or `min` operator, then the default dynamic (first order) solution of the model will enforce the occasionally binding constraint. You can choose to ignore it by setting `ignore_obc = true` in the relevant function calls.
+If an equation contains a `max` or `min` operator, the default dynamic (first order) solution of the model will enforce the occasionally binding constraint. This enforcement can be disabled by setting `ignore_obc = true` in the relevant function calls.
 
 # Examples
 ```julia
@@ -45,7 +45,7 @@ end
 
 Parameters and variables can be indexed using curly braces: e.g. `c{H}[0]`, `eps_z{F}[x]`, or `α{H}`.
 
-`for` loops can be used to write models programmatically. They can either be used to generate expressions where you iterate over the time index or the index in curly braces:
+`for` loops can be used to write models programmatically. They can either be used to generate expressions where the time index or the index in curly braces is iterated over:
 - generate equation with different indices in curly braces: `for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end`
 - generate multiple equations with different indices in curly braces: `for co in [H, F] K{co}[0] = (1-delta{co}) * K{co}[-1] + S{co}[0] end`
 - generate equation with different time indices: `Y_annual[0] = for lag in -3:0 Y[lag] end` or `R_annual[0] = for operator = :*, lag in -3:0 R[lag] end`
@@ -70,7 +70,7 @@ macro model(𝓂,ex...)
                     x.args[1] == :max_obc_horizon && x.args[2] isa Int ?
                         max_obc_horizon = x.args[2] :
                     begin
-                        @warn "Invalid options." 
+                        @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@model` for valid options."
                         x
                     end :
                 x :
@@ -721,6 +721,15 @@ macro model(𝓂,ex...)
 
     @assert length(intersect(union(var,exo),parameters_in_equations)) == 0 "Parameters and variables cannot have the same name. This is the case for: " * repr(sort([intersect(union(var,exo),parameters_in_equations)...]))
 
+    # Check that no variable, shock, or parameter names conflict with SymPyWorkspace reserved names
+    reserved_conflicts_vars = intersect(var, SYMPYWORKSPACE_RESERVED_NAMES)
+    reserved_conflicts_exo = intersect(exo, SYMPYWORKSPACE_RESERVED_NAMES)
+    reserved_conflicts_params = intersect(parameters_in_equations, SYMPYWORKSPACE_RESERVED_NAMES)
+    
+    @assert length(reserved_conflicts_vars) == 0 "The following variable names are reserved and cannot be used: " * repr(sort([reserved_conflicts_vars...]))
+    @assert length(reserved_conflicts_exo) == 0 "The following shock names are reserved and cannot be used: " * repr(sort([reserved_conflicts_exo...]))
+    @assert length(reserved_conflicts_params) == 0 "The following parameter names are reserved and cannot be used: " * repr(sort([reserved_conflicts_params...]))
+
     @assert !any(isnothing, future_not_past_and_mixed_idx) "The following variables appear in the future only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
 
     @assert !any(isnothing, past_not_future_and_mixed_idx) "The following variables appear in the past only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
@@ -998,7 +1007,7 @@ Parameters can be defined in either of the following ways:
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non-stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non-stochastic steady state symbolically and fall back to a numerical solution if not possible
-- `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. In case you want to work with higher order perturbation later on, respective derivatives will be taken at that stage.
+- `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. When working with higher order perturbation later on, respective derivatives will be taken at that stage.
 - `simplify` [Default: `true`, Type: `Bool`]: whether to eliminate redundant variables and simplify the non-stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
 
 
@@ -1098,7 +1107,7 @@ macro parameters(𝓂,ex...)
                     x.args[1] == :simplify && x.args[2] isa Bool ?
                         simplify = x.args[2] :
                     begin
-                        @warn "Invalid options. See docs: `?@parameters` for valid options." 
+                        @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@parameters` for valid options."
                         x
                     end :
                 x :
@@ -1194,6 +1203,11 @@ macro parameters(𝓂,ex...)
     parameter_definitions)
     
     @assert length(par_defined_more_than_once) == 0 "Parameters can only be defined once. This is not the case for: " * repr([par_defined_more_than_once...])
+    
+    # Check that no parameter names conflict with SymPyWorkspace reserved names
+    all_params = union(calib_parameters, calib_parameters_no_var, calib_eq_parameters)
+    reserved_conflicts_params = intersect(all_params, SYMPYWORKSPACE_RESERVED_NAMES)
+    @assert length(reserved_conflicts_params) == 0 "The following parameter names are reserved and cannot be used: " * repr(sort([reserved_conflicts_params...]))
     
     # evaluate inputs where they are of the type: log(1/3) (no variables but need evaluation to becoe a Float64)
     for (i, v) in enumerate(calib_values_no_var)

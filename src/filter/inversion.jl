@@ -113,7 +113,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
         end
         
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac))
-        invjac = try inv(jacdecomp)
+        invjac = try ℒ.pinv(jac)
         catch
             if opts.verbose println("Inversion filter failed") end
             return on_failure_loglikelihood
@@ -206,8 +206,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
         invjac = inv(jacdecomp)
     else
         logabsdets = sum(x -> log(abs(x)), ℒ.svdvals(jac)) #' ./ precision_factor
-        jacdecomp = ℒ.svd(jac)
-        invjac = inv(jacdecomp)
+        # jacdecomp = ℒ.svd(jac)
+        invjac = ℒ.pinv(jac)
     end
 
     logabsdets *= size(data_in_deviations,2) - presample_periods
@@ -890,7 +890,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
                             inv(jacc[i])'
                         else
-                            inv(ℒ.svd(jacc[i]))'
+                            ℒ.pinv(jacc[i])'
                         end
                     catch
                         return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
@@ -1570,7 +1570,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
                             inv(jacc[i])'
                         else
-                            inv(ℒ.svd(jacc[i]))'
+                            ℒ.pinv(jacc[i])'
                         end
                     catch
                         return NoTangent(), NoTangent(),  NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
@@ -2500,7 +2500,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
                             inv(jacc[i])'
                         else
-                            inv(ℒ.svd(jacc[i]))'
+                            ℒ.pinv(jacc[i])'
                         end
                     catch
                         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
@@ -3308,7 +3308,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
             ∂jacc = try if size(jacc[i], 1) == size(jacc[i], 2)
                             inv(jacc[i])'
                         else
-                            inv(ℒ.svd(jacc[i]))'
+                            ℒ.pinv(jacc[i])'
                         end
                     catch
                         return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(),  NoTangent(),  NoTangent(),  NoTangent(), NoTangent()
@@ -3820,16 +3820,11 @@ function filter_data_with_model(𝓂::ℳ,
     
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(𝓂.parameter_values, 𝓂, pruning = true, opts = opts)
 
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
-        @error "No solution for these parameters."
-        return variables, shocks, zeros(0,0), decomposition
+    if !converged || solution_error > opts.tol.NSSS_acceptance_tol
+        @error "Could not find pruned 2nd order stochastic steady state"
+        return variables, shocks, zeros(0,0), zeros(0,0)
     end
-
-    if !converged
-        @error "No solution for these parameters."
-        return variables, shocks, zeros(0,0), decomposition
-    end
-
+    
     𝐒 = [𝐒₁, 𝐒₂]
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -3877,7 +3872,7 @@ function filter_data_with_model(𝓂::ℳ,
     𝐒²ᵉ     = nnz(𝐒²ᵉ)     / length(𝐒²ᵉ)   > .1 ? collect(𝐒²ᵉ)     : 𝐒²ᵉ
     𝐒⁻²     = nnz(𝐒⁻²)     / length(𝐒⁻²)   > .1 ? collect(𝐒⁻²)     : 𝐒⁻²
 
-    initial_state = copy(state)
+    initial_state = deepcopy(state)
 
     state₁ = state[1][T.past_not_future_and_mixed_idx]
     state₂ = state[2][T.past_not_future_and_mixed_idx]
@@ -4499,7 +4494,7 @@ function filter_data_with_model(𝓂::ℳ,
     𝐒³ᵉ     = nnz(𝐒³ᵉ)     / length(𝐒³ᵉ)   > .1 ? collect(𝐒³ᵉ)     : 𝐒³ᵉ
     𝐒⁻³     = nnz(𝐒⁻³)     / length(𝐒⁻³)   > .1 ? collect(𝐒⁻³)     : 𝐒⁻³
 
-    initial_state = copy(state)
+    initial_state = deepcopy(state)
 
     state₁ = state[1][T.past_not_future_and_mixed_idx]
     state₂ = state[2][T.past_not_future_and_mixed_idx]

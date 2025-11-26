@@ -1,5 +1,6 @@
-function functionality_test(m; algorithm = :first_order, plots = true)
+function functionality_test(m, m2; algorithm = :first_order, plots = true)
     old_params = copy(m.parameter_values)
+    old_params2 = copy(m2.parameter_values)
     
     # options to itereate over
     filters = [:inversion, :kalman]
@@ -18,6 +19,15 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 Tuple(string.(m.parameters[1:2]) .=> old_params[1:2] .* exp.(rand(2)*1e-4)), 
                 old_params]
                 
+    
+    params2 = [old_params2, 
+                (m2.parameters[1] => old_params2[1] * exp(rand()*1e-4)), 
+                Tuple(m2.parameters[1:2] .=> old_params2[1:2] .* 1.0001), 
+                m2.parameters .=> old_params2, 
+                (string(m2.parameters[1]) => old_params2[1] * 1.0001), 
+                Tuple(string.(m2.parameters[1:2]) .=> old_params2[1:2] .* exp.(rand(2)*1e-4)), 
+                old_params2]
+
     param_derivs = [:all, 
                     m.parameters[1], 
                     m.parameters[1:3], 
@@ -30,12 +40,46 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
     vars = [:all, :all_excluding_obc, :all_excluding_auxiliary_and_obc, m.var[1], m.var[1:2], Tuple(m.timings.var), reshape(m.timings.var,1,length(m.timings.var)), string(m.var[1]), string.(m.var[1:2]), Tuple(string.(m.timings.var)), reshape(string.(m.timings.var),1,length(m.timings.var))]
 
+    rename_dicts = [
+        Dict((m.timings.var) .=> (replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
+        Dict((m.timings.var) .=> Symbol.(replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
+        Dict(String.(m.timings.var) .=> (replace.(String.(m.timings.var), "_" => " ", "◖" => " {", "◗" => "}"))), 
+        Dict{Symbol,String}()
+    ]
+
     init_state = get_irf(m, algorithm = algorithm, shocks = :none, levels = !(algorithm in [:pruned_second_order, :pruned_third_order]), variables = :all, periods = 1) |> vec
 
     init_states = [[0.0], init_state, algorithm  == :pruned_second_order ? [zero(init_state), init_state] : algorithm == :pruned_third_order ? [zero(init_state), init_state, zero(init_state)] : init_state .* 1.01]
 
     if plots
         @testset "plot_model_estimates" begin
+            sol2 = get_solution(m2) # TODO: investigate why this creates world age problems in tests
+            
+            if length(m2.exo) > 3
+                n_shocks_influence_var = vec(sum(abs.(sol2[end-length(m2.exo)+1:end,:]) .> eps(),dims = 1))
+                var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m2.obc_violation_equations) > 0 ? 2 : end]]
+            else
+                var_idxs = [1]
+            end
+
+            Random.seed!(41823)
+
+            simulation = simulate(m2, algorithm = algorithm)
+
+            last_stable_col = -5
+            
+            for i in eachcol(simulation[:,:,1])
+                last_stable_col += 1
+                if any(isnan,i) break end
+            end
+
+            simulation = simulation[:,1:last_stable_col,:]
+
+            data_in_levels2 = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m2.var[var_idxs]) : m2.var[var_idxs],:,:simulate)
+            data2 = data_in_levels2 .- m2.solution.non_stochastic_steady_state[var_idxs]
+
+
+
             sol = get_solution(m)
             
             if length(m.exo) > 3
@@ -49,10 +93,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             simulation = simulate(m, algorithm = algorithm)
 
+            last_stable_col = -5
+            
+            for i in eachcol(simulation[:,:,1])
+                last_stable_col += 1
+                if any(isnan,i) break end
+            end
+
+            simulation = simulation[:,1:last_stable_col,:]
+
             data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
             data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
 
-            
             
             if !(algorithm in [:second_order, :third_order])
                 # plotlyjs_backend()
@@ -68,33 +120,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             data_in_levels = false)
             end
 
-            for quadratic_matrix_equation_algorithm in qme_algorithms
-                for lyapunov_algorithm in lyapunov_algorithms
-                    for sylvester_algorithm in sylvester_algorithms
-                        for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
-                            clear_solution_caches!(m, algorithm)
-
-                            plot_model_estimates(m, data, 
-                                                    algorithm = algorithm, 
-                                                    data_in_levels = false, 
-                                                    tol = tol,
-                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                    lyapunov_algorithm = lyapunov_algorithm,
-                                                    sylvester_algorithm = sylvester_algorithm)
-
-                            clear_solution_caches!(m, algorithm)
-                        
-                            plot_model_estimates(m, data_in_levels, 
-                                                    algorithm = algorithm, 
-                                                    data_in_levels = true,
-                                                    tol = tol,
-                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                    lyapunov_algorithm = lyapunov_algorithm,
-                                                    sylvester_algorithm = sylvester_algorithm)
-                        end
-                    end
-                end
-            end
 
             for shock_decomposition in (algorithm in [:second_order, :third_order] ? [false] : [true, false])
                 for filter in (algorithm == :first_order ? filters : [:inversion])
@@ -124,21 +149,156 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
-            for parameters in params
-                    plot_model_estimates(m, data, 
-                                            parameters = parameters,
-                                            algorithm = algorithm, 
-                                            data_in_levels = false)
+            
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+
+            i = 1
+
+            for (model, dat) in zip([m, m2], [data, data2])
+                for filter in (algorithm == :first_order ? filters : [:inversion])
+                    for smooth in [true, false]
+                        for presample_periods in [0, 3]
+                            if i % 4 == 0
+                                plot_model_estimates(m, data_in_levels, 
+                                                        algorithm = algorithm, 
+                                                        data_in_levels = true)
+                            end
+
+                            i += 1
+                            
+                            clear_solution_caches!(model, algorithm)
+
+                            plot_model_estimates!(model, dat, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    filter = filter,
+                                                    smooth = smooth,
+                                                    presample_periods = presample_periods)
+                        end
+                    end
+                end
             end
 
-            for variables in vars
+
+            for quadratic_matrix_equation_algorithm in qme_algorithms
+                for lyapunov_algorithm in lyapunov_algorithms
+                    for sylvester_algorithm in sylvester_algorithms
+                        for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+                            clear_solution_caches!(m, algorithm)
+
+                            plot_model_estimates(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
+
+                            clear_solution_caches!(m, algorithm)
+                        
+                            plot_model_estimates(m, data_in_levels, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = true,
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
+                        end
+                    end
+                end
+            end
+
+            
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+
+            i = 1
+            
+            for quadratic_matrix_equation_algorithm in qme_algorithms
+                for lyapunov_algorithm in lyapunov_algorithms
+                    for sylvester_algorithm in sylvester_algorithms
+                        for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+                            if i % 4 == 0
+                                plot_model_estimates(m, data_in_levels, 
+                                                        algorithm = algorithm, 
+                                                        data_in_levels = true)
+                            end
+
+                            i += 1
+                            
+                            clear_solution_caches!(m, algorithm)
+
+                            plot_model_estimates!(m, data, 
+                                                    algorithm = algorithm, 
+                                                    data_in_levels = false, 
+                                                    tol = tol,
+                                                    quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                    lyapunov_algorithm = lyapunov_algorithm,
+                                                    sylvester_algorithm = sylvester_algorithm)
+                        end
+                    end
+                end
+            end
+
+
+            for parameters in params
                 plot_model_estimates(m, data, 
-                                        variables = variables,
+                                        parameters = parameters,
                                         algorithm = algorithm, 
                                         data_in_levels = false)
             end
 
-            for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2])]
+
+            
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+
+            i = 1
+
+            for parameters in params
+                if i % 4 == 0
+                    plot_model_estimates(m, data_in_levels, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = true)
+                end
+
+                i += 1
+
+                plot_model_estimates!(m, data, 
+                                        parameters = parameters,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
+ 
+
+            plot_model_estimates(m, data_in_levels, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
+                                  
+            i = 1
+
+            for shocks in [:all, :all_excluding_obc, :none, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2])]
+                if i % 4 == 0
+                    plot_model_estimates(m, data_in_levels, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = true)
+                end
+
+                i += 1
+
+                plot_model_estimates!(m, data, 
+                                        label = shocks isa String ? shocks : shocks isa Symbol ? string(shocks) : join(string.(collect(shocks)), " "),
+                                        shocks = shocks,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
+            for shocks in [:all, :all_excluding_obc, :none, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2])]
                 plot_model_estimates(m, data, 
                                         shocks = shocks,
                                         algorithm = algorithm, 
@@ -155,8 +315,28 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                     plot_attributes = plot_attributes,
                                                     max_elements_per_legend_row = max_elements_per_legend_row,
                                                     extra_legend_space = extra_legend_space,
-                                                    plots_per_page = plots_per_page,)
+                                                    plots_per_page = plots_per_page)
                         end
+                    end
+                end
+            end
+
+            for plots_per_page in [4,6]
+                for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
+                    for label in [:dil, "data in levels", 0, 0.01]
+                        plot_model_estimates(m, data, 
+                                                algorithm = algorithm,
+                                                parameters = params[1], 
+                                                label = "baseline",
+                                                data_in_levels = false)
+                                                
+                        plot_model_estimates!(m, data_in_levels, 
+                                                algorithm = algorithm, 
+                                                data_in_levels = true,
+                                                label = label,
+                                                parameters = params[2],
+                                                plot_attributes = plot_attributes,
+                                                plots_per_page = plots_per_page)
                     end
                 end
             end
@@ -178,23 +358,112 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                         save_plots = save_plots,
                                                         save_plots_path = save_plots_path,
                                                         save_plots_format = save_plots_format)
+
+                                plot_model_estimates!(m, data_in_levels, 
+                                                        algorithm = algorithm, 
+                                                        data_in_levels = true,
+                                                        show_plots = show_plots,
+                                                        save_plots = save_plots,
+                                                        save_plots_path = save_plots_path,
+                                                        save_plots_format = save_plots_format)
                             end
                         end
                     end
                 end
             # end
-        end
-        @testset "plot_solution" begin
-            
 
-            states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
+            for variables in vars
+                plot_model_estimates(m, data, 
+                                        variables = variables,
+                                        algorithm = algorithm, 
+                                        data_in_levels = false)
+            end
+
+
+            plot_model_estimates(m, data_in_levels, 
+                                    parameters = params[1],
+                                    algorithm = algorithm, 
+                                    data_in_levels = true)
             
+            i = 1
+            for rename_dict in rename_dicts
+                for variables in vars
+                    if i % 4 == 0
+                        plot_model_estimates(m, data_in_levels,
+                                                parameters = params[1],
+                                                algorithm = algorithm, 
+                                                data_in_levels = true)
+                    end
+
+                    i += 1
+
+                    plot_model_estimates!(m, data, 
+                                            variables = variables,
+                                            label = string(variables),
+                                            rename_dictionary = rename_dict,
+                                            algorithm = algorithm, 
+                                            data_in_levels = false)
+                end
+            end
+
+            # Test forecast_periods argument
+            for forecast_periods in [0, 6, 12, 24]
+                plot_model_estimates(m, data, 
+                                        algorithm = algorithm, 
+                                        data_in_levels = false,
+                                        forecast_periods = forecast_periods)
+            end
+
+            # Test forecast_periods with plot_model_estimates!
+            plot_model_estimates(m, data, 
+                                    algorithm = algorithm, 
+                                    data_in_levels = false,
+                                    forecast_periods = 12)
+            
+            for forecast_periods in [0, 8, 18]
+                plot_model_estimates!(m, data_in_levels, 
+                                        algorithm = algorithm, 
+                                        data_in_levels = true,
+                                        forecast_periods = forecast_periods)
+            end
+
+            # Test forecast_periods with different filters
+            for filter in (algorithm == :first_order ? filters : [:inversion])
+                for forecast_periods in [0, 12]
+                    clear_solution_caches!(m, algorithm)
+                    
+                    plot_model_estimates(m, data, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = false,
+                                            filter = filter,
+                                            forecast_periods = forecast_periods)
+                end
+            end
+
+            # Test forecast_periods with shock_decomposition
+            if !(algorithm in [:second_order, :third_order])
+                for forecast_periods in [0, 12]
+                    clear_solution_caches!(m, algorithm)
+                    
+                    plot_model_estimates(m, data, 
+                                            algorithm = algorithm, 
+                                            data_in_levels = false,
+                                            shock_decomposition = true,
+                                            forecast_periods = forecast_periods)
+                end
+            end
+        end
+
+        @testset "plot_solution" begin
+            states  = vcat(get_state_variables(m), m.timings.past_not_future_and_mixed)
+            states2 = vcat(get_state_variables(m2), m2.timings.past_not_future_and_mixed)
+
             if algorithm == :first_order
                 algos = [:first_order]
             elseif algorithm in [:second_order, :pruned_second_order]
-                algos = [[:first_order], [:first_order, :second_order], [:first_order, :pruned_second_order], [:first_order, :second_order, :pruned_second_order]]
+                algos = [:first_order, :second_order, :pruned_second_order]
             elseif algorithm in [:third_order, :pruned_third_order]
-                algos = [[:first_order], [:first_order, :second_order], [:first_order, :third_order], [:second_order, :third_order], [:third_order, :pruned_third_order], [:first_order, :second_order, :third_order], [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]]
+                algos = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
             end
             
             for variables in vars
@@ -204,6 +473,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                             for sylvester_algorithm in sylvester_algorithms
                                 clear_solution_caches!(m, algorithm)
                     
+                                # Test single algorithm
                                 plot_solution(m, states[1], 
                                                 algorithm = algos[end],
                                                 variables = variables,
@@ -256,12 +526,73 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 for ignore_obc in [true, false]
                     for state in states[[1,end]]
                         for algo in algos
+                            # Test single algorithm
                             plot_solution(m, state,
                                             σ = σ,
                                             algorithm = algo,
                                             ignore_obc = ignore_obc)
                         end
                     end
+                end
+            end
+
+
+            plot_solution(m2, states2[end])
+
+            # i = 1
+
+            # Test plot_solution! for combining multiple algorithms
+            for ignore_obc in [true, false]
+                for (model, stt) in [(m, states), (m2, states2)]
+                    for state in stt[[1,end]]
+                        for σ in [0.5, 5]
+                            # if i % 3 == 0
+                            #     plot_solution(m, states[2])
+                            # end
+
+                            # i += 1
+                            
+                            plot_solution!(model, state, σ = σ, ignore_obc = ignore_obc)
+                        end
+                    end
+                end
+            end
+
+             
+            plot_solution(m2, states2[1])
+
+            i = 1
+
+            # Test plot_solution! for combining multiple algorithms
+            for (model, state, pars) in [(m, states[1], params), (m2, states2[1], params2)]
+                for parameters in pars
+                    for algo in algos
+                        if i % 10 == 0
+                            plot_solution(m, states[1])
+                        end
+
+                        i += 1
+                        
+                        plot_solution!(model, state, algorithm = algo, parameters = parameters)
+                    end
+                end
+            end
+
+
+            plot_solution(m2, states2[1])
+            
+            i = 1
+            for rename_dict in rename_dicts
+                for variables in vars
+                    if i % 4 == 0
+                        plot_solution(m2, states2[1])
+                    end
+
+                    i += 1
+                    
+                    plot_solution!(m, states[1],
+                                    variables = variables,
+                                    rename_dictionary = rename_dict)
                 end
             end
 
@@ -274,8 +605,6 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
 
         @testset "plot_irf" begin
-            
-
             # plotlyjs_backend()
 
             plot_IRF(m, algorithm = algorithm)
@@ -284,14 +613,24 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             plot_irfs(m, algorithm = algorithm)
 
+            if algorithm != :first_order
+                plot_girf!(m, algorithm = algorithm)
+            end
+            
             plot_simulations(m, algorithm = algorithm)
+
+            plot_irf!(m, algorithm = algorithm)
 
             plot_simulation(m, algorithm = algorithm)
 
+            plot_irfs!(m, algorithm = algorithm)
+
             plot_girf(m, algorithm = algorithm)
 
+            plot_simulation!(m, algorithm = algorithm)
+
             for ignore_obc in [true,false]
-                for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
+                for generalised_irf in (algorithm == :first_order ? [false] : [true, false])
                     for negative_shock in [true,false]
                         for shock_size in [.1,1]
                             for periods in [1,10]
@@ -307,7 +646,75 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 end
             end
 
+
+            plot_irf(m, algorithm = algorithm)
+
+            i = 1
+
+            for ignore_obc in [true,false]
+                for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
+                    for negative_shock in [true,false]
+                        for shock_size in [.1,1]
+                            for periods in [1,10]
+                                if i % 10 == 0
+                                    plot_irf(m, algorithm = algorithm)
+                                end
+
+                                i += 1
+
+                                plot_irf!(m, algorithm = algorithm, 
+                                            ignore_obc = ignore_obc,
+                                            periods = periods,
+                                            generalised_irf = generalised_irf,
+                                            negative_shock = negative_shock,
+                                            shock_size = shock_size)
+                            end
+                        end
+                    end
+                end
+            end
             
+
+            plot_irf(m, algorithm = algorithm)
+
+            i = 1
+
+            for model in [m, m2]
+                for generalised_irf in (algorithm == :first_order ? [false] : [true,false])
+                    for negative_shock in [true,false]
+                        for shock_size in [.1,1]
+                            for periods in [1,10]
+                                if i % 10 == 0
+                                    plot_irf(m, algorithm = algorithm)
+                                end
+
+                                i += 1
+
+                                plot_irf!(model, algorithm = algorithm, 
+                                            periods = periods,
+                                            generalised_irf = generalised_irf,
+                                            negative_shock = negative_shock,
+                                            shock_size = shock_size)
+                            end
+                        end
+                    end
+                end
+            end
+            
+
+            plot_irf(m, algorithm = algorithm)
+            
+            for negative_shock in [true,false]
+                for shock_size in [.1,1]
+                    for plot_type in [:compare, :stack]
+                        plot_irf!(m, algorithm = algorithm, 
+                                    plot_type = plot_type,
+                                    negative_shock = negative_shock,
+                                    shock_size = shock_size)
+                    end
+                end
+            end
+
 
             shock_mat = randn(m.timings.nExo,3)
 
@@ -318,7 +725,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             for parameters in params
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
-                        for lyapunov_algorithm in lyapunov_algorithms
+                        # for lyapunov_algorithm in lyapunov_algorithms
                             for sylvester_algorithm in sylvester_algorithms
                                 clear_solution_caches!(m, algorithm)
                                             
@@ -326,12 +733,61 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             parameters = parameters,
                                             tol = tol,
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                            lyapunov_algorithm = lyapunov_algorithm,
+                                            # lyapunov_algorithm = lyapunov_algorithm,
                                             sylvester_algorithm = sylvester_algorithm)
                             end
-                        end
+                        # end
                     end
                 end
+            end
+    
+
+            plot_irf(m, algorithm = algorithm)
+
+            i  = 1
+
+            for parameters in params
+                for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+                    for quadratic_matrix_equation_algorithm in qme_algorithms
+                        # for lyapunov_algorithm in lyapunov_algorithms
+                            for sylvester_algorithm in sylvester_algorithms
+                                if i % 10 == 0
+                                    plot_irf(m, algorithm = algorithm)
+                                end
+                                
+                                i += 1
+
+                                clear_solution_caches!(m, algorithm)
+                                            
+                                plot_irf!(m, algorithm = algorithm, 
+                                            parameters = parameters,
+                                            tol = tol,
+                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                            # lyapunov_algorithm = lyapunov_algorithm,
+                                            sylvester_algorithm = sylvester_algorithm)
+                            end
+                        # end
+                    end
+                end
+            end
+
+
+            plot_irf(m, algorithm = algorithm,
+                        parameters = params[1])
+
+            i = 1
+
+            for initial_state in init_states
+                if i % 10 == 0
+                    plot_irf(m, algorithm = algorithm)
+                end
+                
+                i += 1
+
+                clear_solution_caches!(m, algorithm)
+                            
+                plot_irf!(m, algorithm = algorithm, initial_state = initial_state,
+                        parameters = params[2])
             end
 
             for initial_state in init_states
@@ -340,23 +796,73 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 plot_irf(m, algorithm = algorithm, initial_state = initial_state)
             end
 
+
             for variables in vars
                 clear_solution_caches!(m, algorithm)
                             
                 plot_irf(m, algorithm = algorithm, variables = variables)
             end
 
+            
+            plot_irf(m, parameters = params[2], algorithm = algorithm)
+            
+            i = 1
+            for rename_dict in rename_dicts
+                for variables in vars
+                    if i % 4 == 0
+                        plot_irf(m, parameters = params[2], algorithm = algorithm)
+                    end
+
+                    i += 1
+                    
+                    plot_irf!(m,
+                                variables = variables,
+                                parameters = params[1],
+                                label = string(variables),
+                                rename_dictionary = rename_dict,
+                                algorithm = algorithm)
+                end
+            end
+
+
             for shocks in [:all, :all_excluding_obc, :none, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
                 clear_solution_caches!(m, algorithm)
                             
                 plot_irf(m, algorithm = algorithm, shocks = shocks)
             end
+            
+            plot_irf(m, algorithm = algorithm)
+            
+            i = 1
+
+            for shocks in [:none, :all, :all_excluding_obc, :simulate, m.timings.exo[1], m.timings.exo[1:2], reshape(m.exo,1,length(m.exo)), Tuple(m.exo), Tuple(string.(m.exo)), string(m.timings.exo[1]), reshape(string.(m.exo),1,length(m.exo)), string.(m.timings.exo[1:2]), shock_mat, shock_mat2, shock_mat3]
+                if i % 4 == 0
+                    plot_irf(m, algorithm = algorithm)
+                end
+
+                i += 1
+                
+                clear_solution_caches!(m, algorithm)
+                            
+                plot_irf!(m, algorithm = algorithm, shocks = shocks)
+            end
+
 
             for plot_attributes in [Dict(), Dict(:plot_titlefontcolor => :red)]
                 for plots_per_page in [4,6]
-                    plot_irf(m, algorithm = algorithm,
-                                plot_attributes = plot_attributes,
-                                plots_per_page = plots_per_page)
+                    for label in [:dil, "data in levels", 0, 0.01]
+                        plot_irf(m, algorithm = algorithm,
+                                    label = "baseline",
+                                    parameters = params[1],
+                                    plot_attributes = plot_attributes,
+                                    plots_per_page = plots_per_page)
+
+                        plot_irf!(m, algorithm = algorithm,
+                                    parameters = params[2],
+                                    label = label,
+                                    plot_attributes = plot_attributes,
+                                    plots_per_page = plots_per_page)
+                    end
                 end
             end
 
@@ -371,6 +877,14 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                         for save_plots_path in (save_plots ? [pwd(), "../"] : [pwd()])
                             for save_plots_format in (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) # (save_plots ? backend == :gr ? (save_plots ? [:pdf,:png,:ps,:svg] : [:pdf]) : [:html,:json,:pdf,:png,:svg] : [:pdf])
                                 plot_irf(m, algorithm = algorithm,
+                                            parameters = params[1],
+                                            show_plots = show_plots,
+                                            save_plots = save_plots,
+                                            save_plots_path = save_plots_path,
+                                            save_plots_format = save_plots_format)
+                                            
+                                plot_irf!(m, algorithm = algorithm,
+                                            parameters = params[2],
                                             show_plots = show_plots,
                                             save_plots = save_plots,
                                             save_plots_path = save_plots_path,
@@ -394,7 +908,12 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             for periods in [10,40]
                 for variables in vars
-                    plot_conditional_variance_decomposition(m, periods = periods, variables = variables)
+                    for rename_dict in rename_dicts
+                        plot_conditional_variance_decomposition(m, 
+                                                                periods = periods, 
+                                                                variables = variables, 
+                                                                rename_dictionary = rename_dict)
+                    end
                 end
             end
 
@@ -402,13 +921,14 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
-                    for lyapunov_algorithm in lyapunov_algorithms
+                    # for lyapunov_algorithm in lyapunov_algorithms
                        clear_solution_caches!(m, algorithm)
                             
                         plot_conditional_variance_decomposition(m, tol = tol,
                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                lyapunov_algorithm = lyapunov_algorithm)
-                    end
+                                                                # lyapunov_algorithm = lyapunov_algorithm
+                                                                )
+                    # end
                 end
             end
             
@@ -448,6 +968,60 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
         @testset "plot_conditional_forecast" begin
             # test conditional forecasting
+            new_sub_irfs_all  = get_irf(m2, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
+            varnames = axiskeys(new_sub_irfs_all,1)
+            shocknames = axiskeys(new_sub_irfs_all,3)
+            sol = get_solution(m2)
+            # var_idxs = findall(vec(sum(sol[end-length(shocknames)+1:end,:] .!= 0,dims = 1)) .> 0)[[1,end]]
+            n_shocks_influence_var = vec(sum(abs.(sol[end-length(m2.exo)+1:end,:]) .> eps(),dims = 1))
+            var_idxs = findall(n_shocks_influence_var .== maximum(n_shocks_influence_var))[[1,length(m2.obc_violation_equations) > 0 ? 2 : end]]
+
+
+            stst  = get_irf(m2, variables = :all, algorithm = algorithm, shocks = :none, periods = 1, levels = true) |> vec
+
+            conditions2 = []
+
+            cndtns = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .01
+            cndtns[var_idxs[2],2] = .02
+
+            push!(conditions2, cndtns)
+
+            cndtns = spzeros(size(new_sub_irfs_all,1),2)
+            cndtns[var_idxs[1],1] = .011
+            cndtns[var_idxs[2],2] = .024
+
+            push!(conditions2, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns[1,1] = .014
+            cndtns[2,2] = .0207
+
+            push!(conditions2, cndtns)
+
+            cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns[1,1] = .014
+            cndtns[2,2] = .025
+
+            push!(conditions2, cndtns)
+
+            conditions_lvl2 = []
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
+            cndtns_lvl[1,1] = .017 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+
+            push!(conditions_lvl2, cndtns_lvl)
+
+            cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
+            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+            cndtns_lvl[2,2] = .027 + stst[var_idxs[2]]
+        
+            push!(conditions_lvl2, cndtns_lvl)
+
+
+
+            # test conditional forecasting
             new_sub_irfs_all  = get_irf(m, algorithm = algorithm, verbose = false, variables = :all, shocks = :all)
             varnames = axiskeys(new_sub_irfs_all,1)
             shocknames = axiskeys(new_sub_irfs_all,3)
@@ -468,34 +1042,34 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             push!(conditions, cndtns)
 
             cndtns = spzeros(size(new_sub_irfs_all,1),2)
-            cndtns[var_idxs[1],1] = .01
-            cndtns[var_idxs[2],2] = .02
+            cndtns[var_idxs[1],1] = .011
+            cndtns[var_idxs[2],2] = .024
 
             push!(conditions, cndtns)
 
             cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
-            cndtns[1,1] = .01
-            cndtns[2,2] = .02
+            cndtns[1,1] = .014
+            cndtns[2,2] = .0207
 
             push!(conditions, cndtns)
 
             cndtns = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-            cndtns[1,1] = .01
-            cndtns[2,2] = .02
+            cndtns[1,1] = .014
+            cndtns[2,2] = .025
 
             push!(conditions, cndtns)
 
             conditions_lvl = []
 
             cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = varnames[var_idxs], Periods = 1:2)
-            cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
+            cndtns_lvl[1,1] = .017 + stst[var_idxs[1]]
             cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
 
             push!(conditions_lvl, cndtns_lvl)
 
             cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,2,2), Variables = string.(varnames[var_idxs]), Periods = 1:2)
             cndtns_lvl[1,1] = .01 + stst[var_idxs[1]]
-            cndtns_lvl[2,2] = .02 + stst[var_idxs[2]]
+            cndtns_lvl[2,2] = .027 + stst[var_idxs[2]]
         
             push!(conditions_lvl, cndtns_lvl)
 
@@ -506,22 +1080,22 @@ function functionality_test(m; algorithm = :first_order, plots = true)
 
             if all(vec(sum(sol[end-length(shocknames)+1:end,var_idxs[[1, end]]] .!= 0, dims = 1)) .> 0)
                 shcks = Matrix{Union{Nothing, Float64}}(undef,size(new_sub_irfs_all,3),1)
-                shcks[1,1] = .1
+                shcks[1,1] = .13
 
                 push!(shocks, shcks)
 
                 shcks = spzeros(size(new_sub_irfs_all,3),1)
-                shcks[1,1] = .1
+                shcks[1,1] = .18
                 
                 push!(shocks, shcks)
 
                 shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = [shocknames[1]], Periods = [1])
-                shcks[1,1] = .1
+                shcks[1,1] = .12
 
                 push!(shocks, shcks)
 
                 shcks = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,1), Shocks = string.([shocknames[1]]), Periods = [1])
-                shcks[1,1] = .1
+                shcks[1,1] = .19
 
                 push!(shocks, shcks)
             end
@@ -549,6 +1123,18 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                     plots_per_page = plots_per_page,
                                                                     save_plots_path = save_plots_path,
                                                                     save_plots_format = save_plots_format)
+
+                                        plot_conditional_forecast!(m, conditions[1],
+                                                                    conditions_in_levels = false,
+                                                                    initial_state = [0.0],
+                                                                    algorithm = algorithm, 
+                                                                    shocks = shocks[end],
+                                                                    plot_attributes = plot_attributes,
+                                                                    show_plots = show_plots,
+                                                                    save_plots = save_plots,
+                                                                    plots_per_page = plots_per_page,
+                                                                    save_plots_path = save_plots_path,
+                                                                    save_plots_format = save_plots_format)
                                     end
                                 end
                             end
@@ -558,10 +1144,9 @@ function functionality_test(m; algorithm = :first_order, plots = true)
             # end
 
             
-
-            for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
+            for tol in [MacroModelling.Tolerances(), MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                 for quadratic_matrix_equation_algorithm in qme_algorithms
-                    for lyapunov_algorithm in lyapunov_algorithms
+                    # for lyapunov_algorithm in lyapunov_algorithms
                         for sylvester_algorithm in sylvester_algorithms
                             clear_solution_caches!(m, algorithm)
                         
@@ -571,22 +1156,66 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                         shocks = shocks[end],
                                                         tol = tol,
                                                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                        # lyapunov_algorithm = lyapunov_algorithm,
+                                                        sylvester_algorithm = sylvester_algorithm)
+
+                            plot_conditional_forecast!(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[1],
+                                                        tol = tol,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                        # lyapunov_algorithm = lyapunov_algorithm,
                                                         sylvester_algorithm = sylvester_algorithm)
                         end
-                    end
+                    # end
+                end
+            end
+
+            plot_conditional_forecast(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[1])
+
+            i = 1
+
+            for tol in [MacroModelling.Tolerances(NSSS_xtol = 1e-14), MacroModelling.Tolerances()]
+                for quadratic_matrix_equation_algorithm in qme_algorithms
+                    # for lyapunov_algorithm in lyapunov_algorithms
+                        for sylvester_algorithm in sylvester_algorithms
+                            if i % 4 == 0
+                                plot_conditional_forecast(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[1])
+                            end
+
+                            i += 1
+
+                            clear_solution_caches!(m, algorithm)
+                        
+                            plot_conditional_forecast!(m, conditions[end],
+                                                        conditions_in_levels = false,
+                                                        algorithm = algorithm, 
+                                                        shocks = shocks[end],
+                                                        tol = tol,
+                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                        # lyapunov_algorithm = lyapunov_algorithm,
+                                                        sylvester_algorithm = sylvester_algorithm)
+                        end
+                    # end
                 end
             end
 
             for periods in [0,10]
-                for levels in [true, false]
+                # for levels in [true, false]
                     clear_solution_caches!(m, algorithm)
                 
                     plot_conditional_forecast(m, conditions[end],
                                                 conditions_in_levels = false,
                                                 algorithm = algorithm, 
                                                 periods = periods,
-                                                levels = levels,
+                                                # levels = levels,
                                                 shocks = shocks[end])
 
                     
@@ -595,11 +1224,28 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     plot_conditional_forecast(m, conditions_lvl[end],
                                                 algorithm = algorithm, 
                                                 periods = periods,
-                                                levels = levels,
+                                                # levels = levels,
                                                 shocks = shocks[end])
 
+                # end
+            end
+
+
+            plot_conditional_forecast(m, conditions_lvl[end],
+                                        algorithm = algorithm,
+                                        shocks = shocks[end])
+            
+            for periods in [0,10]
+                for (model, cond) in zip([m, m2], [conditions, conditions2])
+                    clear_solution_caches!(model, algorithm)
+                
+                    plot_conditional_forecast!(model, cond[end],
+                                                conditions_in_levels = false,
+                                                algorithm = algorithm, 
+                                                periods = periods)
                 end
             end
+
 
             for variables in vars
                 plot_conditional_forecast(m, conditions[end],
@@ -608,6 +1254,32 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             variables = variables)
             end
             
+
+            plot_conditional_forecast(m2, conditions2[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm)
+
+            i = 1
+
+            for rename_dict in rename_dicts
+                for variables in vars
+                    if i % 4 == 0
+                        plot_conditional_forecast(m2, conditions2[end],
+                                                conditions_in_levels = false,
+                                                algorithm = algorithm)
+                    end
+
+                    i += 1
+
+                    plot_conditional_forecast!(m, conditions[end],
+                                                conditions_in_levels = false,
+                                                initial_state = init_states[end], 
+                                                rename_dictionary = rename_dict,
+                                                variables = variables,
+                                                algorithm = algorithm)
+                end
+            end
+
             for initial_state in init_states
                 plot_conditional_forecast(m, conditions[end],
                                             conditions_in_levels = false,
@@ -615,8 +1287,57 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             algorithm = algorithm)
             end
 
+            plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        parameters = params[1],
+                                        algorithm = algorithm)
+
+            i = 1
+
+            for initial_state in init_states
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        parameters = params[1],
+                                        algorithm = algorithm)
+                end
+
+                i += 1
+
+                plot_conditional_forecast!(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            parameters = params[2],
+                                            initial_state = initial_state,
+                                            algorithm = algorithm)
+            end
+
+
             for shcks in shocks
                 plot_conditional_forecast(m, conditions[end],
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm, 
+                                            shocks = shcks)
+            end
+
+
+            plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm, 
+                                        shocks = shocks[end])
+
+            i = 1
+
+            for shcks in shocks
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm, 
+                                        shocks = shocks[end])
+                end
+
+                i += 1
+
+                plot_conditional_forecast!(m, conditions[end],
                                             conditions_in_levels = false,
                                             algorithm = algorithm, 
                                             shocks = shcks)
@@ -629,10 +1350,82 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                             algorithm = algorithm)
             end
 
+
+            plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm, 
+                                        parameters = params[2])
+
+            i = 1
+
+            for parameters in params
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                        conditions_in_levels = false,
+                                        algorithm = algorithm, 
+                                        parameters = params[2])
+                end
+
+                i += 1
+
+                plot_conditional_forecast!(m, conditions[end],
+                                            parameters = parameters,
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+            end
+
             for cndtns in conditions
                 plot_conditional_forecast(m, cndtns,
                                             conditions_in_levels = false,
                                             algorithm = algorithm)
+            end
+
+            plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+
+            i = 1
+
+            for cndtns in conditions
+                if i % 4 == 0
+                    plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+                end
+
+                i += 1
+
+                plot_conditional_forecast!(m, cndtns,
+                                            conditions_in_levels = false,
+                                            algorithm = algorithm)
+            end
+            
+
+            plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+
+            i = 1
+
+            for cndtns in conditions
+                for plot_type in [:compare, :stack]
+                    if i % 4 == 0
+                        plot_conditional_forecast(m, conditions[end],
+                                    conditions_in_levels = false,
+                                    algorithm = algorithm, 
+                                    shocks = shocks[end])
+                    end
+
+                    i += 1
+
+                    plot_conditional_forecast!(m, cndtns,
+                                                conditions_in_levels = false,
+                                                plot_type = plot_type,
+                                                algorithm = algorithm)
+                end
             end
             
             # plotlyjs_backend()
@@ -660,6 +1453,15 @@ function functionality_test(m; algorithm = :first_order, plots = true)
         Random.seed!(418023)
 
         simulation = simulate(m, algorithm = algorithm)
+
+        last_stable_col = -5
+        
+        for i in eachcol(simulation[:,:,1])
+            last_stable_col += 1
+            if any(isnan,i) break end
+        end
+
+        simulation = simulation[:,1:last_stable_col,:]
 
         data_in_levels = simulation(axiskeys(simulation,1) isa Vector{String} ? MacroModelling.replace_indices_in_symbol.(m.var[var_idxs]) : m.var[var_idxs],:,:simulate)
         data = data_in_levels .- m.solution.non_stochastic_steady_state[var_idxs]
@@ -749,6 +1551,34 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                         sylvester_algorithm = sylvester_algorithm,
                                                                         verbose = verbose)
                                         @test isapprox(estim1, estim2, rtol = 1e-8)
+
+                                        
+                                        clear_solution_caches!(m, algorithm)
+                                    
+                                        estim1 = get_model_estimates(m, data, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = false, 
+                                                                        levels = levels,
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm,
+                                                                        verbose = verbose)
+
+                                        clear_solution_caches!(m, algorithm)
+                                                                    
+                                        estim2 = get_model_estimates(m, data_in_levels, 
+                                                                        algorithm = algorithm, 
+                                                                        data_in_levels = true, 
+                                                                        levels = levels,
+                                                                        filter = filter,
+                                                                        smooth = smooth,
+                                                                        quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                                                                        lyapunov_algorithm = lyapunov_algorithm,
+                                                                        sylvester_algorithm = sylvester_algorithm,
+                                                                        verbose = verbose)
+                                        @test isapprox(estim1, estim2, rtol = 1e-8)
                                     end
                                 end
                             end
@@ -779,6 +1609,19 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                     data_in_levels = false, 
                                     verbose = false)
                     get_estimated_shocks(m, data_in_levels, 
+                                    parameters = parameters,
+                                    algorithm = algorithm, 
+                                    tol = tol,
+                                    data_in_levels = true,
+                                    verbose = false)
+
+                    get_model_estimates(m, data, 
+                                    parameters = parameters,
+                                    algorithm = algorithm, 
+                                    tol = tol,
+                                    data_in_levels = false, 
+                                    verbose = false)
+                    get_model_estimates(m, data_in_levels, 
                                     parameters = parameters,
                                     algorithm = algorithm, 
                                     tol = tol,
@@ -1031,7 +1874,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                     for verbose in [false] # [true, false]
                         for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                             for quadratic_matrix_equation_algorithm in qme_algorithms
-                                for lyapunov_algorithm in lyapunov_algorithms
+                                # for lyapunov_algorithm in lyapunov_algorithms
                                     for sylvester_algorithm in sylvester_algorithms
                                         
                                         clear_solution_caches!(m, algorithm)
@@ -1045,7 +1888,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                             shocks = shocks[end],
                                                                             tol = tol,
                                                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                            lyapunov_algorithm = lyapunov_algorithm,
+                                                                            # lyapunov_algorithm = lyapunov_algorithm,
                                                                             sylvester_algorithm = sylvester_algorithm,
                                                                             verbose = verbose)
 
@@ -1060,7 +1903,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 shocks = shocks[end],
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                # lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
 
@@ -1077,7 +1920,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 shocks = shocks[end],
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                # lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
 
@@ -1091,13 +1934,13 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                                                 shocks = shocks[end],
                                                                                 tol = tol,
                                                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                                                # lyapunov_algorithm = lyapunov_algorithm,
                                                                                 sylvester_algorithm = sylvester_algorithm,
                                                                                 verbose = verbose)
                                                                                 
                                         @test isapprox(cond_fcst, cond_fcst_lvl)
                                     end
-                                end
+                                # end
                             end
                         end
                     end
@@ -1826,6 +2669,49 @@ function functionality_test(m; algorithm = :first_order, plots = true)
     end
 
 
+    @testset "get_statistics - grouped covariance" begin
+        # Test grouped covariance functionality
+        if algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order]
+            # Test with 2 groups
+            stats_grouped = get_statistics(m, old_params, 
+                                          algorithm = algorithm,
+                                          covariance = [m.var[2:3], m.var[4:5]])
+            
+            @test haskey(stats_grouped, :covariance)
+            @test stats_grouped[:covariance] isa Matrix
+            @test size(stats_grouped[:covariance]) == (4, 4)
+            
+            # Compare with non-grouped version for validation
+            stats_non_grouped_1 = get_statistics(m, old_params,
+                                                algorithm = algorithm,
+                                                covariance = m.var[2:3])
+            
+            stats_non_grouped_2 = get_statistics(m, old_params,
+                                                algorithm = algorithm,
+                                                covariance = m.var[4:5])
+            
+            # Check that within-group covariances match
+            @test isapprox(stats_grouped[:covariance][1:2, 1:2], stats_non_grouped_1[:covariance], rtol = 1e-10)
+            @test isapprox(stats_grouped[:covariance][3:4, 3:4], stats_non_grouped_2[:covariance], rtol = 1e-10)
+            
+            # Check that cross-group covariances are zero
+            @test all(stats_grouped[:covariance][1:2, 3:4] .== 0)
+            @test all(stats_grouped[:covariance][3:4, 1:2] .== 0)
+            
+            # Test with different group sizes
+            stats_varied = get_statistics(m, old_params,
+                                         algorithm = algorithm,
+                                         covariance = [[m.var[2]], m.var[3:5]])
+            
+            @test stats_varied[:covariance] isa Matrix
+            @test size(stats_varied[:covariance]) == (4, 4)
+            # First group is 1x1, second group is 3x3
+            @test stats_varied[:covariance][1, 1] != 0  # within first group
+            @test all(stats_varied[:covariance][1, 2:4] .== 0)  # cross-group
+            @test all(stats_varied[:covariance][2:4, 1] .== 0)  # cross-group
+        end
+    end
+
 
     @testset "get_moments" begin
         for non_stochastic_steady_state in [true, false]
@@ -2012,7 +2898,7 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                 
                 for tol in [MacroModelling.Tolerances(),MacroModelling.Tolerances(NSSS_xtol = 1e-14)]
                     for quadratic_matrix_equation_algorithm in qme_algorithms
-                        for lyapunov_algorithm in lyapunov_algorithms
+                        # for lyapunov_algorithm in lyapunov_algorithms
                             for sylvester_algorithm in sylvester_algorithms
                                 clear_solution_caches!(m, algorithm)
                                             
@@ -2023,11 +2909,11 @@ function functionality_test(m; algorithm = :first_order, plots = true)
                                                 initial_state = initial_state,
                                                 tol = tol,
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                                lyapunov_algorithm = lyapunov_algorithm,
+                                                # lyapunov_algorithm = lyapunov_algorithm,
                                                 sylvester_algorithm = sylvester_algorithm)
                                 @test isapprox(irf_, IRF_, rtol = 1e-6)
                             end
-                        end
+                        # end
                     end
                 end
                 

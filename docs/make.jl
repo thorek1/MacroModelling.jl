@@ -1,3 +1,9 @@
+# To build loacally:
+# using Pkg
+# Pkg.activate("docs/")
+# Pkg.develop(path=".")
+# Pkg.instantiate()
+
 using Documenter
 using MacroModelling
 import Turing, StatsPlots
@@ -30,6 +36,14 @@ makedocs(
         "How-to guides" => [
             "Programmatic model writing using for-loops" => "how-to/loops.md",
             "Occasionally binding constraints" => "how-to/obc.md",
+            "Plotting" => [
+                "Overview" => "plotting.md",
+                "Impulse Response Functions" => "plot_irf.md",
+                "Policy Functions" => "plot_solution.md",
+                "Conditional Forecasts" => "plot_conditional_forecast.md",
+                "Variance Decomposition" => "plot_conditional_variance_decomposition.md",
+                "Model Estimates" => "plot_model_estimates.md",
+            ],
             # "how_to.md"
             ],
         # "Model syntax" => "dsl.md",

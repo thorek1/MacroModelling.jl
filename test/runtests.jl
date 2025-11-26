@@ -1,7 +1,7 @@
 # using Revise
 test_set = ENV["TEST_SET"]
 using Preferences: set_preferences!
-set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation"
+set_preferences!("MacroModelling", "dispatch_doctor_mode" => test_set in ["estimate_sw07", "estimation", "1st_order_inversion_estimation", "pruned_2nd_order_estimation", "2nd_order_estimation", "pruned_3rd_order_estimation", "3rd_order_estimation", "estimation_pigeons", "1st_order_inversion_estimation_pigeons", "2nd_order_estimation_pigeons", "pruned_2nd_order_estimation_pigeons", "3rd_order_estimation_pigeons", "pruned_3rd_order_estimation_pigeons"
 ] ? "disable" : "error")
 set_preferences!("MacroModelling", "dispatch_doctor_union_limit" => 4)
 using Test
@@ -13,7 +13,18 @@ import Zygote, FiniteDifferences, ForwardDiff
 import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
 using Aqua
 import LinearAlgebra as ℒ
+using CSV, DataFrames
+using Dates
 
+function quarterly_dates(start_date::Date, len::Int)
+    dates = Vector{Date}(undef, len)
+    current_date = start_date
+    for i in 1:len
+        dates[i] = current_date
+        current_date = current_date + Dates.Month(3)
+    end
+    return dates
+end
 
 println("Running test set: $test_set")
 println("Threads used: ", Threads.nthreads())
@@ -39,12 +50,12 @@ include("functionality_tests.jl")
 # end
 
 if test_set == "jet"
-    if VERSION < v"1.12"
+    if VERSION < v"1.13"
         using JET
     end
     
     @testset verbose = true "Static checking (JET.jl)" begin
-        if VERSION < v"1.12"
+        if VERSION < v"1.13"
             JET.test_package(MacroModelling; target_defined_modules = true, toplevel_logger = nothing)
         end
     end
@@ -78,21 +89,47 @@ if test_set == "pruned_3rd_order_estimation"
     include("test_pruned_3rd_order_estimation.jl")
 end
 
+if test_set == "estimation_pigeons"
+    include("test_estimation_pigeons.jl")
+end
+
+if test_set == "1st_order_inversion_estimation_pigeons"
+    include("test_1st_order_inversion_filter_estimation_pigeons.jl")
+end
+
+if test_set == "2nd_order_estimation_pigeons"
+    include("test_2nd_order_estimation_pigeons.jl")
+end
+
+if test_set == "pruned_2nd_order_estimation_pigeons"
+    include("test_pruned_2nd_order_estimation_pigeons.jl")
+end
+
+if test_set == "3rd_order_estimation_pigeons"
+    include("test_3rd_order_estimation_pigeons.jl")
+end
+
+if test_set == "pruned_3rd_order_estimation_pigeons"
+    include("test_pruned_3rd_order_estimation_pigeons.jl")
+end
+
 
 if test_set == "plots_1"
     plots = true
 	Random.seed!(1)
+    
+    include("models/Caldara_et_al_2012_estim.jl")
 
     @testset verbose = true "Backus_Kehoe_Kydland_1992" begin
         include("../models/Backus_Kehoe_Kydland_1992.jl")
-        functionality_test(Backus_Kehoe_Kydland_1992, plots = plots)
+        functionality_test(Backus_Kehoe_Kydland_1992, Caldara_et_al_2012_estim, plots = plots)
     end
     Backus_Kehoe_Kydland_1992 = nothing
     GC.gc()
 
     @testset verbose = true "FS2000" begin
         include("../models/FS2000.jl")
-        functionality_test(FS2000, plots = plots)
+        functionality_test(FS2000, Caldara_et_al_2012_estim, plots = plots)
     end
     FS2000 = nothing
     GC.gc()
@@ -102,23 +139,25 @@ if test_set == "plots_2"
     plots = true
 	Random.seed!(1)
 
+    include("models/Caldara_et_al_2012_estim.jl")
+
     @testset verbose = true "Smets_Wouters_2003 with calibration equations" begin
         include("../models/Smets_Wouters_2003.jl")
-        functionality_test(Smets_Wouters_2003, plots = plots)
+        functionality_test(Smets_Wouters_2003, Caldara_et_al_2012_estim, plots = plots)
     end
     Smets_Wouters_2003 = nothing
     GC.gc()
 
     @testset verbose = true "Smets and Wouters (2007) linear" begin
         include("../models/Smets_Wouters_2007_linear.jl")
-        functionality_test(Smets_Wouters_2007_linear, plots = plots)
+        functionality_test(Smets_Wouters_2007_linear, Caldara_et_al_2012_estim, plots = plots)
     end
     Smets_Wouters_2007_linear = nothing
     GC.gc()
 
     @testset verbose = true "Smets and Wouters (2007) nonlinear" begin
         include("../models/Smets_Wouters_2007.jl")
-        functionality_test(Smets_Wouters_2007, plots = plots)
+        functionality_test(Smets_Wouters_2007, Caldara_et_al_2012_estim, plots = plots)
     end
     Smets_Wouters_2007 = nothing
     GC.gc()
@@ -128,9 +167,11 @@ if test_set == "plots_3"
     plots = true
 	Random.seed!(1)
 
+    include("models/Caldara_et_al_2012_estim.jl")
+
     @testset verbose = true "Gali 2015 ELB" begin
         include("../models/Gali_2015_chapter_3_obc.jl")
-        functionality_test(Gali_2015_chapter_3_obc, plots = plots)
+        functionality_test(Gali_2015_chapter_3_obc, Caldara_et_al_2012_estim, plots = plots)
     end
     Gali_2015_chapter_3_obc = nothing
     GC.gc()
@@ -140,9 +181,11 @@ if test_set == "plots_4"
     plots = true
 	Random.seed!(1)
 
+    include("models/Caldara_et_al_2012_estim.jl")
+
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
-        functionality_test(m, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, plots = plots)
         
         observables = [:R, :k]
 
@@ -171,7 +214,7 @@ if test_set == "plots_4"
 
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables numerical SS" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
-        functionality_test(m, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, plots = plots)
         
         observables = [:R, :k]
 
@@ -200,7 +243,7 @@ if test_set == "plots_4"
 
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, and special functions" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_and_specfuns.jl")
-        functionality_test(m, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, plots = plots)
 
         observables = [:R, :k]
 
@@ -229,7 +272,7 @@ if test_set == "plots_4"
 
     @testset verbose = true "RBC_CME with calibration equations and parameter definitions" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-        functionality_test(m, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, plots = plots)
 
         observables = [:R, :k]
 
@@ -256,7 +299,7 @@ if test_set == "plots_4"
 
     @testset verbose = true "RBC_CME with calibration equations" begin
         include("models/RBC_CME_calibration_equations.jl")
-        functionality_test(m, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, plots = plots)
         
         observables = [:R, :k]
 
@@ -285,7 +328,7 @@ if test_set == "plots_4"
 
     @testset verbose = true "RBC_CME" begin
         include("models/RBC_CME.jl")
-        functionality_test(m, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, plots = plots)
 
         observables = [:R, :k]
 
@@ -315,34 +358,358 @@ if test_set == "plots_4"
 end
 
 
+if test_set == "plots_5"
+	Random.seed!(1)
+
+    @testset verbose = true "SW07 estim" begin
+        include("../models/Smets_Wouters_2007.jl")
+
+        # load data
+        dat = CSV.read("data/usmodel.csv", DataFrame)
+
+        # load data
+        data = KeyedArray(Array(dat)',Variable = Symbol.(strip.(names(dat))), Time = 1:size(dat)[1])
+
+        # declare observables as written in csv file
+        observables_old = [:dy, :dc, :dinve, :labobs, :pinfobs, :dw, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+
+        # Subsample
+        # subset observables in data
+        sample_idx = 47:230 # 1960Q1-2004Q4
+
+        data = data(observables_old, sample_idx)
+
+        # declare observables as written in model
+        observables = [:dy, :dc, :dinve, :labobs, :pinfobs, :dwobs, :robs] # note that :dw was renamed to :dwobs in linear model in order to avoid confusion with nonlinear model
+
+        data = rekey(data, :Variable => observables)
+
+        data_rekey = rekey(data, :Time => quarterly_dates(Date(1960, 1, 1), size(data,2)))
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 3, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 3, :calfa => 0.28])
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], filter = :inversion)
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], filter = :inversion)
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], smooth = false)
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], smooth = false)
+
+        plot_model_estimates!(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24], smooth = false, presample_periods = 50)
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data[:,20:end], parameters = [:csadjcost => 6, :calfa => 0.24])
+
+
+        plot_model_estimates(Smets_Wouters_2007, data_rekey, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data_rekey, parameters = [:csadjcost => 5, :calfa => 0.24])
+
+
+        plot_model_estimates(Smets_Wouters_2007, data, parameters = [:csadjcost => 6, :calfa => 0.24])
+
+        plot_model_estimates!(Smets_Wouters_2007, data_rekey, parameters = [:csadjcost => 5, :calfa => 0.24])
+
+        # FS2000 model and data  
+        include("../models/FS2000.jl")
+
+        # load data
+        dat = CSV.read("data/FS2000_data.csv", DataFrame)
+        dataFS2000 = KeyedArray(Array(dat)',Variable = Symbol.("log_".*names(dat)),Time = 1:size(dat)[1])
+        dataFS2000 = log.(dataFS2000)
+
+        # declare observables
+        observables = sort(Symbol.("log_".*names(dat)))
+
+        # subset observables in data
+        dataFS2000 = dataFS2000(observables,:)
+
+        dataFS2000_rekey = rekey(dataFS2000, :Time => quarterly_dates(Date(1950, 1, 1), size(dataFS2000,2)))
+
+        plot_model_estimates(FS2000, dataFS2000)
+
+        plot_model_estimates(FS2000, dataFS2000_rekey[:,1:10])
+
+        plot_shock_decomposition(FS2000, dataFS2000_rekey[:,1:10])
+
+        plot_shock_decomposition(FS2000, dataFS2000_rekey)
+
+
+        dataFS2000_rekey2 = rekey(dataFS2000, :Time => 1:1:size(dataFS2000,2))
+
+        plot_shock_decomposition(FS2000, dataFS2000)
+
+        plot_shock_decomposition(FS2000, dataFS2000_rekey2)
+
+
+        plot_model_estimates(FS2000, dataFS2000_rekey, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+
+        plot_model_estimates!(Smets_Wouters_2007, data_rekey)
+
+
+        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+
+        plot_model_estimates!(Smets_Wouters_2007, data_rekey)
+
+        plot_model_estimates!(FS2000, dataFS2000_rekey, parameters = :alp => 0.3, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+
+
+        plot_model_estimates!(Smets_Wouters_2007, data_rekey, parameters = :csigma => 0.3)
+
+        plot_model_estimates(FS2000, dataFS2000_rekey, parameters = :alp => 0.356, shock_decomposition = true, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+
+
+        estims = get_estimated_variables(Smets_Wouters_2007, data)
+
+        plot_irf(Smets_Wouters_2007, shocks = :em, shock_size = 10)
+
+        plot_irf!(Smets_Wouters_2007,initial_state = collect(estims[:,end]), shocks = :none, plot_type = :stack)
+
+        plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea], negative_shock = true, plot_type = :stack)
+        
+        shock_mat = randn(Smets_Wouters_2007.timings.nExo,3)
+
+        plot_irf!(Smets_Wouters_2007, shocks = shock_mat, plot_type = :stack)
+
+        plot_irf!(Smets_Wouters_2007, shocks = shock_mat, plot_type = :stack)
+
+
+        plot_irf(Smets_Wouters_2007, shocks = :em, periods = 5, variables = [:y, :k, :c])
+        
+        plot_irf!(FS2000, shocks = :e_m, periods = 5, plot_type = :stack, shock_size = 10, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w), variables = [:y, :k, :c])
+
+
+        plot_irf(Smets_Wouters_2007, shocks = :em, periods = 5)
+        
+        plot_irf!(FS2000, shocks = :e_m, periods = 5, plot_type = :stack, shock_size = 10, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+
+        plot_irf!(FS2000, shocks = [:e_m, :e_a], shock_size = 20, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+        
+        plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea], shock_size = 0.5)
+        
+        
+
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
+        cndtns_lvl[1,8] = 1.4
+
+        plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, initial_state = collect(estims[:,end]))
+
+
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,4), Variables = [:pinfobs], Periods = 1:4)
+        cndtns_lvl[1,4] = 2
+
+        plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl, plot_type = :stack)
+        
+
+        
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
+        cndtns_lvl[1,8] = 1.45
+
+        plot_conditional_forecast!(FS2000, cndtns_lvl, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+
+
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,4), Variables = [:y], Periods = 1:4)
+        cndtns_lvl[1,4] = 2.01
+
+        plot_conditional_forecast!(FS2000, cndtns_lvl, plot_type = :stack, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+        # conditons on #3 is nothing which makes sense since it is not showing
+
+        shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
+
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,4), Variables = [:pinfobs], Periods = 1:4)
+        cndtns_lvl[1,4] = 2
+
+        plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, plot_type = :stack)
+        
+        
+
+        cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
+        cndtns_lvl[1,8] = 1.4
+        
+        shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
+
+        plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, label = "SW07 w shocks", variables = [:y, :k, :c])
+
+        plot_conditional_forecast!(Smets_Wouters_2007, cndtns_lvl, variables = [:y,:w])
+
+        plot_conditional_forecast!(FS2000, cndtns_lvl, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+        
+        shock_mat = sprandn(FS2000.timings.nExo, 10, .1)
+
+        plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat, label = :rand_shocks, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
+        
+
+        plot_solution(FS2000, :k)
+
+        plot_solution!(FS2000, :k, algorithm = :second_order)
+
+
+        plot_solution(Smets_Wouters_2007, :pinf)
+
+        plot_solution!(Smets_Wouters_2007, :pinf, algorithm = :second_order)
+
+
+        plot_solution(FS2000, :y)
+        
+        plot_solution!(Smets_Wouters_2007, :y, variables = [:y, :k, :c])
+
+        plot_solution!(Smets_Wouters_2007, :y, algorithm = :second_order, variables = [:y, :k, :c])
+
+    end
+
+    # multiple models
+    @testset verbose = true "Gali 2015 ELB plots" begin
+        include("../models/Gali_2015_chapter_3_obc.jl")
+
+
+        Random.seed!(14)
+        plot_simulation(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0, ignore_obc = true)
+
+        Random.seed!(14)
+        plot_simulation!(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0)
+
+        Random.seed!(14)
+        plot_simulation!(Gali_2015_chapter_3_obc, periods = 40, parameters = :R̄ => 1.0025)
+
+
+        Random.seed!(13)
+        plot_simulation(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, 
+        # periods = 40, 
+        parameters = :R̄ => 1.0, ignore_obc = true)
+
+        Random.seed!(13)
+        plot_simulation!(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, 
+        periods = 40, 
+        parameters = :R̄ => 1.0)
+
+
+        plot_irf(Gali_2015_chapter_3_obc, parameters = :R̄ => 1.0)
+
+        plot_irf!(Gali_2015_chapter_3_obc, algorithm = :pruned_second_order, parameters = :R̄ => 1.0)
+
+
+        plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.5)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 0.5)
+
+
+        plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, generalised_irf = true)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, ignore_obc = true)
+
+
+        plot_irf(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, ignore_obc = true)
+
+        plot_irf!(Gali_2015_chapter_3_obc, parameters = :σ => 1.0, algorithm = :pruned_second_order, ignore_obc = true, generalised_irf = true)
+    end
+    
+    @testset verbose = true "Caldara et al 2012 plots" begin
+        include("../models/Caldara_et_al_2012.jl")
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :second_order)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_second_order, generalised_irf = true, generalised_irf_draws = 1000)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_second_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :second_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :third_order)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, generalised_irf = true)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :third_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :third_order, generalised_irf = true)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, shock_size = 2)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, shock_size = 3)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = :ψ => 0.8)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = :ψ => 1.5)
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = :ψ => 2.5)
+
+
+        plot_irf(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.3])
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.25])
+
+        plot_irf!(Caldara_et_al_2012, algorithm = :pruned_third_order, parameters = [:ψ => 0.5, :ζ => 0.35])
+    end
+end
+
+
 if test_set == "higher_order_1"
     plots = true
     # test_higher_order = true
 
+    include("models/Caldara_et_al_2012_estim.jl")
+
     @testset verbose = true "FS2000 third order" begin
         include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :third_order, plots = plots)
+        functionality_test(FS2000, Caldara_et_al_2012_estim, algorithm = :third_order, plots = plots)
     end
     FS2000 = nothing
     GC.gc()
 
     @testset verbose = true "FS2000 pruned third order" begin
         include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :pruned_third_order, plots = plots)
+        functionality_test(FS2000, Caldara_et_al_2012_estim, algorithm = :pruned_third_order, plots = plots)
     end
     FS2000 = nothing
     GC.gc()
 
     @testset verbose = true "FS2000 second order" begin
         include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :second_order, plots = plots)
+        functionality_test(FS2000, Caldara_et_al_2012_estim, algorithm = :second_order, plots = plots)
     end
     FS2000 = nothing
     GC.gc()
 
     @testset verbose = true "FS2000 pruned second order" begin
         include("../models/FS2000.jl")
-        functionality_test(FS2000, algorithm = :pruned_second_order, plots = plots)
+        functionality_test(FS2000, Caldara_et_al_2012_estim, algorithm = :pruned_second_order, plots = plots)
     end
     FS2000 = nothing
     GC.gc()
@@ -354,16 +721,18 @@ if test_set == "higher_order_2"
     plots = true
     # test_higher_order = true
 
+    include("models/Caldara_et_al_2012_estim.jl")
+
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned second order" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
-        functionality_test(m, algorithm = :pruned_second_order, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, algorithm = :pruned_second_order, plots = plots)
     end
     # m = nothing
     GC.gc()
 
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables pruned third order" begin
         # include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags.jl")
-        functionality_test(m, algorithm = :pruned_third_order, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, algorithm = :pruned_third_order, plots = plots)
     end
     m = nothing
     GC.gc()
@@ -374,44 +743,46 @@ if test_set == "higher_order_3"
     plots = true
     # test_higher_order = true
 
+    include("models/Caldara_et_al_2012_estim.jl")
+    
     @testset verbose = true "RBC_CME with calibration equations second order" begin
         include("models/RBC_CME_calibration_equations.jl")
-        functionality_test(m, algorithm = :second_order, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, algorithm = :second_order, plots = plots)
     end
     # m = nothing
     GC.gc()
 
     @testset verbose = true "RBC_CME with calibration equations third order" begin
         # include("models/RBC_CME_calibration_equations.jl")
-        functionality_test(m, algorithm = :third_order, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, algorithm = :third_order, plots = plots)
     end
     m = nothing
     GC.gc()
 
     @testset verbose = true "RBC_CME second order" begin
         include("models/RBC_CME.jl")
-        functionality_test(m, algorithm = :second_order, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, algorithm = :second_order, plots = plots)
     end
     # m = nothing
     GC.gc()
 
     @testset verbose = true "RBC_CME third order" begin
         # include("models/RBC_CME.jl")
-        functionality_test(m, algorithm = :third_order, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, algorithm = :third_order, plots = plots)
     end
     m = nothing
     GC.gc()
 
     @testset verbose = true "RBC_CME with calibration equations and parameter definitions second order" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-        functionality_test(m, algorithm = :second_order, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, algorithm = :second_order, plots = plots)
     end
     # m = nothing
     GC.gc()
 
     @testset verbose = true "RBC_CME with calibration equations and parameter definitions third order" begin
         # include("models/RBC_CME_calibration_equations_and_parameter_definitions.jl")
-        functionality_test(m, algorithm = :third_order, plots = plots)
+        functionality_test(m, Caldara_et_al_2012_estim, algorithm = :third_order, plots = plots)
     end
     m = nothing
     GC.gc()
@@ -425,7 +796,7 @@ if test_set == "basic"
     @testset verbose = true "Code quality (Aqua.jl)" begin
         # Aqua.test_all(MacroModelling)
         @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
-        @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling)#; ignore = [:Aqua, :JET])
+        @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling; ignore = [:Showoff])
         @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
         @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
         @testset "Piracy" Aqua.test_piracies(MacroModelling)
@@ -583,7 +954,12 @@ if test_set == "basic"
         get_irf(m, initial_state = init, shocks = :none)
 
         plots = plot_irf(m, initial_state = init, shocks = :none)
+
         @test plots[1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
+
+        plots! = plot_irf!(m, initial_state = init .* 1.5, shocks = :none)
+        
+        @test plots![1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
     end
     m = nothing
 
@@ -2578,7 +2954,12 @@ if test_set == "basic"
             # 0 < c < 10
         end
         plots = plot_irf(RBC_CME)
+
         @test plots[1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
+        
+        plots! = plot_irf!(RBC_CME, parameters = :rhoz => .8)
+
+        @test plots![1] isa StatsPlots.Plots.Plot{StatsPlots.Plots.GRBackend}
 
         RBC_CME = nothing
     end
