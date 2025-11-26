@@ -5,7 +5,7 @@ import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDF
 # import StatsFuns: normcdf
 import ThreadedSparseArrays
 using PrecompileTools
-import SpecialFunctions: erfcinv, erfc # can't use constants because of SymPy (e.g. sqrt2)
+import SpecialFunctions: erfcinv, erfc, erfinv # can't use constants because of SymPy (e.g. sqrt2)
 import SpecialFunctions
 import SymPyPythonCall as SPyPyC
 import PythonCall
@@ -49,6 +49,7 @@ import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
 import DataStructures: CircularBuffer
+import QuasiMonteCarlo
 import MacroTools: unblock, postwalk, prewalk, @capture, flatten
 
 # import SpeedMapping: speedmapping
@@ -156,8 +157,8 @@ using DispatchDoctor
 
 # Imports
 include("default_options.jl")
-include("common_docstrings.jl")
 include("options_and_caches.jl")
+include("common_docstrings.jl")
 include("structures.jl")
 include("macros.jl")
 include("get_functions.jl")
@@ -165,6 +166,7 @@ include("dynare.jl")
 include("inspect.jl")
 include("moments.jl")
 include("perturbation.jl")
+include("quadrature_sss.jl")
 
 include("./algorithms/sylvester.jl")
 include("./algorithms/lyapunov.jl")
