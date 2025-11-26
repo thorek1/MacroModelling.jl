@@ -66,5 +66,6 @@ MacroModelling.jl provides several plotting functions for analyzing and visualiz
 
 - **[Impulse Response Functions (IRF)](plot_irf.md)**: Visualize the dynamic response of endogenous variables to exogenous shocks using `plot_irf`
 - **[Policy Functions](plot_solution.md)**: Plot the relationship between state variables and endogenous variables using `plot_solution`
-
-Additional plotting functions are documented in the [API reference](api.md).
+- **[Conditional Forecasting](plot_conditional_forecast.md)**: Generate model projections conditional on future paths for endogenous variables or exogenous shocks using `plot_conditional_forecast`
+- **[Conditional Variance Decomposition](plot_conditional_variance_decomposition.md)**: Visualize the forecast error variance decomposition (FEVD) showing shock contributions to variable variance using `plot_conditional_variance_decomposition` (also available as `plot_fevd`)
+- **[Model Estimates](plot_model_estimates.md)**: Display filtered or smoothed estimates of endogenous variables and exogenous shocks, with optional shock decomposition and unconditional forecasts using `plot_model_estimates` (also available as `plot_shock_decomposition`)
