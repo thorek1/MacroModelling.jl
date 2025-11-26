@@ -1194,7 +1194,8 @@ function plot_model_estimates!(𝓂::ℳ,
         last_x = combined_x_axis[end]
 
         period = infer_step(combined_x_axis)
-        extended_combined_x_axis = vcat(combined_x_axis, [last_x + i * period for i in 1:max_forecast_periods])    else
+        extended_combined_x_axis = vcat(combined_x_axis, [last_x + i * period for i in 1:max_forecast_periods])    
+    else
         extended_combined_x_axis = combined_x_axis
     end
        
@@ -1473,7 +1474,7 @@ function plot_model_estimates!(𝓂::ℳ,
                     # data_in_deviations[idx][1:k[:presample_periods]] .= NaN
 
                     StatsPlots.plot!(p,
-                        # extended_combined_x_axis,
+                        extended_combined_x_axis,
                         data_in_deviations .+ k[:reference_steady_state][var_indx],
                         label = "",
                         color = pal[length(model_estimates_active_plot_container) + i]
@@ -1500,7 +1501,7 @@ function plot_model_estimates!(𝓂::ℳ,
                     data_in_deviations_padded[1:length(combined_x_axis)] = data_vals[periods]
                     
                     StatsPlots.plot!(p,
-                        # extended_combined_x_axis,
+                        extended_combined_x_axis,
                         data_in_deviations_padded .+ k[:reference_steady_state][var_indx],
                         label = "",
                         color = data_color
@@ -1533,7 +1534,7 @@ function plot_model_estimates!(𝓂::ℳ,
                         forecast_full[forecast_start:forecast_end] = k[:forecast_data][var_indx, :]
                         
                         StatsPlots.plot!(p,
-                            # extended_combined_x_axis,
+                            extended_combined_x_axis,
                             (has_data || same_ss) ? forecast_full .+ k[:reference_steady_state][var_indx] : forecast_full,
                             linestyle = :dash,
                             label = "",
