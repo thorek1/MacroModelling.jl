@@ -2,29 +2,34 @@
 
 ## High priority
 
+- [ ] allow not to define all parameters in @parameters and enter them later in subsequent calls. so you can do things like loading them from a file and putting them in. internally he would need to delay the solution until all parameters are defined
+- [ ] add FRB US model
+- [ ] check allocations of jacobian in sparse case (NAWM)
+
+- [ ] more informative errors when something goes wrong when writing a model
+- [ ] error when parsing expression of the form: XYZ[0] = 0
+- [ ] programmatic model writing: accept {i}[0] as definition for variable
+- [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
+- [ ] allow to define y[ss] = 1 in parameters block
+
+- [ ] add caches to lyapunov krylov solvers
+- [ ] eliminiate last elements of factorisation calls not using linearsolvers.jl, check whether they can be done with linearsolvers in case of a matrix as RHS (otherwise consider mumps for sparse matrix RHS)
 - [ ] separate docs from main package as all the plots get too big
-- [ ] separate estimation test using Pigeons from normal tests so that newest version of Turing can be tested and maintained
 - [ ] write tests/docs/technical details for nonlinear obc, forecasting, (non-linear) solution algorithms, SS solver, obc solver, and other algorithms
-- [ ] make sympy optional (maybe even an extension) and use Symbolics where possible
 - [ ] collect helper function only used in statsplots extension in that script
 - [ ] collect the argument wrangling functions in functions instead of them being in function bodies
 - [ ] apply sort by normalised superscript across functions
 - [ ] make package mooncake compatible. write custom pullback functions where necessary (all in one for llh)
-- [ ] print out th OCB shocks as auxilliary shocks
+- [ ] print out the OBC shocks as auxilliary shocks
 - [ ] generalised higher order IRF is around mean not SSS. plot mean line?
 - [ ] set irrelevant arguments back to default and inform user
 - [ ] generalised IRF pruned_third_order is somewhat slow - investigate
 - [ ] consider making sympy an extension or try to partially replace with Symbolics
+- [ ] make sympy optional (maybe even an extension) and use Symbolics where possible
+- [ ] switch from sympy to Symbolics
 - [ ] replace RF with LinearSolve codes (RF has too many dependencies)
-- [ ] add FRB US model
 - [ ] check again return value when NSSS not found, maybe NaN is better here
-- [ ] error when parsing expression of the form: XYZ[0] = 0
-- [ ] add caches to lyapunov krylov solvers
-- [ ] allow not to define all parameters in @parameters and enter them later in subsequent calls. so you can do things like loading them from a file and putting them in. internally he would need to delay the solution until all parameters are defined
-- [ ] eliminiate last elements of factorisation calls not using linearsolvers.jl, check whether they can be done with linearsolvers in case of a matrix as RHS (otherwise consider mumps for sparse matrix RHS)
-- [ ] check allocations of jacobian in sparse case (NAWM)
 - [ ] use isfresh flag on dense linear solves
-- [ ] fix borrowing_constraint how-to
 - [ ] implement check for plots, that they always return a plot (shocks = :none didn't return a plot)
 - [ ] cache sparse kron, sylvester solution, and compressed kron in order to avoid allocs; check sparse kron! call
 - [ ] prettify plotlyjs plots
@@ -46,13 +51,10 @@
 - [ ] start filter from initial values provided by user
 - [ ] higher order estimation should start from mean not the stochastic steady state as the mean is the most likely starting point
 - [ ] large models will need functions to be compiled individually as done for higher order; when tackling that, also separate steady state related equations from the steady state, so that speed issue is addresses due to replacing parameters with the steady state equations from the parameter block; also creat non allocating (residuals) steady state function
-- [ ] allow to define y[ss] = 1 in parameters block
 - [ ] check tols throughout. adopt max(abs,rel*norm) tols
 - [ ] redo diffs (DiffInt or ForwardDiff or FastDiff)
-- [ ] switch from sympy to Symbolics
 - [ ] optimize second order estim with SW07 or NAWM
 - [ ] optimize third order with smaller model
-- [ ] programmatic model writing: accept {i}[0] as definition for variable
 - [ ] fix higher order shock finder (3rd order) and check results for pruned second order. are the right state values taken for 1st and second order subprocesses?
 - [ ] take analytical derivatives of NSSS funcs to reduce allocation and speed up the NSSS solver
 - [ ] in the docs make it clear that for estimation you need to have variables which have the name of the observables in the dataframe and the parameters must be handed over to the get_loglikelihood function in the same order as declared. check with get_parameters
@@ -62,7 +64,6 @@
 - [ ] time NSSS solver and estimation codes
 - [ ] move korn_s_s_s to higher order aux variables
 - [ ] write own interior point solver
-- [ ] append forecast (no shocks) after estimated variables
 - [ ] write more tests for the plots
 - [ ] add background part in docs on NSSS solver (use material from presentation)
 - [ ] juliacon followup: checkout alloccheck, infiltrator, bestie, DifferentiableInterface, DepotDelivery, Interfaces, ThreadedDenseparseMul, Optimization Ensemble, redo Kalman filter with PDMats
@@ -76,7 +77,6 @@
 - [ ] try slicesampler instead of pigeons
 - [ ] use faster derivatives for SS solver (currently forward diff)
 - [ ] speed up sensitivity by caching matrix inversion from implicit diff with LRUcache
-- [ ] FastDifferentiation is faster in taking derivatives and more efficient in writing functions but does not support custom functions (e.g. normlogpdf)
 - [ ] fix this inference errors for large functions. they are slow. fix derivatives in general.
 - [ ] check downgrade tests
 - [ ] put write_derivatives_function and lock structure inside function
@@ -88,7 +88,7 @@
 - [ ] optimise vanilla loglikelihood calculation and gradient thereof (incl comp time)
 - [ ] checkout dynamic perturbation for obc solution: https://www.southampton.ac.uk/~alexmen/dynamic_perturbation.pdf
 - [ ] checkout schedule free ADAM for global methods: https://github.com/facebookresearch/schedule_free
-- [ ] figure out why PG and IS return basically the prior
+- [ ] figure out why PG and IS return basically the prior | related to context but also that they need to be somewhat close to the posterior, if they aren't the sampler has a hard time finding it
 - [ ] allow external functions to calculate the steady state (and hand it over via SS or get_loglikelihood function) - need to use the check function for implicit derivatives and cannot use it to get him a guess from which he can use internal solver going forward
 - [ ] go through custom SS solver once more and try to find parameters and logic that achieves best results
 - [ ] SS solver with less equations than variables
@@ -99,7 +99,6 @@
 - [ ] check whether its possible to run parameters macro/block without rerunning model block
 - [ ] eliminate possible log, ^ terms in parameters block equations - because of nonnegativity errors
 - [ ] throw error when equations appear more than once
-- [ ] plot multiple solutions of models - multioptions in one graph
 - [ ] make SS calc faster (func and optim, maybe inplace ops)
 - [ ] check obc once more
 - [ ] rm obc vars from get_SS
@@ -116,14 +115,10 @@
 - [ ] implement more multi country models
 - [ ] speed benchmarking (focus on ImplicitDiff part)
 - [ ] for cond forecasting allow less shocks than conditions with a warning. should be svd then
-- [ ] have parser accept rss | (r[ss] - 1) * 400 = rss
 - [ ] when doing calibration with optimiser have better return values when he doesn't find a solution (probably NaN)
 - [ ] sampler returned negative std. investigate and come up with solution ensuring sampler can continue
-- [ ] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
 - [ ] have get_std take variables as an input
-- [ ] more informative errors when something goes wrong when writing a model
 - [ ] initial state accept keyed array, SS and SSS as arguments
-- [ ] plot_model_estimates with unconditional forecast at the end
 - [ ] kick out unused parameters from m.parameters
 - [ ] use cache for gradient calc in estimation (see DifferentiableStateSpaceModels)
 - [ ] write functions to debug (fix_SS.jl...)
@@ -142,6 +137,13 @@
 - [ ] figure out combinations for inputs (parameters and variables in different formats for get_irf for example)
 - [ ] weed out SS solver and saved objects
 
+- [x] separate estimation test using Pigeons from normal tests so that newest version of Turing can be tested and maintained
+- [x] fix borrowing_constraint how-to
+- [x] append forecast (no shocks) after estimated variables
+- [x] FastDifferentiation is faster in taking derivatives and more efficient in writing functions but does not support custom functions (e.g. normlogpdf) | Symbolics is better by now
+- [x] plot multiple solutions of models - multioptions in one graph
+- [x] include weakdeps: https://pkgdocs.julialang.org/dev/creating-packages/#Weak-dependencies
+- [x] plot_model_estimates with unconditional forecast at the end
 - [x] add to the doc/strings that KeyedArrays are part of the `AxisKeys` package so people can look up how to access elements there. otherwise they might confuse it for a format provided by the package and wouldnt know how to access elements from it
 - [x] add argument to plotting functions to replace names in plots (e.g. input a dictionary: Dict(:dinve => "Investment growth"))
 - [x] implement benchmarks
