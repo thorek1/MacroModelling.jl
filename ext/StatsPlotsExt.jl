@@ -1181,23 +1181,51 @@ function plot_model_estimates!(𝓂::ℳ,
     end
 
     common_axis = mapreduce(k -> k[:x_axis], intersect, model_estimates_active_plot_container)
-
     if length(common_axis) > 0
+        # Combine all unique x-axis values from all containers and sort them.
+        # This forms the baseline, observed x-axis.
         combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort
     else
-        combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container]) # model_estimates_active_plot_container[end][:x_axis]
+        # If no common axis (e.g., just sequential indices), determine the length
+        # by finding the maximum length of any base x_axis.
+        combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container])
     end
-    
-    # Create extended combined x-axis that includes forecast periods from all scenarios
-    max_forecast_periods = maximum([get(k, :forecast_periods, 0) for k in model_estimates_active_plot_container])
-    if max_forecast_periods > 0
-        last_x = combined_x_axis[end]
 
+    # --- Determine the maximum *required* length for the extended axis ---
+    # 1. Calculate the length of each container's x_axis + its specific forecast_periods.
+    # 2. Find the maximum of these total required lengths.
+    max_extended_length = maximum([
+        length(k[:x_axis]) + get(k, :forecast_periods, 0)
+        for k in model_estimates_active_plot_container
+    ])
+
+    # The length of the combined_x_axis (the observed data portion).
+    combined_x_axis_length = length(combined_x_axis)
+
+    # Calculate the actual number of forecast periods needed on top of the combined_x_axis.
+    # This ensures the new axis is long enough to cover the longest single forecast.
+    # This should be at least max_extended_length - combined_x_axis_length, 
+    # but also at least the maximum of all individual forecast periods.
+    # Using the maximum difference is safer.
+    needed_forecast_periods = max_extended_length - combined_x_axis_length
+
+    # --- Create the extended combined x-axis ---
+
+    if needed_forecast_periods > 0
+        # Determine the step size for the extension
         period = infer_step(combined_x_axis)
-        extended_combined_x_axis = vcat(combined_x_axis, [last_x + i * period for i in 1:max_forecast_periods])    else
+        last_x = combined_x_axis[end]
+        
+        # Extend the combined_x_axis with the necessary number of periods
+        extended_combined_x_axis = vcat(
+            combined_x_axis, 
+            [last_x + i * period for i in 1:needed_forecast_periods]
+        )
+    else
+        # No extension needed if max_extended_length is <= combined_x_axis_length
         extended_combined_x_axis = combined_x_axis
     end
-       
+
     for k in setdiff(keys(args_and_kwargs), 
                         [
                             :run_id, :parameters, :data, :data_in_levels,
@@ -1473,7 +1501,7 @@ function plot_model_estimates!(𝓂::ℳ,
                     # data_in_deviations[idx][1:k[:presample_periods]] .= NaN
 
                     StatsPlots.plot!(p,
-                        # extended_combined_x_axis,
+                        extended_combined_x_axis,
                         data_in_deviations .+ k[:reference_steady_state][var_indx],
                         label = "",
                         color = pal[length(model_estimates_active_plot_container) + i]
@@ -1500,7 +1528,7 @@ function plot_model_estimates!(𝓂::ℳ,
                     data_in_deviations_padded[1:length(combined_x_axis)] = data_vals[periods]
                     
                     StatsPlots.plot!(p,
-                        # extended_combined_x_axis,
+                        extended_combined_x_axis,
                         data_in_deviations_padded .+ k[:reference_steady_state][var_indx],
                         label = "",
                         color = data_color
@@ -1533,7 +1561,7 @@ function plot_model_estimates!(𝓂::ℳ,
                         forecast_full[forecast_start:forecast_end] = k[:forecast_data][var_indx, :]
                         
                         StatsPlots.plot!(p,
-                            # extended_combined_x_axis,
+                            extended_combined_x_axis,
                             (has_data || same_ss) ? forecast_full .+ k[:reference_steady_state][var_indx] : forecast_full,
                             linestyle = :dash,
                             label = "",
