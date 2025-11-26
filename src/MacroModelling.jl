@@ -70,19 +70,8 @@ import Reexport
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
-# Baremodule for SymPy symbol workspace to avoid polluting MacroModelling namespace
-baremodule SymPyWorkspace
-    # This baremodule provides an isolated namespace for SymPy symbols
-    # so they don't conflict with MacroModelling internals
-    
-    # Import essential operators and functions from Base that are needed for
-    # evaluating expressions containing SymPy symbols
-    import Base: +, -, *, /, ^, ==, !=, <, <=, >, >=
-    import Base: exp, exp2, exp10, log, log2, log10, sin, cos, tan, asin, atan, asinh, acosh, atanh, sqrt, abs, min, max
-    import Base: sum, prod, length, abs2
-    # Import Core essentials
-    using Core: Expr, Symbol
-    
+# Module for SymPy symbol workspace to avoid polluting MacroModelling namespace
+module SymPyWorkspace
     # Import SpecialFunctions
     using ..SpecialFunctions: erfcinv, erfc
     
