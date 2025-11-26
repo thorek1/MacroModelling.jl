@@ -2911,7 +2911,7 @@ using StatsPlots
 using CSV, DataFrames, AxisKeys
 import DynamicPPL
 import Turing
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, replacenames
 import ADTypes: AutoZygote
 # import Zygote
 import MCMCChains: Chains
