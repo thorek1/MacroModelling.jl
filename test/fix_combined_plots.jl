@@ -6,13 +6,13 @@ using Zygote, ForwardDiff
 import MacroModelling: clear_solution_caches!
 
 # TODO: 
-# - continue model estimates after data
 # - write dling, info warnings
 # - check that tests are reflected in docs
 # - go through docstrings once more of the plotting functions
 # - check the point about certinaty equivalence, risk effects, and precautionary motives at certain orders
 
 # DONE:
+# - continue model estimates after data
 # - mention ! options early on in docs
 # - write tests and docs for the new functions
 # - revisit plot_solution + ! version of it
