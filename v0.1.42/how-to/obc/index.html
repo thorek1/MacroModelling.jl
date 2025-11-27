@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Occasionally binding constraints · MacroModelling.jl</title><meta name="title" content="Occasionally binding constraints · MacroModelling.jl"/><meta property="og:title" content="Occasionally binding constraints · MacroModelling.jl"/><meta property="twitter:title" content="Occasionally binding constraints · MacroModelling.jl"/><meta name="description" content="Documentation for MacroModelling.jl."/><meta property="og:description" content="Documentation for MacroModelling.jl."/><meta property="twitter:description" content="Documentation for MacroModelling.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">MacroModelling.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Introduction</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../../tutorials/install/">Installation</a></li><li><a class="tocitem" href="../../tutorials/rbc/">Write your first simple model - RBC</a></li><li><a class="tocitem" href="../../tutorials/sw03/">Work with a more complex model - Smets and Wouters (2003)</a></li><li><a class="tocitem" href="../../tutorials/calibration/">Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)</a></li><li><a class="tocitem" href="../../tutorials/estimation/">Estimate a model using gradient based samplers - Schorfheide (2000)</a></li></ul></li><li><span class="tocitem">How-to guides</span><ul><li><a class="tocitem" href="../loops/">Programmatic model writing using for-loops</a></li><li class="is-active"><a class="tocitem" href>Occasionally binding constraints</a><ul class="internal"><li><a class="tocitem" href="#Example:-Effective-lower-bound-on-interest-rates"><span>Example: Effective lower bound on interest rates</span></a></li><li><a class="tocitem" href="#Example:-Borrowing-constraint"><span>Example: Borrowing constraint</span></a></li></ul></li><li><input class="collapse-toggle" id="menuitem-3-3" type="checkbox"/><label class="tocitem" for="menuitem-3-3"><span class="docs-label">Plotting</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../../plotting/">Overview</a></li><li><a class="tocitem" href="../../plot_irf/">Impulse Response Functions</a></li><li><a class="tocitem" href="../../plot_solution/">Policy Functions</a></li><li><a class="tocitem" href="../../plot_conditional_forecast/">Conditional Forecasts</a></li><li><a class="tocitem" href="../../plot_conditional_variance_decomposition/">Variance Decomposition</a></li><li><a class="tocitem" href="../../plot_model_estimates/">Model Estimates</a></li></ul></li></ul></li><li><a class="tocitem" href="../../api/">API</a></li><li><a class="tocitem" href="../../call_index/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">How-to guides</a></li><li class="is-active"><a href>Occasionally binding constraints</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Occasionally binding constraints</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl/blob/main/docs/src/how-to/obc.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Occasionally-Binding-Constraints"><a class="docs-heading-anchor" href="#Occasionally-Binding-Constraints">Occasionally Binding Constraints</a><a id="Occasionally-Binding-Constraints-1"></a><a class="docs-heading-anchor-permalink" href="#Occasionally-Binding-Constraints" title="Permalink"></a></h1><p>Occasionally binding constraints are a form of nonlinearity frequently used to model effects like the zero lower bound on interest rates, or borrowing constraints. Perturbation methods are not able to capture them as they are local approximations. Nonetheless, there are ways to combine the speed of perturbation solutions and the flexibility of occasionally binding constraints. <code>MacroModelling.jl</code> provides a convenient way to write down the constraints and automatically enforces the constraint equation with shocks. More specifically, the constraint equation is enforced for each periods unconditional forecast (default forecast horizon of 40 periods) by constraint equation specific anticipated shocks, while minimising the shock size.</p><p>This guide will demonstrate how to write down models containing occasionally binding constraints (e.g. effective lower bound and borrowing constraint), show some potential problems the user may encounter and how to overcome them, and go through some use cases.</p><p>Common problems that may occur are that no perturbation solution is found, or that the algorithm cannot find a combination of shocks which enforce the constraint equation. The former has to do with the fact that occasionally binding constraints can give rise to more than one steady state but only one is suitable for a perturbation solution. The latter has to do with the dynamics of the model and the fact that a finite amount of shocks is used to enforce the constraint equation.</p><p>Beyond the examples outlined in this guide there is a version of Smets and Wouters (2003) with the ELB in the models folder (filename: <code>SW03_obc.jl</code>).</p><h2 id="Example:-Effective-lower-bound-on-interest-rates"><a class="docs-heading-anchor" href="#Example:-Effective-lower-bound-on-interest-rates">Example: Effective lower bound on interest rates</a><a id="Example:-Effective-lower-bound-on-interest-rates-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Effective-lower-bound-on-interest-rates" title="Permalink"></a></h2><h3 id="Writing-a-model-with-occasionally-binding-constraints"><a class="docs-heading-anchor" href="#Writing-a-model-with-occasionally-binding-constraints">Writing a model with occasionally binding constraints</a><a id="Writing-a-model-with-occasionally-binding-constraints-1"></a><a class="docs-heading-anchor-permalink" href="#Writing-a-model-with-occasionally-binding-constraints" title="Permalink"></a></h3><p>Taking the <a href="../../#gali2015">Galı́ (2015)</a>, Chapter 3 model containing a Taylor rule and implementing an effective lower bound on interest rates. The Taylor rule in the model: <code>R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])</code> needs to be modified so that <code>R[0]</code> never goes below an effective lower bound <code>R̄</code>. This can be done using the <code>max</code> operator: <code>R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))</code></p><p>The model definition after the change of the Taylor rule looks like this:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using MacroModelling</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; @model Gali_2015_chapter_3_obc begin
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Occasionally binding constraints · MacroModelling.jl</title><meta name="title" content="Occasionally binding constraints · MacroModelling.jl"/><meta property="og:title" content="Occasionally binding constraints · MacroModelling.jl"/><meta property="twitter:title" content="Occasionally binding constraints · MacroModelling.jl"/><meta name="description" content="Documentation for MacroModelling.jl."/><meta property="og:description" content="Documentation for MacroModelling.jl."/><meta property="twitter:description" content="Documentation for MacroModelling.jl."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../../">MacroModelling.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Introduction</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../../tutorials/install/">Installation</a></li><li><a class="tocitem" href="../../tutorials/rbc/">Write your first simple model - RBC</a></li><li><a class="tocitem" href="../../tutorials/sw03/">Work with a more complex model - Smets and Wouters (2003)</a></li><li><a class="tocitem" href="../../tutorials/calibration/">Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)</a></li><li><a class="tocitem" href="../../tutorials/estimation/">Estimate a model using gradient based samplers - Schorfheide (2000)</a></li></ul></li><li><span class="tocitem">Plotting</span><ul><li><a class="tocitem" href="../../plotting/">Overview</a></li><li><a class="tocitem" href="../../plot_irf/">Impulse Response Functions</a></li><li><a class="tocitem" href="../../plot_solution/">Policy Functions</a></li><li><a class="tocitem" href="../../plot_conditional_forecast/">Conditional Forecasts</a></li><li><a class="tocitem" href="../../plot_conditional_variance_decomposition/">Variance Decomposition</a></li><li><a class="tocitem" href="../../plot_model_estimates/">Model Estimates</a></li></ul></li><li><span class="tocitem">How-to guides</span><ul><li><a class="tocitem" href="../loops/">Programmatic model writing using for-loops</a></li><li class="is-active"><a class="tocitem" href>Occasionally binding constraints</a><ul class="internal"><li><a class="tocitem" href="#Example:-Effective-lower-bound-on-interest-rates"><span>Example: Effective lower bound on interest rates</span></a></li><li><a class="tocitem" href="#Example:-Borrowing-constraint"><span>Example: Borrowing constraint</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../../api/">API</a></li><li><a class="tocitem" href="../../call_index/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">How-to guides</a></li><li class="is-active"><a href>Occasionally binding constraints</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Occasionally binding constraints</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl/blob/main/docs/src/how-to/obc.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Occasionally-Binding-Constraints"><a class="docs-heading-anchor" href="#Occasionally-Binding-Constraints">Occasionally Binding Constraints</a><a id="Occasionally-Binding-Constraints-1"></a><a class="docs-heading-anchor-permalink" href="#Occasionally-Binding-Constraints" title="Permalink"></a></h1><p>Occasionally binding constraints are a form of nonlinearity frequently used to model effects like the zero lower bound on interest rates, or borrowing constraints. Perturbation methods are not able to capture them as they are local approximations. Nonetheless, there are ways to combine the speed of perturbation solutions and the flexibility of occasionally binding constraints. <code>MacroModelling.jl</code> provides a convenient way to write down the constraints and automatically enforces the constraint equation with shocks. More specifically, the constraint equation is enforced for each periods unconditional forecast (default forecast horizon of 40 periods) by constraint equation specific anticipated shocks, while minimising the shock size.</p><p>This guide will demonstrate how to write down models containing occasionally binding constraints (e.g. effective lower bound and borrowing constraint), show some potential problems the user may encounter and how to overcome them, and go through some use cases.</p><p>Common problems that may occur are that no perturbation solution is found, or that the algorithm cannot find a combination of shocks which enforce the constraint equation. The former has to do with the fact that occasionally binding constraints can give rise to more than one steady state but only one is suitable for a perturbation solution. The latter has to do with the dynamics of the model and the fact that a finite amount of shocks is used to enforce the constraint equation.</p><p>Beyond the examples outlined in this guide there is a version of Smets and Wouters (2003) with the ELB in the models folder (filename: <code>SW03_obc.jl</code>).</p><h2 id="Example:-Effective-lower-bound-on-interest-rates"><a class="docs-heading-anchor" href="#Example:-Effective-lower-bound-on-interest-rates">Example: Effective lower bound on interest rates</a><a id="Example:-Effective-lower-bound-on-interest-rates-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Effective-lower-bound-on-interest-rates" title="Permalink"></a></h2><h3 id="Writing-a-model-with-occasionally-binding-constraints"><a class="docs-heading-anchor" href="#Writing-a-model-with-occasionally-binding-constraints">Writing a model with occasionally binding constraints</a><a id="Writing-a-model-with-occasionally-binding-constraints-1"></a><a class="docs-heading-anchor-permalink" href="#Writing-a-model-with-occasionally-binding-constraints" title="Permalink"></a></h3><p>Taking the <a href="../../#gali2015">Galı́ (2015)</a>, Chapter 3 model containing a Taylor rule and implementing an effective lower bound on interest rates. The Taylor rule in the model: <code>R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])</code> needs to be modified so that <code>R[0]</code> never goes below an effective lower bound <code>R̄</code>. This can be done using the <code>max</code> operator: <code>R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))</code></p><p>The model definition after the change of the Taylor rule looks like this:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using MacroModelling</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; @model Gali_2015_chapter_3_obc begin
            W_real[0] = C[0] ^ σ * N[0] ^ φ
        
            Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
@@ -88,10 +88,10 @@ Parameters:   18</code></pre><p>In the background the system of equations is aug
            std_z = .05
        
            std_nu = .0025
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	1.249 seconds
-Set up non-stochastic steady state problem:				5.062 seconds
-Find non-stochastic steady state:					1.904 seconds
-Take symbolic derivatives up to first order:				1.508 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	1.326 seconds
+Set up non-stochastic steady state problem:				5.433 seconds
+Find non-stochastic steady state:					1.928 seconds
+Take symbolic derivatives up to first order:				1.584 seconds
 Model:        Gali_2015_chapter_3_obc
 Variables
  Total:       68
@@ -126,16 +126,16 @@ And data, <span class="sgr1">68×19 Matrix{Float64}</span>:
 And data, <span class="sgr1">19-element view(::Matrix{Float64}, 9, :)</span> with eltype Float64:
  <span class="sgr35">(:Steady_state)</span>      1.0101010101010102
  <span class="sgr35">(:R̄)</span>                 0.0
- <span class="sgr35">(:σ)</span>                 2.3177620163173044e-19
- <span class="sgr35">(:φ)</span>                 9.23334688245929e-36
- <span class="sgr35">(:ϕᵖⁱ)</span>               2.2428747972225406e-16
+ <span class="sgr35">(:σ)</span>                 8.755577991318467e-19
+ <span class="sgr35">(:φ)</span>                 3.361782160243497e-35
+ <span class="sgr35">(:ϕᵖⁱ)</span>               2.2428747972225396e-16
  <span class="sgr35">(:ϕʸ)</span>                0.0
- <span class="sgr35">(:θ)</span>                 4.377004149731265e-17
+ <span class="sgr35">(:θ)</span>                 5.471255187164074e-17
  <span class="sgr35">(:ρ_ν)</span>               0.0
   ⋮
- <span class="sgr35">(:α)</span>                -1.1966893521237024e-34
- <span class="sgr35">(:ϵ)</span>                -3.2695687010663664e-33
- <span class="sgr35">(:τ)</span>                 6.962078358416409e-35
+ <span class="sgr35">(:α)</span>                -3.9222462641650105e-34
+ <span class="sgr35">(:ϵ)</span>                 9.99794337974968e-34
+ <span class="sgr35">(:τ)</span>                 9.883825924179588e-33
  <span class="sgr35">(:std_a)</span>             0.0
  <span class="sgr35">(:std_z)</span>             0.0
  <span class="sgr35">(:std_nu)</span>            0.0
@@ -146,10 +146,10 @@ And data, <span class="sgr1">89×68 adjoint(::Matrix{Float64})</span> with eltyp
                          <span class="sgr35">(:A)</span>          …  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁸⁾)</span>  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁹⁾)</span>
   <span class="sgr35">(:Steady_state)</span>         1.0              0.0               0.0
   <span class="sgr35">(:A₍₋₁₎)</span>                0.9              0.0               0.0
-  <span class="sgr35">(:S₍₋₁₎)</span>                5.87529e-16      0.0               0.0
-  <span class="sgr35">(:Z₍₋₁₎)</span>                2.01423e-16      0.0               0.0
-  <span class="sgr35">(:nu₍₋₁₎)</span>               8.30868e-17  …   0.0               0.0
-  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻²²⁾₍₋₁₎)</span>   5.68331e-16      0.0               0.0
+  <span class="sgr35">(:S₍₋₁₎)</span>                2.00158e-15      0.0               0.0
+  <span class="sgr35">(:Z₍₋₁₎)</span>                1.29839e-15      0.0               0.0
+  <span class="sgr35">(:nu₍₋₁₎)</span>              -2.62642e-15  …   0.0               0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻²²⁾₍₋₁₎)</span>   9.70392e-17      0.0               0.0
    ⋮                                   ⋱   ⋮
   <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁴⁰⁾₍ₓ₎)</span>     -0.0             -0.0              -0.0
   <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁴⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0
@@ -248,10 +248,10 @@ Parameters:   18</code><br/><code class="language-julia-repl hljs" style="displa
            std_nu = .0025
        
            R &gt; 1.000001
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	1.156 seconds
-Set up non-stochastic steady state problem:				2.884 seconds
-Find non-stochastic steady state:					1.692 seconds
-Take symbolic derivatives up to first order:				0.288 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	1.424 seconds
+Set up non-stochastic steady state problem:				3.274 seconds
+Find non-stochastic steady state:					1.759 seconds
+Take symbolic derivatives up to first order:				0.307 seconds
 Model:        Gali_2015_chapter_3_obc
 Variables
  Total:       68
@@ -286,16 +286,16 @@ And data, <span class="sgr1">68×19 Matrix{Float64}</span>:
 And data, <span class="sgr1">19-element view(::Matrix{Float64}, 9, :)</span> with eltype Float64:
  <span class="sgr35">(:Steady_state)</span>      1.0101010101010097
  <span class="sgr35">(:R̄)</span>                 0.0
- <span class="sgr35">(:σ)</span>                 2.317762016317303e-19
- <span class="sgr35">(:φ)</span>                 9.233346882459281e-36
- <span class="sgr35">(:ϕᵖⁱ)</span>               2.242874797222539e-16
+ <span class="sgr35">(:σ)</span>                 8.75557799131846e-19
+ <span class="sgr35">(:φ)</span>                 3.3617821602434943e-35
+ <span class="sgr35">(:ϕᵖⁱ)</span>               2.242874797222538e-16
  <span class="sgr35">(:ϕʸ)</span>                0.0
- <span class="sgr35">(:θ)</span>                 4.377004149731261e-17
+ <span class="sgr35">(:θ)</span>                 5.47125518716407e-17
  <span class="sgr35">(:ρ_ν)</span>               0.0
   ⋮
- <span class="sgr35">(:α)</span>                -1.1966893521237015e-34
- <span class="sgr35">(:ϵ)</span>                -3.2695687010663644e-33
- <span class="sgr35">(:τ)</span>                 6.962078358416404e-35
+ <span class="sgr35">(:α)</span>                -3.922246264165007e-34
+ <span class="sgr35">(:ϵ)</span>                 9.99794337974967e-34
+ <span class="sgr35">(:τ)</span>                 9.883825924179581e-33
  <span class="sgr35">(:std_a)</span>             0.0
  <span class="sgr35">(:std_z)</span>             0.0
  <span class="sgr35">(:std_nu)</span>            0.0
@@ -306,10 +306,10 @@ And data, <span class="sgr1">89×68 adjoint(::Matrix{Float64})</span> with eltyp
                          <span class="sgr35">(:A)</span>          …  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁸⁾)</span>  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁹⁾)</span>
   <span class="sgr35">(:Steady_state)</span>         1.0              0.0               0.0
   <span class="sgr35">(:A₍₋₁₎)</span>                0.9              0.0               0.0
-  <span class="sgr35">(:S₍₋₁₎)</span>               -5.7257e-16       0.0               0.0
-  <span class="sgr35">(:Z₍₋₁₎)</span>               -5.2246e-16       0.0               0.0
-  <span class="sgr35">(:nu₍₋₁₎)</span>               6.60193e-16  …   0.0               0.0
-  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻²²⁾₍₋₁₎)</span>  -9.99279e-16      0.0               0.0
+  <span class="sgr35">(:S₍₋₁₎)</span>                1.74106e-15      0.0               0.0
+  <span class="sgr35">(:Z₍₋₁₎)</span>                1.22733e-15      0.0               0.0
+  <span class="sgr35">(:nu₍₋₁₎)</span>              -2.4623e-15   …   0.0               0.0
+  <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻²²⁾₍₋₁₎)</span>   2.05999e-18      0.0               0.0
    ⋮                                   ⋱   ⋮
   <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁴⁰⁾₍ₓ₎)</span>     -0.0             -0.0              -0.0
   <span class="sgr35">(:ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁴⁾₍ₓ₎)</span>      -0.0             -0.0              -0.0
@@ -344,28 +344,26 @@ And data, <span class="sgr1">1×15 Matrix{Float64}</span>:
                        parameters = :R̄ =&gt; 0.99,
                        periods = 500,
                        shocks = :simulate,
-                       levels = true)</code><code class="nohighlight hljs ansi" style="display:block;">┌ Warning: No solution in period: 94
-└ @ MacroModelling ~/work/MacroModelling.jl/MacroModelling.jl/src/MacroModelling.jl:8552
-3-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+                       levels = true)</code><code class="nohighlight hljs ansi" style="display:block;">3-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 23-element Vector{Symbol}</span>
 →   <span class="sgr34">Periods ∈ 500-element UnitRange{Int64}</span>
 ◪   <span class="sgr35">Shocks ∈ 1-element Vector{Symbol}</span>
 And data, <span class="sgr1">23×500×1 Array{Float64, 3}</span>:
 <span class="sgr35">[:, :, 1] ~ (:, :, :simulate):</span>
-                   <span class="sgr34">(1)</span>           …  <span class="sgr34">(499)</span>            <span class="sgr34">(500)</span>
-  <span class="sgr35">(:A)</span>               0.988633           1.0              1.0
-  <span class="sgr35">(:C)</span>               0.951397           0.95058          0.95058
-  <span class="sgr35">(:MC)</span>              0.975835           0.888889         0.888889
-  <span class="sgr35">(:M_real)</span>          0.884869           0.915236         0.915236
-  <span class="sgr35">(:N)</span>               0.949892    …      0.934655         0.934655
-  <span class="sgr35">(:Pi)</span>              1.00686            1.0              1.0
+                   <span class="sgr34">(1)</span>           …  <span class="sgr34">(499)</span>           <span class="sgr34">(500)</span>
+  <span class="sgr35">(:A)</span>               0.988633           1.01169         1.00857
+  <span class="sgr35">(:C)</span>               0.951397           0.967469        0.974794
+  <span class="sgr35">(:MC)</span>              0.975835           0.932096        1.00908
+  <span class="sgr35">(:M_real)</span>          0.884869           0.90571         0.909805
+  <span class="sgr35">(:N)</span>               0.949892    …      0.942227        0.955719
+  <span class="sgr35">(:Pi)</span>              1.00686            0.999289        1.00371
    ⋮                             ⋱      ⋮
-  <span class="sgr35">(:nu)</span>             -0.00136231         0.0              0.0
-  <span class="sgr35">(:pi_ann)</span>          0.027424    …     -4.44089e-16     -4.44089e-16
-  <span class="sgr35">(:r_real_ann)</span>      0.0570976          0.0402013        0.0402013
-  <span class="sgr35">(:realinterest)</span>    1.01437            1.0101           1.0101
-  <span class="sgr35">(:x_aux_1)</span>         4.00671            3.452            3.452
-  <span class="sgr35">(:x_aux_2)</span>         4.18805            3.8835           3.8835</code></pre><p>The mean and standard deviation of output can be examined:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Statistics</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.mean(sims(:Y,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.9483313072364232</code></pre><p>and</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.std(sims(:Y,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.01654576520435753</code></pre><p>Compare this to the theoretical mean of the model without the occasionally binding constraint:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+  <span class="sgr35">(:nu)</span>             -0.00136231         0.00631971     -0.000417893
+  <span class="sgr35">(:pi_ann)</span>          0.027424    …     -0.00284524      0.0148395
+  <span class="sgr35">(:r_real_ann)</span>      0.0570976          0.0771843       0.0702597
+  <span class="sgr35">(:realinterest)</span>    1.01437            1.01944         1.01769
+  <span class="sgr35">(:x_aux_1)</span>         4.00671            3.31227         3.61352
+  <span class="sgr35">(:x_aux_2)</span>         4.18805            3.75946         3.89232</code></pre><p>The mean and standard deviation of output can be examined:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Statistics</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.mean(sims(:Y,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.9418713098335764</code></pre><p>and</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.std(sims(:Y,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.036538774327933066</code></pre><p>Compare this to the theoretical mean of the model without the occasionally binding constraint:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(Gali_2015_chapter_3_obc)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
 2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 23-element Vector{Symbol}</span>
 →   <span class="sgr35">Mean_and_∂mean∂parameter ∈ 19-element Vector{Symbol}</span>
@@ -389,17 +387,17 @@ And data, <span class="sgr1">23×19 Matrix{Float64}</span>:
 ↓   <span class="sgr35">Mean_and_∂mean∂parameter ∈ 19-element Vector{Symbol}</span>
 And data, <span class="sgr1">19-element view(::Matrix{Float64}, 12, :)</span> with eltype Float64:
  <span class="sgr35">(:Mean)</span>              0.9505798249541407
- <span class="sgr35">(:R̄)</span>                 6.209800579046942e-18
- <span class="sgr35">(:σ)</span>                 0.006022296117038608
- <span class="sgr35">(:φ)</span>                 0.008029728156051456
- <span class="sgr35">(:ϕᵖⁱ)</span>               1.229540514651182e-17
+ <span class="sgr35">(:R̄)</span>                 6.20980057904444e-18
+ <span class="sgr35">(:σ)</span>                 0.006022296117038589
+ <span class="sgr35">(:φ)</span>                 0.008029728156051455
+ <span class="sgr35">(:ϕᵖⁱ)</span>               1.229540514650826e-17
  <span class="sgr35">(:ϕʸ)</span>                0.0
- <span class="sgr35">(:θ)</span>                 0.0
+ <span class="sgr35">(:θ)</span>                -2.6383890210205948e-15
  <span class="sgr35">(:ρ_ν)</span>               0.0
   ⋮
- <span class="sgr35">(:α)</span>                -0.09419214557727858
- <span class="sgr35">(:ϵ)</span>                 0.0016503121961009377
- <span class="sgr35">(:τ)</span>                 0.11882247811926747
+ <span class="sgr35">(:α)</span>                -0.09419214557727837
+ <span class="sgr35">(:ϵ)</span>                 0.001650312196100937
+ <span class="sgr35">(:τ)</span>                 0.11882247811926744
  <span class="sgr35">(:std_a)</span>             0.0
  <span class="sgr35">(:std_z)</span>             0.0
  <span class="sgr35">(:std_nu)</span>            0.0
@@ -409,7 +407,7 @@ And data, <span class="sgr1">19-element view(::Matrix{Float64}, 12, :)</span> wi
 →   <span class="sgr35">Standard_deviation_and_∂standard_deviation∂parameter ∈ 19-element Vector{Symbol}</span>
 And data, <span class="sgr1">23×19 Matrix{Float64}</span>:
                    <span class="sgr35">(:Standard_deviation)</span>  …  <span class="sgr35">(:std_nu)</span>     <span class="sgr35">(:activeᵒᵇᶜshocks)</span>
-  <span class="sgr35">(:A)</span>              0.0229416                 8.42003e-31   0.0
+  <span class="sgr35">(:A)</span>              0.0229416                 1.26689e-29   0.0
   <span class="sgr35">(:C)</span>              0.0335717                 0.0963579     0.0
   <span class="sgr35">(:MC)</span>             0.216091                  0.837765      0.0
   <span class="sgr35">(:M_real)</span>         0.0592662                 0.254845      0.0
@@ -426,21 +424,21 @@ And data, <span class="sgr1">23×19 Matrix{Float64}</span>:
 1-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Standard_deviation_and_∂standard_deviation∂parameter ∈ 19-element Vector{Symbol}</span>
 And data, <span class="sgr1">19-element view(::Matrix{Float64}, 12, :)</span> with eltype Float64:
- <span class="sgr35">(:Standard_deviation)</span>   0.03357169677999129
- <span class="sgr35">(:R̄)</span>                   -1.9616832550969205e-17
- <span class="sgr35">(:σ)</span>                   -0.015188891670653258
- <span class="sgr35">(:φ)</span>                   -0.00084875274069682
- <span class="sgr35">(:ϕᵖⁱ)</span>                 -0.005609204146851344
- <span class="sgr35">(:ϕʸ)</span>                  -0.03311342389433767
- <span class="sgr35">(:θ)</span>                    0.06235561294718608
- <span class="sgr35">(:ρ_ν)</span>                  0.00032874231200087834
+ <span class="sgr35">(:Standard_deviation)</span>   0.03357169677999038
+ <span class="sgr35">(:R̄)</span>                   -1.961683255097014e-17
+ <span class="sgr35">(:σ)</span>                   -0.015188891670653792
+ <span class="sgr35">(:φ)</span>                   -0.0008487527406968264
+ <span class="sgr35">(:ϕᵖⁱ)</span>                 -0.005609204146851749
+ <span class="sgr35">(:ϕʸ)</span>                  -0.0331134238943376
+ <span class="sgr35">(:θ)</span>                    0.062355612947191046
+ <span class="sgr35">(:ρ_ν)</span>                  0.0003287423120008152
   ⋮
- <span class="sgr35">(:α)</span>                    0.01479083688661985
- <span class="sgr35">(:ϵ)</span>                    0.0006244538126498336
- <span class="sgr35">(:τ)</span>                    0.004196462097498842
- <span class="sgr35">(:std_a)</span>                0.9241321458118555
- <span class="sgr35">(:std_z)</span>                0.48178961033411405
- <span class="sgr35">(:std_nu)</span>               0.09635792206682316
+ <span class="sgr35">(:α)</span>                    0.014790836886621942
+ <span class="sgr35">(:ϵ)</span>                    0.000624453812649866
+ <span class="sgr35">(:τ)</span>                    0.004196462097498825
+ <span class="sgr35">(:std_a)</span>                0.9241321458115995
+ <span class="sgr35">(:std_z)</span>                0.4817896103341452
+ <span class="sgr35">(:std_nu)</span>               0.09635792206682822
  <span class="sgr35">(:activeᵒᵇᶜshocks)</span>      0.0</code></pre><p>The mean of output is lower in the model with effective lower bound compared to the model without and the standard deviation is higher.</p><h2 id="Example:-Borrowing-constraint"><a class="docs-heading-anchor" href="#Example:-Borrowing-constraint">Example: Borrowing constraint</a><a id="Example:-Borrowing-constraint-1"></a><a class="docs-heading-anchor-permalink" href="#Example:-Borrowing-constraint" title="Permalink"></a></h2><h3 id="Model-definition"><a class="docs-heading-anchor" href="#Model-definition">Model definition</a><a id="Model-definition-1"></a><a class="docs-heading-anchor-permalink" href="#Model-definition" title="Permalink"></a></h3><p>Starting with a consumption-saving model containing a borrowing constraint (see [@citet cuba2019likelihood] for details). Output is exogenously given, and households can only borrow up to a fraction of output and decide between saving and consumption. The first order conditions of the model are:</p><p class="math-container">\[\begin{align*}
 Y_t + B_t &amp;= C_t + R \, B_{t-1}\\
 \log(Y_t) &amp;= \rho \, \log(Y_{t-1}) + \sigma \, \varepsilon_t\\
@@ -470,10 +468,10 @@ Parameters:   7</code></pre><p>In the background the system of equations is augm
            σ = 0.05
            m = 1
            γ = 1
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	0.482 seconds
-Set up non-stochastic steady state problem:				0.447 seconds
-Find non-stochastic steady state:					0.833 seconds
-Take symbolic derivatives up to first order:				0.708 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	0.557 seconds
+Set up non-stochastic steady state problem:				0.503 seconds
+Find non-stochastic steady state:					0.84 seconds
+Take symbolic derivatives up to first order:				0.721 seconds
 Model:        borrowing_constraint
 Variables
  Total:       49
@@ -515,7 +513,7 @@ And data, <span class="sgr1">1×30 Matrix{Float64}</span>:
  Plot{Plots.GRBackend() n=8}</code></pre><p><img src="../../assets/obc_shocks_irf_no_obc__borrowing_constraint__shock_matrix__1.png" alt="Simulation"/></p><p>Another interesting statistic is model moments. As there are no theoretical moments reliance on simulated data is necessary:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; Random.seed!(17339053787832050337)</code><code class="nohighlight hljs ansi" style="display:block;">Random.TaskLocalRNG()</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; sims = get_irf(borrowing_constraint,
                        periods = 300,
                        shocks = :simulate,
-                       levels = true)</code><code class="nohighlight hljs ansi" style="display:block;">┌ Warning: No solution in period: 110
+                       levels = true)</code><code class="nohighlight hljs ansi" style="display:block;">┌ Warning: No solution in period: 113
 └ @ MacroModelling ~/work/MacroModelling.jl/MacroModelling.jl/src/MacroModelling.jl:8552
 3-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 4-element Vector{Symbol}</span>
@@ -527,7 +525,7 @@ And data, <span class="sgr1">4×300×1 Array{Float64, 3}</span>:
   <span class="sgr35">(:B)</span>    0.904661    0.871934          1.0             1.0
   <span class="sgr35">(:C)</span>    0.759321    0.793974          0.95            0.95
   <span class="sgr35">(:Y)</span>    0.904661    0.871934          1.0             1.0
-  <span class="sgr35">(:λ)</span>    0.140821    0.0754388         0.00815789      0.00815789</code></pre><p>Let&#39;s look at the mean and standard deviation of borrowing:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Statistics</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.mean(sims(:B,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.9697725792642706</code></pre><p>and</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.std(sims(:B,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.056732416854669884</code></pre><p>Compare this to the theoretical mean of the model without the occasionally binding constraint:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(borrowing_constraint)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
+  <span class="sgr35">(:λ)</span>    0.140821    0.0754388         0.00815789      0.00815789</code></pre><p>Let&#39;s look at the mean and standard deviation of borrowing:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; import Statistics</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.mean(sims(:B,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.9685598423932612</code></pre><p>and</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; Statistics.std(sims(:B,:,:))</code><code class="nohighlight hljs ansi" style="display:block;">0.057061828187397176</code></pre><p>Compare this to the theoretical mean of the model without the occasionally binding constraint:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_mean(borrowing_constraint)</code><code class="nohighlight hljs ansi" style="display:block;">[ Info: Most of the time is spent calculating derivatives wrt parameters. If they are not needed, add `derivatives = false` as an argument to the function call.
 2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Variables ∈ 4-element Vector{Symbol}</span>
 →   <span class="sgr35">Mean_and_∂mean∂parameter ∈ 8-element Vector{Symbol}</span>
@@ -542,7 +540,7 @@ And data, <span class="sgr1">4×8 Matrix{Float64}</span>:
 →   <span class="sgr35">Standard_deviation_and_∂standard_deviation∂parameter ∈ 8-element Vector{Symbol}</span>
 And data, <span class="sgr1">4×8 Matrix{Float64}</span>:
         <span class="sgr35">(:Standard_deviation)</span>  …  <span class="sgr35">(:γ)</span>          <span class="sgr35">(:activeᵒᵇᶜshocks)</span>
-  <span class="sgr35">(:B)</span>   0.114708                 -2.41967e-17   0.0
-  <span class="sgr35">(:C)</span>   0.131914                  1.44223e-17   0.0
+  <span class="sgr35">(:B)</span>   0.114708                  6.04919e-18   0.0
+  <span class="sgr35">(:C)</span>   0.131914                 -4.14238e-18   0.0
   <span class="sgr35">(:Y)</span>   0.114708                  0.0           0.0
-  <span class="sgr35">(:λ)</span>   0.0703174                 0.0739243     0.0</code></pre><p>The mean and standard deviation of borrowing is lower in the model with occasionally binding constraints compared to the model without.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../loops/">« Programmatic model writing using for-loops</a><a class="docs-footer-nextpage" href="../../plotting/">Overview »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Thursday 27 November 2025 18:28">Thursday 27 November 2025</span>. Using Julia version 1.12.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+  <span class="sgr35">(:λ)</span>   0.0703174                 0.0739243     0.0</code></pre><p>The mean and standard deviation of borrowing is lower in the model with occasionally binding constraints compared to the model without.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../loops/">« Programmatic model writing using for-loops</a><a class="docs-footer-nextpage" href="../../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Thursday 27 November 2025 20:56">Thursday 27 November 2025</span>. Using Julia version 1.12.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
