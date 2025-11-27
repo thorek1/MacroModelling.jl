@@ -1179,54 +1179,64 @@ function plot_model_estimates!(𝓂::ℳ,
 
         push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
     end
-
+    
+    # Determine common and combined x axis
     common_axis = mapreduce(k -> k[:x_axis], intersect, model_estimates_active_plot_container)
 
-    # --- 1. Establish the Baseline Observed Axis ---
-    # We use union (not intersect) to get the full footprint of all observed data.
-    # This handles the case where one starts at 1 and another at 20.
-    combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort
+    if length(common_axis) > 0
+        # Real x axis: collect all distinct points and sort them
+        combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort
 
-    # --- 2. Determine the Step Size (Period) ---
-    # We need the step size (e.g., 1, Day(1), Month(1)) to calculate future dates/values.
-    period = infer_step(combined_x_axis)
+        # For each container, compute the last x including its forecast extension
+        required_last_x = maximum((
+            let
+                axis = k[:x_axis]
+                step = infer_step(axis)
+                last_observed = axis[end]
+                forecast_periods = get(k, :forecast_periods, 0)
+                last_observed + forecast_periods * step
+            end
+            for k in model_estimates_active_plot_container
+        ))
 
-    # --- 3. Calculate the "Max Reach" (The Horizon) ---
-    # Instead of looking at lengths, we look at the actual last value of every series
-    # and add its specific forecast periods to it. 
-    # We find the maximum resulting value (Date or Number).
-    max_reach_value = maximum([
-        k[:x_axis][end] + (get(k, :forecast_periods, 0) * period)
-        for k in model_estimates_active_plot_container
-    ])
+        # Extend combined_x_axis up to required_last_x, if needed
+        step = infer_step(combined_x_axis)
+        last_combined = combined_x_axis[end]
 
-    # --- 4. Create the Extended Axis ---
-    last_observed_value = combined_x_axis[end]
+        if required_last_x > last_combined
+            xs = deepcopy(combined_x_axis)
 
-    if max_reach_value > last_observed_value
-        # We need to bridge the gap between the end of the observed data 
-        # and the furthest forecast point.
-        
-        # Calculate how many steps are needed to get from last_observed to max_reach.
-        # Note: We calculate this iteratively or mathematically depending on type, 
-        # but a generated array is safest for mixed types (Dates vs Ints).
-        
-        # Generate the extension points
-        extension_points = []
-        current_val = last_observed_value + period
-        
-        while current_val <= max_reach_value
-            push!(extension_points, current_val)
-            current_val += period
+            next_x = last_combined
+            while next_x < required_last_x
+                next_x = next_x + step
+                push!(xs, next_x)
+            end
+
+            extended_combined_x_axis = xs
+        else
+            extended_combined_x_axis = combined_x_axis
         end
-        
-        extended_combined_x_axis = vcat(combined_x_axis, extension_points)
+
     else
-        # The observed data already covers the furthest forecast 
-        # (e.g., Series A ends at 40+5=45, but Series B has observed data up to 50).
-        extended_combined_x_axis = combined_x_axis
+        # No common x axis: treat them as pure indices 1:N
+        base_length = maximum(length(k[:x_axis]) for k in model_estimates_active_plot_container)
+        combined_x_axis = 1:base_length
+
+        max_extended_length = maximum(
+            length(k[:x_axis]) + get(k, :forecast_periods, 0)
+            for k in model_estimates_active_plot_container
+        )
+
+        combined_x_axis_length = length(combined_x_axis)
+        needed_forecast_periods = max(0, max_extended_length - combined_x_axis_length)
+
+        if needed_forecast_periods > 0
+            extended_combined_x_axis = 1:(base_length + needed_forecast_periods)
+        else
+            extended_combined_x_axis = combined_x_axis
+        end
     end
-    
+
     for k in setdiff(keys(args_and_kwargs), 
                         [
                             :run_id, :parameters, :data, :data_in_levels,
