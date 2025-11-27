@@ -1181,51 +1181,52 @@ function plot_model_estimates!(𝓂::ℳ,
     end
 
     common_axis = mapreduce(k -> k[:x_axis], intersect, model_estimates_active_plot_container)
-    if length(common_axis) > 0
-        # Combine all unique x-axis values from all containers and sort them.
-        # This forms the baseline, observed x-axis.
-        combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort
-    else
-        # If no common axis (e.g., just sequential indices), determine the length
-        # by finding the maximum length of any base x_axis.
-        combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container])
-    end
 
-    # --- Determine the maximum *required* length for the extended axis ---
-    # 1. Calculate the length of each container's x_axis + its specific forecast_periods.
-    # 2. Find the maximum of these total required lengths.
-    max_extended_length = maximum([
-        length(k[:x_axis]) + get(k, :forecast_periods, 0)
+    # --- 1. Establish the Baseline Observed Axis ---
+    # We use union (not intersect) to get the full footprint of all observed data.
+    # This handles the case where one starts at 1 and another at 20.
+    combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort
+
+    # --- 2. Determine the Step Size (Period) ---
+    # We need the step size (e.g., 1, Day(1), Month(1)) to calculate future dates/values.
+    period = infer_step(combined_x_axis)
+
+    # --- 3. Calculate the "Max Reach" (The Horizon) ---
+    # Instead of looking at lengths, we look at the actual last value of every series
+    # and add its specific forecast periods to it. 
+    # We find the maximum resulting value (Date or Number).
+    max_reach_value = maximum([
+        k[:x_axis][end] + (get(k, :forecast_periods, 0) * period)
         for k in model_estimates_active_plot_container
     ])
 
-    # The length of the combined_x_axis (the observed data portion).
-    combined_x_axis_length = length(combined_x_axis)
+    # --- 4. Create the Extended Axis ---
+    last_observed_value = combined_x_axis[end]
 
-    # Calculate the actual number of forecast periods needed on top of the combined_x_axis.
-    # This ensures the new axis is long enough to cover the longest single forecast.
-    # This should be at least max_extended_length - combined_x_axis_length, 
-    # but also at least the maximum of all individual forecast periods.
-    # Using the maximum difference is safer.
-    needed_forecast_periods = max_extended_length - combined_x_axis_length
-
-    # --- Create the extended combined x-axis ---
-
-    if needed_forecast_periods > 0
-        # Determine the step size for the extension
-        period = infer_step(combined_x_axis)
-        last_x = combined_x_axis[end]
+    if max_reach_value > last_observed_value
+        # We need to bridge the gap between the end of the observed data 
+        # and the furthest forecast point.
         
-        # Extend the combined_x_axis with the necessary number of periods
-        extended_combined_x_axis = vcat(
-            combined_x_axis, 
-            [last_x + i * period for i in 1:needed_forecast_periods]
-        )
+        # Calculate how many steps are needed to get from last_observed to max_reach.
+        # Note: We calculate this iteratively or mathematically depending on type, 
+        # but a generated array is safest for mixed types (Dates vs Ints).
+        
+        # Generate the extension points
+        extension_points = []
+        current_val = last_observed_value + period
+        
+        while current_val <= max_reach_value
+            push!(extension_points, current_val)
+            current_val += period
+        end
+        
+        extended_combined_x_axis = vcat(combined_x_axis, extension_points)
     else
-        # No extension needed if max_extended_length is <= combined_x_axis_length
+        # The observed data already covers the furthest forecast 
+        # (e.g., Series A ends at 40+5=45, but Series B has observed data up to 50).
         extended_combined_x_axis = combined_x_axis
     end
-
+    
     for k in setdiff(keys(args_and_kwargs), 
                         [
                             :run_id, :parameters, :data, :data_in_levels,
