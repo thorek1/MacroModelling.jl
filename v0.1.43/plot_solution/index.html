@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Policy Functions · MacroModelling.jl</title><meta name="title" content="Policy Functions · MacroModelling.jl"/><meta property="og:title" content="Policy Functions · MacroModelling.jl"/><meta property="twitter:title" content="Policy Functions · MacroModelling.jl"/><meta name="description" content="Documentation for MacroModelling.jl."/><meta property="og:description" content="Documentation for MacroModelling.jl."/><meta property="twitter:description" content="Documentation for MacroModelling.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">MacroModelling.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../tutorials/install/">Installation</a></li><li><a class="tocitem" href="../tutorials/rbc/">Write your first simple model - RBC</a></li><li><a class="tocitem" href="../tutorials/sw03/">Work with a more complex model - Smets and Wouters (2003)</a></li><li><a class="tocitem" href="../tutorials/calibration/">Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)</a></li><li><a class="tocitem" href="../tutorials/estimation/">Estimate a model using gradient based samplers - Schorfheide (2000)</a></li></ul></li><li><span class="tocitem">Plotting</span><ul><li><a class="tocitem" href="../plotting/">Overview</a></li><li><a class="tocitem" href="../plot_irf/">Impulse Response Functions</a></li><li class="is-active"><a class="tocitem" href>Policy Functions</a><ul class="internal"><li><a class="tocitem" href="#Combine-Policy-Functions-with-plot_solution!"><span>Combine Policy Functions with <code>plot_solution!</code></span></a></li><li><a class="tocitem" href="#State-Variable-(Required)"><span>State Variable (Required)</span></a></li><li><a class="tocitem" href="#Variables-to-Plot"><span>Variables to Plot</span></a></li><li><a class="tocitem" href="#Solution-Algorithm"><span>Solution Algorithm</span></a></li><li><a class="tocitem" href="#State-Variable-Range"><span>State Variable Range</span></a></li><li><a class="tocitem" href="#Parameter-Values"><span>Parameter Values</span></a></li><li><a class="tocitem" href="#Ignoring-Occasionally-Binding-Constraints"><span>Ignoring Occasionally Binding Constraints</span></a></li><li><a class="tocitem" href="#Plot-Labels"><span>Plot Labels</span></a></li><li><a class="tocitem" href="#Plot-Attributes"><span>Plot Attributes</span></a></li><li><a class="tocitem" href="#Plots-Per-Page"><span>Plots Per Page</span></a></li><li><a class="tocitem" href="#Display-Plots"><span>Display Plots</span></a></li><li><a class="tocitem" href="#Saving-Plots"><span>Saving Plots</span></a></li><li><a class="tocitem" href="#Variable-and-Shock-Renaming-(rename-dictionary)"><span>Variable and Shock Renaming (rename dictionary)</span></a></li><li><a class="tocitem" href="#Verbose-Output"><span>Verbose Output</span></a></li><li><a class="tocitem" href="#Numerical-Tolerances"><span>Numerical Tolerances</span></a></li><li><a class="tocitem" href="#Quadratic-Matrix-Equation-Solver"><span>Quadratic Matrix Equation Solver</span></a></li><li><a class="tocitem" href="#Sylvester-Equation-Solver"><span>Sylvester Equation Solver</span></a></li><li><a class="tocitem" href="#Lyapunov-Equation-Solver"><span>Lyapunov Equation Solver</span></a></li></ul></li><li><a class="tocitem" href="../plot_conditional_forecast/">Conditional Forecasts</a></li><li><a class="tocitem" href="../plot_conditional_variance_decomposition/">Variance Decomposition</a></li><li><a class="tocitem" href="../plot_model_estimates/">Model Estimates</a></li></ul></li><li><span class="tocitem">How-to guides</span><ul><li><a class="tocitem" href="../how-to/loops/">Programmatic model writing using for-loops</a></li><li><a class="tocitem" href="../how-to/obc/">Occasionally binding constraints</a></li></ul></li><li><a class="tocitem" href="../api/">API</a></li><li><a class="tocitem" href="../call_index/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Plotting</a></li><li class="is-active"><a href>Policy Functions</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Policy Functions</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl/blob/main/docs/src/plot_solution.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Policy-Functions"><a class="docs-heading-anchor" href="#Policy-Functions">Policy Functions</a><a id="Policy-Functions-1"></a><a class="docs-heading-anchor-permalink" href="#Policy-Functions" title="Permalink"></a></h1><p>The <code>plot_solution</code> function visualizes the solution of the model (mapping of past states to present variables) around the relevant steady state (e.g. higher order perturbation algorithms are centred around the stochastic steady state).</p><p>The relevant steady state is plotted along with the mapping from the chosen past state to one present variable per subplot. All other (non-chosen) states remain in the relevant steady state.</p><p>In the case of pruned higher order solutions there are as many (latent) state vectors as the perturbation order. The first and third order state vectors are the non-stochastic steady state and the second order state vector is the stochastic steady state. Deviations for the chosen state are only added to the first order state. The plot shows the mapping from <code>σ</code> standard deviations (first order) added to the first order non-stochastic steady state and the present variables. Note that there is no unique mapping from the &quot;pruned&quot; states and the &quot;actual&quot; reported state. Hence, the plots shown are just one realisation of infinitely many possible mappings.</p><p>If the model contains occasionally binding constraints and <code>ignore_obc = false</code> they are enforced using shocks.</p><p>First, define and load a model:</p><pre><code class="language-julia hljs">@model Gali_2015_chapter_3_nonlinear begin
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    R[0] = 1 / Q[0]
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+    R[0] = Pi[1] * realinterest[0]
+    R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])
+    C[0] = Y[0]
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+    log_y[0] = log(Y[0])
+    log_W_real[0] = log(W_real[0])
+    log_N[0] = log(N[0])
+    pi_ann[0] = 4 * log(Pi[0])
+    i_ann[0] = 4 * log(R[0])
+    r_real_ann[0] = 4 * log(realinterest[0])
+    M_real[0] = Y[0] / R[0] ^ η
+end
+
+@parameters Gali_2015_chapter_3_nonlinear begin
+    σ = 1
+    φ = 5
+    ϕᵖⁱ = 1.5
+    ϕʸ = 0.125
+    θ = 0.75
+    ρ_ν = 0.5
+    ρ_z = 0.5
+    ρ_a = 0.9
+    β = 0.99
+    η = 3.77
+    α = 0.25
+    ϵ = 9
+    τ = 0
+    std_a = .01
+    std_z = .05
+    std_nu = .0025
+end</code></pre><p>Calling <code>plot_solution</code> requires specifying a state variable. By default, it plots <strong>all endogenous variables</strong>, that do vary for different values of the specified state, as functions of the specified state over a range of ±2 standard deviations:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A)</code></pre><p><img src="../assets/solution__Gali_2015_chapter_3_nonlinear__A__1.png" alt="Gali 2015 solution"/></p><p>The function plots each endogenous variable in period <code>t</code> against the state variable <code>A</code> in <code>t-1</code>. Each subplot shows how the variable changes on the y-axis as <code>A</code> varies within the specified range over the x-axis. The relevant steady state is indicated by a circle of the same color as the line. The title of each subplot indicates the variable name and the title of the overall plot indicates the model name, and page number (if multiple pages are needed). The legend below the plots indicate the solution algorithm used and the nature of the steady state (stochastic or non-stochastic).</p><h2 id="Combine-Policy-Functions-with-plot_solution!"><a class="docs-heading-anchor" href="#Combine-Policy-Functions-with-plot_solution!">Combine Policy Functions with <code>plot_solution!</code></a><a id="Combine-Policy-Functions-with-plot_solution!-1"></a><a class="docs-heading-anchor-permalink" href="#Combine-Policy-Functions-with-plot_solution!" title="Permalink"></a></h2><p>The <code>plot_solution!</code> function (note the exclamation mark <code>!</code>) adds additional policy functions to an existing plot created with <code>plot_solution</code>, enabling direct comparison between different scenarios. Any input argument that affects the model&#39;s output (such as solution algorithm, parameter values, or occasionally binding constraints) can be varied to compare how these changes influence the policy functions. See the respective subsections below (e.g., <a href="#solution-algorithm">Solution Algorithm</a>, <a href="#parameter-values">Parameter Values</a>, <a href="#ignoring-occasionally-binding-constraints">Ignoring Occasionally Binding Constraints</a>) for details on specific arguments.</p><p>When using <code>plot_solution!</code>, the new policy function is overlaid on the existing plot with a different color. Both the policy function line and the steady state marker (circle) use the same color to make identification easier.</p><p><strong>Legend and table behavior:</strong></p><ul><li>When inputs differ in <strong>one dimension</strong> (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., <code>:first_order</code>, <code>:second_order</code>).</li><li>When inputs differ in <strong>multiple dimensions</strong> (e.g., both algorithm and parameters change), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.</li><li>Tables below the plot show relevant information such as input differences and steady state values to help identify differences across scenarios.</li></ul><p><strong>Example with single input difference:</strong></p><p>When only one input differs (e.g., the solution algorithm), the legend shows the algorithm names directly:</p><pre><code class="language-julia hljs"># Plot first-order solution
+plot_solution(Gali_2015_chapter_3_nonlinear, :A)
+
+# Add second-order solution to the same plot
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    algorithm = :second_order)</code></pre><p><img src="../assets/mult_algorithms__Gali_2015_chapter_3_nonlinear__A__2.png" alt="Gali 2015 solution - first and second order"/></p><p>The legend will display <code>:first_order</code> and <code>:second_order</code> to identify each policy function.</p><p><strong>Example with multiple input differences:</strong></p><p>When multiple inputs differ (e.g., both algorithm and parameters), the legend shows sequential numbers and a table details the differences:</p><pre><code class="language-julia hljs"># Plot with baseline parameters
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β =&gt; 0.99)
+
+# Add with different algorithm AND parameters
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β =&gt; 0.95,
+    algorithm = :second_order)</code></pre><p><img src="../assets/compare_beta_and_orders_solution__Gali_2015_chapter_3_nonlinear__A__2.png" alt="Gali 2015 solution - comparing β values across algorithms"/></p><p>The legend will show <code>1</code> and <code>2</code>, with a table below the plot listing the parameter and algorithm values for each scenario.</p><h2 id="State-Variable-(Required)"><a class="docs-heading-anchor" href="#State-Variable-(Required)">State Variable (Required)</a><a id="State-Variable-(Required)-1"></a><a class="docs-heading-anchor-permalink" href="#State-Variable-(Required)" title="Permalink"></a></h2><p>The <code>state</code> argument (type: <code>Union{Symbol, String}</code>) specifies which state variable to vary. This must be a state variable from the model (variables with lagged values). If a state variable is provided that is not part of the model&#39;s state vector, an error is raised and the valid state variables are listed.</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A)  # Using Symbol
+plot_solution(Gali_2015_chapter_3_nonlinear, &quot;A&quot;) # Using String</code></pre><h2 id="Variables-to-Plot"><a class="docs-heading-anchor" href="#Variables-to-Plot">Variables to Plot</a><a id="Variables-to-Plot-1"></a><a class="docs-heading-anchor-permalink" href="#Variables-to-Plot" title="Permalink"></a></h2><p>The <code>variables</code> argument (default: <code>:all</code>) specifies for which variables to show results. Variable names can be specified as either a <code>Symbol</code> or <code>String</code> (e.g. <code>:y</code> or <code>&quot;y&quot;</code>), or <code>Tuple</code>, <code>Matrix</code> or <code>Vector</code> of <code>String</code> or <code>Symbol</code>. Any variables not part of the model will trigger a warning. <code>:all_excluding_auxiliary_and_obc</code> includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). <code>:all_excluding_obc</code> includes all variables except those related to occasionally binding constraints. <code>:all</code> includes all variables.</p><p>Specific variables can be selected to plot. The following example selects only output (<code>Y</code>) and inflation (<code>Pi</code>) using a <code>Vector</code> of <code>Symbol</code>s:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    variables = [:Y, :Pi])</code></pre><p><img src="../assets/selection__Gali_2015_chapter_3_nonlinear__A__1.png" alt="Gali 2015 solution - selected variables (Y, Pi)"/></p><p>The plot now displays only the two selected variables (sorted alphabetically), with two subplots for each shock. The same can be done using a <code>Tuple</code>:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    variables = (:Y, :Pi))</code></pre><p>a <code>Matrix</code>:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    variables = [:Y :Pi])</code></pre><p>or providing the variable names as <code>String</code>s:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    variables = [&quot;Y&quot;, &quot;Pi&quot;])</code></pre><p>or a single variable as a <code>Symbol</code>:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    variables = :Y)</code></pre><p>or as a <code>String</code>:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    variables = &quot;Y&quot;)</code></pre><p>Then there are some predefined options:</p><p><code>:all_excluding_auxiliary_and_obc</code> plots all variables except auxiliary variables and those used to enforce occasionally binding constraints (OBC).</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    variables = :all_excluding_auxiliary_and_obc)</code></pre><p><code>:all_excluding_obc</code> plots all variables except those used to enforce occasionally binding constraints (OBC).</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    variables = :all_excluding_obc)</code></pre><p>To see auxiliary variables, use a model that defines them. The <code>FS2000</code> model can be used:</p><pre><code class="language-julia hljs">@model FS2000 begin
+    dA[0] = exp(gam + z_e_a  *  e_a[x])
+    log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+    - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+    W[0] = l[0] / n[0]
+    - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+    R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+    1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+    c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+    P[0] * c[0] = m[0]
+    m[0] - 1 + d[0] = l[0]
+    e[0] = exp(z_e_a  *  e_a[x])
+    y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+    gy_obs[0] = dA[0] * y[0] / y[-1]
+    gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+    log_gy_obs[0] = log(gy_obs[0])
+    log_gp_obs[0] = log(gp_obs[0])
+end
+
+@parameters FS2000 begin
+    alp     = 0.356
+    bet     = 0.993
+    gam     = 0.0085
+    mst     = 1.0002
+    rho     = 0.129
+    psi     = 0.65
+    del     = 0.01
+    z_e_a   = 0.035449
+    z_e_m   = 0.008862
+end</code></pre><p>Since both <code>c</code> and <code>P</code> appear in <code>t+2</code>, they generate auxiliary variables in the model. Plotting the policy functions for all variables excluding OBC-related ones means auxiliary variables are shown (same for the default <code>:all</code> option since there are no OBCs in this model):</p><pre><code class="language-julia hljs">plot_solution(FS2000, :k,
+    variables = :all_excluding_obc)</code></pre><p><img src="../assets/aux__FS2000__k__1.png" alt="FS2000 solution - including auxiliary variables"/></p><p>Both <code>c</code> and <code>P</code> appear twice: once as the variable itself and once as an auxiliary variable with the <code>ᴸ⁽¹⁾</code> superscript, representing the value of the variable in <code>t+1</code> as expected in <code>t</code>.</p><p><code>:all</code> (default) plots all variables including auxiliary variables and those used to enforce occasionally binding constraints (OBC).</p><p>Use the <code>Gali_2015_chapter_3</code> model with an effective lower bound (note the use of the <code>max</code> function in the Taylor rule):</p><pre><code class="language-julia hljs">@model Gali_2015_chapter_3_obc begin
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    R[0] = 1 / Q[0]
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+    R[0] = Pi[1] * realinterest[0]
+    R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+    C[0] = Y[0]
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+    log_y[0] = log(Y[0])
+    log_W_real[0] = log(W_real[0])
+    log_N[0] = log(N[0])
+    pi_ann[0] = 4 * log(Pi[0])
+    i_ann[0] = 4 * log(R[0])
+    r_real_ann[0] = 4 * log(realinterest[0])
+    M_real[0] = Y[0] / R[0] ^ η
+end
+
+@parameters Gali_2015_chapter_3_obc begin
+    R̄ = 1.0
+    σ = 1
+    φ = 5
+    ϕᵖⁱ = 1.5
+    ϕʸ = 0.125
+    θ = 0.75
+    ρ_ν = 0.5
+    ρ_z = 0.5
+    ρ_a = 0.9
+    β = 0.99
+    η = 3.77
+    α = 0.25
+    ϵ = 9
+    τ = 0
+    std_a = .01
+    std_z = .05
+    std_nu = .0025
+    R &gt; 1.0001
+end</code></pre><p>Plotting the policy functions for all variables including OBC-related ones reveals the OBC-related auxiliary variables:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_obc, :A)</code></pre><p><img src="../assets/obc_variables__Gali_2015_chapter_3_obc__A__2.png" alt="Gali 2015 OBC solution - including auxilliary and OBC variables"/></p><p>The OBC-related variables appear in the last two subplots. Note that high values of <code>A</code> in the previous period lead to low values of the nominal interest rate <code>R</code> in the current period, hitting the lower bound (indicated by the flat section of the policy function). For values of <code>A</code> where the constraint is binding the OBC-related variables also vary with <code>A</code>:</p><p><img src="../assets/obc_variables__Gali_2015_chapter_3_obc__A__4.png" alt="Gali 2015 OBC solution - OBC-related variables"/></p><p>The effective lower bound is enforced using shocks to the equation containing the <code>max</code> statement. See the documentation for details on constructing occasionally binding constraints. For this specific model, examine the equations the parser generated to enforce the OBC:</p><pre><code class="language-julia hljs">get_equations(Gali_2015_chapter_3_obc)
+# 68-element Vector{String}:
+#  &quot;W_real[0] = C[0] ^ σ * N[0] ^ φ&quot;
+#  &quot;Q[0] = ((β * (C[1] / C[0]) ^ -σ * Z[1]) / Z[0]) / Pi[1]&quot;
+#  &quot;R[0] = 1 / Q[0]&quot;
+#  &quot;Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)&quot;
+#  &quot;R[0] = Pi[1] * realinterest[0]&quot;
+#  &quot;χᵒᵇᶜ⁺ꜝ¹ꜝˡ[0] = R̄ - R[0]&quot;
+#  ⋮
+#  &quot;ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁶⁾[0] = ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁵⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁴⁾[x]&quot;
+#  &quot;ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁷⁾[0] = ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁶⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽³⁾[x]&quot;
+#  &quot;ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁸⁾[0] = ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁷⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽²⁾[x]&quot;
+#  &quot;ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁹⁾[0] = ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁸⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽¹⁾[x]&quot;
+#  &quot;ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻⁴⁰⁾[0] = ϵᵒᵇᶜ⁺ꜝ¹ꜝᴸ⁽⁻³⁹⁾[-1] + activeᵒᵇᶜshocks * ϵᵒᵇᶜ⁺ꜝ¹ꜝ⁽⁰⁾[x]&quot;</code></pre><h2 id="Solution-Algorithm"><a class="docs-heading-anchor" href="#Solution-Algorithm">Solution Algorithm</a><a id="Solution-Algorithm-1"></a><a class="docs-heading-anchor-permalink" href="#Solution-Algorithm" title="Permalink"></a></h2><p>The <code>algorithm</code> argument (default: <code>:first_order</code>, type: <code>Symbol</code>) specifies which algorithm to use to solve for the dynamics of the model. Available algorithms: <code>:first_order</code>, <code>:second_order</code>, <code>:pruned_second_order</code>, <code>:third_order</code>, <code>:pruned_third_order</code>.</p><p>Compare different solution algorithms by overlaying plots with <code>plot_solution!</code>. The example below plots the first-order solution and then overlays the second-order solution for comparison:</p><pre><code class="language-julia hljs"># Plot first-order policy function
+plot_solution(Gali_2015_chapter_3_nonlinear, :A)
+
+# Overlay second-order to compare
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    algorithm = :second_order)</code></pre><p><img src="../assets/mult_algorithms__Gali_2015_chapter_3_nonlinear__A__2.png" alt="Gali 2015 solution - multiple solution methods"/></p><p>The plot now features both policy functions overlaid. The first-order solution is shown in blue, the second-order solution is shown in orange, as indicated in the legend below the plot. The lines correspond to the policy functions at different orders and the circles indicate the relevant steady state for each solution method. Higher order solutions may have different steady states due to the inclusion of risk effects (see e.g. <code>W_real</code>) and their policy functions may differ due to non-linearities captured at higher orders (see e.g. <code>S</code> which has only higher order dynamics).</p><p>Additional solution methods can be added to the same plot:</p><pre><code class="language-julia hljs">plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    algorithm = :pruned_third_order)</code></pre><p><img src="../assets/mult_algorithms_third_order__Gali_2015_chapter_3_nonlinear__A__1.png" alt="Gali 2015 solution - multiple solution methods (up to 3rd order)"/></p><p>The additional solution appears as another colored line with corresponding entries in the legend. Note that the pruned third-order solution incorporates time-varying risk and reverses the sign of the response for <code>MC</code> and <code>N</code>.</p><h2 id="State-Variable-Range"><a class="docs-heading-anchor" href="#State-Variable-Range">State Variable Range</a><a id="State-Variable-Range-1"></a><a class="docs-heading-anchor-permalink" href="#State-Variable-Range" title="Permalink"></a></h2><p>The <code>σ</code> argument (default: <code>2</code>, type: <code>Union{Int64, Float64}</code>) specifies the range of the state variable as a multiple of its standard deviation. The state variable varies from <code>-σ * std(state)</code> to <code>+σ * std(state)</code>.</p><p>Plot over a wider range (±5 standard deviations) using the pruned third-order solution:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    σ = 5,
+    algorithm = :pruned_third_order)</code></pre><p><img src="../assets/range__Gali_2015_chapter_3_nonlinear__A__3.png" alt="Gali 2015 solution - 5 standard deviations"/></p><p>This expands the x-axis range, showing how the policy functions behave further from the steady state.</p><h2 id="Parameter-Values"><a class="docs-heading-anchor" href="#Parameter-Values">Parameter Values</a><a id="Parameter-Values-1"></a><a class="docs-heading-anchor-permalink" href="#Parameter-Values" title="Permalink"></a></h2><p>When no parameters are provided, the solution uses the previously defined parameter values. Parameters can be provided as a <code>Vector</code> of values, or as a <code>Vector</code> or <code>Tuple</code> of <code>Pair</code>s mapping parameter <code>Symbol</code>s or <code>String</code>s to values. The solution is recalculated when new parameter values differ from the previous ones.</p><p>Start by changing the discount factor <code>β</code> to 0.95:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β =&gt; 0.95)</code></pre><p><img src="../assets/params__Gali_2015_chapter_3_nonlinear__A__1.png" alt="Gali 2015 solution - different parameter values"/></p><p>The steady states and dynamics changed as a result of changing the discount factor. To better visualize the differences between <code>β = 0.99</code> and <code>β = 0.95</code>, the two policy functions can be overlaid (compared). Since parameter changes are permanent, first reset <code>β = 0.99</code> before overlaying the policy function with <code>β = 0.95</code> on top of it:</p><pre><code class="language-julia hljs"># Plot with default parameters
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β =&gt; 0.99)
+
+# Overlay with different discount factor to compare
+plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β =&gt; 0.95)</code></pre><p><img src="../assets/params_compare__Gali_2015_chapter_3_nonlinear__A__1.png" alt="Gali 2015 solution - comparing β values"/></p><p>The legend below the plot indicates which color corresponds to which <code>β</code> value. Note that both the steady states and dynamics differ across the two <code>β</code> values.</p><p>Multiple parameters can also be changed simultaneously to compare the results to previous plots. This example changes <code>β</code> to 0.97 and <code>τ</code> to 0.5 using a <code>Tuple</code> of <code>Pair</code>s and define the variables with <code>Symbol</code>s:</p><pre><code class="language-julia hljs">plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = (:β =&gt; 0.97, :τ =&gt; 0.5))</code></pre><p><img src="../assets/mult_params_compare__Gali_2015_chapter_3_nonlinear__A__1.png" alt="Gali 2015 solution - multiple parameter changes"/></p><p>Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to which input combination, with the table showing relevant input combinations.</p><p>A <code>Vector</code> of <code>Pair</code>s can also be used:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = [:β =&gt; 0.98, :τ =&gt; 0.25])</code></pre><p>Alternatively, use a <code>Vector</code> of parameter values in the order they were defined in the model. To obtain them:</p><pre><code class="language-julia hljs">params = get_parameters(Gali_2015_chapter_3_nonlinear, values = true)
+# 16-element Vector{Pair{String, Float64}}:
+#       &quot;σ&quot; =&gt; 1.0
+#       &quot;φ&quot; =&gt; 5.0
+#     &quot;ϕᵖⁱ&quot; =&gt; 1.5
+#      &quot;ϕʸ&quot; =&gt; 0.125
+#       &quot;θ&quot; =&gt; 0.75
+#     &quot;ρ_ν&quot; =&gt; 0.5
+#     &quot;ρ_z&quot; =&gt; 0.5
+#     &quot;ρ_a&quot; =&gt; 0.9
+#       &quot;β&quot; =&gt; 0.95
+#       &quot;η&quot; =&gt; 3.77
+#       &quot;α&quot; =&gt; 0.25
+#       &quot;ϵ&quot; =&gt; 9.0
+#       &quot;τ&quot; =&gt; 0.5
+#   &quot;std_a&quot; =&gt; 0.01
+#   &quot;std_z&quot; =&gt; 0.05
+#  &quot;std_nu&quot; =&gt; 0.0025
+
+param_vals = [p[2] for p in params]
+# 16-element Vector{Float64}:
+#  1.0
+#  5.0
+#  1.5
+#  0.125
+#  0.75
+#  0.5
+#  0.5
+#  0.9
+#  0.95
+#  3.77
+#  0.25
+#  9.0
+#  0.5
+#  0.01
+#  0.05
+#  0.0025
+
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = param_vals)</code></pre><h2 id="Ignoring-Occasionally-Binding-Constraints"><a class="docs-heading-anchor" href="#Ignoring-Occasionally-Binding-Constraints">Ignoring Occasionally Binding Constraints</a><a id="Ignoring-Occasionally-Binding-Constraints-1"></a><a class="docs-heading-anchor-permalink" href="#Ignoring-Occasionally-Binding-Constraints" title="Permalink"></a></h2><p>The <code>ignore_obc</code> argument (default: <code>false</code>, type: <code>Bool</code>), when <code>true</code>, ignores occasionally binding constraints (OBC) even if they are part of the model. This is useful for comparing dynamics with and without OBC. For models with defined OBC, use the <code>ignore_obc</code> argument to ignore them. The following example compares the policy functions of the <code>Gali_2015_chapter_3_obc</code> model with and without OBC. First, examine the policy function with OBC enforced. Since OBC is enforced by default, call:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_obc, :A)</code></pre><p><img src="../assets/obc_variables__Gali_2015_chapter_3_obc__A__2.png" alt="Gali 2015 OBC solution - OBC"/></p><p>Then overlay the policy function ignoring the OBC:</p><pre><code class="language-julia hljs">plot_solution!(Gali_2015_chapter_3_obc, :A,
+    ignore_obc = true)</code></pre><p><img src="../assets/obc_ignore__Gali_2015_chapter_3_obc__A__2.png" alt="Gali 2015 OBC solution - comparing with and without OBC"/></p><p>The legend indicates which color corresponds to which <code>ignore_obc</code> value. The difference between the two can be noticed at the effective lower bound for <code>R</code>. For values of <code>A</code> where the effective lower bound is reached the shocks enforcing the lower bound act on the economy and the policy function changes for most other variables as well.</p><h2 id="Plot-Labels"><a class="docs-heading-anchor" href="#Plot-Labels">Plot Labels</a><a id="Plot-Labels-1"></a><a class="docs-heading-anchor-permalink" href="#Plot-Labels" title="Permalink"></a></h2><p>The <code>label</code> argument (type: <code>Union{Real, String, Symbol}</code>) adds custom labels to the plot legend. This is useful when comparing multiple solutions using <code>plot_solution!</code> to overlay plots. By default, labels take on the values of the one dimensional input that differs and are sequential numbers in case the input differs along more than one dimension. Furthermore, custom labels can be provided using this argument. Acceptable inputs are a <code>String</code>, <code>Symbol</code>, or a <code>Real</code>.</p><pre><code class="language-julia hljs"># Compare policy functions with different settings
+plot_solution(Gali_2015_chapter_3_obc, :A,
+    algorithm = :pruned_second_order,
+    parameters = :β =&gt; 0.99,
+    label = &quot;2nd Order with OBC&quot;
+    )
+
+# Add solution without OBC
+plot_solution!(Gali_2015_chapter_3_obc, :A,
+    algorithm = :pruned_second_order,
+    ignore_obc = true,
+    label = &quot;2nd Order without OBC&quot;
+    )
+
+# Add different parameter setting
+plot_solution!(Gali_2015_chapter_3_obc, :A,
+    algorithm = :pruned_second_order,
+    parameters = :β =&gt; 0.9925,
+    label = &quot;2nd Order with OBC and β=0.9925&quot;
+    )</code></pre><p><img src="../assets/labels__Gali_2015_chapter_3_obc__A__2.png" alt="Gali 2015 OBC solution - custom labels"/></p><p>The plot demonstrates how to use labels to describe complex inputs. Here variations in multiple input dimensions are compared: solution algorithms, occasionally binding constraints, and parameter values.</p><h2 id="Plot-Attributes"><a class="docs-heading-anchor" href="#Plot-Attributes">Plot Attributes</a><a id="Plot-Attributes-1"></a><a class="docs-heading-anchor-permalink" href="#Plot-Attributes" title="Permalink"></a></h2><p>The <code>plot_attributes</code> argument (default: <code>Dict()</code>, type: <code>Dict</code>) accepts a dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.</p><p>The color palette can be customized using the <code>plot_attributes</code> argument. The following example defines a custom color palette (inspired by the European Commission&#39;s economic reports) to plot policy functions for multiple solution algorithms using the <code>Gali_2015_chapter_3_nonlinear</code> model. First, define the custom color palette using hex color codes:</p><pre><code class="language-julia hljs">ec_color_palette =
+[
+    &quot;#FFD724&quot;,  # &quot;Sunflower Yellow&quot;
+    &quot;#353B73&quot;,  # &quot;Navy Blue&quot;
+    &quot;#2F9AFB&quot;,  # &quot;Sky Blue&quot;
+    &quot;#B8AAA2&quot;,  # &quot;Taupe Grey&quot;
+    &quot;#E75118&quot;,  # &quot;Vermilion&quot;
+    &quot;#6DC7A9&quot;,  # &quot;Mint Green&quot;
+    &quot;#F09874&quot;,  # &quot;Coral&quot;
+    &quot;#907800&quot;   # &quot;Olive&quot;
+]</code></pre><p>Next, plot the policy function for the first order solution algorithm using the custom color palette:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    plot_attributes = Dict(:palette =&gt; ec_color_palette))</code></pre><p>Finally, overlay the policy functions for the second and third order solution algorithms using the custom color palette:</p><pre><code class="language-julia hljs">for a in [:second_order, :third_order]
+    plot_solution!(Gali_2015_chapter_3_nonlinear, :A,
+        algorithm = a,
+        plot_attributes = Dict(:palette =&gt; ec_color_palette))
+end</code></pre><p><img src="../assets/attr__Gali_2015_chapter_3_nonlinear__A__1.png" alt="Gali 2015 solution - different solution algorithms custom color palette"/></p><p>The colors of the policy functions and steady state markers now follow the custom color palette.</p><p>Other attributes such as the font family can also be modified (see here for <a href="https://github.com/JuliaPlots/Plots.jl/blob/v1.41.1/src/backends/gr.jl#L61">GR font options</a>):</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    plot_attributes = Dict(:fontfamily =&gt; &quot;computer modern&quot;))</code></pre><p><img src="../assets/attr_font__Gali_2015_chapter_3_nonlinear__A__1.png" alt="Gali 2015 solution - custom font"/></p><p>All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case)—for example, the subscripts (e.g. <code>₍₀₎</code>) are not rendered properly for this font.</p><p>Here is another example that customizes the line style and width:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    plot_attributes = Dict(:linestyle =&gt; :dashdot, :linewidth =&gt; 2))</code></pre><p><img src="../assets/attr_line__Gali_2015_chapter_3_nonlinear__A__1.png" alt="Gali 2015 solution - custom linestyle and width"/></p><h2 id="Plots-Per-Page"><a class="docs-heading-anchor" href="#Plots-Per-Page">Plots Per Page</a><a id="Plots-Per-Page-1"></a><a class="docs-heading-anchor-permalink" href="#Plots-Per-Page" title="Permalink"></a></h2><p>The <code>plots_per_page</code> argument (default: <code>6</code>, type: <code>Int</code>) controls the number of subplots per page. When the number of variables exceeds this value, multiple pages are created. The following example selects 4 variables and sets <code>plots_per_page</code> to 2, resulting in 2 pages with 2 subplots each:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    variables = [:Y, :Pi, :R, :C],
+    plots_per_page = 2)</code></pre><p><img src="../assets/two_per_page__Gali_2015_chapter_3_nonlinear__A__1.png" alt="Gali 2015 solution - 2 plots per page"/></p><p>The first page displays the first two variables (sorted alphabetically) with two subplots for each shock. The title indicates this is page 1 of 2.</p><h2 id="Display-Plots"><a class="docs-heading-anchor" href="#Display-Plots">Display Plots</a><a id="Display-Plots-1"></a><a class="docs-heading-anchor-permalink" href="#Display-Plots" title="Permalink"></a></h2><p>The <code>show_plots</code> argument (default: <code>true</code>, type: <code>Bool</code>), when <code>true</code>, displays the plots; otherwise, they are only returned as an object.</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    show_plots = false)</code></pre><h2 id="Saving-Plots"><a class="docs-heading-anchor" href="#Saving-Plots">Saving Plots</a><a id="Saving-Plots-1"></a><a class="docs-heading-anchor-permalink" href="#Saving-Plots" title="Permalink"></a></h2><p>The <code>save_plots</code> argument (default: <code>false</code>, type: <code>Bool</code>), when <code>true</code>, saves the plots to disk; otherwise, they are only displayed and returned as an object.</p><p>Related arguments control the saving behavior:</p><ul><li><code>save_plots_format</code> (default: <code>:pdf</code>, type: <code>Symbol</code>): output format of saved plots. See <a href="https://docs.juliaplots.org/latest/output/#Supported-output-file-formats">input formats compatible with GR</a> for valid formats.</li><li><code>save_plots_path</code> (default: <code>&quot;.&quot;</code>, type: <code>String</code>): path where plots are saved. If the path does not exist, it will be created automatically.</li><li><code>save_plots_name</code> (default: <code>&quot;solution&quot;</code>, type: <code>Union{String, Symbol}</code>): prefix prepended to the filename when saving plots.</li></ul><p>Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., <code>solution__ModelName__shock__1.pdf</code>).</p><p>The following example saves all policy functions for the <code>Gali_2015_chapter_3_nonlinear</code> model as PNG files in the <code>../plots</code> directory with <code>policy_function</code> as the filename prefix:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    save_plots = true,
+    save_plots_format = :png,
+    save_plots_path = &quot;./../plots&quot;,
+    save_plots_name = :policy_function)</code></pre><p>The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file with a name reflecting the model, the shock, and a sequential index when the number of variables exceeds the plots per page.</p><h2 id="Variable-and-Shock-Renaming-(rename-dictionary)"><a class="docs-heading-anchor" href="#Variable-and-Shock-Renaming-(rename-dictionary)">Variable and Shock Renaming (rename dictionary)</a><a id="Variable-and-Shock-Renaming-(rename-dictionary)-1"></a><a class="docs-heading-anchor-permalink" href="#Variable-and-Shock-Renaming-(rename-dictionary)" title="Permalink"></a></h2><p>The <code>rename_dictionary</code> argument (default: <code>Dict()</code>, type: <code>AbstractDict{&lt;:Union{Symbol, String}, &lt;:Union{Symbol, String}}</code>) maps variable or shock symbols to custom display names in plots. This is particularly useful when comparing models with different variable naming conventions, allowing them to be displayed with consistent labels.</p><p>For example, to rename variables for clearer display:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    rename_dictionary = Dict(:Y =&gt; &quot;Output&quot;, :Pi =&gt; &quot;Inflation&quot;, :R =&gt; &quot;Interest Rate&quot;))</code></pre><p><img src="../assets/rename_dict__Gali_2015_chapter_3_nonlinear__A__1.png" alt="Gali 2015 solution - rename dictionary"/></p><p>This feature is especially valuable when plotting policy functions from different models. Consider comparing FS2000 (which uses <code>R</code> for the interest rate) with <code>Caldara_et_al_2012</code> (which uses <code>gross_r</code> for the interest rate expressed as a gross return). The <code>rename_dictionary</code> allows harmonizing these names when plotting them together.</p><p>Let&#39;s first parse the <code>Caldara_et_al_2012</code> model:</p><pre><code class="language-julia hljs">@model Caldara_et_al_2012 begin
+    V[0] = ((1 - β) * (c[0] ^ ν * (1 - l[0]) ^ (1 - ν)) ^ (1 - 1 / ψ) + β * V[1] ^ (1 - 1 / ψ)) ^ (1 / (1 - 1 / ψ))
+    exp(s[0]) = V[1] ^ (1 - γ)
+    1 = (1 + ζ * exp(z[1]) * k[0] ^ (ζ - 1) * l[1] ^ (1 - ζ) - δ) * c[0] * β * (((1 - l[1]) / (1 - l[0])) ^ (1 - ν) * (c[1] / c[0]) ^ ν) ^ (1 - 1 / ψ) / c[1]
+    Rᵏ[0] = ζ * exp(z[1]) * k[0] ^ (ζ - 1) * l[1] ^ (1 - ζ) - δ
+    SDF⁺¹[0] = c[0] * β * (((1 - l[1]) / (1 - l[0])) ^ (1 - ν) * (c[1] / c[0]) ^ ν) ^ (1 - 1 / ψ) / c[1]
+    1 + Rᶠ[0] = 1 / SDF⁺¹[0]
+    (1 - ν) / ν * c[0] / (1 - l[0]) = (1 - ζ) * exp(z[0]) * k[-1] ^ ζ * l[0] ^ (-ζ)
+    c[0] + i[0] = exp(z[0]) * k[-1] ^ ζ * l[0] ^ (1 - ζ)
+    k[0] = i[0] + k[-1] * (1 - δ)
+    z[0] = λ * z[-1] + σ[0] * ϵᶻ[x]
+    y[0] = exp(z[0]) * k[-1] ^ ζ * l[0] ^ (1 - ζ)
+    log(σ[0]) = (1 - ρ) * log(σ̄) + ρ * log(σ[-1]) + η * ω[x]
+    gross_r[0] = 1 + Rᶠ[0]
+end
+
+@parameters Caldara_et_al_2012 begin
+    β = 0.991
+    l[ss] = 1/3 | ν
+    ζ = 0.3
+    δ = 0.0196
+    λ = 0.95
+    ψ = 0.5
+    γ = 40
+    σ̄ = 0.021
+    η = 0.1
+    ρ = 0.9
+end</code></pre><p>and then plot the solutions from both models with consistent variable names using <code>rename_dictionary</code>:</p><pre><code class="language-julia hljs"># First model (FS2000) with lowercase variable names
+plot_solution(FS2000, :k,
+    variables = [:c, :y, :R],
+    rename_dictionary = Dict(:c =&gt; &quot;Consumption&quot;, :y =&gt; &quot;Output&quot;, :R =&gt; &quot;Interest Rate&quot;))
+
+# Overlay second model (Caldara_et_al_2012) with different naming, mapped to same display names
+plot_solution!(Caldara_et_al_2012, :k,
+    variables = [:c, :y, :gross_r],
+    rename_dictionary = Dict(:c =&gt; &quot;Consumption&quot;, :y =&gt; &quot;Output&quot;, :gross_r =&gt; &quot;Interest Rate&quot;))</code></pre><p><img src="../assets/rename_dict_combine__multiple_models__k__1.png" alt="FS2000 and Gali 2015 solution - multiple models with rename dictionary"/></p><p>As can be seen the steady states and dynamics around the respective steady states differ across states and variables for the two models but they are shown in the same subplots with consistent labels.</p><p>The <code>rename_dictionary</code> accepts flexible type combinations for keys and values—both <code>Symbol</code> and <code>String</code> types work interchangeably:</p><pre><code class="language-julia hljs"># All of these are valid and equivalent:
+Dict(:y =&gt; &quot;Output&quot;)              # Symbol key, String value
+Dict(&quot;y&quot; =&gt; &quot;Output&quot;)             # String key, String value
+Dict(:y =&gt; :Output)               # Symbol key, Symbol value
+Dict(&quot;y&quot; =&gt; :Output)              # String key, Symbol value</code></pre><p>This flexibility is particularly useful for models like <code>Backus_Kehoe_Kydland_1992</code>, which uses <code>String</code> representations of variable and shock names (because of <code>{}</code>):</p><pre><code class="language-julia hljs"># Define the Backus model (abbreviated for clarity)
+@model Backus_Kehoe_Kydland_1992 begin
+    for co in [H, F]
+        Y{co}[0] = ((LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1-theta{co}))^(-nu{co}) + sigma{co} * Z{co}[-1]^(-nu{co}))^(-1/nu{co})
+        K{co}[0] = (1-delta{co})*K{co}[-1] + S{co}[0]
+        X{co}[0] = for lag in (-4+1):0 phi{co} * S{co}[lag] end
+        A{co}[0] = (1-eta{co}) * A{co}[-1] + N{co}[0]
+        L{co}[0] = 1 - alpha{co} * N{co}[0] - (1-alpha{co})*eta{co} * A{co}[-1]
+        U{co}[0] = (C{co}[0]^mu{co}*L{co}[0]^(1-mu{co}))^gamma{co}
+        psi{co} * mu{co} / C{co}[0]*U{co}[0] = LGM[0]
+        psi{co} * (1-mu{co}) / L{co}[0] * U{co}[0] * (-alpha{co}) = - LGM[0] * (1-theta{co}) / N{co}[0] * (LAMBDA{co}[0] * K{co}[-4]^theta{co}*N{co}[0]^(1-theta{co}))^(-nu{co})*Y{co}[0]^(1+nu{co})
+
+        for lag in 0:(4-1)  
+            beta{co}^lag * LGM[lag]*phi{co}
+        end +
+        for lag in 1:4
+            -beta{co}^lag * LGM[lag] * phi{co} * (1-delta{co})
+        end = beta{co}^4 * LGM[+4] * theta{co} / K{co}[0] * (LAMBDA{co}[+4] * K{co}[0]^theta{co} * N{co}[+4]^(1-theta{co})) ^ (-nu{co})* Y{co}[+4]^(1+nu{co})
+
+        LGM[0] = beta{co} * LGM[+1] * (1+sigma{co} * Z{co}[0]^(-nu{co}-1)*Y{co}[+1]^(1+nu{co}))
+        NX{co}[0] = (Y{co}[0] - (C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1]))/Y{co}[0]
+    end
+
+    (LAMBDA{H}[0]-1) = rho{H}{H}*(LAMBDA{H}[-1]-1) + rho{H}{F}*(LAMBDA{F}[-1]-1) + Z_E{H} * E{H}[x]
+    (LAMBDA{F}[0]-1) = rho{F}{F}*(LAMBDA{F}[-1]-1) + rho{F}{H}*(LAMBDA{H}[-1]-1) + Z_E{F} * E{F}[x]
+
+    for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
+end
+
+@parameters Backus_Kehoe_Kydland_1992 begin
+    K_ss = 11
+    K[ss] = K_ss | beta
+    
+    mu      =    0.34
+    gamma   =    -1.0
+    alpha   =    1
+    eta     =    0.5
+    theta   =    0.36
+    nu      =    3
+    sigma   =    0.01
+    delta   =    0.025
+    phi     =    1/4
+    psi     =    0.5
+
+    Z_E = 0.00852
+    
+    rho{H}{H} = 0.906
+    rho{F}{F} = rho{H}{H}
+    rho{H}{F} = 0.088
+    rho{F}{H} = rho{H}{F}
+end
+
+# Backus model example showing String to String mapping
+plot_solution(Backus_Kehoe_Kydland_1992, &quot;K{H}&quot;,
+    rename_dictionary = Dict(&quot;K{H}&quot; =&gt; &quot;Capital (Home)&quot;, 
+                             &quot;K{F}&quot; =&gt; &quot;Capital (Foreign)&quot;,
+                             &quot;Y{H}&quot; =&gt; &quot;Output (Home)&quot;,
+                             &quot;Y{F}&quot; =&gt; &quot;Output (Foreign)&quot;))</code></pre><p><img src="../assets/rename_dict_string__Backus_Kehoe_Kydland_1992__K{H}__1.png" alt="Backus, Kehoe, Kydland 1992 solution - rename dictionary"/></p><p>Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.</p><h2 id="Verbose-Output"><a class="docs-heading-anchor" href="#Verbose-Output">Verbose Output</a><a id="Verbose-Output-1"></a><a class="docs-heading-anchor-permalink" href="#Verbose-Output" title="Permalink"></a></h2><p>The <code>verbose</code> argument (default: <code>false</code>, type: <code>Bool</code>), when <code>true</code>, enables verbose output related to solving the model</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    verbose = true)</code></pre><p>The code outputs information about solving the steady state blocks. When parameters change, the first-order solution is recomputed; otherwise, it uses the cached solution:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    parameters = :β =&gt; 0.955,
+    verbose = true)
+# Parameter changes: 
+#         β       from 0.99       to 0.955
+# New parameters changed the steady state.
+# Block: 1, - Solved with newton using previous solution - 1.1102230246251565e-16 - 4.2410519540681003e-16 - [6, 6]
+# Block: 2, - Solved with newton using previous solution - 1.1102230246251565e-16 - 5.691489219773501e-16 - [3, 3]
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 3.138740904769479e-15
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 1.1102230246251565e-16
+# Quadratic matrix equation solver previous solution has tolerance: 3.138740904769479e-15
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 1.3848825622828143e-16; algorithm: doubling
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 1.1102230246251565e-16</code></pre><h2 id="Numerical-Tolerances"><a class="docs-heading-anchor" href="#Numerical-Tolerances">Numerical Tolerances</a><a id="Numerical-Tolerances-1"></a><a class="docs-heading-anchor-permalink" href="#Numerical-Tolerances" title="Permalink"></a></h2><p>The <code>tol</code> argument (default: <code>Tolerances()</code>, type: <code>Tolerances</code>) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: <code>?Tolerances</code>. The tolerances used by the numerical solvers can be adjusted. The Tolerances object allows setting tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (QME). For example, to set tighter tolerances (this example also changes parameters to force recomputation):</p><pre><code class="language-julia hljs">custom_tol = Tolerances(qme_acceptance_tol = 1e-12,
+    sylvester_acceptance_tol = 1e-12)
+
+plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    tol = custom_tol,
+    algorithm = :second_order,
+    parameters = :β =&gt; 0.9555,
+    verbose = true)
+# Parameter changes: 
+#         β       from 0.955      to 0.9555
+# New parameters changed the steady state.
+# Take symbolic derivatives up to second order:                           0.695 seconds
+# Block: 1, - Solved with newton using previous solution - 3.1401849173675503e-16 - 3.4746121346743126e-13 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 5.20740757162067e-16 - 4.1252659916132045e-16 - [3, 3]
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 4.98829092574606e-15
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.551115123125783e-16
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 4.98829092574606e-15
+# Sylvester equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 8.152041655449966e-17; algorithm: doubling
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.551115123125783e-16
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 4.98829092574606e-15
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 1.5026261035607414e-16; algorithm: doubling
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.551115123125783e-16
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.551115123125783e-16</code></pre><p>This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or when encountering issues with the default solver.</p><h2 id="Quadratic-Matrix-Equation-Solver"><a class="docs-heading-anchor" href="#Quadratic-Matrix-Equation-Solver">Quadratic Matrix Equation Solver</a><a id="Quadratic-Matrix-Equation-Solver-1"></a><a class="docs-heading-anchor-permalink" href="#Quadratic-Matrix-Equation-Solver" title="Permalink"></a></h2><p>The <code>quadratic_matrix_equation_algorithm</code> argument (default: <code>:schur</code>, type: <code>Symbol</code>) specifies the algorithm to solve quadratic matrix equation (<code>A * X ^ 2 + B * X + C = 0</code>). Available algorithms: <code>:schur</code>, <code>:doubling</code> The quadratic matrix equation solver is used internally when solving the model to first order. Different algorithms are available. The <code>:schur</code> algorithm is generally faster and more reliable, while <code>:doubling</code> can be more precise in some cases (this example also changes parameters to force recomputation):</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    quadratic_matrix_equation_algorithm = :doubling,
+    parameters = :β =&gt; 0.95555,
+    verbose = true)
+# Parameter changes: 
+#         β       from 0.9555     to 0.95555
+# New parameters changed the steady state.
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver: doubling - converged: true in 8 iterations to tolerance: 2.5226767989622104e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 8.580119223206854e-17; algorithm: doubling
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]</code></pre><p>For most use cases, the default <code>:schur</code> algorithm is recommended. Use this argument for specific needs or when encountering issues with the default solver.</p><h2 id="Sylvester-Equation-Solver"><a class="docs-heading-anchor" href="#Sylvester-Equation-Solver">Sylvester Equation Solver</a><a id="Sylvester-Equation-Solver-1"></a><a class="docs-heading-anchor-permalink" href="#Sylvester-Equation-Solver" title="Permalink"></a></h2><p>[Default: selector that uses <code>:doubling</code> for smaller problems and switches to <code>:bicgstab</code> for larger problems, Type: <code>Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}}</code>]: Algorithm to solve the Sylvester equation (<code>A * X * B + C = X</code>). Available algorithms: <code>:doubling</code>, <code>:bartels_stewart</code>, <code>:bicgstab</code>, <code>:dqgmres</code>, <code>:gmres</code>. The input argument can contain up to two elements in a <code>Vector</code> or <code>Tuple</code>. The first (second) element corresponds to the second (third) order perturbation solution&#39;s Sylvester equation. When only one element is provided, it corresponds to the second-order perturbation solution&#39;s Sylvester equation. The algorithm to use can be specified for solving Sylvester equations in higher-order solutions. For example, select the <code>:bartels_stewart</code> algorithm for solving the second-order perturbation problem:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    algorithm = :second_order,
+    sylvester_algorithm = :bartels_stewart,
+    verbose = true)
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Sylvester equation - converged to tol 1.0e-10: true; iterations: -1; reached tol: 8.857092101472476e-17; algorithm: bartels_stewart
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 8.580119223206854e-17; algorithm: doubling
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]</code></pre><p>For third-order solutions, different algorithms can be specified for the second- and third-order Sylvester equations using a <code>Tuple</code>:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    algorithm = :third_order,
+    sylvester_algorithm = (:doubling, :bicgstab),
+    verbose = true)
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Sylvester equation - previous solution achieves relative tol of 8.646717716454426e-17
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Sylvester equation - previous solution achieves relative tol of 8.646717716454426e-17
+# Sylvester equation - converged to tol 1.0e-10: true; iterations: 20; reached tol: 2.246045342648752e-16; algorithm: bicgstab
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 8.580119223206854e-17; algorithm: doubling
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]</code></pre><p>The choice of algorithm affects both speed and precision: <code>:doubling</code> and <code>:bartels_stewart</code> are generally faster, while <code>:bicgstab</code>, <code>:dqgmres</code>, and <code>:gmres</code> are better for large sparse problems. Use this argument for specific needs or when encountering issues with the default solver.</p><h2 id="Lyapunov-Equation-Solver"><a class="docs-heading-anchor" href="#Lyapunov-Equation-Solver">Lyapunov Equation Solver</a><a id="Lyapunov-Equation-Solver-1"></a><a class="docs-heading-anchor-permalink" href="#Lyapunov-Equation-Solver" title="Permalink"></a></h2><p>[Default: <code>:doubling</code>, Type: <code>Symbol</code>]: Algorithm to solve the Lyapunov equation (<code>A * X * A&#39; + C = X</code>). Available algorithms: <code>:doubling</code>, <code>:bartels_stewart</code>, <code>:bicgstab</code>, <code>:gmres</code>.</p><p>The algorithm is used to compute the first-order standard deviation that defines the range for the state variable. A different algorithm can be specified for solving the Lyapunov equation. For example, the <code>:bartels_stewart</code> algorithm can be selected:</p><pre><code class="language-julia hljs">plot_solution(Gali_2015_chapter_3_nonlinear, :A,
+    lyapunov_algorithm = :bartels_stewart,
+    verbose = true)
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 2.5226767989622104e-16
+# Lyapunov equation - converged to tol 1.0e-12: true; iterations: 0; reached tol: 6.174299026893289e-17; algorithm: bartels_stewart
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 4.839349969133127e-16 - 4.1390488915798046e-16 - [3, 3]</code></pre><p>The choice of algorithm affects both speed and precision: <code>:doubling</code> and <code>:bartels_stewart</code> are generally faster, while <code>:bicgstab</code>, and <code>:gmres</code> are better for large sparse problems. Use this argument for specific needs or when encountering issues with the default solver.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../plot_irf/">« Impulse Response Functions</a><a class="docs-footer-nextpage" href="../plot_conditional_forecast/">Conditional Forecasts »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Friday 28 November 2025 21:59">Friday 28 November 2025</span>. Using Julia version 1.12.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
