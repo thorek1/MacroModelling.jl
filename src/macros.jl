@@ -836,6 +836,8 @@ macro model(𝓂,ex...)
                         $parameters,
                         $parameters,
                         $parameter_values,
+                        
+                        Symbol[], # missing_parameters - to be filled by @parameters
 
                         Dict{Symbol, Float64}(), # guess
 
@@ -1459,7 +1461,15 @@ macro parameters(𝓂,ex...)
         calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         
-        @assert length(setdiff(setdiff(setdiff(union(reduce(union, par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)...])
+        # Calculate missing parameters instead of asserting
+        missing_params = collect(setdiff(setdiff(setdiff(union(reduce(union, par_calib_list, init = []), mod.$𝓂.parameters_in_equations), calib_parameters), calib_parameters_no_var), calib_eq_parameters))
+        mod.$𝓂.missing_parameters = sort(missing_params)
+        
+        has_missing_parameters = length(missing_params) > 0
+        
+        if has_missing_parameters
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_SS`, `simulate`, etc."
+        end
 
         for (k,v) in $bounds
             mod.$𝓂.bounds[k] = haskey(mod.$𝓂.bounds, k) ? (max(mod.$𝓂.bounds[k][1], v[1]), min(mod.$𝓂.bounds[k][2], v[2])) : (v[1], v[2])
@@ -1505,7 +1515,7 @@ macro parameters(𝓂,ex...)
         
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed 
-        if !$precompile 
+        if !$precompile && !has_missing_parameters
             start_time = time()
 
             if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
@@ -1528,7 +1538,7 @@ macro parameters(𝓂,ex...)
             set_up_obc_violation_function!(mod.$𝓂)
 
             if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-        else
+        elseif !has_missing_parameters
             start_time = time()
         
             if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
@@ -1540,11 +1550,11 @@ macro parameters(𝓂,ex...)
 
         start_time = time()
 
-        mod.$𝓂.solution.functions_written = true
+        mod.$𝓂.solution.functions_written = !has_missing_parameters
 
         opts = merge_calculation_options(verbose = $verbose)
 
-        if !$precompile
+        if !$precompile && !has_missing_parameters
             if !$silent 
                 print("Find non-stochastic steady state:\t\t\t\t\t") 
             end
@@ -1576,28 +1586,29 @@ macro parameters(𝓂,ex...)
             mod.$𝓂.solution.outdated_NSSS = false
         end
 
+        if !has_missing_parameters
+            start_time = time()
 
-        start_time = time()
-
-        if !$silent
-            if $perturbation_order == 1
-                print("Take symbolic derivatives up to first order:\t\t\t\t")
-            elseif $perturbation_order == 2
-                print("Take symbolic derivatives up to second order:\t\t\t\t")
-            elseif $perturbation_order == 3
-                print("Take symbolic derivatives up to third order:\t\t\t\t")
+            if !$silent
+                if $perturbation_order == 1
+                    print("Take symbolic derivatives up to first order:\t\t\t\t")
+                elseif $perturbation_order == 2
+                    print("Take symbolic derivatives up to second order:\t\t\t\t")
+                elseif $perturbation_order == 3
+                    print("Take symbolic derivatives up to third order:\t\t\t\t")
+                end
             end
-        end
 
-        write_auxiliary_indices!(mod.$𝓂)
+            write_auxiliary_indices!(mod.$𝓂)
 
-        # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, $perturbation_order)
+            # time_dynamic_derivs = @elapsed 
+            write_functions_mapping!(mod.$𝓂, $perturbation_order)
 
-        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-        
-        if !$silent
-            println(round(time() - start_time, digits = 3), " seconds")
+            mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+            
+            if !$silent
+                println(round(time() - start_time, digits = 3), " seconds")
+            end
         end
 
         if !$silent Base.show(mod.$𝓂) end

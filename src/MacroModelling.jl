@@ -204,7 +204,7 @@ export Tolerances
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
 export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare, export_dynare, export_to_dynare, export_mod_file, export_model
 
-export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables
+export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables, get_missing_parameters, has_missing_parameters
 # Internal
 export irf, girf
 
@@ -355,6 +355,11 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                     ""
                 else
                     "\nCalibration\nequations:    " * repr(length(𝓂.calibration_equations))
+                end,
+                if isempty(𝓂.missing_parameters)
+                    ""
+                else
+                    "\nMissing\nparameters:   " * repr(𝓂.missing_parameters)
                 end,
                 # "\n¹: including auxiliary variables"
                 # "\nVariable bounds (upper,lower,any): ",sum(𝓂.upper_bounds .< Inf),", ",sum(𝓂.lower_bounds .> -Inf),", ",length(𝓂.bounds),
@@ -6673,6 +6678,25 @@ function solve!(𝓂::ℳ;
     # @timeit_debug timer "Write parameter inputs" begin
 
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
+    
+    # Check for missing parameters after processing input
+    if !isempty(𝓂.missing_parameters)
+        error("Cannot solve model: missing parameter values for $(𝓂.missing_parameters). Provide them via the `parameters` keyword argument (e.g., `parameters = [:α => 0.3, :β => 0.99]`).")
+    end
+    
+    # If functions haven't been written yet (because model was set up with missing params that are now provided), set them up
+    if !𝓂.solution.functions_written
+        symbolics = create_symbols_eqs!(𝓂)
+        remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = false)
+        solve_steady_state!(𝓂, false, symbolics, verbose = opts.verbose, avoid_solve = false)
+        𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+        set_up_obc_violation_function!(𝓂)
+        write_auxiliary_indices!(𝓂)
+        write_functions_mapping!(𝓂, 1)
+        𝓂.solution.functions_written = true
+        𝓂.solution.outdated_NSSS = true
+        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+    end
 
     # end # timeit_debug
 
@@ -7929,54 +7953,91 @@ write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{String, Real}}; verbo
 
 
 function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; verbose::Bool = true)
-    if length(setdiff(collect(keys(parameters)),𝓂.parameters))>0
-        println("Parameters not part of the model: ",setdiff(collect(keys(parameters)),𝓂.parameters))
-        for kk in setdiff(collect(keys(parameters)),𝓂.parameters)
-            delete!(parameters,kk)
-        end
-    end
-
-    bounds_broken = false
-
-    for (par,val) in parameters
-        if haskey(𝓂.bounds,par)
-            if val > 𝓂.bounds[par][2]
-                println("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
-                bounds_broken = true
-                continue
+    # Handle missing parameters - add them if they are in the missing_parameters list
+    missing_params_provided = intersect(collect(keys(parameters)), 𝓂.missing_parameters)
+    
+    if !isempty(missing_params_provided)
+        for par in missing_params_provided
+            # Add the parameter to the model
+            push!(𝓂.parameters, par)
+            push!(𝓂.parameter_values, parameters[par])
+            # Remove from missing_parameters
+            filter!(x -> x != par, 𝓂.missing_parameters)
+            if verbose 
+                println("Missing parameter provided: ", par, " = ", parameters[par]) 
             end
-            if val < 𝓂.bounds[par][1]
-                println("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
-                bounds_broken = true
-                continue
-            end
+            # Remove from parameters dict so we don't try to update it below
+            delete!(parameters, par)
         end
-    end
-
-    if bounds_broken
-        println("Parameters unchanged.")
-    else
-        ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1],collect(keys(parameters)))
         
-        if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters))) && !(𝓂.parameters[ntrsct_idx] == [:activeᵒᵇᶜshocks])
-            if verbose println("Parameter changes: ") end
-            𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-        end
-            
-        for i in 1:length(parameters)
-            if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
-                    𝓂.solution.outdated_NSSS = true
-                end
-                
-                if verbose println("\t",𝓂.parameters[ntrsct_idx[i]],"\tfrom ",𝓂.parameter_values[ntrsct_idx[i]],"\tto ",collect(values(parameters))[i]) end
-
-                𝓂.parameter_values[ntrsct_idx[i]] = collect(values(parameters))[i]
+        # Mark that solution needs to be recomputed
+        𝓂.solution.outdated_NSSS = true
+        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        𝓂.solution.functions_written = false
+        
+        # If all missing parameters are now provided, print a message
+        if isempty(𝓂.missing_parameters)
+            if verbose
+                println("All missing parameters have been provided. The model can now be solved.")
+            end
+        else
+            if verbose
+                println("Remaining missing parameters: ", 𝓂.missing_parameters)
             end
         end
     end
+    
+    # Handle remaining parameters (not missing ones)
+    if !isempty(parameters)
+        if length(setdiff(collect(keys(parameters)),𝓂.parameters))>0
+            println("Parameters not part of the model: ",setdiff(collect(keys(parameters)),𝓂.parameters))
+            for kk in setdiff(collect(keys(parameters)),𝓂.parameters)
+                delete!(parameters,kk)
+            end
+        end
 
-    if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
+        bounds_broken = false
+
+        for (par,val) in parameters
+            if haskey(𝓂.bounds,par)
+                if val > 𝓂.bounds[par][2]
+                    println("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
+                    bounds_broken = true
+                    continue
+                end
+                if val < 𝓂.bounds[par][1]
+                    println("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
+                    bounds_broken = true
+                    continue
+                end
+            end
+        end
+
+        if bounds_broken
+            println("Parameters unchanged.")
+        else
+            ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1],collect(keys(parameters)))
+            
+            if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters))) && !(𝓂.parameters[ntrsct_idx] == [:activeᵒᵇᶜshocks])
+                if verbose println("Parameter changes: ") end
+                𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+            end
+                
+            for i in 1:length(parameters)
+                if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
+                    if collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
+                        𝓂.solution.outdated_NSSS = true
+                    end
+                    
+                    if verbose println("\t",𝓂.parameters[ntrsct_idx[i]],"\tfrom ",𝓂.parameter_values[ntrsct_idx[i]],"\tto ",collect(values(parameters))[i]) end
+
+                    𝓂.parameter_values[ntrsct_idx[i]] = collect(values(parameters))[i]
+                end
+            end
+        end
+
+        if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
+    end
 
     return nothing
 end
