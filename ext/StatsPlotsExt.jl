@@ -122,9 +122,7 @@ plotlyjs_backend(args...; kwargs...) = StatsPlots.plotlyjs(args...; kwargs...)
 Clear all elements from a plot container.
 """
 function clear_container!(container::Vector{Dict})
-    while length(container) > 0
-        pop!(container)
-    end
+    empty!(container)
 end
 
 """
@@ -188,32 +186,6 @@ function group_container_by_model_and_merge_diffs(container::Vector{Dict}, args_
     end
     
     return diffdict
-end
-
-"""
-    push_if_no_duplicate!(container::Vector{Dict}, args_and_kwargs::Dict, duplicate_check_keys::Vector{Symbol})
-
-Check if args_and_kwargs is a duplicate of any entry in container, and push if not.
-Returns true if pushed (no duplicate), false if duplicate found.
-
-The duplicate_check_keys specifies additional keys to check beyond the common DEFAULT_ARGS_AND_KWARGS_NAMES.
-"""
-function push_if_no_duplicate!(container::Vector{Dict}, args_and_kwargs::Dict, duplicate_check_keys::Vector{Symbol})
-    no_duplicate = all(
-        !(all((
-            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in duplicate_check_keys),
-            all(get(dict, k, nothing) == get(args_and_kwargs, k, nothing) for k in setdiff(keys(DEFAULT_ARGS_AND_KWARGS_NAMES), [:label]))
-        )))
-        for dict in container
-    )
-    
-    if no_duplicate
-        push!(container, args_and_kwargs)
-    else
-        @info "Plot with same parameters already exists. Using previous plot data to create plot."
-    end
-    
-    return no_duplicate
 end
 
 """
