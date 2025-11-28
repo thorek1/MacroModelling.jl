@@ -70,7 +70,7 @@ pt = @time Pigeons.pigeons(target = FS2000_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
             n_rounds = 10,
-            multithreaded = false)
+            multithreaded = true)
 
 samps = MCMCChains.Chains(pt)
 
