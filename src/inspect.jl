@@ -366,7 +366,7 @@ $(SIGNATURES)
 Returns the parameters which are required by the model but have not been assigned values in the `@parameters` block. These parameters must be provided via the `parameters` keyword argument in functions like `get_irf`, `get_SS`, `simulate`, etc. before the model can be solved.
 
 # Arguments
-- \$MODEL®
+- $MODEL®
 
 # Returns
 - `Vector{String}` of the missing parameters.
@@ -406,7 +406,7 @@ $(SIGNATURES)
 Checks if the model has any missing parameters that need to be defined before it can be solved.
 
 # Arguments
-- \$MODEL®
+- $MODEL®
 
 # Returns
 - `Bool`: `true` if there are missing parameters, `false` otherwise.
