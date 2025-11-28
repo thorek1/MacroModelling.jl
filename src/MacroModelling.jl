@@ -4783,7 +4783,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
         n -= 1
     end
 
-    push!(NSSS_solver_cache_init_tmp, fill(Inf, length(𝓂.parameters)))
+    push!(NSSS_solver_cache_init_tmp, fill(Inf, length(𝓂.parameters) + length(𝓂.missing_parameters)))
     push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_init_tmp)
 
     unknwns = Symbol.(unknowns)
@@ -6684,19 +6684,6 @@ function solve!(𝓂::ℳ;
         error("Cannot solve model: missing parameter values for $(𝓂.missing_parameters). Provide them via the `parameters` keyword argument (e.g., `parameters = [:α => 0.3, :β => 0.99]`).")
     end
     
-    # If functions haven't been written yet (because model was set up with missing params that are now provided), set them up
-    if !𝓂.solution.functions_written
-        symbolics = create_symbols_eqs!(𝓂)
-        remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = false)
-        solve_steady_state!(𝓂, false, symbolics, verbose = opts.verbose, avoid_solve = false)
-        𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
-        set_up_obc_violation_function!(𝓂)
-        write_auxiliary_indices!(𝓂)
-        write_functions_mapping!(𝓂, 1)
-        𝓂.solution.functions_written = true
-        𝓂.solution.outdated_NSSS = true
-        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-    end
 
     # end # timeit_debug
 
