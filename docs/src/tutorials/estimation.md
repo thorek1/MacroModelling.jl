@@ -100,8 +100,9 @@ Next the parameter priors are defined using the Turing package. The `@model` mac
 
 ```@repl tutorial_2
 import Turing
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, replacenames
 import ADTypes: AutoZygote
+import Zygote
 
 prior_distributions = [
     Beta(0.356, 0.02, μσ = true),           # alp
