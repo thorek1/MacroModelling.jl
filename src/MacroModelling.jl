@@ -6677,10 +6677,7 @@ function solve!(𝓂::ℳ;
     
     # @timeit_debug timer "Write parameter inputs" begin
 
-    if !𝓂.solution.functions_written
-        Core.eval(Main, :(@parameters($(Symbol(𝓂.model_name)), report_missing_parameters = false, nothing)))
-    end
-
+    # First, write the provided parameters to update missing parameter values
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
     
     # Check for missing parameters after processing input
@@ -6688,6 +6685,19 @@ function solve!(𝓂::ℳ;
         error("Cannot solve model: missing parameter values for $(𝓂.missing_parameters). Provide them via the `parameters` keyword argument (e.g., `parameters = [:α => 0.3, :β => 0.99]`).")
     end
     
+    # If functions haven't been written yet (because model was set up with missing params that are now provided), set them up
+    if !𝓂.solution.functions_written
+        symbolics = create_symbols_eqs!(𝓂)
+        remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = false)
+        solve_steady_state!(𝓂, false, symbolics, verbose = opts.verbose, avoid_solve = false)
+        𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+        set_up_obc_violation_function!(𝓂)
+        write_auxiliary_indices!(𝓂)
+        write_functions_mapping!(𝓂, 1)
+        𝓂.solution.functions_written = true
+        𝓂.solution.outdated_NSSS = true
+        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+    end
 
     # end # timeit_debug
 
@@ -7944,15 +7954,27 @@ write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Real}}; verbose::B
 
 
 function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; verbose::Bool = true)
-    # Handle missing parameters - add them if they are in the missing_parameters list
+    # Handle missing parameters - update their values if they are in the missing_parameters list
     missing_params_provided = intersect(collect(keys(parameters)), 𝓂.missing_parameters)
     
     if !isempty(missing_params_provided)
+        for par in missing_params_provided
+            # Find the parameter index and update its value
+            idx = findfirst(x -> x == par, 𝓂.parameters)
+            if !isnothing(idx)
+                if verbose
+                    println("Missing parameter provided: ", par, " = ", parameters[par])
+                end
+                𝓂.parameter_values[idx] = parameters[par]
+            end
+        end
+        
         setdiff!(𝓂.missing_parameters, missing_params_provided)
         
         # Mark that solution needs to be recomputed
         𝓂.solution.outdated_NSSS = true
         𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        𝓂.solution.functions_written = false
         
         # If all missing parameters are now provided, print a message
         if isempty(𝓂.missing_parameters)
@@ -8003,7 +8025,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
             
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
+                # Check if SS_dependencies is available (it's nothing when model has missing parameters)
+                if !isnothing(𝓂.SS_dependencies) && collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
                     𝓂.solution.outdated_NSSS = true
                 end
                 

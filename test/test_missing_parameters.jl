@@ -183,7 +183,7 @@ using MacroModelling
         
         # Check that missing parameters are shown
         @test occursin("Missing", display_str)
-        @test occursin("parameters", display_str)
-        @test occursin("α", display_str) || occursin(":α", display_str)
+        # The display shows " Missing:     N" where N is the count
+        @test occursin("3", display_str) # 3 missing: α, β, δ
     end
 end

@@ -1465,7 +1465,25 @@ macro parameters(𝓂,ex...)
         calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         
         # Calculate missing parameters instead of asserting
-        missing_params = collect(setdiff(setdiff(setdiff(union(reduce(union, par_calib_list, init = []), mod.$𝓂.parameters_in_equations), calib_parameters), calib_parameters_no_var), calib_eq_parameters))
+        # Include parameters from:
+        # 1. par_calib_list - parameters used in calibration equations (e.g., K_ss in "K[ss] = K_ss | beta")
+        # 2. parameters_in_equations - parameters used in model equations
+        # 3. par_no_var_calib_list - parameters used in parameter definitions (e.g., rho{H}{H} in "rho{F}{F} = rho{H}{H}")
+        # Subtract:
+        # 1. calib_parameters - parameters with explicit values (e.g., "α = 0.5")
+        # 2. calib_parameters_no_var - parameters defined as functions of other parameters (e.g., "α = alpha_param")
+        # 3. calib_eq_parameters - parameters determined by calibration equations (e.g., "beta" in "K[ss] = K_ss | beta")
+        all_required_params = union(
+            reduce(union, par_calib_list, init = Set{Symbol}()),
+            reduce(union, $par_no_var_calib_list, init = Set{Symbol}()),
+            Set{Symbol}(mod.$𝓂.parameters_in_equations)
+        )
+        defined_params = union(
+            Set{Symbol}(calib_parameters),
+            Set{Symbol}(calib_parameters_no_var),
+            Set{Symbol}(calib_eq_parameters)
+        )
+        missing_params = collect(setdiff(all_required_params, defined_params))
         mod.$𝓂.missing_parameters = sort(missing_params)
         
         has_missing_parameters = length(missing_params) > 0
@@ -1520,7 +1538,7 @@ macro parameters(𝓂,ex...)
         
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed 
-        if !$precompile
+        if !$precompile && !has_missing_parameters
             start_time = time()
 
             if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
@@ -1543,7 +1561,7 @@ macro parameters(𝓂,ex...)
             set_up_obc_violation_function!(mod.$𝓂)
 
             if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-        else
+        elseif !has_missing_parameters
             start_time = time()
         
             if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
@@ -1555,7 +1573,7 @@ macro parameters(𝓂,ex...)
 
         start_time = time()
 
-        mod.$𝓂.solution.functions_written = true
+        mod.$𝓂.solution.functions_written = !has_missing_parameters
 
         opts = merge_calculation_options(verbose = $verbose)
 
@@ -1591,34 +1609,36 @@ macro parameters(𝓂,ex...)
             mod.$𝓂.solution.outdated_NSSS = false
         end
 
-        start_time = time()
+        if !has_missing_parameters
+            start_time = time()
 
-        if !$silent
-            if $perturbation_order == 1
-                print("Take symbolic derivatives up to first order:\t\t\t\t")
-            elseif $perturbation_order == 2
-                print("Take symbolic derivatives up to second order:\t\t\t\t")
-            elseif $perturbation_order == 3
-                print("Take symbolic derivatives up to third order:\t\t\t\t")
+            if !$silent
+                if $perturbation_order == 1
+                    print("Take symbolic derivatives up to first order:\t\t\t\t")
+                elseif $perturbation_order == 2
+                    print("Take symbolic derivatives up to second order:\t\t\t\t")
+                elseif $perturbation_order == 3
+                    print("Take symbolic derivatives up to third order:\t\t\t\t")
+                end
             end
-        end
 
-        write_auxiliary_indices!(mod.$𝓂)
+            write_auxiliary_indices!(mod.$𝓂)
 
-        # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, $perturbation_order)
+            # time_dynamic_derivs = @elapsed 
+            write_functions_mapping!(mod.$𝓂, $perturbation_order)
 
-        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-        
-        if !$silent
-            println(round(time() - start_time, digits = 3), " seconds")
+            mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+            
+            if !$silent
+                println(round(time() - start_time, digits = 3), " seconds")
+            end
         end
 
         if has_missing_parameters && $report_missing_parameters
             @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_SS`, `simulate`, etc."
         end
 
-        if !$silent && $report_missing_parameters Base.show(mod.$𝓂) end
+        if !$silent Base.show(mod.$𝓂) end
         nothing
     end
 end
