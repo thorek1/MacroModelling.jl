@@ -359,7 +359,7 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 if isempty(𝓂.missing_parameters)
                     ""
                 else
-                    "\nMissing\nparameters:   " * repr(𝓂.missing_parameters)
+                    "\n Missing:     " * repr(length(𝓂.missing_parameters))
                 end,
                 # "\n¹: including auxiliary variables"
                 # "\nVariable bounds (upper,lower,any): ",sum(𝓂.upper_bounds .< Inf),", ",sum(𝓂.lower_bounds .> -Inf),", ",length(𝓂.bounds),
@@ -6676,6 +6676,10 @@ function solve!(𝓂::ℳ;
     @assert algorithm ∈ all_available_algorithms
     
     # @timeit_debug timer "Write parameter inputs" begin
+
+    if !𝓂.solution.functions_written
+        Core.eval(Main, :(@parameters($(Symbol(𝓂.model_name)), report_missing_parameters = false, nothing)))
+    end
 
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
     

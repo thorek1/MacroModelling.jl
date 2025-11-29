@@ -1086,6 +1086,7 @@ macro parameters(𝓂,ex...)
     silent = false
     symbolic = false
     precompile = false
+    report_missing_parameters = true
     perturbation_order = 1
     guess = Dict{Symbol,Float64}()
     simplify = true
@@ -1100,6 +1101,8 @@ macro parameters(𝓂,ex...)
                         verbose = x.args[2] :
                     x.args[1] == :silent && x.args[2] isa Bool ?
                         silent = x.args[2] :
+                    x.args[1] == :report_missing_parameters && x.args[2] isa Bool ?
+                        report_missing_parameters = x.args[2] :
                     x.args[1] == :precompile && x.args[2] isa Bool ?
                         precompile = x.args[2] :
                     x.args[1] == :perturbation_order && x.args[2] isa Int ?
@@ -1611,11 +1614,11 @@ macro parameters(𝓂,ex...)
             println(round(time() - start_time, digits = 3), " seconds")
         end
 
-        if has_missing_parameters
+        if has_missing_parameters && $report_missing_parameters
             @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_SS`, `simulate`, etc."
         end
 
-        if !$silent Base.show(mod.$𝓂) end
+        if !$silent && $report_missing_parameters Base.show(mod.$𝓂) end
         nothing
     end
 end
