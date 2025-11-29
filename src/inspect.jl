@@ -363,6 +363,85 @@ end
 
 """
 $(SIGNATURES)
+Returns the parameters which are required by the model but have not been assigned values in the `@parameters` block. These parameters must be provided via the `parameters` keyword argument in functions like `get_irf`, `get_SS`, `simulate`, etc. before the model can be solved.
+
+# Arguments
+- $MODEL®
+
+# Returns
+- `Vector{String}` of the missing parameters.
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC_incomplete begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC_incomplete begin
+    std_z = 0.01
+    ρ = 0.2
+    # Note: α, β, δ are not defined
+end
+
+get_missing_parameters(RBC_incomplete)
+# output
+3-element Vector{String}:
+ "α"
+ "β"
+ "δ"
+```
+"""
+function get_missing_parameters(𝓂::ℳ)::Vector{String}
+    replace.(string.(𝓂.missing_parameters), "◖" => "{", "◗" => "}")
+end
+
+
+"""
+$(SIGNATURES)
+Checks if the model has any missing parameters that need to be defined before it can be solved.
+
+# Arguments
+- $MODEL®
+
+# Returns
+- `Bool`: `true` if there are missing parameters, `false` otherwise.
+
+# Examples
+```jldoctest
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+has_missing_parameters(RBC)
+# output
+false
+```
+"""
+function has_missing_parameters(𝓂::ℳ)::Bool
+    !isempty(𝓂.missing_parameters)
+end
+
+
+"""
+$(SIGNATURES)
 Returns the parameters contained in the model equations. Note that these parameters might be determined by other parameters or calibration equations defined in the `@parameters` block.
 
 In case programmatic model writing was used this function returns the parsed parameters (see `σ` in `Examples`).
