@@ -403,45 +403,6 @@ end
 
 """
 $(SIGNATURES)
-Checks if the model has any missing parameters that need to be defined before it can be solved.
-
-# Arguments
-- $MODEL®
-
-# Returns
-- `Bool`: `true` if there are missing parameters, `false` otherwise.
-
-# Examples
-```jldoctest
-using MacroModelling
-
-@model RBC begin
-    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-    q[0] = exp(z[0]) * k[-1]^α
-    z[0] = ρ * z[-1] + std_z * eps_z[x]
-end
-
-@parameters RBC begin
-    std_z = 0.01
-    ρ = 0.2
-    δ = 0.02
-    α = 0.5
-    β = 0.95
-end
-
-has_missing_parameters(RBC)
-# output
-false
-```
-"""
-function has_missing_parameters(𝓂::ℳ)::Bool
-    !isempty(𝓂.missing_parameters)
-end
-
-
-"""
-$(SIGNATURES)
 Returns the parameters contained in the model equations. Note that these parameters might be determined by other parameters or calibration equations defined in the `@parameters` block.
 
 In case programmatic model writing was used this function returns the parsed parameters (see `σ` in `Examples`).
