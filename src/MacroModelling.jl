@@ -3413,7 +3413,14 @@ function expand_calibration_equations(calibration_equation_parameters::Vector{Sy
                         push!(expanded_ss_var,Symbol(string(ss) * "◖" * string(i) * "◗"))
                     else
                         push!(expanded_ss_var,ss)
-                        push!(expanded_par_var,par_calib_list[u])
+                    end
+                end
+                # Handle parameters from par_calib_list - expand indexed ones, keep non-indexed
+                for p in par_calib_list[u]
+                    if p ∈ indexed_names
+                        push!(expanded_par_var, Symbol(string(p) * "◖" * string(i) * "◗"))
+                    else
+                        push!(expanded_par_var, p)
                     end
                 end
                 push!(expanded_ss_var_list, expanded_ss_var)
