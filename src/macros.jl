@@ -1569,66 +1569,68 @@ macro parameters(𝓂,ex...)
 
             if !$silent println(round(time() - start_time, digits = 3), " seconds") end
         end
-
-        start_time = time()
-
+        
         mod.$𝓂.solution.functions_written = true
 
-        opts = merge_calculation_options(verbose = $verbose)
+        if !has_missing_parameters
+            start_time = time()
+    
+            opts = merge_calculation_options(verbose = $verbose)
 
-        if !$precompile && !has_missing_parameters
-            if !$silent 
-                print("Find non-stochastic steady state:\t\t\t\t\t") 
-            end
-            # time_SS_real_solve = @elapsed 
-            SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
-
-            select_fastest_SS_solver_parameters!(mod.$𝓂, tol = opts.tol)
-
-            found_solution = true
-
-            if solution_error > opts.tol.NSSS_acceptance_tol
-                # start_time = time()
-                found_solution = find_SS_solver_parameters!(mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
-                # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
-                if found_solution
-                    SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
+            if !$precompile 
+                if !$silent 
+                    print("Find non-stochastic steady state:\t\t\t\t\t") 
                 end
+                # time_SS_real_solve = @elapsed 
+                SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
+
+                select_fastest_SS_solver_parameters!(mod.$𝓂, tol = opts.tol)
+
+                found_solution = true
+
+                if solution_error > opts.tol.NSSS_acceptance_tol
+                    # start_time = time()
+                    found_solution = find_SS_solver_parameters!(mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
+                    # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
+                    if found_solution
+                        SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
+                    end
+                end
+                
+                if !$silent 
+                    println(round(time() - start_time, digits = 3), " seconds") 
+                end
+
+                if !found_solution
+                    @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
+                end
+
+                mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
+                mod.$𝓂.solution.outdated_NSSS = false
             end
             
-            if !$silent 
-                println(round(time() - start_time, digits = 3), " seconds") 
+            start_time = time()
+
+            if !$silent
+                if $perturbation_order == 1
+                    print("Take symbolic derivatives up to first order:\t\t\t\t")
+                elseif $perturbation_order == 2
+                    print("Take symbolic derivatives up to second order:\t\t\t\t")
+                elseif $perturbation_order == 3
+                    print("Take symbolic derivatives up to third order:\t\t\t\t")
+                end
             end
 
-            if !found_solution
-                @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
+            write_auxiliary_indices!(mod.$𝓂)
+
+            # time_dynamic_derivs = @elapsed 
+            write_functions_mapping!(mod.$𝓂, $perturbation_order)
+
+            mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+    
+            if !$silent
+                println(round(time() - start_time, digits = 3), " seconds")
             end
-
-            mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
-            mod.$𝓂.solution.outdated_NSSS = false
-        end
-
-        start_time = time()
-
-        if !$silent
-            if $perturbation_order == 1
-                print("Take symbolic derivatives up to first order:\t\t\t\t")
-            elseif $perturbation_order == 2
-                print("Take symbolic derivatives up to second order:\t\t\t\t")
-            elseif $perturbation_order == 3
-                print("Take symbolic derivatives up to third order:\t\t\t\t")
-            end
-        end
-
-        write_auxiliary_indices!(mod.$𝓂)
-
-        # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, $perturbation_order)
-
-        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-        
-        if !$silent
-            println(round(time() - start_time, digits = 3), " seconds")
         end
 
         if has_missing_parameters && $report_missing_parameters

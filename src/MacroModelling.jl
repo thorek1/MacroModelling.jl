@@ -7963,11 +7963,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
         𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
         
         # If all missing parameters are now provided, print a message
-        if isempty(𝓂.missing_parameters)
-            if verbose
-                @info "All missing parameters have been provided. The model can now be solved."
-            end
-        else
+        if !isempty(𝓂.missing_parameters)
             @info "Remaining missing parameters: ", 𝓂.missing_parameters
         end
 
@@ -8005,7 +8001,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
     if bounds_broken
         println("Parameters unchanged.")
     else
-        ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1],collect(keys(parameters)))
+        ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1], collect(keys(parameters)))
+        # ntrsct_idx = indexin(collect(keys(parameters)), 𝓂.parameters)
         
         if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters))) && !(𝓂.parameters[ntrsct_idx] == [:activeᵒᵇᶜshocks])
             if verbose println("Parameter changes: ") end
@@ -8022,6 +8019,58 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
 
                 𝓂.parameter_values[ntrsct_idx[i]] = collect(values(parameters))[i]
             end
+        end
+    end
+
+    if isempty(𝓂.missing_parameters)
+        start_time = time()
+    
+        opts = merge_calculation_options(verbose = verbose)
+
+        if verbose
+            print("Find non-stochastic steady state:\t\t\t\t\t") 
+        end
+        # time_SS_real_solve = @elapsed 
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, opts.tol, opts.verbose, true, 𝓂.solver_parameters)
+
+        select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
+
+        found_solution = true
+
+        if solution_error > opts.tol.NSSS_acceptance_tol
+            # start_time = time()
+            found_solution = find_SS_solver_parameters!(𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
+            # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
+            if found_solution
+                SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, opts.tol, opts.verbose, true, 𝓂.solver_parameters)
+            end
+        end
+        
+        if verbose
+            println(round(time() - start_time, digits = 3), " seconds") 
+        end
+
+        if !found_solution
+            @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
+        end
+
+        𝓂.solution.non_stochastic_steady_state = SS_and_pars
+        𝓂.solution.outdated_NSSS = false
+
+        start_time = time()
+
+        write_auxiliary_indices!(𝓂)
+
+        # time_dynamic_derivs = @elapsed 
+        write_functions_mapping!(𝓂, perturbation_order)
+
+        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+
+        𝓂.solution.functions_written = true
+
+        if verbose
+            println(round(time() - start_time, digits = 3), " seconds")
+            # @info "All missing parameters have been provided. The model can now be solved."
         end
     end
 
