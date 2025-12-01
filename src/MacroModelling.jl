@@ -7955,12 +7955,16 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
     missing_params_provided = intersect(collect(keys(parameters)), 𝓂.missing_parameters)
     
     if !isempty(missing_params_provided)
+        # Get all missing params before we modify the list
+        all_missing_before = copy(𝓂.missing_parameters)
+        
+        # Remove the provided missing params from the missing list
         setdiff!(𝓂.missing_parameters, missing_params_provided)
         
         # Reorder parameters: declared params first, then missing params in provided order
         if !isempty(parameter_order)
-            # Get indices of declared params (those with non-NaN values originally)
-            declared_param_indices = findall(x -> !isnan(x), 𝓂.parameter_values)
+            # Get declared params (those NOT in the original missing list)
+            declared_param_indices = findall(p -> p ∉ all_missing_before, 𝓂.parameters)
             declared_params = 𝓂.parameters[declared_param_indices]
             declared_values = 𝓂.parameter_values[declared_param_indices]
             
