@@ -828,7 +828,7 @@ if test_set == "basic"
 
     
     @testset verbose = true "Provide parameters later" begin
-        include("../models/Backus_Kehoe_Kydland_1992.jl")
+        include("models/Backus_Kehoe_Kydland_1992.jl")
 
         @model Backus_Kehoe_Kydland_1992_incomplete begin
             for co in [H, F]
@@ -872,9 +872,30 @@ if test_set == "basic"
         end
 
         @parameters Backus_Kehoe_Kydland_1992_incomplete begin
-            K[ss] = K_ss | beta
+            # K_ss = 11.0148
+            # K[ss] = K_ss | beta
+            # K[ss] = 10 | beta
+            # F_H_ratio = 1
+            K{F}[ss] / K{H}[ss] = F_H_ratio | beta{F}
+            K{H}[ss] = K_ss | beta{H}
+
+            # beta    =    0.99
+            # mu      =    0.34
+            # gamma   =    -1.0
+            # alpha   =    1
+            # eta     =    0.5
+            # theta   =    0.36
+            # nu      =    3
+            # sigma   =    0.01
+            # delta   =    0.025
+            # phi     =    1/4
+            # psi     =    0.5
+
+            # Z_E = 0.00852
             
+            # rho{H}{H} = 0.906
             rho{F}{F} = rho{H}{H}
+            # rho{H}{F} = 0.088
             rho{F}{H} = rho{H}{F}
         end
 
