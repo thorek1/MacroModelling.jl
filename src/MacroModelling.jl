@@ -7952,7 +7952,7 @@ write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Real}}; verbose::B
 
 function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; verbose::Bool = true)
     # Handle missing parameters - add them if they are in the missing_parameters list
-    missing_params_provided = intersect(collect(keys(parameters)), 𝓂.missing_parameters)
+    missing_params_provided = intersect(keys(parameters), 𝓂.missing_parameters)
     
     if !isempty(missing_params_provided)
         # Remove the provided missing params from the missing list
