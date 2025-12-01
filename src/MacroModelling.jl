@@ -7919,68 +7919,44 @@ function write_auxiliary_indices!(𝓂::ℳ)
 end
 
 write_parameters_input!(𝓂::ℳ, parameters::Nothing; verbose::Bool = true) = return parameters
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose, parameter_order = [parameters[1]])
-write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Float64}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters[1] |> Meta.parse |> replace_indices => parameters[2]), verbose = verbose, parameter_order = [parameters[1] |> Meta.parse |> replace_indices])
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Float64}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters[1] |> Meta.parse |> replace_indices => parameters[2]), verbose = verbose)
 
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Float64},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose, parameter_order = [p[1] for p in parameters])
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Float64},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
 # write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Union{Symbol,AbstractString},Union{Float64,Int}},Vararg{Pair{Union{Symbol,AbstractString},Union{Float64,Int}}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
 # write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{AbstractString,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
 write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{S,Float64},Vararg{Pair{S,Float64}}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters])
-, verbose = verbose, parameter_order = [i[1] |> Meta.parse |> replace_indices for i in parameters])
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose, parameter_order = [p[1] for p in parameters])
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Float64}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol, Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose, parameter_order = [i[1] |> Meta.parse |> replace_indices for i in parameters])
+, verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Float64}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol, Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Int}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose, parameter_order = [parameters[1]])
-write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Int}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose, parameter_order = [parameters[1] |> Meta.parse |> replace_indices])
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{Symbol,Int}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose, parameter_order = [p[1] for p in parameters])
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{S,Int},Vararg{Pair{S,Int}}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose, parameter_order = [i[1] |> Meta.parse |> replace_indices for i in parameters])
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Int}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose, parameter_order = [p[1] for p in parameters])
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Int}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose, parameter_order = [i[1] |> Meta.parse |> replace_indices for i in parameters])
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Int}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Int}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{Symbol,Int}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{S,Int},Vararg{Pair{S,Int}}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Int}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Int}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose, parameter_order = [parameters[1]])
-write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Real}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose, parameter_order = [parameters[1] |> Meta.parse |> replace_indices])
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Real},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose, parameter_order = [p[1] for p in parameters])
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{S,Real},Vararg{Pair{S,Float64}}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose, parameter_order = [i[1] |> Meta.parse |> replace_indices for i in parameters])
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose, parameter_order = [p[1] for p in parameters])
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Real}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose, parameter_order = [i[1] |> Meta.parse |> replace_indices for i in parameters])
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Real}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Real},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{S,Real},Vararg{Pair{S,Float64}}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Real}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 
 
 
-function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; verbose::Bool = true, parameter_order::Vector{Symbol} = Symbol[])
+function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; verbose::Bool = true)
     # Handle missing parameters - add them if they are in the missing_parameters list
     missing_params_provided = intersect(collect(keys(parameters)), 𝓂.missing_parameters)
     
     if !isempty(missing_params_provided)
-        # Get all missing params before we modify the list
-        all_missing_before = copy(𝓂.missing_parameters)
-        
         # Remove the provided missing params from the missing list
         setdiff!(𝓂.missing_parameters, missing_params_provided)
-        
-        # Reorder parameters: declared params first, then missing params in provided order
-        if !isempty(parameter_order)
-            # Get declared params (those NOT in the original missing list)
-            declared_param_indices = findall(p -> p ∉ all_missing_before, 𝓂.parameters)
-            declared_params = 𝓂.parameters[declared_param_indices]
-            declared_values = 𝓂.parameter_values[declared_param_indices]
-            
-            # Get the order of missing parameters from parameter_order
-            missing_in_order = filter(p -> p ∈ missing_params_provided, parameter_order)
-            
-            # Get remaining missing params (not yet filled) - they stay at the end
-            remaining_missing = 𝓂.missing_parameters
-            
-            # Rebuild parameter arrays: declared first, then filled missing in order, then remaining missing
-            new_params = vcat(declared_params, missing_in_order, remaining_missing)
-            new_values = vcat(declared_values, [parameters[p] for p in missing_in_order], fill(NaN, length(remaining_missing)))
-            
-            𝓂.parameters = new_params
-            𝓂.parameter_values = new_values
-        end
         
         # Mark that solution needs to be recomputed
         𝓂.solution.outdated_NSSS = true
