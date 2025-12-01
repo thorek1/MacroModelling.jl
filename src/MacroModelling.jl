@@ -204,7 +204,7 @@ export Tolerances
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
 export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare, export_dynare, export_to_dynare, export_mod_file, export_model
 
-export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables, get_missing_parameters
+export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables, get_missing_parameters, has_missing_parameters
 # Internal
 export irf, girf
 
@@ -7970,7 +7970,20 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
         # amend parameter order by provided missing params
         declared_params = setdiff(𝓂.parameters, missing_params_provided)
         
+        # Get the current parameter values for declared params
+        declared_param_indices = indexin(declared_params, 𝓂.parameters)
+        declared_values = 𝓂.parameter_values[declared_param_indices]
+        
+        # Get values for the newly provided missing params (currently NaN in parameter_values)
+        # We'll set them later after the bounds check
+        missing_values = fill(NaN, length(missing_params_provided))
+        
+        # Get values for the remaining missing params (still NaN)
+        remaining_missing_values = fill(NaN, length(𝓂.missing_parameters))
+        
+        # Reorder both parameters and parameter_values arrays
         𝓂.parameters = vcat(declared_params, collect(missing_params_provided), 𝓂.missing_parameters)
+        𝓂.parameter_values = vcat(declared_values, missing_values, remaining_missing_values)
     end
     
     # Handle remaining parameters (not missing ones)
@@ -8062,7 +8075,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
         write_auxiliary_indices!(𝓂)
 
         # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(𝓂, perturbation_order)
+        write_functions_mapping!(𝓂, 1)  # Use first order perturbation by default
 
         𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
 
