@@ -1508,14 +1508,13 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
         mod.$𝓂.par_no_var_calib_list = $par_no_var_calib_list
     
-        all_params = vcat(missing_params, calib_parameters)
+        # Keep calib_parameters in declaration order, append missing_params at end
+        # This preserves declaration order for estimation and method of moments
+        all_params = vcat(calib_parameters, missing_params)
+        all_values = vcat(calib_values, fill(NaN, length(missing_params)))
 
-        sort_params = sortperm(all_params)
-
-        all_values = vcat(fill(NaN, length(missing_params)), calib_values)
-
-        mod.$𝓂.parameters = all_params[sort_params]
-        mod.$𝓂.parameter_values = all_values[sort_params]
+        mod.$𝓂.parameters = all_params
+        mod.$𝓂.parameter_values = all_values
         mod.$𝓂.calibration_equations = calib_equations_list
         mod.$𝓂.parameters_as_function_of_parameters = calib_parameters_no_var
         mod.$𝓂.calibration_equations_no_var = calib_equations_no_var_list
