@@ -7967,9 +7967,23 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
             @info "Remaining missing parameters: ", 𝓂.missing_parameters
         end
 
-        # Don't reorder - keep parameters in the same order they were set up during @parameters
-        # The SS_solve_func expects them in that specific order
-        # Values will be updated in place below (around line 8033)
+        # Amend parameter order by provided missing params
+        declared_params = setdiff(𝓂.parameters, missing_params_provided)
+        
+        # Get the current parameter values for declared params
+        declared_param_indices = indexin(declared_params, 𝓂.parameters)
+        declared_values = 𝓂.parameter_values[declared_param_indices]
+        
+        # Get values for the newly provided missing params (currently NaN in parameter_values)
+        # We'll set them later after the bounds check
+        missing_values = fill(NaN, length(missing_params_provided))
+        
+        # Get values for the remaining missing params (still NaN)
+        remaining_missing_values = fill(NaN, length(𝓂.missing_parameters))
+        
+        # Reorder both parameters and parameter_values arrays
+        𝓂.parameters = vcat(declared_params, collect(missing_params_provided), 𝓂.missing_parameters)
+        𝓂.parameter_values = vcat(declared_values, missing_values, remaining_missing_values)
     end
     
     # Handle remaining parameters (not missing ones)
@@ -8022,6 +8036,21 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
     end
 
     if isempty(𝓂.missing_parameters)
+        # If SS_solve_func hasn't been created yet (because parameters were provided later),
+        # create it now with the final parameter order
+        if !𝓂.solution.functions_written
+            if verbose println("All parameters now provided. Setting up non-stochastic steady state problem...") end
+            
+            # Call solve_steady_state! to create SS_solve_func with the correct parameter order
+            solve_steady_state!(𝓂, verbose = verbose)
+            
+            # Also setup OBC violation function
+            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+            set_up_obc_violation_function!(𝓂)
+            
+            𝓂.solution.functions_written = true
+        end
+        
         start_time = time()
     
         opts = merge_calculation_options(verbose = verbose)

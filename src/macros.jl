@@ -1537,40 +1537,42 @@ macro parameters(𝓂,ex...)
         
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed 
-        if !$precompile
-            start_time = time()
+        if !has_missing_parameters
+            if !$precompile
+                start_time = time()
 
-            if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
+                if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
 
-            symbolics = create_symbols_eqs!(mod.$𝓂)
+                symbolics = create_symbols_eqs!(mod.$𝓂)
 
-            remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
+                remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
 
-            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
 
 
-            start_time = time()
-    
-            if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+                start_time = time()
+        
+                if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
-            solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
+                solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
 
-            mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
+                mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
+                
+                set_up_obc_violation_function!(mod.$𝓂)
+
+                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+            else
+                start_time = time()
             
-            set_up_obc_violation_function!(mod.$𝓂)
+                if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
-            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-        else
-            start_time = time()
-        
-            if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+                solve_steady_state!(mod.$𝓂, verbose = $verbose)
 
-            solve_steady_state!(mod.$𝓂, verbose = $verbose)
-
-            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+            end
+            
+            mod.$𝓂.solution.functions_written = true
         end
-        
-        mod.$𝓂.solution.functions_written = true
 
         if !has_missing_parameters
             start_time = time()
