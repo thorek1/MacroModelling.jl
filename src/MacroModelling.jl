@@ -7967,23 +7967,9 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
             @info "Remaining missing parameters: ", 𝓂.missing_parameters
         end
 
-        # amend parameter order by provided missing params
-        declared_params = setdiff(𝓂.parameters, missing_params_provided)
-        
-        # Get the current parameter values for declared params
-        declared_param_indices = indexin(declared_params, 𝓂.parameters)
-        declared_values = 𝓂.parameter_values[declared_param_indices]
-        
-        # Get values for the newly provided missing params (currently NaN in parameter_values)
-        # We'll set them later after the bounds check
-        missing_values = fill(NaN, length(missing_params_provided))
-        
-        # Get values for the remaining missing params (still NaN)
-        remaining_missing_values = fill(NaN, length(𝓂.missing_parameters))
-        
-        # Reorder both parameters and parameter_values arrays
-        𝓂.parameters = vcat(declared_params, collect(missing_params_provided), 𝓂.missing_parameters)
-        𝓂.parameter_values = vcat(declared_values, missing_values, remaining_missing_values)
+        # Don't reorder - keep parameters in the same order they were set up during @parameters
+        # The SS_solve_func expects them in that specific order
+        # Values will be updated in place below (around line 8033)
     end
     
     # Handle remaining parameters (not missing ones)
