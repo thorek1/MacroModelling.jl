@@ -1570,9 +1570,11 @@ macro parameters(𝓂,ex...)
 
                 if !$silent println(round(time() - start_time, digits = 3), " seconds") end
             end
-            
-            mod.$𝓂.solution.functions_written = true
         end
+        
+        # Mark functions as written even if we skipped SS setup due to missing parameters
+        # This prevents solve! from re-running @parameters with nothing
+        mod.$𝓂.solution.functions_written = true
 
         if !has_missing_parameters
             start_time = time()

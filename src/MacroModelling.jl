@@ -7955,6 +7955,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
     missing_params_provided = intersect(collect(keys(parameters)), 𝓂.missing_parameters)
     
     if !isempty(missing_params_provided)
+        
         # Remove the provided missing params from the missing list
         setdiff!(𝓂.missing_parameters, missing_params_provided)
         
@@ -8041,7 +8042,19 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
     if isempty(𝓂.missing_parameters)
         # If SS_solve_func hasn't been created yet (because parameters were provided later),
         # create it now with the final parameter order
-        if !𝓂.solution.functions_written
+        # Check if SS_solve_func is still the dummy function (x->x)
+        needs_ss_setup = false
+        try
+            # Try calling SS_solve_func with a single argument - the dummy function accepts this
+            𝓂.SS_solve_func([1.0])
+            # If we get here, it's the dummy function, so we need to create the real one
+            needs_ss_setup = true
+        catch
+            # If it errors, it's the real function (which requires more arguments)
+            needs_ss_setup = false
+        end
+        
+        if needs_ss_setup
             if verbose println("All parameters now provided. Setting up non-stochastic steady state problem...") end
             
             # Call solve_steady_state! to create SS_solve_func with the correct parameter order
@@ -8050,8 +8063,6 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
             # Also setup OBC violation function
             𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
             set_up_obc_violation_function!(𝓂)
-            
-            𝓂.solution.functions_written = true
         end
         
         start_time = time()
