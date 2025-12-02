@@ -7968,7 +7968,10 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
         end
 
         # Amend parameter order by provided missing params
-        declared_params = setdiff(𝓂.parameters, missing_params_provided)
+        # declared_params = parameters that were never missing (have non-NaN values)
+        # We identify them as parameters that are not in the union of missing_params_provided and still-missing params
+        all_missing = union(missing_params_provided, 𝓂.missing_parameters)
+        declared_params = setdiff(𝓂.parameters, all_missing)
         
         # Get the current parameter values for declared params
         declared_param_indices = indexin(declared_params, 𝓂.parameters)
@@ -8024,7 +8027,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
             
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
+                if !isnothing(𝓂.SS_dependencies) && collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
                     𝓂.solution.outdated_NSSS = true
                 end
                 
