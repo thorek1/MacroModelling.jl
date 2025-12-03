@@ -793,40 +793,6 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
-    @testset verbose = true "Code quality (Aqua.jl)" begin
-        # Aqua.test_all(MacroModelling)
-        @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
-        @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling; ignore = [:Showoff])
-        @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
-        @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
-        @testset "Piracy" Aqua.test_piracies(MacroModelling)
-        @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
-        @testset "Compat" Aqua.test_deps_compat(MacroModelling)#; ignore = [:Aqua, :JET])
-        # @testset "Persistent tasks" Aqua.test_persistent_tasks(MacroModelling)
-    end
-    GC.gc()
-    
-    # test_higher_order = true
-    @testset verbose = true "Test various models: NSSS and 1st order solution" begin
-        include("test_models.jl")
-    end
-    GC.gc()
-    # test_higher_order = false
-
-    @testset verbose = true "for and if loops" begin
-        include("models/Backus_Kehoe_Kydland_1992_for_if_test.jl")
-        include("models/Backus_Kehoe_Kydland_1992.jl")
-
-        std1 = get_std(Backus_Kehoe_Kydland_1992)
-        std2 = get_std(Backus_Kehoe_Kydland_1992_test)
-
-        common_keys1 = intersect(std1.keys[1], std2.keys[1])
-        common_keys2 = intersect(std1.keys[2], std2.keys[2])
-
-        @test isapprox(std2(common_keys1, common_keys2), std1(common_keys1, common_keys2), rtol = 1e-10)
-    end
-
-    
     @testset verbose = true "Provide parameters later" begin
         include("models/Backus_Kehoe_Kydland_1992.jl")
 
@@ -1027,6 +993,39 @@ if test_set == "basic"
         cov2 = get_cov(Gali_2015_chapter_3_obc)
 
         @test cov1 ≈ cov2
+    end
+
+    @testset verbose = true "Code quality (Aqua.jl)" begin
+        # Aqua.test_all(MacroModelling)
+        @testset "Compare Project.toml and test/Project.toml" Aqua.test_project_extras(MacroModelling)
+        @testset "Stale dependencies" Aqua.test_stale_deps(MacroModelling; ignore = [:Showoff])
+        @testset "Unbound type parameters" Aqua.test_unbound_args(MacroModelling)
+        @testset "Undefined exports" Aqua.test_undefined_exports(MacroModelling)
+        @testset "Piracy" Aqua.test_piracies(MacroModelling)
+        @testset "Method ambiguity" Aqua.test_ambiguities(MacroModelling, recursive = false)
+        @testset "Compat" Aqua.test_deps_compat(MacroModelling)#; ignore = [:Aqua, :JET])
+        # @testset "Persistent tasks" Aqua.test_persistent_tasks(MacroModelling)
+    end
+    GC.gc()
+    
+    # test_higher_order = true
+    @testset verbose = true "Test various models: NSSS and 1st order solution" begin
+        include("test_models.jl")
+    end
+    GC.gc()
+    # test_higher_order = false
+
+    @testset verbose = true "for and if loops" begin
+        include("models/Backus_Kehoe_Kydland_1992_for_if_test.jl")
+        include("models/Backus_Kehoe_Kydland_1992.jl")
+
+        std1 = get_std(Backus_Kehoe_Kydland_1992)
+        std2 = get_std(Backus_Kehoe_Kydland_1992_test)
+
+        common_keys1 = intersect(std1.keys[1], std2.keys[1])
+        common_keys2 = intersect(std1.keys[2], std2.keys[2])
+
+        @test isapprox(std2(common_keys1, common_keys2), std1(common_keys1, common_keys2), rtol = 1e-10)
     end
 
     @testset verbose = true "Standalone functions" begin
