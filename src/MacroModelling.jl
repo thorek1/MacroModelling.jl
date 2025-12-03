@@ -7988,6 +7988,11 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
         # Reorder both parameters and parameter_values arrays
         𝓂.parameters = vcat(declared_params, collect(missing_params_provided), 𝓂.missing_parameters)
         𝓂.parameter_values = vcat(declared_values, missing_values, remaining_missing_values)
+        
+        # Clear the NSSS_solver_cache since parameter order has changed
+        # It will be rebuilt when solve_steady_state! is called
+        # Need to empty the CircularBuffer properly
+        empty!(𝓂.NSSS_solver_cache)
     end
     
     # Handle remaining parameters (not missing ones)
