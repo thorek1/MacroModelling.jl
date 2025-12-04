@@ -48,7 +48,7 @@ import Subscripts: super, sub
 import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
-import DataStructures: CircularBuffer
+import DataStructures: CircularBuffer, OrderedDict
 import MacroTools: unblock, postwalk, prewalk, @capture, flatten
 
 # import SpeedMapping: speedmapping
@@ -121,26 +121,26 @@ const SYMPYWORKSPACE_RESERVED_NAMES = Set([
 
 # Type definitions
 const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
-const String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
+const String_input = Union{S,Vector{S},Matrix{S},Tuple{S,Vararg{S}}} where S <: AbstractString
 const ParameterType = Union{Nothing,
                             Pair{Symbol, Float64},
-                            Pair{String, Float64},
+                            Pair{S, Float64},
                             Tuple{Pair{Symbol, Float64}, Vararg{Pair{Symbol, Float64}}},
-                            Tuple{Pair{String, Float64}, Vararg{Pair{String, Float64}}},
+                            Tuple{Pair{S, Float64}, Vararg{Pair{S, Float64}}},
                             Vector{Pair{Symbol, Float64}},
-                            Vector{Pair{String, Float64}},
+                            Vector{Pair{S, Float64}},
                             Pair{Symbol, Int},
-                            Pair{String, Int},
+                            Pair{S, Int},
                             Tuple{Pair{Symbol, Int}, Vararg{Pair{Symbol, Int}}},
-                            Tuple{Pair{String, Int}, Vararg{Pair{String, Int}}},
+                            Tuple{Pair{S, Int}, Vararg{Pair{S, Int}}},
                             Vector{Pair{Symbol, Int}},
-                            Vector{Pair{String, Int}},
+                            Vector{Pair{S, Int}},
                             Pair{Symbol, Real},
-                            Pair{String, Real},
+                            Pair{S, Real},
                             Tuple{Pair{Symbol, Real}, Vararg{Pair{Symbol, Real}}},
-                            Tuple{Pair{String, Real}, Vararg{Pair{String, Real}}},
+                            Tuple{Pair{S, Real}, Vararg{Pair{S, Real}}},
                             Vector{Pair{Symbol, Real}},
-                            Vector{Pair{String, Real}},
+                            Vector{Pair{S, Real}},
                             Dict{Symbol, Float64},
                             Tuple{Int, Vararg{Int}},
                             Matrix{Int},
@@ -148,7 +148,7 @@ const ParameterType = Union{Nothing,
                             Matrix{Float64},
                             Tuple{Real, Vararg{Real}},
                             Matrix{Real},
-                            Vector{Float64} }
+                            Vector{Float64} } where S <: AbstractString
 
 
 using DispatchDoctor
@@ -204,7 +204,7 @@ export Tolerances
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
 export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare, export_dynare, export_to_dynare, export_mod_file, export_model
 
-export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables
+export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables, get_missing_parameters, has_missing_parameters
 # Internal
 export irf, girf
 
@@ -355,6 +355,11 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                     ""
                 else
                     "\nCalibration\nequations:    " * repr(length(𝓂.calibration_equations))
+                end,
+                if isempty(𝓂.missing_parameters)
+                    ""
+                else
+                    "\n Missing:     " * repr(length(𝓂.missing_parameters))
                 end,
                 # "\n¹: including auxiliary variables"
                 # "\nVariable bounds (upper,lower,any): ",sum(𝓂.upper_bounds .< Inf),", ",sum(𝓂.lower_bounds .> -Inf),", ",length(𝓂.bounds),
@@ -3408,7 +3413,14 @@ function expand_calibration_equations(calibration_equation_parameters::Vector{Sy
                         push!(expanded_ss_var,Symbol(string(ss) * "◖" * string(i) * "◗"))
                     else
                         push!(expanded_ss_var,ss)
-                        push!(expanded_par_var,par_calib_list[u])
+                    end
+                end
+                # Handle parameters from par_calib_list - expand indexed ones, keep non-indexed
+                for p in par_calib_list[u]
+                    if p ∈ indexed_names
+                        push!(expanded_par_var, Symbol(string(p) * "◖" * string(i) * "◗"))
+                    else
+                        push!(expanded_par_var, p)
                     end
                 end
                 push!(expanded_ss_var_list, expanded_ss_var)
@@ -6672,7 +6684,17 @@ function solve!(𝓂::ℳ;
     
     # @timeit_debug timer "Write parameter inputs" begin
 
+    if !𝓂.solution.functions_written
+        Core.eval(Main, :(@parameters($(Symbol(𝓂.model_name)), report_missing_parameters = false, nothing)))
+    end
+
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
+    
+    # Check for missing parameters after processing input
+    if !isempty(𝓂.missing_parameters)
+        error("Cannot solve model: missing parameter values for $(𝓂.missing_parameters). Provide them via the `parameters` keyword argument (e.g., `parameters = [:α => 0.3, :β => 0.99]`).")
+    end
+    
 
     # end # timeit_debug
 
@@ -7897,38 +7919,84 @@ function write_auxiliary_indices!(𝓂::ℳ)
 end
 
 write_parameters_input!(𝓂::ℳ, parameters::Nothing; verbose::Bool = true) = return parameters
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Pair{String,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters[1] |> Meta.parse |> replace_indices => parameters[2]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Float64}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}(parameters[1] |> Meta.parse |> replace_indices => parameters[2]), verbose = verbose)
 
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Float64},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-# write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Union{Symbol,String},Union{Float64,Int}},Vararg{Pair{Union{Symbol,String},Union{Float64,Int}}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-# write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{String,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{String,Float64},Vararg{Pair{String,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters])
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Float64},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict(parameters), verbose = verbose)
+# write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Union{Symbol,AbstractString},Union{Float64,Int}},Vararg{Pair{Union{Symbol,AbstractString},Union{Float64,Int}}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+# write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{AbstractString,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{S,Float64},Vararg{Pair{S,Float64}}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters])
 , verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{String, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol, Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol, Float64}([replace_indices(string(i[1])) => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Float64}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol, Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Int}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Pair{String,Int}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{Symbol,Int}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{String,Int},Vararg{Pair{String,Int}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Int}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{String, Int}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Int}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(parameters[1])) => parameters[2]]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Int}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{Symbol,Int}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(i[1])) => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{S,Int},Vararg{Pair{S,Int}}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Int}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(i[1])) => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Int}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Pair{String,Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Real},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{String,Real},Vararg{Pair{String,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{String, Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(parameters[1])) => parameters[2]]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Real}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Real},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(i[1])) => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{S,Real},Vararg{Pair{S,Float64}}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(i[1])) => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Real}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 
 
 
-function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; verbose::Bool = true)
+function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float64}; verbose::Bool = true)
+    # Handle missing parameters - add them if they are in the missing_parameters list
+    missing_params_provided = intersect(collect(keys(parameters)), 𝓂.missing_parameters)
+    
+    if !isempty(missing_params_provided)
+        
+        # Remove the provided missing params from the missing list
+        setdiff!(𝓂.missing_parameters, missing_params_provided)
+        
+        # Mark that solution needs to be recomputed
+        𝓂.solution.outdated_NSSS = true
+        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        
+        # If all missing parameters are now provided, print a message
+        if !isempty(𝓂.missing_parameters)
+            @info "Remaining missing parameters: ", 𝓂.missing_parameters
+        end
+
+        # Amend parameter order by provided missing params
+        # declared_params = parameters that were never missing (have non-NaN values)
+        # We identify them as parameters that are not in the union of missing_params_provided and still-missing params
+        all_missing = union(missing_params_provided, 𝓂.missing_parameters)
+        declared_params = setdiff(𝓂.parameters, all_missing)
+        
+        # Get the current parameter values for declared params
+        declared_param_indices = indexin(declared_params, 𝓂.parameters)
+        declared_values = 𝓂.parameter_values[declared_param_indices]
+        
+        # Get values for the newly provided missing params (currently NaN in parameter_values)
+        # We'll set them later after the bounds check
+        missing_values = fill(NaN, length(missing_params_provided))
+        
+        # Get values for the remaining missing params (still NaN)
+        remaining_missing_values = fill(NaN, length(𝓂.missing_parameters))
+        
+        # Reorder both parameters and parameter_values arrays
+        𝓂.parameters = vcat(declared_params, collect(missing_params_provided), 𝓂.missing_parameters)
+        𝓂.parameter_values = vcat(declared_values, missing_values, remaining_missing_values)
+        
+        # Clear the NSSS_solver_cache since parameter order/count has changed
+        # It will be rebuilt when solve_steady_state! is called with correct parameter count
+        while length(𝓂.NSSS_solver_cache) > 0
+            pop!(𝓂.NSSS_solver_cache)
+        end
+    end
+    
+    # Handle remaining parameters (not missing ones)
     if length(setdiff(collect(keys(parameters)),𝓂.parameters))>0
         println("Parameters not part of the model: ",setdiff(collect(keys(parameters)),𝓂.parameters))
         for kk in setdiff(collect(keys(parameters)),𝓂.parameters)
@@ -7956,7 +8024,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
     if bounds_broken
         println("Parameters unchanged.")
     else
-        ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1],collect(keys(parameters)))
+        ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1], collect(keys(parameters)))
+        # ntrsct_idx = indexin(collect(keys(parameters)), 𝓂.parameters)
         
         if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters))) && !(𝓂.parameters[ntrsct_idx] == [:activeᵒᵇᶜshocks])
             if verbose println("Parameter changes: ") end
@@ -7965,7 +8034,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
             
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
+                if !isnothing(𝓂.SS_dependencies) && collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
                     𝓂.solution.outdated_NSSS = true
                 end
                 
@@ -7973,6 +8042,84 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
 
                 𝓂.parameter_values[ntrsct_idx[i]] = collect(values(parameters))[i]
             end
+        end
+    end
+
+    if isempty(𝓂.missing_parameters)
+        # If SS_solve_func hasn't been created yet (because parameters were provided later),
+        # create it now with the final parameter order
+        # Check if SS_solve_func is still the dummy function (x->x)
+        needs_ss_setup = false
+        try
+            # Try calling SS_solve_func with a single argument - the dummy function accepts this
+            𝓂.SS_solve_func([1.0])
+            # If we get here, it's the dummy function, so we need to create the real one
+            needs_ss_setup = true
+        catch
+            # If it errors, it's the real function (which requires more arguments)
+            needs_ss_setup = false
+        end
+        
+        if needs_ss_setup
+            if verbose println("All parameters now provided. Setting up non-stochastic steady state problem...") end
+            
+            # Call solve_steady_state! to create SS_solve_func with the correct parameter order
+            # Note: solve_steady_state! will initialize NSSS_solver_cache with correct parameter count
+            solve_steady_state!(𝓂, verbose = verbose)
+            
+            # Also setup OBC violation function
+            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+            set_up_obc_violation_function!(𝓂)
+        end
+        
+        start_time = time()
+    
+        opts = merge_calculation_options(verbose = verbose)
+
+        if verbose
+            print("Find non-stochastic steady state:\t\t\t\t\t") 
+        end
+        # time_SS_real_solve = @elapsed 
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, opts.tol, opts.verbose, true, 𝓂.solver_parameters)
+
+        select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
+
+        found_solution = true
+
+        if solution_error > opts.tol.NSSS_acceptance_tol
+            # start_time = time()
+            found_solution = find_SS_solver_parameters!(𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
+            # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
+            if found_solution
+                SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, opts.tol, opts.verbose, true, 𝓂.solver_parameters)
+            end
+        end
+        
+        if verbose
+            println(round(time() - start_time, digits = 3), " seconds") 
+        end
+
+        if !found_solution
+            @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
+        end
+
+        𝓂.solution.non_stochastic_steady_state = SS_and_pars
+        𝓂.solution.outdated_NSSS = false
+
+        start_time = time()
+
+        write_auxiliary_indices!(𝓂)
+
+        # time_dynamic_derivs = @elapsed 
+        write_functions_mapping!(𝓂, 1)  # Use first order perturbation by default
+
+        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+
+        𝓂.solution.functions_written = true
+
+        if verbose
+            println(round(time() - start_time, digits = 3), " seconds")
+            # @info "All missing parameters have been provided. The model can now be solved."
         end
     end
 
