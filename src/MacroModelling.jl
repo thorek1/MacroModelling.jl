@@ -8063,12 +8063,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
         if needs_ss_setup
             if verbose println("All parameters now provided. Setting up non-stochastic steady state problem...") end
             
-            # Clear the cache again before calling solve_steady_state! to ensure clean state
-            while length(𝓂.NSSS_solver_cache) > 0
-                pop!(𝓂.NSSS_solver_cache)
-            end
-            
             # Call solve_steady_state! to create SS_solve_func with the correct parameter order
+            # Note: solve_steady_state! will initialize NSSS_solver_cache with correct parameter count
             solve_steady_state!(𝓂, verbose = verbose)
             
             # Also setup OBC violation function
