@@ -6685,7 +6685,114 @@ function solve!(𝓂::ℳ;
     # @timeit_debug timer "Write parameter inputs" begin
 
     if !𝓂.solution.functions_written
-        Core.eval(Main, :(@parameters($(Symbol(𝓂.model_name)), report_missing_parameters = false, nothing)))
+        # Core.eval(Main, :(@parameters($(Symbol(𝓂.model_name)), report_missing_parameters = false, nothing)))
+
+        verbose = opts.verbose
+        # silent = false
+        symbolic = false
+        precompile = false
+        # report_missing_parameters = true
+        perturbation_order = 1
+        # guess = Dict{Symbol,Float64}()
+        simplify = true
+        # time_symbolics = @elapsed 
+        # time_rm_red_SS_vars = @elapsed 
+        # if !has_missing_parameters && false
+        if !precompile
+            start_time = time()
+
+            if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
+
+            symbolics = create_symbols_eqs!(𝓂)
+
+            remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = !simplify) 
+
+            if !silent println(round(time() - start_time, digits = 3), " seconds") end
+
+
+            start_time = time()
+    
+            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+            solve_steady_state!(𝓂, symbolic, symbolics, verbose = verbose, avoid_solve = !simplify) # 2nd argument is SS_symbolic
+
+            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+            
+            set_up_obc_violation_function!(𝓂)
+
+            if !silent println(round(time() - start_time, digits = 3), " seconds") end
+        else
+            start_time = time()
+        
+            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+            solve_steady_state!(𝓂, verbose = verbose)
+
+            if !silent println(round(time() - start_time, digits = 3), " seconds") end
+        end
+    # end
+    
+    # if !has_missing_parameters
+        start_time = time()
+
+        opts = merge_calculation_options(verbose = verbose)
+
+        if !precompile && false
+            if !silent 
+                print("Find non-stochastic steady state:\t\t\t\t\t") 
+            end
+            # time_SS_real_solve = @elapsed 
+            SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, opts.tol, opts.verbose, true, 𝓂.solver_parameters)
+
+            select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
+
+            found_solution = true
+
+            if solution_error > opts.tol.NSSS_acceptance_tol
+                # start_time = time()
+                found_solution = find_SS_solver_parameters!(𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
+                # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
+                if found_solution
+                    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, opts.tol, opts.verbose, true, 𝓂.solver_parameters)
+                end
+            end
+            
+            if !silent 
+                println(round(time() - start_time, digits = 3), " seconds") 
+            end
+
+            if !found_solution
+                @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
+            end
+
+            𝓂.solution.non_stochastic_steady_state = SS_and_pars
+            𝓂.solution.outdated_NSSS = false
+        end
+
+        start_time = time()
+
+        if !silent
+            if perturbation_order == 1
+                print("Take symbolic derivatives up to first order:\t\t\t\t")
+            elseif perturbation_order == 2
+                print("Take symbolic derivatives up to second order:\t\t\t\t")
+            elseif perturbation_order == 3
+                print("Take symbolic derivatives up to third order:\t\t\t\t")
+            end
+        end
+
+        write_auxiliary_indices!(𝓂)
+
+        # time_dynamic_derivs = @elapsed 
+        write_functions_mapping!(𝓂, perturbation_order)
+
+        # @assert false "stop here"
+
+        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+
+        if !silent
+            println(round(time() - start_time, digits = 3), " seconds")
+        end
     end
 
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
@@ -6694,7 +6801,6 @@ function solve!(𝓂::ℳ;
     if !isempty(𝓂.missing_parameters)
         error("Cannot solve model: missing parameter values for $(𝓂.missing_parameters). Provide them via the `parameters` keyword argument (e.g., `parameters = [:α => 0.3, :β => 0.99]`).")
     end
-    
 
     # end # timeit_debug
 
@@ -8034,7 +8140,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
             
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if !isnothing(𝓂.SS_dependencies) && collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
+                if collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
+                # if !isnothing(𝓂.SS_dependencies) && collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
                     𝓂.solution.outdated_NSSS = true
                 end
                 
@@ -8049,28 +8156,28 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
         # If SS_solve_func hasn't been created yet (because parameters were provided later),
         # create it now with the final parameter order
         # Check if SS_solve_func is still the dummy function (x->x)
-        needs_ss_setup = false
-        try
-            # Try calling SS_solve_func with a single argument - the dummy function accepts this
-            𝓂.SS_solve_func([1.0])
-            # If we get here, it's the dummy function, so we need to create the real one
-            needs_ss_setup = true
-        catch
-            # If it errors, it's the real function (which requires more arguments)
-            needs_ss_setup = false
-        end
+        # needs_ss_setup = false
+        # try
+        #     # Try calling SS_solve_func with a single argument - the dummy function accepts this
+        #     𝓂.SS_solve_func([1.0])
+        #     # If we get here, it's the dummy function, so we need to create the real one
+        #     needs_ss_setup = true
+        # catch
+        #     # If it errors, it's the real function (which requires more arguments)
+        #     needs_ss_setup = false
+        # end
         
-        if needs_ss_setup
-            if verbose println("All parameters now provided. Setting up non-stochastic steady state problem...") end
+        # if needs_ss_setup
+        #     if verbose println("All parameters now provided. Setting up non-stochastic steady state problem...") end
             
-            # Call solve_steady_state! to create SS_solve_func with the correct parameter order
-            # Note: solve_steady_state! will initialize NSSS_solver_cache with correct parameter count
-            solve_steady_state!(𝓂, verbose = verbose)
+        #     # Call solve_steady_state! to create SS_solve_func with the correct parameter order
+        #     # Note: solve_steady_state! will initialize NSSS_solver_cache with correct parameter count
+        #     solve_steady_state!(𝓂, verbose = verbose)
             
-            # Also setup OBC violation function
-            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
-            set_up_obc_violation_function!(𝓂)
-        end
+        #     # Also setup OBC violation function
+        #     𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+        #     set_up_obc_violation_function!(𝓂)
+        # end
         
         start_time = time()
     

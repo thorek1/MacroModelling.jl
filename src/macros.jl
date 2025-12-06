@@ -1214,7 +1214,7 @@ macro parameters(𝓂,ex...)
     reserved_conflicts_params = intersect(all_params, SYMPYWORKSPACE_RESERVED_NAMES)
     @assert length(reserved_conflicts_params) == 0 "The following parameter names are reserved and cannot be used: " * repr(sort([reserved_conflicts_params...]))
     
-    # evaluate inputs where they are of the type: log(1/3) (no variables but need evaluation to becoe a Float64)
+    # evaluate inputs where they are of the type: log(1/3) (no variables but need evaluation to become a Float64)
     for (i, v) in enumerate(calib_values_no_var)
         out = try eval(v) catch e end
         if out isa Float64
@@ -1572,11 +1572,13 @@ macro parameters(𝓂,ex...)
             end
         end
         
-        # Mark functions as written even if we skipped SS setup due to missing parameters
-        # This prevents solve! from re-running @parameters with nothing
-        mod.$𝓂.solution.functions_written = true
-
+        mod.$𝓂.solution.functions_written = false
+        
         if !has_missing_parameters
+            # Mark functions as written even if we skipped SS setup due to missing parameters
+            # This prevents solve! from re-running @parameters with nothing
+            mod.$𝓂.solution.functions_written = true
+
             start_time = time()
     
             opts = merge_calculation_options(verbose = $verbose)
