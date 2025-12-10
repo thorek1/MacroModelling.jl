@@ -1179,51 +1179,62 @@ function plot_model_estimates!(𝓂::ℳ,
 
         push!(annotate_diff_input, "Rename dictionary" => [i > 0 ? "#$i" : "nothing" for i in rename_idx])
     end
-
+    
+    # Determine common and combined x axis
     common_axis = mapreduce(k -> k[:x_axis], intersect, model_estimates_active_plot_container)
+
     if length(common_axis) > 0
-        # Combine all unique x-axis values from all containers and sort them.
-        # This forms the baseline, observed x-axis.
+        # Real x axis: collect all distinct points and sort them
         combined_x_axis = mapreduce(k -> k[:x_axis], union, model_estimates_active_plot_container) |> sort
+
+        # For each container, compute the last x including its forecast extension
+        required_last_x = maximum((
+            let
+                axis = k[:x_axis]
+                step = infer_step(axis)
+                last_observed = axis[end]
+                forecast_periods = get(k, :forecast_periods, 0)
+                last_observed + forecast_periods * step
+            end
+            for k in model_estimates_active_plot_container
+        ))
+
+        # Extend combined_x_axis up to required_last_x, if needed
+        step = infer_step(combined_x_axis)
+        last_combined = combined_x_axis[end]
+
+        if required_last_x > last_combined
+            xs = deepcopy(combined_x_axis)
+
+            next_x = last_combined
+            while next_x < required_last_x
+                next_x = next_x + step
+                push!(xs, next_x)
+            end
+
+            extended_combined_x_axis = xs
+        else
+            extended_combined_x_axis = combined_x_axis
+        end
+
     else
-        # If no common axis (e.g., just sequential indices), determine the length
-        # by finding the maximum length of any base x_axis.
-        combined_x_axis = 1:maximum([length(k[:x_axis]) for k in model_estimates_active_plot_container])
-    end
+        # No common x axis: treat them as pure indices 1:N
+        base_length = maximum(length(k[:x_axis]) for k in model_estimates_active_plot_container)
+        combined_x_axis = 1:base_length
 
-    # --- Determine the maximum *required* length for the extended axis ---
-    # 1. Calculate the length of each container's x_axis + its specific forecast_periods.
-    # 2. Find the maximum of these total required lengths.
-    max_extended_length = maximum([
-        length(k[:x_axis]) + get(k, :forecast_periods, 0)
-        for k in model_estimates_active_plot_container
-    ])
-
-    # The length of the combined_x_axis (the observed data portion).
-    combined_x_axis_length = length(combined_x_axis)
-
-    # Calculate the actual number of forecast periods needed on top of the combined_x_axis.
-    # This ensures the new axis is long enough to cover the longest single forecast.
-    # This should be at least max_extended_length - combined_x_axis_length, 
-    # but also at least the maximum of all individual forecast periods.
-    # Using the maximum difference is safer.
-    needed_forecast_periods = max_extended_length - combined_x_axis_length
-
-    # --- Create the extended combined x-axis ---
-
-    if needed_forecast_periods > 0
-        # Determine the step size for the extension
-        period = infer_step(combined_x_axis)
-        last_x = combined_x_axis[end]
-        
-        # Extend the combined_x_axis with the necessary number of periods
-        extended_combined_x_axis = vcat(
-            combined_x_axis, 
-            [last_x + i * period for i in 1:needed_forecast_periods]
+        max_extended_length = maximum(
+            length(k[:x_axis]) + get(k, :forecast_periods, 0)
+            for k in model_estimates_active_plot_container
         )
-    else
-        # No extension needed if max_extended_length is <= combined_x_axis_length
-        extended_combined_x_axis = combined_x_axis
+
+        combined_x_axis_length = length(combined_x_axis)
+        needed_forecast_periods = max(0, max_extended_length - combined_x_axis_length)
+
+        if needed_forecast_periods > 0
+            extended_combined_x_axis = 1:(base_length + needed_forecast_periods)
+        else
+            extended_combined_x_axis = combined_x_axis
+        end
     end
 
     for k in setdiff(keys(args_and_kwargs), 

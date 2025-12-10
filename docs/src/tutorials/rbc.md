@@ -133,7 +133,7 @@ import StatsPlots
 plot_irf(RBC)
 ```
 
-![RBC IRF](../assets/tutorial_irf__RBC__ϵᶻ__1.png)
+![RBC IRF](../assets/tutorial_irf__RBC____1.png)
 
 When the model is solved the first time (in this case by calling [`plot_irf`](@ref)), the package breaks down the steady state problem into independent blocks and first attempts to solve them symbolically and if that fails numerically.
 
@@ -159,7 +159,7 @@ Another insightful output is simulations of the model. The [`plot_simulations`](
 plot_simulations(RBC)
 ```
 
-![Simulate RBC](../assets/tutorial_sim__RBC__ϵᶻ__1.png)
+![Simulate RBC](../assets/tutorial_sim__RBC__simulation__1.png)
 
 The plots show the models endogenous variables in response to random draws for all exogenous shocks over 100 periods.
 
@@ -174,7 +174,7 @@ shock_series[1,4] = -1
 plot_irf(RBC, shocks = shock_series)
 ```
 
-![Series of shocks RBC](../assets/tutorial_shock_matrix__RBC__ϵᶻ__1.png)
+![Series of shocks RBC](../assets/tutorial_shock_matrix__RBC__shock_matrix__1.png)
 
 The plot shows the two shocks hitting the economy in periods 2 and 4 and then continues the simulation for 40 more quarters.
 

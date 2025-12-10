@@ -118,7 +118,7 @@ pt = @time Pigeons.pigeons(target = Caldara_lp,
             record = [Pigeons.traces; Pigeons.round_trip; Pigeons.record_default()],
             n_chains = 1,
             n_rounds = 8,
-            multithreaded = false)
+            multithreaded = false) # tests fail on multithreaded
 
 samps = MCMCChains.Chains(pt)
 

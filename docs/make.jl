@@ -33,17 +33,17 @@ makedocs(
             "Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)" => "tutorials/calibration.md",
             "Estimate a model using gradient based samplers - Schorfheide (2000)" => "tutorials/estimation.md",
         ],
+        "Plotting" => [
+            "Overview" => "plotting.md",
+            "Impulse Response Functions" => "plot_irf.md",
+            "Policy Functions" => "plot_solution.md",
+            "Conditional Forecasts" => "plot_conditional_forecast.md",
+            "Variance Decomposition" => "plot_conditional_variance_decomposition.md",
+            "Model Estimates" => "plot_model_estimates.md",
+        ],
         "How-to guides" => [
             "Programmatic model writing using for-loops" => "how-to/loops.md",
             "Occasionally binding constraints" => "how-to/obc.md",
-            "Plotting" => [
-                "Overview" => "plotting.md",
-                "Impulse Response Functions" => "plot_irf.md",
-                "Policy Functions" => "plot_solution.md",
-                "Conditional Forecasts" => "plot_conditional_forecast.md",
-                "Variance Decomposition" => "plot_conditional_variance_decomposition.md",
-                "Model Estimates" => "plot_model_estimates.md",
-            ],
             # "how_to.md"
             ],
         # "Model syntax" => "dsl.md",

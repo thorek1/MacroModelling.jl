@@ -100,8 +100,9 @@ Next the parameter priors are defined using the Turing package. The `@model` mac
 
 ```@repl tutorial_2
 import Turing
-import Turing: NUTS, sample, logpdf
+import Turing: NUTS, sample, logpdf, replacenames
 import ADTypes: AutoZygote
+import Zygote
 
 prior_distributions = [
     Beta(0.356, 0.02, μσ = true),           # alp
@@ -246,6 +247,6 @@ Last but not least, the model estimates and the shock decomposition can also be 
 plot_model_estimates(FS2000, data)
 ```
 
-![Model estimates](../assets/estimate_tutorial__FS2000__2.png)
+![Model estimates](../assets/estimates__FS2000__3.png)
 
 shows the variables of the model (blue), data (red), the shock decomposition for each endogenous variable and in the last panel the estimated shocks used to estimate the model.
