@@ -147,7 +147,7 @@ jobs:
             arch: x64
             test_set: "jet"
             allow_failure: true
-          - version: '1.11'
+          - version: '1'
             os: ubuntu-latest
             arch: x64
             test_set: "jet"
