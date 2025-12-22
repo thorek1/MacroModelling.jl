@@ -18,7 +18,7 @@ bib = CitationBibliography(
 
 makedocs(
     sitename = "MacroModelling.jl",
-    authors = "Thore Kockerols",
+    authors = "Thore Kockerols <mail@thorekockerols.com>",
     doctest = true,
     # doctest = false,
     # draft = true,

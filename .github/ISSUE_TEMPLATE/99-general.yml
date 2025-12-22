@@ -1,0 +1,21 @@
+name: "General issue"
+description: In case none of the others templates apply
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this issue!
+
+        Please, before submitting, make sure that:
+
+        - There is not an [existing issue](https://github.com/thorek1/MacroModelling.jl/issues) with the same question
+        - You have read the [contributing guide](https://thorek1.github.io/MacroModelling.jl/dev/90-contributing/)
+        - You are following the [code of conduct](https://github.com/thorek1/MacroModelling.jl/blob/main/CODE_OF_CONDUCT.md)
+        The form below should help you in filling out this issue.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the issue
+    validations:
+      required: true

@@ -1,11 +1,15 @@
+# CompatHelper v3.5.0
 name: CompatHelper
+
 on:
   schedule:
-    - cron: 0 0 * * *
+    - cron: 0 0 * * * # Every day at 00:00 UTC
   workflow_dispatch:
+
 permissions:
   contents: write
   pull-requests: write
+
 jobs:
   CompatHelper:
     runs-on: ubuntu-latest
@@ -15,11 +19,13 @@ jobs:
         run: which julia
         continue-on-error: true
       - name: Install Julia, but only if it is not already available in the PATH
-        uses: julia-actions/setup-julia@latest
+        uses: julia-actions/setup-julia@v2
         with:
-          version: '1'
+          version: "1"
           arch: ${{ runner.arch }}
         if: steps.julia_in_path.outcome != 'success'
+      - name: Use Julia cache
+        uses: julia-actions/cache@v2
       - name: "Add the General registry via Git"
         run: |
           import Pkg
@@ -42,3 +48,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMPATHELPER_PRIV: ${{ secrets.DOCUMENTER_KEY }}
+          # COMPATHELPER_PRIV: ${{ secrets.COMPATHELPER_PRIV }}

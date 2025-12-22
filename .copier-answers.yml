@@ -1,0 +1,42 @@
+# Changes here will be overwritten by Copier
+AddAllcontributors: true
+AddCitationCFF: true
+AddCodeOfConduct: true
+AddCompatHelperCI: true
+AddContributionDocs: true
+AddCopierCI: true
+AddDependabot: true
+AddDocs: true
+AddDocsCI: true
+AddFormatterAndLinterConfigFiles: true
+AddGitHubPRTemplate: true
+AddGitHubTemplates: true
+AddLintCI: true
+AddLychee: true
+AddMacToCI: true
+AddPrecommit: true
+AddPrecommitUpdateCI: true
+AddTagBotCI: true
+AddTestCI: true
+AddWinToCI: true
+Authors: Thore Kockerols <mail@thorekockerols.com>
+CheckExplicitImports: true
+CodeOfConductContact: mail@thorekockerols.com
+ConfigIndentation: 2
+ExplicitImportsChecklist: exclude_all_qualified_accesses_are_public
+JuliaIndentation: 4
+JuliaMinCIVersion: min
+JuliaMinVersion: '1.10'
+License: MIT
+LicenseCopyrightHolders: Thore Kockerols
+MarkdownIndentation: 2
+PackageName: MacroModelling
+PackageOwner: thorek1
+PackageUUID: 687ffad2-3618-405e-ac50-e0f7b9c75e44
+RunJuliaNightlyOnCI: true
+StrategyConfirmIncluded: true
+StrategyLevel: 3
+StrategyReviewExcluded: true
+TestingStrategy: basic_auto_discover
+UseCirrusCI: true
+_src_path: /Users/thorekockerols/.julia/packages/BestieTemplate/6JtNK

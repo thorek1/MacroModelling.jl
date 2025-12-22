@@ -1,3 +1,7 @@
+```@meta
+CurrentModule = MacroModelling
+```
+
 # `MacroModelling.jl`
 
 ## Author: Thore Kockerols (@thorek1)
@@ -71,3 +75,15 @@ The package contains the following models in the `models` folder:
 
 ```@bibliography
 ```
+
+## Contributors
+
+```@raw html
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->

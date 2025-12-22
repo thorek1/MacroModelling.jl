@@ -1,0 +1,41 @@
+name: "Feature Request"
+description: Suggest a new feature for the package
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this feature request!
+
+        Please, before submitting, make sure that:
+
+        - There is not an [existing issue](https://github.com/thorek1/MacroModelling.jl/issues) with the same question
+        - You have read the [contributing guide](https://thorek1.github.io/MacroModelling.jl/dev/90-contributing/)
+        - You are following the [code of conduct](https://github.com/thorek1/MacroModelling.jl/blob/main/CODE_OF_CONDUCT.md)
+        The form below should help you in filling out this issue.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the requested feature
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation and testing
+      description: How could we verify that the new feature works? What kind of tests can be done?
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Explain why this feature is relevant
+  - type: textarea
+    id: target
+    attributes:
+      label: Target audience
+      description: Tell more about the users of this feature, or where it could be useful
+  - type: textarea
+    id: can-help
+    attributes:
+      label: Can you help?
+      description: Can you help developing this feature?

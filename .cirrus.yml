@@ -1,0 +1,13 @@
+freebsd_instance:
+  image_family: freebsd-13-3
+task:
+  name: FreeBSD
+  env:
+    matrix:
+      - JULIA_VERSION: 1
+  install_script:
+    - sh -c "$(fetch https://raw.githubusercontent.com/ararslan/CirrusCI.jl/master/bin/install.sh -o -)"
+  build_script:
+    - cirrusjl build
+  test_script:
+    - cirrusjl test

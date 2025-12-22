@@ -1,0 +1,60 @@
+name: Bug Report
+description: File a bug report related to running the package
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+
+        Please, before submitting, make sure that:
+
+        - There is not an [existing issue](https://github.com/thorek1/MacroModelling.jl/issues) with the same question
+        - You have read the [contributing guide](https://thorek1.github.io/MacroModelling.jl/dev/90-contributing/)
+        - You are following the [code of conduct](https://github.com/thorek1/MacroModelling.jl/blob/main/CODE_OF_CONDUCT.md)
+        The form below should help you in filling out this issue.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the bug
+    validations:
+      required: true
+  - type: input
+    id: pkg-version
+    attributes:
+      label: Package Version
+      description: What version of the package are you running?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Julia Version
+      description: What version of Julia are you running?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: What steps led to the bug happening? Please provide a minimal reproducible example.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Please copy and paste any relevant log output. This will be automatically formatted into code, so no need for backticks.
+      render: shell
+  - type: dropdown
+    id: os
+    attributes:
+      label: "Operating System"
+      description: What is the impacted environment?
+      multiple: true
+      options:
+        - Windows
+        - Linux
+        - Mac

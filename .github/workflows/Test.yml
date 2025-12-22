@@ -1,0 +1,48 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+    tags: ["*"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    uses: ./.github/workflows/ReusableTest.yml
+    with:
+      os: ${{ matrix.os }}
+      version: ${{ matrix.version }}
+      arch: ${{ matrix.arch }}
+      allow_failure: ${{ matrix.allow_failure }}
+      run_codecov: ${{ matrix.version == '1' && matrix.os == 'ubuntu-latest' }}
+    secrets:
+      codecov_token: ${{ secrets.CODECOV_TOKEN }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - "min"
+          - "1"
+        os:
+          - ubuntu-latest
+          - macOS-latest
+          
+          - windows-latest
+          
+        arch:
+          - x64
+        allow_failure: [false]
+        include:
+          - version: "nightly"
+            os: ubuntu-latest
+            arch: x64
+            allow_failure: true
+          - version: "nightly"
+            os: macOS-latest
+            arch: x64
+            allow_failure: true
+          - version: "nightly"
+            os: windows-latest
+            arch: x64
+            allow_failure: true

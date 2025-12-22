@@ -1,0 +1,59 @@
+name: Copier Update
+
+on:
+  schedule:
+    - cron: 0 7 1/7 * *  # Every 7 days at 7:00 UTC
+  workflow_dispatch:
+
+jobs:
+  Copier:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.COPIER_PAT }}
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: "1"
+      - name: Use Julia cache
+        uses: julia-actions/cache@v2
+      - name: Install JuliaFormatter.jl
+        run: julia -e 'using Pkg; pkg"add JuliaFormatter"'
+      - name: Hack for setup-python cache # https://github.com/actions/setup-python/issues/807
+        run: touch requirements.txt
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          cache: 'pip'
+          python-version: "3.11"
+      - name: Hack for setup-python cache # https://github.com/actions/setup-python/issues/807
+        run: rm requirements.txt
+      - name: Check for update in the template
+        run: |
+          pip install copier
+          copier update -A -o rej
+          echo -e "Automated changed by Copier.yml workflow\n" > /tmp/body.md
+          echo -e 'Rejected changes (if any):\n```diff\n' >> /tmp/body.md
+          find . -name "*.rej" | xargs cat >> /tmp/body.md
+          find . -name "*.rej" | xargs rm -f
+          echo -e '```' >> /tmp/body.md
+          git diff
+      - name: Run pre-commit to run the formatters
+        run: |
+          pip install pre-commit
+          pre-commit run -a || true # Ignore pre-commit errors
+      - name: Create Pull Request
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.COPIER_PAT }}
+          commit-message: ":robot: BestieTemplate.jl update"
+          title: "[AUTO] BestieTemplate.jl update"
+          body-path: /tmp/body.md
+          branch: auto-copier-template-update
+          delete-branch: true
+          labels: configuration, automated pr, no changelog
+      - name: Check outputs
+        run: |
+          echo "Pull Request Number - ${{ steps.cpr.outputs.pull-request-number }}"
+          echo "Pull Request URL - ${{ steps.cpr.outputs.pull-request-url }}"

@@ -9,6 +9,17 @@
 <!-- [![Downloads](https://shields.io/endpoint?url=https://pkgs.genieframework.com/api/v1/badge/MacroModelling)](https://pkgs.genieframework.com?packages=MacroModelling) -->
 <!-- [![DOI](https://zenodo.org/badge/571475096.svg)](https://zenodo.org/badge/latestdoi/571475096) -->
 <!-- [![](https://img.shields.io/badge/docs-dev-blue.svg)](https://thorek1.github.io/MacroModelling.jl/dev) -->
+<!-- [![Stable Documentation](https://img.shields.io/badge/docs-stable-blue.svg)](https://thorek1.github.io/MacroModelling.jl/stable) -->
+<!-- [![Development documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://thorek1.github.io/MacroModelling.jl/dev) -->
+[![Test workflow status](https://github.com/thorek1/MacroModelling.jl/actions/workflows/Test.yml/badge.svg?branch=main)](https://github.com/thorek1/MacroModelling.jl/actions/workflows/Test.yml?query=branch%3Amain)
+<!-- [![Coverage](https://codecov.io/gh/thorek1/MacroModelling.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/thorek1/MacroModelling.jl) -->
+[![Lint workflow Status](https://github.com/thorek1/MacroModelling.jl/actions/workflows/Lint.yml/badge.svg?branch=main)](https://github.com/thorek1/MacroModelling.jl/actions/workflows/Lint.yml?query=branch%3Amain)
+[![Docs workflow Status](https://github.com/thorek1/MacroModelling.jl/actions/workflows/Docs.yml/badge.svg?branch=main)](https://github.com/thorek1/MacroModelling.jl/actions/workflows/Docs.yml?query=branch%3Amain)
+<!-- [![Build Status](https://api.cirrus-ci.com/github/thorek1/MacroModelling.jl.svg)](https://cirrus-ci.com/github/thorek1/MacroModelling.jl) -->
+<!-- [![DOI](https://zenodo.org/badge/DOI/FIXME)](https://doi.org/FIXME) -->
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![All Contributors](https://img.shields.io/github/all-contributors/thorek1/MacroModelling.jl?labelColor=5e1ec7&color=c0ffee&style=flat-square)](#contributors)
+[![BestieTemplate](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/JuliaBesties/BestieTemplate.jl/main/docs/src/assets/badge.json)](https://github.com/JuliaBesties/BestieTemplate.jl)
 
 **Author: Thore Kockerols (@thorek1)**
 
@@ -130,3 +141,22 @@ Villemot, S., (2011), "Solving rational expectations models at first order: what
 If there are questions regarding the usage or unexpected behaviour is encountered please file an issue.
 
 Contributions are very welcome, as are feature requests and suggestions. Please open an issue or even better become a contributor and create a pull request.
+
+If you want to make contributions of any kind, please first that a look into our [contributing guide directly on GitHub](docs/src/90-contributing.md) or the [contributing page on the website](https://thorek1.github.io/MacroModelling.jl/dev/90-contributing/)
+
+## How to Cite
+
+If you use MacroModelling.jl in your work, please cite using the reference given in [CITATION.bib](https://github.com/thorek1/MacroModelling.jl/blob/main/CITATION.bib) or [CITATION.cff](https://github.com/thorek1/MacroModelling.jl/blob/main/CITATION.cff).
+
+---
+
+### Contributors
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+
+<!-- ALL-CONTRIBUTORS-LIST:END -->
