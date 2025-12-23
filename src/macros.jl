@@ -1518,8 +1518,10 @@ macro parameters(𝓂,ex...)
         all_params = vcat(calib_parameters, missing_params)
         all_values = vcat(calib_values, fill(NaN, length(missing_params)))
 
-        mod.$𝓂.parameters = all_params
-        mod.$𝓂.parameter_values = all_values
+        defined_params_idx = indexin(intersect(all_params, defined_params), collect(defined_params))
+
+        mod.$𝓂.parameters = all_params[defined_params_idx]
+        mod.$𝓂.parameter_values = all_values[defined_params_idx]
         mod.$𝓂.calibration_equations = calib_equations_list
         mod.$𝓂.parameters_as_function_of_parameters = calib_parameters_no_var
         mod.$𝓂.calibration_equations_no_var = calib_equations_no_var_list
