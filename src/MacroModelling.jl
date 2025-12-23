@@ -351,15 +351,15 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 "\n  Auxiliary:  ", length(intersect(𝓂.timings.future_not_past_and_mixed, union(𝓂.aux_present, 𝓂.aux_future))),
                 "\nShocks:       ", 𝓂.timings.nExo,
                 "\nParameters:   ", length(𝓂.parameters_in_equations),
-                if 𝓂.calibration_equations == Expr[]
-                    ""
-                else
-                    "\nCalibration\nequations:    " * repr(length(𝓂.calibration_equations))
-                end,
                 if isempty(𝓂.missing_parameters)
                     ""
                 else
                     "\n Missing:     " * repr(length(𝓂.missing_parameters))
+                end,
+                if 𝓂.calibration_equations == Expr[]
+                    ""
+                else
+                    "\nCalibration\nequations:    " * repr(length(𝓂.calibration_equations))
                 end,
                 # "\n¹: including auxiliary variables"
                 # "\nVariable bounds (upper,lower,any): ",sum(𝓂.upper_bounds .< Inf),", ",sum(𝓂.lower_bounds .> -Inf),", ",length(𝓂.bounds),
@@ -8111,7 +8111,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
     
     # Handle remaining parameters (not missing ones)
     if length(setdiff(collect(keys(parameters)),𝓂.parameters))>0
-        println("Parameters not part of the model: ",setdiff(collect(keys(parameters)),𝓂.parameters))
+        @warn("Parameters not part of the model are ignored: $(setdiff(collect(keys(parameters)),𝓂.parameters))")
         for kk in setdiff(collect(keys(parameters)),𝓂.parameters)
             delete!(parameters,kk)
         end
@@ -8122,12 +8122,12 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
     for (par,val) in parameters
         if haskey(𝓂.bounds,par)
             if val > 𝓂.bounds[par][2]
-                println("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
+                @warn("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
             if val < 𝓂.bounds[par][1]
-                println("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
+                @warn("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
@@ -8135,7 +8135,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
     end
 
     if bounds_broken
-        println("Parameters unchanged.")
+        @warn("Parameters unchanged.")
     else
         ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1], collect(keys(parameters)))
         # ntrsct_idx = indexin(collect(keys(parameters)), 𝓂.parameters)
@@ -8256,7 +8256,7 @@ write_parameters_input!(𝓂::ℳ, parameters::Matrix{Real}; verbose::Bool = tru
 
 function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose::Bool = true)
     if length(parameters) > length(𝓂.parameter_values)
-        println("Model has $(length(𝓂.parameter_values)) parameters. $(length(parameters)) were provided. The following will be ignored: $(join(parameters[length(𝓂.parameter_values)+1:end], " "))")
+        @warn "Model has $(length(𝓂.parameter_values)) parameters. $(length(parameters)) were provided. The following will be ignored: $(join(parameters[length(𝓂.parameter_values)+1:end], " "))"
 
         parameters = parameters[1:length(𝓂.parameter_values)]
     end
@@ -8266,12 +8266,12 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
     for (par,val) in Dict(𝓂.parameters .=> parameters)
         if haskey(𝓂.bounds,par)
             if val > 𝓂.bounds[par][2]
-                println("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
+                @warn("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
             if val < 𝓂.bounds[par][1]
-                println("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
+                @warn("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
@@ -8279,7 +8279,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
     end
 
     if bounds_broken
-        println("Parameters unchanged.")
+        @warn("Parameters unchanged.")
     else
         if !all(parameters .== 𝓂.parameter_values[1:length(parameters)])
             𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
@@ -8311,6 +8311,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
             𝓂.parameter_values[match_idx] = parameters[match_idx]
         end
     end
+
     if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
 
     return nothing
