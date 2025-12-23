@@ -1199,8 +1199,8 @@ macro parameters(𝓂,ex...)
                             x :
                     begin # this is calibration by targeting SS values (conditional parameter at the end)
                         if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
-                        push!(calib_eq_parameters,x.args[2].args[end])
-                        push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2])))
+                        push!(calib_eq_parameters, x.args[2].args[end])
+                        push!(calib_equations, Expr(:(=),x.args[1], unblock(x.args[2].args[2])))
                     end :
                 x :
             x :
@@ -1225,7 +1225,7 @@ macro parameters(𝓂,ex...)
         end
     end
     
-    calib_parameters_no_var = setdiff(calib_parameters_no_var,calib_parameters)
+    calib_parameters_no_var = setdiff(calib_parameters_no_var, calib_parameters)
     
     for (i, cal_eq) in enumerate(calib_equations)
         ss_tmp = Set{Symbol}()
@@ -1483,6 +1483,11 @@ macro parameters(𝓂,ex...)
             Set{Symbol}(calib_parameters_no_var),
             Set{Symbol}(calib_eq_parameters)
         )
+
+        ignored_params = collect(setdiff(defined_params, all_required_params))
+
+        if !isempty(ignored_params) @warn "Parameters not part of the model are ignored: $ignored_params" end
+
         missing_params = collect(setdiff(all_required_params, defined_params))
         mod.$𝓂.missing_parameters = sort(missing_params)
         
