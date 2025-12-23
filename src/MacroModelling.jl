@@ -3480,13 +3480,18 @@ end
 
 function create_symbols_eqs!(𝓂::ℳ)::symbolics
     # create symbols in SymPyWorkspace to avoid polluting MacroModelling namespace
-    symbols_in_dynamic_equations = reduce(union,get_symbols.(𝓂.dyn_equations))
+    symbols_in_dynamic_equations = reduce(union, get_symbols.(𝓂.dyn_equations))
 
-    symbols_in_dynamic_equations_wo_subscripts = Symbol.(replace.(string.(symbols_in_dynamic_equations),r"₍₋?(₀|₁|ₛₛ|ₓ)₎$"=>""))
+    symbols_in_dynamic_equations_wo_subscripts = Symbol.(replace.(string.(symbols_in_dynamic_equations), r"₍₋?(₀|₁|ₛₛ|ₓ)₎$"=>""))
 
     symbols_in_ss_equations = reduce(union,get_symbols.(𝓂.ss_aux_equations))
 
-    symbols_in_equation = union(𝓂.parameters_in_equations,𝓂.parameters,𝓂.parameters_as_function_of_parameters,symbols_in_dynamic_equations,symbols_in_dynamic_equations_wo_subscripts,symbols_in_ss_equations)#,𝓂.dynamic_variables_future)
+    symbols_in_equation = union(𝓂.parameters_in_equations, 
+                                𝓂.parameters, 
+                                𝓂.parameters_as_function_of_parameters,
+                                symbols_in_dynamic_equations,
+                                symbols_in_dynamic_equations_wo_subscripts,
+                                symbols_in_ss_equations) #, 𝓂.dynamic_variables_future)
 
     symbols_pos = []
     symbols_neg = []
@@ -3511,10 +3516,12 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
         sym_value = SPyPyC.symbols(string(pos), real = true, finite = true, positive = true)
         Core.eval(SymPyWorkspace, :($pos = $sym_value))
     end
+
     for neg in symbols_neg
         sym_value = SPyPyC.symbols(string(neg), real = true, finite = true, negative = true)
         Core.eval(SymPyWorkspace, :($neg = $sym_value))
     end
+
     for none in symbols_none
         sym_value = SPyPyC.symbols(string(none), real = true, finite = true)
         Core.eval(SymPyWorkspace, :($none = $sym_value))
@@ -3583,12 +3590,12 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
     # check variables which appear in two time periods. they might be redundant in steady state
     redundant_vars = intersect.(
         union.(
-            intersect.(Symbolics.var_future_list,Symbolics.var_present_list),
-            intersect.(Symbolics.var_future_list,Symbolics.var_past_list),
-            intersect.(Symbolics.var_present_list,Symbolics.var_past_list),
-            intersect.(Symbolics.ss_list,Symbolics.var_present_list),
-            intersect.(Symbolics.ss_list,Symbolics.var_past_list),
-            intersect.(Symbolics.ss_list,Symbolics.var_future_list)
+            intersect.(Symbolics.var_future_list, Symbolics.var_present_list),
+            intersect.(Symbolics.var_future_list, Symbolics.var_past_list),
+            intersect.(Symbolics.var_present_list, Symbolics.var_past_list),
+            intersect.(Symbolics.ss_list, Symbolics.var_present_list),
+            intersect.(Symbolics.ss_list, Symbolics.var_past_list),
+            intersect.(Symbolics.ss_list, Symbolics.var_future_list)
         ),
     Symbolics.var_list)
 
@@ -4798,7 +4805,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     parameters_only_in_par_defs = Set()
     # add parameters from parameter definitions
     if length(𝓂.calibration_equations_no_var) > 0
-		atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
+		atoms = reduce(union, get_symbols.(𝓂.calibration_equations_no_var))
 	    [push!(atoms_in_equations, a) for a in atoms]
 	    [push!(parameters_only_in_par_defs, a) for a in atoms]
 	end
@@ -4809,23 +4816,23 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     for (i, parss) in enumerate(𝓂.parameters) 
         if parss ∈ union(atoms_in_equations, relevant_pars_across)
-            push!(parameters_in_equations,:($parss = parameters[$i]))
+            push!(parameters_in_equations, :($parss = parameters[$i]))
         end
     end
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies,𝓂.solved_vars[i] => intersect(a, union(𝓂.var,𝓂.parameters)))
+        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
     end
 
-    push!(dependencies,:SS_relevant_calibration_parameters => intersect(reduce(union,atoms_in_equations_list),𝓂.parameters))
+    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
 
     𝓂.SS_dependencies = dependencies
     
 
     
     dyn_exos = []
-    for dex in union(𝓂.exo_past,𝓂.exo_future)
+    for dex in union(𝓂.exo_past, 𝓂.exo_future)
         push!(dyn_exos,:($dex = 0))
     end
 
@@ -4834,7 +4841,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     push!(SS_solve_func, min_max_errors...)
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
     
-    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp...,copy(params_flt)] end))
+    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., copy(params_flt)] end))
     
 
     # push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
@@ -5423,7 +5430,7 @@ function solve_steady_state!(𝓂::ℳ;
     parameters_only_in_par_defs = Set()
     # add parameters from parameter definitions
     if length(𝓂.calibration_equations_no_var) > 0
-		atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
+		atoms = reduce(union, get_symbols.(𝓂.calibration_equations_no_var))
 	    [push!(atoms_in_equations, a) for a in atoms]
 	    [push!(parameters_only_in_par_defs, a) for a in atoms]
 	end
@@ -5434,16 +5441,16 @@ function solve_steady_state!(𝓂::ℳ;
 
     for (i, parss) in enumerate(𝓂.parameters) 
         if parss ∈ union(atoms_in_equations, relevant_pars_across)
-            push!(parameters_in_equations,:($parss = parameters[$i]))
+            push!(parameters_in_equations, :($parss = parameters[$i]))
         end
     end
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies,𝓂.solved_vars[i] => intersect(a, union(𝓂.var,𝓂.parameters)))
+        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
     end
 
-    push!(dependencies,:SS_relevant_calibration_parameters => intersect(reduce(union,atoms_in_equations_list),𝓂.parameters))
+    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
 
     𝓂.SS_dependencies = dependencies
 
@@ -6684,6 +6691,8 @@ function solve!(𝓂::ℳ;
     
     # @timeit_debug timer "Write parameter inputs" begin
 
+    write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
+    
     if !𝓂.solution.functions_written
         # Core.eval(Main, :(@parameters($(Symbol(𝓂.model_name)), report_missing_parameters = false, nothing)))
 
@@ -6795,8 +6804,6 @@ function solve!(𝓂::ℳ;
         end
     end
 
-    write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
-    
     # Check for missing parameters after processing input
     if !isempty(𝓂.missing_parameters)
         error("Cannot solve model: missing parameter values for $(𝓂.missing_parameters). Provide them via the `parameters` keyword argument (e.g., `parameters = [:α => 0.3, :β => 0.99]`).")
@@ -8140,7 +8147,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
             
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
+                if isnothing(𝓂.SS_dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false)
                 # if !isnothing(𝓂.SS_dependencies) && collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
                     𝓂.solution.outdated_NSSS = true
                 end
@@ -8152,7 +8159,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
         end
     end
 
-    if isempty(𝓂.missing_parameters)
+    if isempty(𝓂.missing_parameters) && isempty(missing_params_provided)
         # If SS_solve_func hasn't been created yet (because parameters were provided later),
         # create it now with the final parameter order
         # Check if SS_solve_func is still the dummy function (x->x)
