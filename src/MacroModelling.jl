@@ -6788,6 +6788,8 @@ function solve!(𝓂::ℳ;
             elseif perturbation_order == 3
                 print("Take symbolic derivatives up to third order:\t\t\t\t")
             end
+
+            𝓂.solution.functions_written = true
         end
 
         write_auxiliary_indices!(𝓂)
@@ -8110,9 +8112,9 @@ function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float
     end
     
     # Handle remaining parameters (not missing ones)
-    if length(setdiff(collect(keys(parameters)),𝓂.parameters))>0
+    if length(setdiff(collect(keys(parameters)), 𝓂.parameters))>0
         @warn("Parameters not part of the model are ignored: $(setdiff(collect(keys(parameters)),𝓂.parameters))")
-        for kk in setdiff(collect(keys(parameters)),𝓂.parameters)
+        for kk in setdiff(collect(keys(parameters)), 𝓂.parameters)
             delete!(parameters,kk)
         end
     end
