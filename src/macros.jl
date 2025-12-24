@@ -1518,7 +1518,7 @@ macro parameters(𝓂,ex...)
         all_params = vcat(calib_parameters, missing_params)
         all_values = vcat(calib_values, fill(NaN, length(missing_params)))
 
-        defined_params_idx = indexin(intersect(all_params, defined_params), collect(defined_params))
+        defined_params_idx = indexin(intersect(all_params, defined_params), collect(all_params))
 
         mod.$𝓂.parameters = all_params[defined_params_idx]
         mod.$𝓂.parameter_values = all_values[defined_params_idx]
