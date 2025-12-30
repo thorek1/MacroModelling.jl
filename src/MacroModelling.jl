@@ -6008,7 +6008,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
-    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation)
+    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
     # end # timeit_debug
 
@@ -6033,7 +6033,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                     opts = opts)
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
-    update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation)
+    update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
 
@@ -6337,7 +6337,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
-    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation)
+    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
     if !solved
         if opts.verbose println("1st order solution not found") end
@@ -6360,7 +6360,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     end
     
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
-    update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation)
+    update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
 
@@ -6384,7 +6384,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     end
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
-    update_perturbation_counter!(𝓂, solved3, estimation = opts.estimation)
+    update_perturbation_counter!(𝓂, solved3, estimation = opts.estimation, order = 3)
 
     if length(𝓂.caches.third_order_caches.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.caches.third_order_caches.Ŝ))
         𝓂.caches.third_order_caches.Ŝ = 𝐒₃ * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
@@ -6725,7 +6725,7 @@ function solve!(𝓂::ℳ;
     
             if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
             
-            update_perturbation_counter!(𝓂, solved, estimation = opts.estimation)
+            update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
             # end # timeit_debug
 
@@ -6749,7 +6749,7 @@ function solve!(𝓂::ℳ;
 
                 if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
                 
-                update_perturbation_counter!(𝓂, solved, estimation = opts.estimation)
+                update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
 
@@ -9427,22 +9427,47 @@ function create_broadcaster(indices::Vector{Int}, n::Int)
 end
 
 """
-    update_perturbation_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false)
+    update_perturbation_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false, order::Int = 1)
 
-Updates the perturbation solve counters based on whether the solve was successful.
+Updates the perturbation solve counters based on whether the solve was successful and the perturbation order.
+Always increments the total counter, and increments the failed counter if the solve failed.
 """
-function update_perturbation_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false)
-    if solved
+function update_perturbation_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false, order::Int = 1)
+    if order == 1
         if estimation
-            𝓂.counters.perturbation_solves_success_estimation += 1
+            𝓂.counters.first_order_solves_total_estimation += 1
+            if !solved
+                𝓂.counters.first_order_solves_failed_estimation += 1
+            end
         else
-            𝓂.counters.perturbation_solves_success += 1
+            𝓂.counters.first_order_solves_total += 1
+            if !solved
+                𝓂.counters.first_order_solves_failed += 1
+            end
         end
-    else
+    elseif order == 2
         if estimation
-            𝓂.counters.perturbation_solves_failed_estimation += 1
+            𝓂.counters.second_order_solves_total_estimation += 1
+            if !solved
+                𝓂.counters.second_order_solves_failed_estimation += 1
+            end
         else
-            𝓂.counters.perturbation_solves_failed += 1
+            𝓂.counters.second_order_solves_total += 1
+            if !solved
+                𝓂.counters.second_order_solves_failed += 1
+            end
+        end
+    elseif order == 3
+        if estimation
+            𝓂.counters.third_order_solves_total_estimation += 1
+            if !solved
+                𝓂.counters.third_order_solves_failed_estimation += 1
+            end
+        else
+            𝓂.counters.third_order_solves_total += 1
+            if !solved
+                𝓂.counters.third_order_solves_failed += 1
+            end
         end
     end
 end
@@ -9451,18 +9476,17 @@ end
     update_ss_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false)
 
 Updates the steady state solve counters based on whether the solve was successful.
+Always increments the total counter, and increments the failed counter if the solve failed.
 """
 function update_ss_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false)
-    if solved
-        if estimation
-            𝓂.counters.ss_solves_success_estimation += 1
-        else
-            𝓂.counters.ss_solves_success += 1
+    if estimation
+        𝓂.counters.ss_solves_total_estimation += 1
+        if !solved
+            𝓂.counters.ss_solves_failed_estimation += 1
         end
     else
-        if estimation
-            𝓂.counters.ss_solves_failed_estimation += 1
-        else
+        𝓂.counters.ss_solves_total += 1
+        if !solved
             𝓂.counters.ss_solves_failed += 1
         end
     end
@@ -9818,7 +9842,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                         opts = opts)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
-    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation)
+    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
     if !solved
         # println("NSSS not found")

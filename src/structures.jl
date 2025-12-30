@@ -284,24 +284,37 @@ end
 """
 Counters for tracking steady state and perturbation solves.
 
-Tracks successful and failed solves separately for regular use and estimation.
+Tracks total solves and failed solves separately for regular use and estimation.
+Perturbation solves are tracked by order (first, second, third).
 """
 mutable struct SolveCounters
-    # Steady state solve counters
-    ss_solves_success::Int
+    # Steady state solve counters (total = all attempts, failed = only failures)
+    ss_solves_total::Int
     ss_solves_failed::Int
-    ss_solves_success_estimation::Int
+    ss_solves_total_estimation::Int
     ss_solves_failed_estimation::Int
     
-    # Perturbation solve counters
-    perturbation_solves_success::Int
-    perturbation_solves_failed::Int
-    perturbation_solves_success_estimation::Int
-    perturbation_solves_failed_estimation::Int
+    # First order perturbation solve counters
+    first_order_solves_total::Int
+    first_order_solves_failed::Int
+    first_order_solves_total_estimation::Int
+    first_order_solves_failed_estimation::Int
+    
+    # Second order perturbation solve counters
+    second_order_solves_total::Int
+    second_order_solves_failed::Int
+    second_order_solves_total_estimation::Int
+    second_order_solves_failed_estimation::Int
+    
+    # Third order perturbation solve counters
+    third_order_solves_total::Int
+    third_order_solves_failed::Int
+    third_order_solves_total_estimation::Int
+    third_order_solves_failed_estimation::Int
 end
 
 # Constructor with default values
-SolveCounters() = SolveCounters(0, 0, 0, 0, 0, 0, 0, 0)
+SolveCounters() = SolveCounters(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 
 mutable struct ℳ
     model_name::Any
