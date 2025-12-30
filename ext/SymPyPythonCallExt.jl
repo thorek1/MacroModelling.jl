@@ -148,7 +148,7 @@ function MacroModelling.simplify(ex::Expr)::Union{Expr,Symbol,Int}
 
     parsed = ex_ss |> x -> Core.eval(SymPyWorkspace, x) |> string |> Meta.parse
 
-    MacroModelling.MacroTools.postwalk(x -> x isa Expr ? 
+    postwalk(x -> x isa Expr ? 
                         x.args[1] == :conjugate ? 
                             x.args[2] : 
                         x : 
@@ -389,7 +389,7 @@ function MacroModelling.solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::s
                 solved = Meta.parse(string(soll[1]))
 
                 push!(𝓂.solved_vars, Symbol(var_to_solve_for))
-                push!(𝓂.solved_vals, solved isa Expr ? MacroModelling.postwalk(x -> x isa Float64 ? round(x, digits = 30) : x, solved) : solved)
+                push!(𝓂.solved_vals, solved isa Expr ? postwalk(x -> x isa Float64 ? round(x, digits = 30) : x, solved) : solved)
 
                 eq_idx_in_block_to_solve = Int[1]
             end
@@ -414,7 +414,7 @@ function MacroModelling.solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::s
                                     for (s,solved) in soll
                                         ssoll = Meta.parse(string(solved))
                                         push!(𝓂.solved_vars, Symbol(s))
-                                        push!(𝓂.solved_vals, ssoll isa Expr ? MacroModelling.postwalk(x -> x isa Float64 ? round(x, digits = 30) : x, ssoll) : ssoll)
+                                        push!(𝓂.solved_vals, ssoll isa Expr ? postwalk(x -> x isa Float64 ? round(x, digits = 30) : x, ssoll) : ssoll)
                                     end
                                     
                                     break

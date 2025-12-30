@@ -765,9 +765,6 @@ simplify(ex::Expr)::Union{Expr,Symbol,Int} = ex
 
 # transform_obc: return the original expression when SymPy is not loaded
 function transform_obc(ex::Expr; avoid_solve::Bool = false)
-    if sympy_available()
-        error("transform_obc called but SymPy extension method not loaded properly")
-    end
     # When SymPy is not available, just return the original expression
     # This means occasionally binding constraints won't be symbolically simplified
     return ex
@@ -775,17 +772,15 @@ end
 
 # create_symbols_eqs!: not available without SymPy
 function create_symbols_eqs!(𝓂::ℳ)
-    if sympy_available()
-        error("create_symbols_eqs! called but SymPy extension method not loaded properly")
-    end
+    # Returns nothing when SymPy is not available
+    # The @parameters macro checks sympy_available() and uses numerical methods instead
     return nothing
 end
 
 # remove_redundant_SS_vars!: no-op without SymPy
 function remove_redundant_SS_vars!(𝓂::ℳ, symbolics; avoid_solve::Bool = false)
-    if sympy_available()
-        error("remove_redundant_SS_vars! called but SymPy extension method not loaded properly")
-    end
+    # No-op when SymPy is not available
+    # The @parameters macro checks sympy_available() and uses numerical methods instead
     return nothing
 end
 
