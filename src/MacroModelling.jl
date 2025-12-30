@@ -6704,7 +6704,7 @@ function solve!(𝓂::ℳ;
 
         symbolics = create_symbols_eqs!(𝓂)
 
-        remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = !simplify) 
+        remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = false) 
 
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
 
@@ -6713,7 +6713,7 @@ function solve!(𝓂::ℳ;
 
         if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
-        solve_steady_state!(𝓂, symbolic, symbolics, verbose = verbose, avoid_solve = !simplify) # 2nd argument is SS_symbolic
+        solve_steady_state!(𝓂, false, symbolics, verbose = verbose, avoid_solve = false) # 2nd argument is SS_symbolic
 
         𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
         
