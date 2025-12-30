@@ -838,6 +838,7 @@ macro model(𝓂,ex...)
                         $parameter_values,
                         
                         Symbol[], # missing_parameters - to be filled by @parameters
+                        false, # precompile - to be set by @parameters
 
                         Dict{Symbol, Float64}(), # guess
 
@@ -1541,6 +1542,9 @@ macro parameters(𝓂,ex...)
         end
 
         mod.$𝓂.guess = guess_dict
+        
+        # Store precompile flag in model container
+        mod.$𝓂.precompile = $precompile
         
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed 

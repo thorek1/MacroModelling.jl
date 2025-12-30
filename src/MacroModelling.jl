@@ -6698,28 +6698,38 @@ function solve!(𝓂::ℳ;
         
         perturbation_order = 1
         
-        start_time = time()
+        if !𝓂.precompile
+            start_time = time()
 
-        if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
+            if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
 
-        symbolics = create_symbols_eqs!(𝓂)
+            symbolics = create_symbols_eqs!(𝓂)
 
-        remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = false) 
+            remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = false) 
 
-        if !silent println(round(time() - start_time, digits = 3), " seconds") end
+            if !silent println(round(time() - start_time, digits = 3), " seconds") end
 
 
-        start_time = time()
+            start_time = time()
 
-        if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
-        solve_steady_state!(𝓂, false, symbolics, verbose = verbose, avoid_solve = false) # 2nd argument is SS_symbolic
+            solve_steady_state!(𝓂, false, symbolics, verbose = verbose, avoid_solve = false) # 2nd argument is SS_symbolic
 
-        𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
-        
-        set_up_obc_violation_function!(𝓂)
+            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+            
+            set_up_obc_violation_function!(𝓂)
 
-        if !silent println(round(time() - start_time, digits = 3), " seconds") end
+            if !silent println(round(time() - start_time, digits = 3), " seconds") end
+        else
+            start_time = time()
+
+            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+            solve_steady_state!(𝓂, verbose = verbose)
+
+            if !silent println(round(time() - start_time, digits = 3), " seconds") end
+        end
     
         start_time = time()
 
