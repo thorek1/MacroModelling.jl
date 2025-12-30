@@ -9447,6 +9447,27 @@ function update_perturbation_counter!(𝓂::ℳ, solved::Bool; estimation::Bool 
     end
 end
 
+"""
+    update_ss_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false)
+
+Updates the steady state solve counters based on whether the solve was successful.
+"""
+function update_ss_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false)
+    if solved
+        if estimation
+            𝓂.counters.ss_solves_success_estimation += 1
+        else
+            𝓂.counters.ss_solves_success += 1
+        end
+    else
+        if estimation
+            𝓂.counters.ss_solves_failed_estimation += 1
+        else
+            𝓂.counters.ss_solves_failed += 1
+        end
+    end
+end
+
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                     parameter_values::Vector{S}; 
                                     opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
@@ -9455,24 +9476,14 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
 
     # Update counters
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+    solved = !(solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error))
+    update_ss_counter!(𝓂, solved, estimation = opts.estimation)
+    
+    if !solved
         if opts.verbose 
             println("Failed to find NSSS") 
         end
-        
-        if opts.estimation
-            𝓂.counters.ss_solves_failed_estimation += 1
-        else
-            𝓂.counters.ss_solves_failed += 1
-        end
-
         # return (SS_and_pars, (10.0, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    else
-        if opts.estimation
-            𝓂.counters.ss_solves_success_estimation += 1
-        else
-            𝓂.counters.ss_solves_success += 1
-        end
     end
 
     # end # timeit_debug
@@ -9494,20 +9505,12 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         # Update failed counter
-        if opts.estimation
-            𝓂.counters.ss_solves_failed_estimation += 1
-        else
-            𝓂.counters.ss_solves_failed += 1
-        end
+        update_ss_counter!(𝓂, false, estimation = opts.estimation)
         return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
 
     # Update success counter
-    if opts.estimation
-        𝓂.counters.ss_solves_success_estimation += 1
-    else
-        𝓂.counters.ss_solves_success += 1
-    end
+    update_ss_counter!(𝓂, true, estimation = opts.estimation)
 
     # @timeit_debug timer "Calculate NSSS - pullback" begin
 
@@ -9599,20 +9602,12 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         if opts.verbose println("Failed to find NSSS") end
 
         # Update failed counter
-        if opts.estimation
-            𝓂.counters.ss_solves_failed_estimation += 1
-        else
-            𝓂.counters.ss_solves_failed += 1
-        end
+        update_ss_counter!(𝓂, false, estimation = opts.estimation)
 
         solution_error = S(10.0)
     else
         # Update success counter
-        if opts.estimation
-            𝓂.counters.ss_solves_success_estimation += 1
-        else
-            𝓂.counters.ss_solves_success += 1
-        end
+        update_ss_counter!(𝓂, true, estimation = opts.estimation)
 
         SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
             
