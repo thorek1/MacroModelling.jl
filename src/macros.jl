@@ -1474,11 +1474,25 @@ macro parameters(𝓂,ex...)
         # 1. calib_parameters - parameters with explicit values (e.g., "α = 0.5")
         # 2. calib_parameters_no_var - parameters defined as functions of other parameters (e.g., "α = alpha_param")
         # 3. calib_eq_parameters - parameters determined by calibration equations (e.g., "beta" in "K[ss] = K_ss | beta")
+        # Start with directly required parameters
         all_required_params = union(
             reduce(union, par_calib_list, init = Set{Symbol}()),
-            reduce(union, $par_no_var_calib_list, init = Set{Symbol}()),
             Set{Symbol}(mod.$𝓂.parameters_in_equations)
         )
+        
+        # Add parameters from parameter definitions, but only if the target parameter is needed
+        # This handles the case where parameter X = f(Y, Z) but X is not used in the model
+        # In that case, Y and Z should not be required either
+        par_no_var_calib_filtered = Set{Symbol}()
+        for (i, target_param) in enumerate(calib_parameters_no_var)
+            if target_param ∈ all_required_params
+                # This parameter definition is needed, include its dependencies
+                par_no_var_calib_filtered = union(par_no_var_calib_filtered, $par_no_var_calib_list[i])
+            end
+        end
+        
+        all_required_params = union(all_required_params, par_no_var_calib_filtered)
+        
         defined_params = union(
             Set{Symbol}(calib_parameters),
             Set{Symbol}(calib_parameters_no_var),
