@@ -3532,7 +3532,8 @@ function get_loglikelihood(𝓂::ℳ,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                             sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
-                            lyapunov_algorithm = lyapunov_algorithm)
+                            lyapunov_algorithm = lyapunov_algorithm,
+                            estimation = true)
 
     # if algorithm ∈ [:third_order,:pruned_third_order]
     #     sylvester_algorithm = :bicgstab

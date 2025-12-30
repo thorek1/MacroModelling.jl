@@ -100,6 +100,7 @@ struct CalculationOptions
     
     tol::Tolerances
     verbose::Bool
+    estimation::Bool
 end
 
 @stable default_mode = "disable" begin
@@ -164,14 +165,16 @@ function merge_calculation_options(;quadratic_matrix_equation_algorithm::Symbol 
                                     sylvester_algorithm³::Symbol = :bicgstab,
                                     lyapunov_algorithm::Symbol = :doubling,
                                     tol::Tolerances = Tolerances(),
-                                    verbose::Bool = false)
+                                    verbose::Bool = false,
+                                    estimation::Bool = false)
                                     
     return CalculationOptions(quadratic_matrix_equation_algorithm, 
                                 sylvester_algorithm², 
                                 sylvester_algorithm³, 
                                 lyapunov_algorithm, 
                                 tol, 
-                                verbose)
+                                verbose,
+                                estimation)
 end
 
 end # dispatch_doctor

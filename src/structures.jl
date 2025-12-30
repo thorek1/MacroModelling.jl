@@ -281,6 +281,28 @@ mutable struct solver_parameters
     backtracking_order::Int
 end
 
+"""
+Counters for tracking steady state and perturbation solves.
+
+Tracks successful and failed solves separately for regular use and estimation.
+"""
+mutable struct SolveCounters
+    # Steady state solve counters
+    ss_solves_success::Int
+    ss_solves_failed::Int
+    ss_solves_success_estimation::Int
+    ss_solves_failed_estimation::Int
+    
+    # Perturbation solve counters
+    perturbation_solves_success::Int
+    perturbation_solves_failed::Int
+    perturbation_solves_success_estimation::Int
+    perturbation_solves_failed_estimation::Int
+end
+
+# Constructor with default values
+SolveCounters() = SolveCounters(0, 0, 0, 0, 0, 0, 0, 0)
+
 mutable struct ℳ
     model_name::Any
     # SS_optimizer
@@ -448,4 +470,6 @@ mutable struct ℳ
     # symbolics::symbolics
 
     estimation_helper::Dict{Vector{Symbol}, timings}
+    
+    counters::SolveCounters
 end

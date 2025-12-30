@@ -6008,6 +6008,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation)
 
     # end # timeit_debug
 
@@ -6032,6 +6033,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                     opts = opts)
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+    update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation)
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
 
@@ -6335,6 +6337,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation)
 
     if !solved
         if opts.verbose println("1st order solution not found") end
@@ -6357,6 +6360,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     end
     
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+    update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation)
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
 
@@ -6380,6 +6384,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     end
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
+    update_perturbation_counter!(𝓂, solved3, estimation = opts.estimation)
 
     if length(𝓂.caches.third_order_caches.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.caches.third_order_caches.Ŝ))
         𝓂.caches.third_order_caches.Ŝ = 𝐒₃ * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
@@ -6719,6 +6724,8 @@ function solve!(𝓂::ℳ;
                                                                 initial_guess = 𝓂.solution.perturbation.qme_solution)
     
             if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+            
+            update_perturbation_counter!(𝓂, solved, estimation = opts.estimation)
 
             # end # timeit_debug
 
@@ -6741,6 +6748,8 @@ function solve!(𝓂::ℳ;
                                                                     initial_guess = 𝓂.solution.perturbation.qme_solution)
 
                 if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+                
+                update_perturbation_counter!(𝓂, solved, estimation = opts.estimation)
 
                 write_parameters_input!(𝓂, :activeᵒᵇᶜshocks => 0, verbose = false)
 
@@ -9417,6 +9426,27 @@ function create_broadcaster(indices::Vector{Int}, n::Int)
     return broadcaster  
 end
 
+"""
+    update_perturbation_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false)
+
+Updates the perturbation solve counters based on whether the solve was successful.
+"""
+function update_perturbation_counter!(𝓂::ℳ, solved::Bool; estimation::Bool = false)
+    if solved
+        if estimation
+            𝓂.counters.perturbation_solves_success_estimation += 1
+        else
+            𝓂.counters.perturbation_solves_success += 1
+        end
+    else
+        if estimation
+            𝓂.counters.perturbation_solves_failed_estimation += 1
+        else
+            𝓂.counters.perturbation_solves_failed += 1
+        end
+    end
+end
+
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                     parameter_values::Vector{S}; 
                                     opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
@@ -9424,12 +9454,25 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     # @timeit_debug timer "Calculate NSSS" begin
     SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
 
+    # Update counters
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose 
             println("Failed to find NSSS") 
         end
+        
+        if opts.estimation
+            𝓂.counters.ss_solves_failed_estimation += 1
+        else
+            𝓂.counters.ss_solves_failed += 1
+        end
 
         # return (SS_and_pars, (10.0, iters))#, x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    else
+        if opts.estimation
+            𝓂.counters.ss_solves_success_estimation += 1
+        else
+            𝓂.counters.ss_solves_success += 1
+        end
     end
 
     # end # timeit_debug
@@ -9450,7 +9493,20 @@ function rrule(::typeof(get_NSSS_and_parameters),
     # end # timeit_debug
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+        # Update failed counter
+        if opts.estimation
+            𝓂.counters.ss_solves_failed_estimation += 1
+        else
+            𝓂.counters.ss_solves_failed += 1
+        end
         return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
+
+    # Update success counter
+    if opts.estimation
+        𝓂.counters.ss_solves_success_estimation += 1
+    else
+        𝓂.counters.ss_solves_success += 1
     end
 
     # @timeit_debug timer "Calculate NSSS - pullback" begin
@@ -9542,8 +9598,22 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose println("Failed to find NSSS") end
 
+        # Update failed counter
+        if opts.estimation
+            𝓂.counters.ss_solves_failed_estimation += 1
+        else
+            𝓂.counters.ss_solves_failed += 1
+        end
+
         solution_error = S(10.0)
     else
+        # Update success counter
+        if opts.estimation
+            𝓂.counters.ss_solves_success_estimation += 1
+        else
+            𝓂.counters.ss_solves_success += 1
+        end
+
         SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
             
         SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
@@ -9753,6 +9823,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                         opts = opts)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation)
 
     if !solved
         # println("NSSS not found")
