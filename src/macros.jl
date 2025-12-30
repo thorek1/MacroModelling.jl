@@ -1484,7 +1484,8 @@ macro parameters(𝓂,ex...)
         # Add parameters from parameter definitions, but only if the target parameter is needed
         # This handles the case where parameter X = f(Y, Z) but X is not used in the model.
         # In that case, Y and Z should not be required either.
-        par_no_var_calib_filtered = mapreduce(i -> $par_no_var_calib_list[i], union, findall(target_param -> target_param ∈ all_required_params, calib_parameters_no_var), init = Set{Symbol}())
+        # We need to check if target is in all_required_params OR in calib_eq_parameters (parameters used in calibration equations)
+        par_no_var_calib_filtered = mapreduce(i -> $par_no_var_calib_list[i], union, findall(target_param -> target_param ∈ all_required_params || target_param ∈ calib_eq_parameters, calib_parameters_no_var), init = Set{Symbol}())
         
         all_required_params = union(all_required_params, par_no_var_calib_filtered)
         
