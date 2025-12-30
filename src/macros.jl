@@ -1075,6 +1075,7 @@ macro parameters(𝓂,ex...)
     
     ss_no_var_calib_list = []
     par_no_var_calib_list = []
+    par_no_var_calib_rhs_list = []
     
     calib_parameters = Symbol[]
     calib_values = Float64[]
@@ -1315,7 +1316,8 @@ macro parameters(𝓂,ex...)
         cal_eq)
     
         push!(ss_no_var_calib_list,ss_tmp)
-        push!(par_no_var_calib_list,setdiff(par_tmp,calib_parameters))
+        push!(par_no_var_calib_list, setdiff(par_tmp,calib_parameters))
+        push!(par_no_var_calib_rhs_list, intersect(par_tmp,calib_parameters))
         
         # write down calibration equations
         prs_ex = postwalk(x -> 
@@ -1478,6 +1480,7 @@ macro parameters(𝓂,ex...)
         # Start with directly required parameters
         all_required_params = union(
             reduce(union, par_calib_list, init = Set{Symbol}()),
+            reduce(union, $par_no_var_calib_rhs_list, init = Set{Symbol}()),
             Set{Symbol}(mod.$𝓂.parameters_in_equations)
         )
         
@@ -1485,7 +1488,7 @@ macro parameters(𝓂,ex...)
         # This handles the case where parameter X = f(Y, Z) but X is not used in the model.
         # In that case, Y and Z should not be required either.
         # We need to check if target is in all_required_params OR in calib_eq_parameters (parameters used in calibration equations)
-        par_no_var_calib_filtered = mapreduce(i -> $par_no_var_calib_list[i], union, findall(target_param -> target_param ∈ all_required_params || target_param ∈ calib_eq_parameters, calib_parameters_no_var), init = Set{Symbol}())
+        par_no_var_calib_filtered = mapreduce(i -> $par_no_var_calib_list[i], union, findall(target_param -> target_param ∈ all_required_params, calib_parameters_no_var), init = Set{Symbol}())
         
         all_required_params = union(all_required_params, par_no_var_calib_filtered)
         
