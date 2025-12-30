@@ -29,7 +29,6 @@ MatrixEquations = "99c1a7ee-ab34-5fd5-8076-27c950a045f4"
 NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
-PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
 REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 RecursiveFactorization = "f2c3362d-daeb-58d1-803e-2bc74f2840b4"
@@ -40,17 +39,19 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 Subscripts = "2b7f82d5-8785-4f63-971e-f18ddbeb808e"
 Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
-SymPyPythonCall = "bc8888f7-b21e-4b7c-a06a-5d9c9496438c"
 Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 ThreadedSparseArrays = "59d54670-b8ac-4d81-ab7a-bb56233e17ab"
 Unicode = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [weakdeps]
+PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
+SymPyPythonCall = "bc8888f7-b21e-4b7c-a06a-5d9c9496438c"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [extensions]
 StatsPlotsExt = "StatsPlots"
+SymPyPythonCallExt = ["SymPyPythonCall", "PythonCall"]
 TuringExt = "Turing"
 
 [compat]
