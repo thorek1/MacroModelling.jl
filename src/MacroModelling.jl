@@ -7136,9 +7136,10 @@ function take_nth_order_derivatives(
     max_perturbation_order::Int = 1,
     output_compressed::Bool = true # Controls compression for X derivatives (order >= 2)
 )::Vector{Tuple{SparseMatrixCSC{T, Int}, SparseMatrixCSC{T, Int}}} where T <: Symbolics.Num#, Tuple{Symbolics.Arr{Symbolics.Num, 1}, Symbolics.Arr{Symbolics.Num, 1}}}
-    nx = length(𝔙)
-    np = length(𝔓)
-    nϵ = length(dyn_equations)
+    
+    nx = BigInt(length(𝔙)::Int)
+    # np = length(𝔓)::BigInt
+    nϵ = length(dyn_equations)::Int
 
     if max_perturbation_order < 1
         throw(ArgumentError("max_perturbation_order must be at least 1"))
@@ -7327,7 +7328,7 @@ function take_nth_order_derivatives(
                 sparse_vals_n_uncomp = Symbolics.Num[]
 
                 # Total number of uncompressed columns
-                X_ncols_n = Int(BigInt(nx)^n) # Use BigInt for the power calculation, cast to Int
+                X_ncols_n = nx^n # Use BigInt for the power calculation, cast to Int
 
                 # Iterate through the non-zero entries of the current flat Jacobian (sp_flat_curr_X)
                 k_flat_curr = 1 # linear index counter for nzval of sp_flat_curr_X
@@ -7344,7 +7345,7 @@ function take_nth_order_derivatives(
                         # This maps the tuple (v1, ..., vn) to a unique index from 1 to nx^n
                         # Formula: 1 + (v1-1)*nx^(n-1) + (v2-1)*nx^(n-2) + ... + (vn-1)*nx^0
                         uncompressed_col_idx = 1 # 1-based
-                        power_of_nx = BigInt(nx)^(n-1) # Start with nx^(n-1) for v1 term
+                        power_of_nx = nx^(n-1) # Start with nx^(n-1) for v1 term
                         for i = 1:n
                             uncompressed_col_col_idx_term = (var_indices_full[i] - 1) * power_of_nx
                             # Check for overflow before adding
@@ -7417,7 +7418,7 @@ function take_nth_order_derivatives(
                     else # output_compressed == false
                         # Calculate the uncompressed column index
                         uncompressed_col_idx = 1
-                        power_of_nx = BigInt(nx)^(n-1)
+                        power_of_nx = nx^(n-1)
                         for i = 1:n
                             uncompressed_col_idx += (var_indices_full[i] - 1) * power_of_nx
                             if i < n
@@ -8012,7 +8013,7 @@ write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Real}}; verbose::B
 
 
 
-function write_parameters_input!(𝓂::ℳ, parameters::OrderedDict{Symbol,Float64}; verbose::Bool = true)
+function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true) where D <: AbstractDict{Symbol,Float64}
     # Handle missing parameters - add them if they are in the missing_parameters list
     missing_params_provided = intersect(collect(keys(parameters)), 𝓂.missing_parameters)
     
