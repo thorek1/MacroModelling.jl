@@ -1013,7 +1013,8 @@ Parameters can be defined in either of the following ways:
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. When working with higher order perturbation later on, respective derivatives will be taken at that stage.
 - `simplify` [Default: `true`, Type: `Bool`]: whether to eliminate redundant variables and simplify the non-stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
 
-
+# Delayed parameter definition
+Not all parameters need to be defined in the `@parameters` macro. Calibration equations using the `|` syntax must be declared here, but parameter values can be provided later by passing them to any function that accepts the `parameters` argument (e.g., [`get_irf`](@ref), [`get_steady_state`](@ref), [`simulate`](@ref)). Parameters are always maintained in their declaration order: parameters defined in `@parameters` come first in the order they were declared, followed by any parameters provided later in the order they were first provided.
 
 # Examples
 ```julia

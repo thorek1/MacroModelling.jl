@@ -122,6 +122,9 @@ end
 
 Parameter definitions are similar to assigning values in julia. Note that one parameter definition per line is required.
 
+!!! note "Delayed parameter definition"
+    Not all parameters need to be defined in the `@parameters` macro. Calibration equations (using the `|` syntax) must be declared here, but parameter values can be provided later by passing them to any function that accepts the `parameters` argument (e.g., `get_irf`, `get_steady_state`, `simulate`). Parameters are always maintained in their declaration order.
+
 Given the equations and parameters, the package will first attempt to solve the system of nonlinear equations symbolically (including possible calibration equations - see next tutorial for an example). If an analytical solution is not possible, numerical solution methods are used to try and solve it. There is no guarantee that a solution can be found, but it is highly likely, given that a solution exists. The problem setup tries to incorporate parts of the structure of the problem, e.g. bounds on variables: if one equation contains `log(k)` it must be that `k > 0`. Nonetheless, the user can also provide useful information such as variable bounds or initial guesses. Bounds can be set by adding another expression to the parameter block e.g.: `c > 0`. Large values are typically a problem for numerical solvers. Therefore, providing a guess for these values will increase the speed of the solver. Guesses can be provided as a `Dict` after the model name and before the parameter definitions block, e.g.: `@parameters RBC guess = Dict(k => 10) begin ... end`.
 
 ## Plot impulse response functions (IRFs)
