@@ -448,4 +448,6 @@ mutable struct ℳ
     # symbolics::symbolics
 
     estimation_helper::Dict{Vector{Symbol}, timings}
+
+    revision_history::Vector{NamedTuple{(:timestamp, :action, :equation_index, :old_equation, :new_equation), Tuple{Dates.DateTime, Symbol, Union{Int, Nothing}, Union{Expr, Nothing}, Union{Expr, Nothing}}}}
 end

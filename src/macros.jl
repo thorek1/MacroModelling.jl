@@ -978,7 +978,9 @@ macro model(𝓂,ex...)
                             false
                         ),
 
-                        Dict{Vector{Symbol}, timings}() # estimation_helper
+                        Dict{Vector{Symbol}, timings}(), # estimation_helper
+
+                        NamedTuple{(:timestamp, :action, :equation_index, :old_equation, :new_equation), Tuple{Dates.DateTime, Symbol, Union{Int, Nothing}, Union{Expr, Nothing}, Union{Expr, Nothing}}}[] # revision_history
                     );
     end
 end
