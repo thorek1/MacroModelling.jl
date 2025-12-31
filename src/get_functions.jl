@@ -1708,7 +1708,8 @@ function get_mean_at_approximation_point(𝓂::ℳ;
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
 
-    solve!(𝓂, parameters = parameters, opts = opts)
+    # Need to solve with second order algorithm to set up second-order derivatives
+    solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts)
 
     # Convert approximation_point KeyedArray to Vector if provided
     approx_point_vec = nothing
