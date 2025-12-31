@@ -1014,7 +1014,9 @@ Parameters can be defined in either of the following ways:
 - `simplify` [Default: `true`, Type: `Bool`]: whether to eliminate redundant variables and simplify the non-stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
 
 # Delayed parameter definition
-Not all parameters need to be defined in the `@parameters` macro. Calibration equations using the `|` syntax must be declared here, but parameter values can be provided later by passing them to any function that accepts the `parameters` argument (e.g., [`get_irf`](@ref), [`get_steady_state`](@ref), [`simulate`](@ref)). Parameters are always maintained in their declaration order: parameters defined in `@parameters` come first in the order they were declared, followed by any parameters provided later in the order they were first provided.
+Not all parameters need to be defined in the `@parameters` macro. Calibration equations using the `|` syntax must be declared here, but parameter values can be provided later by passing them to any function that accepts the `parameters` argument (e.g., [`get_irf`](@ref), [`get_steady_state`](@ref), [`simulate`](@ref)). 
+
+**Parameter ordering:** When some parameters are not defined in `@parameters`, the final parameter vector follows a specific order: first come the parameters defined in `@parameters` (in their declaration order), followed by any missing parameters (in alphabetical order). This ordering is important when passing parameter values by position rather than by name in subsequent function calls.
 
 # Examples
 ```julia
@@ -1502,8 +1504,9 @@ macro parameters(𝓂,ex...)
 
         if !isempty(ignored_params) @warn "Parameters not part of the model are ignored: $ignored_params" end
 
-        missing_params = collect(setdiff(all_required_params, defined_params))
-        mod.$𝓂.missing_parameters = sort(missing_params)
+        missing_params_unsorted = collect(setdiff(all_required_params, defined_params))
+        missing_params = sort(missing_params_unsorted)
+        mod.$𝓂.missing_parameters = missing_params
         
         has_missing_parameters = length(missing_params) > 0
 
