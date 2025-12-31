@@ -20,19 +20,46 @@ function update_bounds!(bounds::Dict{Symbol,Tuple{Float64,Float64}}, sym::Symbol
 end
 
 """
-    create_aux_var_symbol(var_name, k, is_lead)
+    create_aux_var_symbol(var_name, k, suffix)
 
 Create auxiliary variable symbol for leads/lags > 1.
+
+# Arguments
+- `var_name::Symbol`: The base variable name
+- `k::Int`: The lead/lag index (positive for leads, negative for lags)
+- `suffix::String`: Time suffix for the symbol (e.g., "₀", "₁", "₋₁")
 """
 function create_aux_var_symbol(var_name::Symbol, k::Int, suffix::String)
     Symbol(string(var_name) * "ᴸ⁽" * (k < 0 ? "⁻" : "") * super(string(abs(k))) * "⁾₍" * suffix * "₎")
 end
 
 """
-    add_auxiliary_equation!(dyn_equations, dyn_eq_aux_ind, aux_vars_created, var_name, k, is_lead)
+    create_lag_aux_symbol(var_name, k, suffix)
 
-Add auxiliary equation for lead/lag and track created auxiliary variables.
-Returns the next value of k after processing.
+Create auxiliary variable symbol specifically for lags (negative indices).
+Uses the lag-specific format with the minus sign inside the superscript.
+
+# Arguments
+- `var_name::Symbol`: The base variable name
+- `k::Int`: The absolute value of the lag index
+- `suffix::String`: Time suffix for the symbol (e.g., "₀", "₋₁")
+"""
+function create_lag_aux_symbol(var_name::Symbol, k::Int, suffix::String)
+    Symbol(string(var_name) * "ᴸ⁽⁻" * super(string(k)) * "⁾₍" * suffix * "₎")
+end
+
+"""
+    add_lead_aux_equations!(dyn_equations, dyn_eq_aux_ind, aux_vars_created, var_name, k)
+
+Add auxiliary equations for variables with leads > 1 and track created auxiliary variables.
+Returns the final value of k after processing.
+
+# Arguments
+- `dyn_equations`: Vector to push new auxiliary equations to
+- `dyn_eq_aux_ind`: Vector tracking indices of auxiliary equations
+- `aux_vars_created`: Set of already created auxiliary variable symbols
+- `var_name::Symbol`: The base variable name
+- `k::Int`: The initial lead index (must be > 1)
 """
 function add_lead_aux_equations!(dyn_equations, dyn_eq_aux_ind, aux_vars_created, var_name::Symbol, k::Int)
     # Create auxiliary dynamic equations for leads > 1
@@ -62,15 +89,28 @@ function add_lead_aux_equations!(dyn_equations, dyn_eq_aux_ind, aux_vars_created
     return k
 end
 
+"""
+    add_lag_aux_equations!(dyn_equations, dyn_eq_aux_ind, aux_vars_created, var_name, k)
+
+Add auxiliary equations for variables with lags < -1 and track created auxiliary variables.
+Returns the final value of k after processing.
+
+# Arguments
+- `dyn_equations`: Vector to push new auxiliary equations to
+- `dyn_eq_aux_ind`: Vector tracking indices of auxiliary equations
+- `aux_vars_created`: Set of already created auxiliary variable symbols
+- `var_name::Symbol`: The base variable name
+- `k::Int`: The initial lag index (must be < -1)
+"""
 function add_lag_aux_equations!(dyn_equations, dyn_eq_aux_ind, aux_vars_created, var_name::Symbol, k::Int)
     # Create auxiliary dynamic equations for lags < -1
     while k < -2
-        aux_sym = Symbol(string(var_name) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎")
+        aux_sym = create_lag_aux_symbol(var_name, abs(k + 1), "₀")
         if aux_sym ∈ aux_vars_created
             break
         else
             push!(aux_vars_created, aux_sym)
-            next_sym = Symbol(string(var_name) * "ᴸ⁽⁻" * super(string(abs(k + 2))) * "⁾₍₋₁₎")
+            next_sym = create_lag_aux_symbol(var_name, abs(k + 2), "₋₁")
             push!(dyn_equations, Expr(:call, :-, aux_sym, next_sym))
             push!(dyn_eq_aux_ind, length(dyn_equations))
             k += 1
@@ -79,7 +119,7 @@ function add_lag_aux_equations!(dyn_equations, dyn_eq_aux_ind, aux_vars_created,
     
     # Handle the base case
     if k < -1
-        aux_sym = Symbol(string(var_name) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎")
+        aux_sym = create_lag_aux_symbol(var_name, abs(k + 1), "₀")
         if aux_sym ∉ aux_vars_created
             push!(aux_vars_created, aux_sym)
             push!(dyn_equations, Expr(:call, :-, aux_sym, Symbol(string(var_name) * "₍₋₁₎")))
