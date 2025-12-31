@@ -325,7 +325,7 @@ function MacroModelling.solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::s
 
     @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 
-    incidence_matrix = MacroModelling.SparseArrays.spzeros(Int,length(unknowns),length(unknowns))
+    incidence_matrix = spzeros(Int,length(unknowns),length(unknowns))
 
     eq_list = vcat(union.(setdiff.(union.(Symbolics.var_list,
                                         Symbolics.ss_list),
@@ -340,7 +340,7 @@ function MacroModelling.solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::s
         end
     end
 
-    Q, P, R, nmatch, n_blocks = MacroModelling.BlockTriangularForm.order(incidence_matrix)
+    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(incidence_matrix)
     R̂ = Int[]
     for i in 1:n_blocks
         [push!(R̂, n_blocks - i + 1) for ii in R[i]:R[i+1] - 1]
@@ -358,12 +358,9 @@ function MacroModelling.solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::s
 
     SS_solve_func = []
 
-    atoms_in_equations = Set{Symbol}()
     atoms_in_equations_list = []
     relevant_pars_across = Symbol[]
     NSSS_solver_cache_init_tmp = []
-
-    n_block = 1
 
     while n > 0
         vars_to_solve = unknowns[vars[:,vars[2,:] .== n][1,:]]
@@ -398,8 +395,8 @@ function MacroModelling.solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::s
 
             if !avoid_solve
                 for combo in 1:length(vars_to_solve)
-                    for var_combo in MacroModelling.Combinatorics.combinations(1:length(vars_to_solve),combo)
-                        for eq_combo in MacroModelling.Combinatorics.combinations(1:length(vars_to_solve),combo)
+                    for var_combo in combinations(1:length(vars_to_solve),combo)
+                        for eq_combo in combinations(1:length(vars_to_solve),combo)
                             if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve[eq_combo]))) > 15
                                 soll = nothing
                             else
@@ -453,11 +450,7 @@ function MacroModelling.solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::s
                                     NSSS_solver_cache_init_tmp, 
                                     eq_idx_in_block_to_solve, 
                                     atoms_in_equations_list)
-
-            n_block += 1
         end
-
-        atoms_in_equations_list = []
 
         n -= 1
     end
