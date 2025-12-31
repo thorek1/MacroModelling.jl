@@ -65,8 +65,7 @@ import MacroModelling: solve_lyapunov_equation, solve_sylvester_equation
 import MacroModelling: calculate_second_order_stochastic_steady_state
 import MacroModelling: calculate_third_order_stochastic_steady_state
 import MacroModelling: run_kalman_iterations
-import MacroModelling: calculate_inversion_filter_loglikelihood
-import MacroModelling: find_shocks, sparse_preallocated!
+import MacroModelling: sparse_preallocated!
 
 import SparseArrays: SparseMatrixCSC, AbstractSparseMatrix
 
