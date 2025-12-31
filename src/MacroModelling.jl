@@ -34,7 +34,7 @@ import LoopVectorization: @turbo
 # import Polyester
 import NLopt
 import Optim, LineSearches
-import Zygote
+# import Zygote  # Not needed - rrule uses ChainRulesCore directly
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse, nonzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearSolve as 𝒮

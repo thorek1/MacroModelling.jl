@@ -3628,8 +3628,8 @@ end
 
 
 # ChainRulesCore rrule for get_loglikelihood
-# This rrule is compatible with both Zygote (via ChainRulesCore) and Mooncake (via the extension)
-# It computes the gradient with respect to parameter_values by differentiating through _get_loglikelihood_internal
+# This rrule calculates gradients by composing pullbacks from underlying functions.
+# It works with both Zygote (via ChainRulesCore) and Mooncake (via @from_chainrules or direct use)
 function rrule(
     ::typeof(get_loglikelihood),
     𝓂::ℳ, 
@@ -3681,34 +3681,525 @@ function rrule(
     end
     data_raw = collect(data(observables))
 
-    # Call the internal function which does the bulk of the differentiable computation
-    # Use Zygote to get the pullback for the internal function
-    llh, internal_pullback = Zygote.pullback(parameter_values) do params
-        _get_loglikelihood_internal(
-            params,
-            data_raw,
-            obs_indices,
-            Val(algorithm_norm),
-            Val(filter_norm),
-            observables,
-            𝓂,
-            presample_periods,
-            initial_covariance,
-            warmup_iterations_norm,
-            filter_algorithm,
-            opts,
-            Float64(on_failure_loglikelihood)
-        )
+    TT = 𝓂.timings
+
+    # ===== FORWARD PASS WITH PULLBACKS =====
+    
+    # Step 1: Get steady state and parameters with pullback
+    nsss_result, nsss_pullback = rrule(get_NSSS_and_parameters, 𝓂, parameter_values, opts = opts)
+    SS_and_pars, (solution_error, _) = nsss_result
+
+    if solution_error > opts.tol.NSSS_acceptance_tol
+        return on_failure_loglikelihood, Δ -> (NoTangent(), NoTangent(), NoTangent(), zeros(length(parameter_values)))
     end
 
-    # Create pullback that wraps the internal pullback
-    function get_loglikelihood_pullback(Δllh)
-        (∂params,) = internal_pullback(Δllh)
-        ∂parameter_values = ∂params === nothing ? zeros(length(parameter_values)) : ∂params
-        return (NoTangent(), NoTangent(), NoTangent(), ∂parameter_values)
+    # Step 2: Get jacobian with pullback
+    jacobian_result, jacobian_pullback = rrule(calculate_jacobian, parameter_values, SS_and_pars, 𝓂)
+    ∇₁ = jacobian_result
+
+    # Step 3: Calculate first order solution with pullback
+    solution_result, solution_pullback = rrule(calculate_first_order_solution, ∇₁, 
+                                                T = TT, 
+                                                initial_guess = 𝓂.solution.perturbation.qme_solution, 
+                                                opts = opts)
+    𝐒₁, qme_sol, solved = solution_result
+    
+    if !solved
+        return on_failure_loglikelihood, Δ -> (NoTangent(), NoTangent(), NoTangent(), zeros(length(parameter_values)))
     end
 
-    return llh, get_loglikelihood_pullback
+    # Compute data in deviations
+    data_in_deviations = data_raw .- SS_and_pars[obs_indices]
+
+    # Set initial state
+    state = [zeros(TT.nVars)]
+
+    # Step 4: Handle different algorithms and filters
+    if algorithm_norm == :first_order
+        if filter_norm == :kalman
+            # Kalman filter path
+            observables_and_states = sort(union(TT.past_not_future_and_mixed_idx, convert(Vector{Int}, indexin(observables, sort(union(TT.aux, TT.var, TT.exo_present))))))
+            obs_idx_filter = convert(Vector{Int}, indexin(observables, sort(union(TT.aux, TT.var, TT.exo_present))))
+
+            A = 𝐒₁[observables_and_states, 1:TT.nPast_not_future_and_mixed] * ℒ.diagm(ones(Float64, length(observables_and_states)))[indexin(TT.past_not_future_and_mixed_idx, observables_and_states), :]
+            B = 𝐒₁[observables_and_states, TT.nPast_not_future_and_mixed+1:end]
+            C = ℒ.diagm(ones(length(observables_and_states)))[indexin(sort(obs_idx_filter), observables_and_states), :]
+            𝐁 = B * B'
+
+            # Get initial covariance with pullback
+            P_result, P_pullback = rrule(solve_lyapunov_equation, A, 𝐁, 
+                                          lyapunov_algorithm = opts.lyapunov_algorithm,
+                                          tol = opts.tol.lyapunov_tol,
+                                          acceptance_tol = opts.tol.lyapunov_acceptance_tol,
+                                          verbose = opts.verbose)
+            P, _ = P_result
+
+            # Run Kalman iterations with pullback
+            kalman_result, kalman_pullback = rrule(run_kalman_iterations, A, 𝐁, C, P, data_in_deviations, 
+                                                    presample_periods = presample_periods, 
+                                                    verbose = opts.verbose, 
+                                                    on_failure_loglikelihood = on_failure_loglikelihood)
+            llh = kalman_result
+
+            # Compose pullbacks for Kalman filter
+            function get_loglikelihood_pullback_kalman(Δllh)
+                # Backprop through Kalman iterations
+                _, ∂A_kalman, ∂𝐁_kalman, _, ∂P, ∂data_in_deviations_kalman, _ = kalman_pullback(Δllh)
+
+                # Backprop through Lyapunov equation (for P)
+                if !(∂P isa NoTangent)
+                    _, ∂A_lyap, ∂𝐁_lyap, _ = P_pullback((∂P, NoTangent()))
+                else
+                    ∂A_lyap = NoTangent()
+                    ∂𝐁_lyap = NoTangent()
+                end
+
+                # Combine A gradients
+                ∂A = ∂A_kalman
+                if !(∂A_lyap isa NoTangent)
+                    ∂A = ∂A .+ ∂A_lyap
+                end
+
+                # Combine 𝐁 gradients
+                ∂𝐁 = ∂𝐁_kalman
+                if !(∂𝐁_lyap isa NoTangent)
+                    ∂𝐁 = ∂𝐁 .+ ∂𝐁_lyap
+                end
+
+                # Backprop through matrix construction to get ∂𝐒₁
+                ∂𝐒₁ = zeros(size(𝐒₁))
+                if !(∂A isa NoTangent)
+                    ∂𝐒₁[observables_and_states, 1:TT.nPast_not_future_and_mixed] .+= ∂A * ℒ.diagm(ones(Float64, length(observables_and_states)))[indexin(TT.past_not_future_and_mixed_idx, observables_and_states), :]'
+                end
+                if !(∂𝐁 isa NoTangent)
+                    ∂B = 2 * ∂𝐁 * B
+                    ∂𝐒₁[observables_and_states, TT.nPast_not_future_and_mixed+1:end] .+= ∂B
+                end
+
+                # Backprop through data_in_deviations = data_raw .- SS_and_pars[obs_indices]
+                ∂SS_and_pars = zeros(length(SS_and_pars))
+                if !(∂data_in_deviations_kalman isa NoTangent)
+                    for (i, idx) in enumerate(obs_indices)
+                        ∂SS_and_pars[idx] -= sum(∂data_in_deviations_kalman[i, :])
+                    end
+                end
+
+                # Backprop through first order solution
+                _, ∂∇₁, _ = solution_pullback((∂𝐒₁, NoTangent(), NoTangent()))
+
+                # Backprop through jacobian
+                ∂params_jac = NoTangent()
+                if !(∂∇₁ isa NoTangent)
+                    _, ∂params_jac, ∂SS_jac, _ = jacobian_pullback(unthunk(∂∇₁))
+                    if !(∂SS_jac isa NoTangent)
+                        ∂SS_and_pars .+= ∂SS_jac
+                    end
+                end
+
+                # Backprop through NSSS
+                _, _, ∂params_nsss, _ = nsss_pullback((∂SS_and_pars, NoTangent()))
+
+                # Combine parameter gradients
+                ∂parameter_values = zeros(length(parameter_values))
+                if !(∂params_nsss isa NoTangent)
+                    ∂parameter_values .+= ∂params_nsss
+                end
+                if !(∂params_jac isa NoTangent)
+                    ∂parameter_values .+= ∂params_jac
+                end
+
+                return (NoTangent(), NoTangent(), NoTangent(), ∂parameter_values)
+            end
+
+            return llh, get_loglikelihood_pullback_kalman
+        else
+            # Inversion filter for first order
+            filter_result, filter_pullback = rrule(calculate_inversion_filter_loglikelihood, 
+                                                    Val(:first_order), 
+                                                    state, 
+                                                    𝐒₁, 
+                                                    data_in_deviations, 
+                                                    observables, 
+                                                    TT,
+                                                    warmup_iterations = warmup_iterations_norm,
+                                                    presample_periods = presample_periods,
+                                                    filter_algorithm = filter_algorithm,
+                                                    opts = opts,
+                                                    on_failure_loglikelihood = on_failure_loglikelihood)
+            llh = filter_result
+
+            # Compose pullbacks for inversion filter (first order)
+            function get_loglikelihood_pullback_inversion_first(Δllh)
+                # Backprop through inversion filter
+                pullback_result = filter_pullback(Δllh)
+                ∂𝐒₁ = pullback_result[4]
+                ∂data_in_deviations = pullback_result[5]
+
+                # Backprop through data_in_deviations = data_raw .- SS_and_pars[obs_indices]
+                ∂SS_and_pars = zeros(length(SS_and_pars))
+                if !(∂data_in_deviations isa NoTangent)
+                    for (i, idx) in enumerate(obs_indices)
+                        ∂SS_and_pars[idx] -= sum(∂data_in_deviations[i, :])
+                    end
+                end
+
+                # Backprop through first order solution
+                if !(∂𝐒₁ isa NoTangent)
+                    _, ∂∇₁, _ = solution_pullback((∂𝐒₁, NoTangent(), NoTangent()))
+                else
+                    ∂∇₁ = NoTangent()
+                end
+
+                # Backprop through jacobian
+                ∂params_jac = NoTangent()
+                if !(∂∇₁ isa NoTangent)
+                    _, ∂params_jac, ∂SS_jac, _ = jacobian_pullback(unthunk(∂∇₁))
+                    if !(∂SS_jac isa NoTangent)
+                        ∂SS_and_pars .+= ∂SS_jac
+                    end
+                end
+
+                # Backprop through NSSS
+                _, _, ∂params_nsss, _ = nsss_pullback((∂SS_and_pars, NoTangent()))
+
+                # Combine parameter gradients
+                ∂parameter_values = zeros(length(parameter_values))
+                if !(∂params_nsss isa NoTangent)
+                    ∂parameter_values .+= ∂params_nsss
+                end
+                if !(∂params_jac isa NoTangent)
+                    ∂parameter_values .+= ∂params_jac
+                end
+
+                return (NoTangent(), NoTangent(), NoTangent(), ∂parameter_values)
+            end
+
+            return llh, get_loglikelihood_pullback_inversion_first
+        end
+    elseif algorithm_norm ∈ [:second_order, :pruned_second_order]
+        # Second order algorithms - need hessian and second order solution
+        hessian_result, hessian_pullback = rrule(calculate_hessian, parameter_values, SS_and_pars, 𝓂)
+        ∇₂ = hessian_result
+
+        second_order_result, second_order_pullback = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁,
+                                                            T = TT, 
+                                                            opts = opts)
+        𝐒₂, solved2 = second_order_result
+
+        if !solved2
+            return on_failure_loglikelihood, Δ -> (NoTangent(), NoTangent(), NoTangent(), zeros(length(parameter_values)))
+        end
+
+        # Calculate second order stochastic steady state
+        ss2_result, ss2_pullback = rrule(calculate_second_order_stochastic_steady_state, SS_and_pars[1:TT.nVars], 𝐒₁, 𝐒₂, TT)
+        state[1] = ss2_result
+
+        𝐒 = [𝐒₁, 𝐒₂]
+
+        # Inversion filter
+        filter_result, filter_pullback = rrule(calculate_inversion_filter_loglikelihood, 
+                                                Val(:pruned_second_order), 
+                                                state, 
+                                                𝐒, 
+                                                data_in_deviations, 
+                                                observables, 
+                                                TT,
+                                                warmup_iterations = warmup_iterations_norm,
+                                                presample_periods = presample_periods,
+                                                filter_algorithm = filter_algorithm,
+                                                opts = opts,
+                                                on_failure_loglikelihood = on_failure_loglikelihood)
+        llh = filter_result
+
+        function get_loglikelihood_pullback_second_order(Δllh)
+            pullback_result = filter_pullback(Δllh)
+            ∂state = pullback_result[3]
+            ∂𝐒 = pullback_result[4]
+            ∂data_in_deviations = pullback_result[5]
+
+            ∂𝐒₁ = ∂𝐒[1]
+            ∂𝐒₂ = ∂𝐒[2]
+
+            # Backprop through second order stochastic steady state
+            ∂SS_from_ss2 = NoTangent()
+            ∂𝐒₁_from_ss2 = NoTangent()
+            ∂𝐒₂_from_ss2 = NoTangent()
+            if !(∂state isa NoTangent) && !isempty(∂state) && !(∂state[1] isa NoTangent)
+                _, ∂SS_from_ss2, ∂𝐒₁_from_ss2, ∂𝐒₂_from_ss2, _ = ss2_pullback(∂state[1])
+            end
+
+            # Combine 𝐒₂ gradients
+            if !(∂𝐒₂_from_ss2 isa NoTangent)
+                ∂𝐒₂ = ∂𝐒₂ .+ ∂𝐒₂_from_ss2
+            end
+
+            # Backprop through second order solution
+            _, ∂∇₁_from_s2, ∂∇₂, ∂𝐒₁_from_s2, _ = second_order_pullback((∂𝐒₂, NoTangent()))
+
+            # Combine 𝐒₁ gradients
+            if !(∂𝐒₁_from_ss2 isa NoTangent)
+                ∂𝐒₁ = ∂𝐒₁ .+ ∂𝐒₁_from_ss2
+            end
+            if !(∂𝐒₁_from_s2 isa NoTangent)
+                ∂𝐒₁ = ∂𝐒₁ .+ ∂𝐒₁_from_s2
+            end
+
+            # Backprop through hessian
+            ∂params_hess = NoTangent()
+            ∂SS_hess = NoTangent()
+            if !(∂∇₂ isa NoTangent)
+                _, ∂params_hess, ∂SS_hess, _ = hessian_pullback(unthunk(∂∇₂))
+            end
+
+            # Backprop through data_in_deviations
+            ∂SS_and_pars = zeros(length(SS_and_pars))
+            if !(∂data_in_deviations isa NoTangent)
+                for (i, idx) in enumerate(obs_indices)
+                    ∂SS_and_pars[idx] -= sum(∂data_in_deviations[i, :])
+                end
+            end
+            if !(∂SS_from_ss2 isa NoTangent)
+                ∂SS_and_pars[1:TT.nVars] .+= ∂SS_from_ss2
+            end
+            if !(∂SS_hess isa NoTangent)
+                ∂SS_and_pars .+= ∂SS_hess
+            end
+
+            # Backprop through first order solution
+            ∂∇₁ = NoTangent()
+            if !(∂𝐒₁ isa NoTangent)
+                _, ∂∇₁_temp, _ = solution_pullback((∂𝐒₁, NoTangent(), NoTangent()))
+                ∂∇₁ = ∂∇₁_temp
+            end
+            if !(∂∇₁_from_s2 isa NoTangent)
+                if ∂∇₁ isa NoTangent
+                    ∂∇₁ = ∂∇₁_from_s2
+                else
+                    ∂∇₁ = ∂∇₁ .+ ∂∇₁_from_s2
+                end
+            end
+
+            # Backprop through jacobian
+            ∂params_jac = NoTangent()
+            if !(∂∇₁ isa NoTangent)
+                _, ∂params_jac, ∂SS_jac, _ = jacobian_pullback(unthunk(∂∇₁))
+                if !(∂SS_jac isa NoTangent)
+                    ∂SS_and_pars .+= ∂SS_jac
+                end
+            end
+
+            # Backprop through NSSS
+            _, _, ∂params_nsss, _ = nsss_pullback((∂SS_and_pars, NoTangent()))
+
+            # Combine parameter gradients
+            ∂parameter_values = zeros(length(parameter_values))
+            if !(∂params_nsss isa NoTangent)
+                ∂parameter_values .+= ∂params_nsss
+            end
+            if !(∂params_jac isa NoTangent)
+                ∂parameter_values .+= ∂params_jac
+            end
+            if !(∂params_hess isa NoTangent)
+                ∂parameter_values .+= ∂params_hess
+            end
+
+            return (NoTangent(), NoTangent(), NoTangent(), ∂parameter_values)
+        end
+
+        return llh, get_loglikelihood_pullback_second_order
+    else
+        # Third order algorithms
+        hessian_result, hessian_pullback = rrule(calculate_hessian, parameter_values, SS_and_pars, 𝓂)
+        ∇₂ = hessian_result
+
+        second_order_result, second_order_pullback = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁,
+                                                            T = TT, 
+                                                            opts = opts)
+        𝐒₂, solved2 = second_order_result
+
+        if !solved2
+            return on_failure_loglikelihood, Δ -> (NoTangent(), NoTangent(), NoTangent(), zeros(length(parameter_values)))
+        end
+
+        third_deriv_result, third_deriv_pullback = rrule(calculate_third_order_derivatives, parameter_values, SS_and_pars, 𝓂)
+        ∇₃ = third_deriv_result
+
+        third_order_result, third_order_pullback = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂,
+                                                          T = TT,
+                                                          opts = opts)
+        𝐒₃, solved3 = third_order_result
+
+        if !solved3
+            return on_failure_loglikelihood, Δ -> (NoTangent(), NoTangent(), NoTangent(), zeros(length(parameter_values)))
+        end
+
+        # Calculate third order stochastic steady state
+        ss3_result, ss3_pullback = rrule(calculate_third_order_stochastic_steady_state, SS_and_pars[1:TT.nVars], 𝐒₁, 𝐒₂, 𝐒₃, TT)
+        state[1] = ss3_result
+
+        𝐒 = [𝐒₁, 𝐒₂, 𝐒₃]
+
+        # Inversion filter
+        filter_result, filter_pullback = rrule(calculate_inversion_filter_loglikelihood, 
+                                                Val(:pruned_third_order), 
+                                                state, 
+                                                𝐒, 
+                                                data_in_deviations, 
+                                                observables, 
+                                                TT,
+                                                warmup_iterations = warmup_iterations_norm,
+                                                presample_periods = presample_periods,
+                                                filter_algorithm = filter_algorithm,
+                                                opts = opts,
+                                                on_failure_loglikelihood = on_failure_loglikelihood)
+        llh = filter_result
+
+        function get_loglikelihood_pullback_third_order(Δllh)
+            pullback_result = filter_pullback(Δllh)
+            ∂state = pullback_result[3]
+            ∂𝐒 = pullback_result[4]
+            ∂data_in_deviations = pullback_result[5]
+
+            ∂𝐒₁ = ∂𝐒[1]
+            ∂𝐒₂ = ∂𝐒[2]
+            ∂𝐒₃ = ∂𝐒[3]
+
+            # Backprop through third order stochastic steady state
+            ∂SS_from_ss3 = NoTangent()
+            ∂𝐒₁_from_ss3 = NoTangent()
+            ∂𝐒₂_from_ss3 = NoTangent()
+            ∂𝐒₃_from_ss3 = NoTangent()
+            if !(∂state isa NoTangent) && !isempty(∂state) && !(∂state[1] isa NoTangent)
+                _, ∂SS_from_ss3, ∂𝐒₁_from_ss3, ∂𝐒₂_from_ss3, ∂𝐒₃_from_ss3, _ = ss3_pullback(∂state[1])
+            end
+
+            # Combine 𝐒₃ gradients
+            if !(∂𝐒₃_from_ss3 isa NoTangent)
+                ∂𝐒₃ = ∂𝐒₃ .+ ∂𝐒₃_from_ss3
+            end
+
+            # Backprop through third order solution
+            _, ∂∇₁_from_s3, ∂∇₂_from_s3, ∂∇₃, ∂𝐒₁_from_s3, ∂𝐒₂_from_s3, _ = third_order_pullback((∂𝐒₃, NoTangent()))
+
+            # Combine 𝐒₂ gradients
+            if !(∂𝐒₂_from_ss3 isa NoTangent)
+                ∂𝐒₂ = ∂𝐒₂ .+ ∂𝐒₂_from_ss3
+            end
+            if !(∂𝐒₂_from_s3 isa NoTangent)
+                ∂𝐒₂ = ∂𝐒₂ .+ ∂𝐒₂_from_s3
+            end
+
+            # Backprop through second order solution
+            _, ∂∇₁_from_s2, ∂∇₂_from_s2, ∂𝐒₁_from_s2, _ = second_order_pullback((∂𝐒₂, NoTangent()))
+
+            # Combine 𝐒₁ gradients
+            if !(∂𝐒₁_from_ss3 isa NoTangent)
+                ∂𝐒₁ = ∂𝐒₁ .+ ∂𝐒₁_from_ss3
+            end
+            if !(∂𝐒₁_from_s3 isa NoTangent)
+                ∂𝐒₁ = ∂𝐒₁ .+ ∂𝐒₁_from_s3
+            end
+            if !(∂𝐒₁_from_s2 isa NoTangent)
+                ∂𝐒₁ = ∂𝐒₁ .+ ∂𝐒₁_from_s2
+            end
+
+            # Backprop through third derivatives
+            ∂params_third = NoTangent()
+            ∂SS_third = NoTangent()
+            if !(∂∇₃ isa NoTangent)
+                _, ∂params_third, ∂SS_third, _ = third_deriv_pullback(unthunk(∂∇₃))
+            end
+
+            # Combine ∇₂ gradients
+            ∂∇₂ = NoTangent()
+            if !(∂∇₂_from_s3 isa NoTangent)
+                ∂∇₂ = ∂∇₂_from_s3
+            end
+            if !(∂∇₂_from_s2 isa NoTangent)
+                if ∂∇₂ isa NoTangent
+                    ∂∇₂ = ∂∇₂_from_s2
+                else
+                    ∂∇₂ = ∂∇₂ .+ ∂∇₂_from_s2
+                end
+            end
+
+            # Backprop through hessian
+            ∂params_hess = NoTangent()
+            ∂SS_hess = NoTangent()
+            if !(∂∇₂ isa NoTangent)
+                _, ∂params_hess, ∂SS_hess, _ = hessian_pullback(unthunk(∂∇₂))
+            end
+
+            # Backprop through data_in_deviations
+            ∂SS_and_pars = zeros(length(SS_and_pars))
+            if !(∂data_in_deviations isa NoTangent)
+                for (i, idx) in enumerate(obs_indices)
+                    ∂SS_and_pars[idx] -= sum(∂data_in_deviations[i, :])
+                end
+            end
+            if !(∂SS_from_ss3 isa NoTangent)
+                ∂SS_and_pars[1:TT.nVars] .+= ∂SS_from_ss3
+            end
+            if !(∂SS_hess isa NoTangent)
+                ∂SS_and_pars .+= ∂SS_hess
+            end
+            if !(∂SS_third isa NoTangent)
+                ∂SS_and_pars .+= ∂SS_third
+            end
+
+            # Combine ∇₁ gradients
+            ∂∇₁ = NoTangent()
+            if !(∂𝐒₁ isa NoTangent)
+                _, ∂∇₁_temp, _ = solution_pullback((∂𝐒₁, NoTangent(), NoTangent()))
+                ∂∇₁ = ∂∇₁_temp
+            end
+            if !(∂∇₁_from_s2 isa NoTangent)
+                if ∂∇₁ isa NoTangent
+                    ∂∇₁ = ∂∇₁_from_s2
+                else
+                    ∂∇₁ = ∂∇₁ .+ ∂∇₁_from_s2
+                end
+            end
+            if !(∂∇₁_from_s3 isa NoTangent)
+                if ∂∇₁ isa NoTangent
+                    ∂∇₁ = ∂∇₁_from_s3
+                else
+                    ∂∇₁ = ∂∇₁ .+ ∂∇₁_from_s3
+                end
+            end
+
+            # Backprop through jacobian
+            ∂params_jac = NoTangent()
+            if !(∂∇₁ isa NoTangent)
+                _, ∂params_jac, ∂SS_jac, _ = jacobian_pullback(unthunk(∂∇₁))
+                if !(∂SS_jac isa NoTangent)
+                    ∂SS_and_pars .+= ∂SS_jac
+                end
+            end
+
+            # Backprop through NSSS
+            _, _, ∂params_nsss, _ = nsss_pullback((∂SS_and_pars, NoTangent()))
+
+            # Combine parameter gradients
+            ∂parameter_values = zeros(length(parameter_values))
+            if !(∂params_nsss isa NoTangent)
+                ∂parameter_values .+= ∂params_nsss
+            end
+            if !(∂params_jac isa NoTangent)
+                ∂parameter_values .+= ∂params_jac
+            end
+            if !(∂params_hess isa NoTangent)
+                ∂parameter_values .+= ∂params_hess
+            end
+            if !(∂params_third isa NoTangent)
+                ∂parameter_values .+= ∂params_third
+            end
+
+            return (NoTangent(), NoTangent(), NoTangent(), ∂parameter_values)
+        end
+
+        return llh, get_loglikelihood_pullback_third_order
+    end
 end
 
 
