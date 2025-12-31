@@ -5091,6 +5091,12 @@ function solve_steady_state!(𝓂::ℳ;
     NSSS_solver_cache_init_tmp = []
 
     n_block = 1
+    
+    # Initialize new vector-based structures
+    empty!(𝓂.ss_solve_blocks_new)
+    empty!(𝓂.ss_fill_functions)
+    empty!(𝓂.ss_solve_order)
+    analytical_fill_exprs = []  # Track expressions to build fill functions later
 
     while n > 0
         vars_to_solve = unknowns[vars[:,vars[2,:] .== n][1,:]]
@@ -5449,6 +5455,9 @@ function solve_steady_state!(𝓂::ℳ;
                 function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
             )
         )
+        
+        # Track numerical block for vector-based approach
+        push!(analytical_fill_exprs, (nothing, nothing, :numerical))
 
         n_block += 1
         
@@ -5638,6 +5647,15 @@ function solve_steady_state!(𝓂::ℳ;
 
     # Set up index mappings for the vector-based approach
     setup_index_mappings!(𝓂)
+    
+    # Build fill functions from tracked expressions (numerical only for this function)
+    numerical_block_idx = 0
+    for (target_var, value_expr, op_type) in analytical_fill_exprs
+        if op_type == :numerical
+            numerical_block_idx += 1
+            push!(𝓂.ss_solve_order, (:numerical, numerical_block_idx))
+        end
+    end
 
     return nothing
 end
