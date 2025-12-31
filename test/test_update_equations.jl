@@ -62,9 +62,6 @@ using Test
             α = 0.5
             β = 0.95
         end
-
-        # Get original steady state for comparison
-        ss_original = get_steady_state(RBC_test2)
         
         # Update using the old equation to match
         old_eq = :(q[0] = exp(z[0]) * k[-1]^α)
@@ -102,8 +99,8 @@ using Test
             β = 0.95
         end
 
-        # Update using string equation
-        update_equations!(RBC_test3, 4, "z[0] = ρ * z[-1] + std_z * eps_z[x]", silent = true)
+        # Update using string equation - change persistence parameter from ρ to 0.3
+        update_equations!(RBC_test3, 4, "z[0] = 0.3 * z[-1] + std_z * eps_z[x]", silent = true)
         
         # Check revision history
         history = get_revision_history(RBC_test3)
@@ -133,9 +130,11 @@ using Test
             β = 0.95
         end
 
-        # Make multiple updates
+        # Make multiple distinct updates
+        # First: modify the production function
         update_equations!(RBC_test4, 3, :(q[0] = exp(z[0]) * k[-1]^α * 1.0), silent = true)
-        update_equations!(RBC_test4, 4, :(z[0] = ρ * z[-1] + std_z * eps_z[x]), silent = true)
+        # Second: modify the shock persistence from ρ to 0.3
+        update_equations!(RBC_test4, 4, :(z[0] = 0.3 * z[-1] + std_z * eps_z[x]), silent = true)
         
         # Check revision history has both entries
         history = get_revision_history(RBC_test4)
