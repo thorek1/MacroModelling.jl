@@ -4622,6 +4622,12 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     min_max_errors = []
 
     unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
+    
+    # Initialize new vector-based structures
+    empty!(𝓂.ss_solve_blocks_new)
+    empty!(𝓂.ss_fill_functions)
+    empty!(𝓂.ss_solve_order)
+    analytical_fill_exprs = []  # Track analytical fill expressions to build functions later
 
     while n > 0 
         if length(eqs[:,eqs[2,:] .== n]) == 2
@@ -4665,6 +4671,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
                 write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                # Track numerical block for vector-based approach
+                push!(𝓂.ss_solve_order, (:numerical, length(𝓂.ss_solve_blocks_in_place)))
                 # write_domain_safe_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
             elseif soll[1].is_number == true
                 ss_equations = [replace_symbolic(eq, var_to_solve_for, soll[1]) for eq in ss_equations]
@@ -4674,8 +4682,14 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
+                    # Track analytical solution for vector-based approach
+                    push!(analytical_fill_exprs, (𝓂.solved_vars[end], :(max(eps(),$(𝓂.solved_vals[end])))))
+                    push!(𝓂.ss_solve_order, (:analytical, length(analytical_fill_exprs)))
                 else
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                    # Track analytical solution for vector-based approach
+                    push!(analytical_fill_exprs, (𝓂.solved_vars[end], 𝓂.solved_vals[end]))
+                    push!(𝓂.ss_solve_order, (:analytical, length(analytical_fill_exprs)))
                 end
 
                 push!(atoms_in_equations_list,[])
@@ -4688,6 +4702,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
+                    # Track analytical solution for vector-based approach (use simple expression, not transformed)
+                    push!(analytical_fill_exprs, (𝓂.solved_vars[end], :(min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2])))))
+                    push!(𝓂.ss_solve_order, (:analytical, length(analytical_fill_exprs)))
                     push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, 𝓂.solved_vars[end], 𝓂.solved_vals[end])))))
                     push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for analytical aux variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                     
@@ -4704,6 +4721,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     end
                     
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
+                    # Track analytical solution for vector-based approach (use simple original expression)
+                    push!(analytical_fill_exprs, (𝓂.solved_vars[end], 𝓂.solved_vals[end]))
+                    push!(𝓂.ss_solve_order, (:analytical, length(analytical_fill_exprs)))
                 end
 
                 if haskey(𝓂.bounds, 𝓂.solved_vars[end]) && 𝓂.solved_vars[end] ∉ 𝓂.➕_vars
@@ -4742,6 +4762,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                         push!(atoms_in_equations_list, Set(Symbol.(soll[vars].atoms())))
                         push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                        # Track analytical solution for vector-based approach
+                        push!(analytical_fill_exprs, (𝓂.solved_vars[end], 𝓂.solved_vals[end]))
+                        push!(𝓂.ss_solve_order, (:analytical, length(analytical_fill_exprs)))
                     end
                 end
             end
@@ -4757,6 +4780,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
                 if length(pe) > 5
                     write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                    # Track numerical block for vector-based approach
+                    push!(𝓂.ss_solve_order, (:numerical, length(𝓂.ss_solve_blocks_in_place)))
                     # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)
                 else
                     solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe], avoid_solve = avoid_solve)
@@ -4766,6 +4791,8 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
                     #     𝓂.➕_vars, unique_➕_eqs)  
                     # else
                         write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
+                        # Track numerical block for vector-based approach
+                        push!(𝓂.ss_solve_order, (:numerical, length(𝓂.ss_solve_blocks_in_place)))
                         # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
                     # end
                 end
@@ -4983,6 +5010,28 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     
     # Set up index mappings for the vector-based approach
     setup_index_mappings!(𝓂)
+    
+    # Build fill functions from analytical expressions
+    # This needs to happen after setup_index_mappings! so we have the indices
+    for (target_var, value_expr) in analytical_fill_exprs
+        if haskey(𝓂.ss_var_indices, target_var)
+            target_idx = 𝓂.ss_var_indices[target_var]
+            
+            # Convert expression to use indexed vectors
+            indexed_expr = convert_expr_to_indexed(value_expr, 𝓂.ss_var_indices, 𝓂.ss_par_indices)
+            
+            # Build the fill function expression
+            fill_func_expr = :(function fill_value!(SS_and_pars_values, parameters)
+                SS_and_pars_values[$target_idx] = $indexed_expr
+                return nothing
+            end)
+            
+            # Create the RuntimeGeneratedFunction
+            fill_func = @RuntimeGeneratedFunction(fill_func_expr)
+            
+            push!(𝓂.ss_fill_functions, ss_fill_function(fill_func, [target_idx]))
+        end
+    end
 
     return nothing
 end
