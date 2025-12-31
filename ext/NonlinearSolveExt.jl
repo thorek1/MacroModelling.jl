@@ -137,6 +137,8 @@ function nonlinearsolve_solver(
     prob = NonlinearSolve.NonlinearProblem(nlf, current_guess, parameters_and_solved_vars)
     
     # Solve with specified or default algorithm
+    # Note: maxiters = 250 matches the hardcoded iteration limit in the built-in 
+    # levenberg_marquardt and newton solvers
     sol = if isnothing(algorithm)
         NonlinearSolve.solve(prob; abstol = ftol, reltol = rel_xtol, maxiters = 250)
     else
@@ -159,19 +161,20 @@ function nonlinearsolve_solver(
     fnj.func(fnj.func_buffer, best_current_guess, parameters_and_solved_vars)
     largest_residual = ℒ.norm(fnj.func_buffer)
     
-    # Estimate relative change (approximate since we don't track iterations internally)
+    # Estimate relative change
+    # Note: NonlinearSolve.jl doesn't expose per-iteration step sizes in the same way as the
+    # built-in solvers. For consistent interface, we return 0.0 for successful solves
+    # (indicating convergence) and 1.0 for failures. The residual norm in info[4] provides 
+    # the primary convergence measure.
     largest_relative_step = NonlinearSolve.SciMLBase.successful_retcode(sol.retcode) ? T(0.0) : T(1.0)
     
-    # Get iteration count if available
+    # Get iteration count if available from solver statistics
     nsteps = 0
     nf = 0
     if hasproperty(sol, :stats) && !isnothing(sol.stats)
-        if hasproperty(sol.stats, :nsteps)
-            nsteps = sol.stats.nsteps
-        end
-        if hasproperty(sol.stats, :nf)
-            nf = sol.stats.nf
-        end
+        stats = sol.stats
+        nsteps = hasproperty(stats, :nsteps) ? stats.nsteps : 0
+        nf = hasproperty(stats, :nf) ? stats.nf : 0
     end
     
     return best_current_guess, (nsteps, nf, largest_relative_step, largest_residual)
