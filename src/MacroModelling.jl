@@ -761,7 +761,9 @@ function remove_redundant_SS_vars! end
 # Default implementations when SymPy is not available
 
 # simplify: just return the expression as-is when SymPy is not loaded
-simplify(ex::Expr)::Union{Expr,Symbol,Int} = ex
+function simplify(ex::U)::U where U <: Union{Expr,Symbol,Int}
+    return ex
+end
 
 # transform_obc: return the original expression when SymPy is not loaded
 function transform_obc(ex::Expr; avoid_solve::Bool = false)
