@@ -5314,6 +5314,12 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                         if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
                             if solved_yet continue end
 
+                            # DEBUG: Print array sizes before calling solve_ss
+                            println("DEBUG block_solver: n_block=$n_block, ext=$ext")
+                            println("DEBUG: guess size = ", length(g), ", lbs size = ", length(lbs), ", ubs size = ", length(ubs))
+                            println("DEBUG: parameters_and_solved_vars size = ", length(parameters_and_solved_vars))
+                            println("DEBUG: closest_parameters_and_solved_vars size = ", length(closest_parameters_and_solved_vars))
+
                             sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                             # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                                                                 g, 
