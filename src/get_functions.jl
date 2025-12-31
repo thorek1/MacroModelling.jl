@@ -4045,11 +4045,14 @@ function _backprop_through_solution(
     
     # Backprop through second order solution
     ∂∇₂ = NoTangent()
+    ∂∇₁_from_second = NoTangent()
     if !(∂𝐒₂ isa NoTangent) && second_pullback !== nothing
         second_pb_result = second_pullback((∂𝐒₂, NoTangent()))
-        if length(second_pb_result) >= 2
+        if length(second_pb_result) >= 3
             ∂∇₁_from_second = second_pb_result[2]
-            ∂∇₂ = second_pb_result[3] # if available
+            ∂∇₂ = second_pb_result[3]
+        elseif length(second_pb_result) >= 2
+            ∂∇₁_from_second = second_pb_result[2]
         end
     end
     
@@ -4057,6 +4060,15 @@ function _backprop_through_solution(
     ∂∇₁ = NoTangent()
     if !(∂𝐒₁ isa NoTangent) && first_pullback !== nothing
         _, ∂∇₁, _ = first_pullback((∂𝐒₁, NoTangent(), NoTangent()))
+    end
+    
+    # Combine ∂∇₁ from both first and second order pullbacks
+    if !(∂∇₁_from_second isa NoTangent)
+        if ∂∇₁ isa NoTangent
+            ∂∇₁ = ∂∇₁_from_second
+        else
+            ∂∇₁ = ∂∇₁ .+ ∂∇₁_from_second
+        end
     end
     
     return ∂∇₁, ∂∇₂, NoTangent()
@@ -4082,20 +4094,54 @@ function _backprop_through_solution(
     
     # Backprop through third order solution
     ∂∇₃ = NoTangent()
+    ∂∇₂_from_third = NoTangent()
+    ∂∇₁_from_third = NoTangent()
     if !(∂𝐒₃ isa NoTangent) && third_pullback !== nothing
-        # Third order pullback
+        third_pb_result = third_pullback((∂𝐒₃, NoTangent()))
+        if length(third_pb_result) >= 4
+            ∂∇₁_from_third = third_pb_result[2]
+            ∂∇₂_from_third = third_pb_result[3]
+            ∂∇₃ = third_pb_result[4]
+        end
     end
     
     # Backprop through second order solution
     ∂∇₂ = NoTangent()
+    ∂∇₁_from_second = NoTangent()
     if !(∂𝐒₂ isa NoTangent) && second_pullback !== nothing
         second_pb_result = second_pullback((∂𝐒₂, NoTangent()))
+        if length(second_pb_result) >= 3
+            ∂∇₁_from_second = second_pb_result[2]
+            ∂∇₂ = second_pb_result[3]
+        elseif length(second_pb_result) >= 2
+            ∂∇₁_from_second = second_pb_result[2]
+        end
     end
     
     # Backprop through first order solution
     ∂∇₁ = NoTangent()
     if !(∂𝐒₁ isa NoTangent) && first_pullback !== nothing
         _, ∂∇₁, _ = first_pullback((∂𝐒₁, NoTangent(), NoTangent()))
+    end
+    
+    # Combine ∂∇₁ from all pullbacks
+    for ∂∇₁_contrib in (∂∇₁_from_second, ∂∇₁_from_third)
+        if !(∂∇₁_contrib isa NoTangent)
+            if ∂∇₁ isa NoTangent
+                ∂∇₁ = ∂∇₁_contrib
+            else
+                ∂∇₁ = ∂∇₁ .+ ∂∇₁_contrib
+            end
+        end
+    end
+    
+    # Combine ∂∇₂ from second and third order pullbacks
+    if !(∂∇₂_from_third isa NoTangent)
+        if ∂∇₂ isa NoTangent
+            ∂∇₂ = ∂∇₂_from_third
+        else
+            ∂∇₂ = ∂∇₂ .+ ∂∇₂_from_third
+        end
     end
     
     return ∂∇₁, ∂∇₂, ∂∇₃
