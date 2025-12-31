@@ -1,11 +1,8 @@
 module MooncakeExt
 
 using Mooncake
-using Mooncake: @is_primitive, MinimalCtx, zero_fcodual, CoDual, tangent_type, NoPullback, NoRData
+using Mooncake: @is_primitive, MinimalCtx, CoDual, NoRData
 import MacroModelling: get_loglikelihood, ℳ, Tolerances
-import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS
-import MacroModelling: DEFAULT_PRESAMPLE_PERIODS, DEFAULT_QME_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM
-import MacroModelling: DEFAULT_SYLVESTER_SELECTOR, DEFAULT_VERBOSE
 import AxisKeys: KeyedArray
 import ChainRulesCore
 import ChainRulesCore: NoTangent
