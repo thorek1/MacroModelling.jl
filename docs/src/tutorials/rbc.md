@@ -123,7 +123,7 @@ end
 Parameter definitions are similar to assigning values in julia. Note that one parameter definition per line is required.
 
 !!! note "Delayed parameter definition"
-    Not all parameters need to be defined in the `@parameters` macro. Calibration equations (using the `|` syntax) must be declared here, but parameter values can be provided later by passing them to any function that accepts the `parameters` argument (e.g., `get_irf`, `get_steady_state`, `simulate`). 
+    Not all parameters need to be defined in the `@parameters` macro. Calibration equations (using the `|` syntax) and parameters defined as functions of other parameters must be declared here, but simple parameter value assignments (e.g., `α = 0.5`) can be deferred and provided later by passing them to any function that accepts the `parameters` argument (e.g., `get_irf`, `get_steady_state`, `simulate`). 
     
     **Parameter ordering:** When some parameters are not defined upfront, the parameter vector is ordered as follows: declared parameters come first (in their declaration order), followed by missing parameters (in alphabetical order). This matters when passing parameter values by position rather than by name.
 
