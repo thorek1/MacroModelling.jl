@@ -4772,7 +4772,7 @@ function solve_steady_state!(𝓂::ℳ;
 
 
         push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(sorted_vars)))
-        push!(NSSS_solver_cache_init_tmp,[Inf])
+        push!(NSSS_solver_cache_init_tmp,fill(Inf, length(parameters_and_solved_vars) > 0 ? length(parameters_and_solved_vars) : 1))
 
         # WARNING: infinite bounds are transformed to 1e12
         lbs = []
@@ -5160,7 +5160,25 @@ function solve_ss(SS_optimizer::Function,
         sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : solver_params.starting_value for g in guess]))
     end
 
-    sol_new_tmp, info = SS_optimizer(   extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
+    # Check if extended problem is valid
+    # The extended problem function expects ng+nx variables where nx = number of params at compile time
+    # lbs was computed for sorted_vars + params, so length(lbs) - length(guess) gives expected params
+    expected_params = length(lbs) - length(guess)
+    actual_params = length(closest_parameters_and_solved_vars)
+    
+    # Only use extended problem if the sizes match
+    use_extended = extended_problem && (expected_params == actual_params) && (expected_params > 0)
+    
+    # For extended problem, extend bounds to include parameters
+    if use_extended
+        lbs_ext = lbs
+        ubs_ext = ubs
+    else
+        lbs_ext = lbs[1:length(guess)]
+        ubs_ext = ubs[1:length(guess)]
+    end
+
+    sol_new_tmp, info = SS_optimizer(   use_extended ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
     # if extended_problem
     #     function ext_function_to_optimize(guesses)
     #         gss = guesses[1:length(guess)]
@@ -5176,10 +5194,10 @@ function solve_ss(SS_optimizer::Function,
     # end
 
     # sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
-                                        extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
+                                        use_extended ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
                                         parameters_and_solved_vars,
-                                        extended_problem ? lbs : lbs[1:length(guess)],
-                                        extended_problem ? ubs : ubs[1:length(guess)],
+                                        lbs_ext,
+                                        ubs_ext,
                                         solver_params,
                                         tol = tol   )
 
@@ -5194,7 +5212,7 @@ function solve_ss(SS_optimizer::Function,
     total_iters[1] += info[1]
     total_iters[2] += info[2]
 
-    extended_problem_str = extended_problem ? "(extended problem) " : ""
+    extended_problem_str = use_extended ? "(extended problem) " : ""
 
     if separate_starting_value isa Bool
         starting_value_str = ""
@@ -5313,12 +5331,6 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                     for s in start_vals
                         if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol# || rel_sol_minimum > rtol
                             if solved_yet continue end
-
-                            # DEBUG: Print array sizes before calling solve_ss
-                            println("DEBUG block_solver: n_block=$n_block, ext=$ext")
-                            println("DEBUG: guess size = ", length(g), ", lbs size = ", length(lbs), ", ubs size = ", length(ubs))
-                            println("DEBUG: parameters_and_solved_vars size = ", length(parameters_and_solved_vars))
-                            println("DEBUG: closest_parameters_and_solved_vars size = ", length(closest_parameters_and_solved_vars))
 
                             sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, SS_solve_block, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
                             # sol_values, total_iters, rel_sol_minimum, sol_minimum = solve_ss(SS_optimizer, ss_solve_blocks, parameters_and_solved_vars, closest_parameters_and_solved_vars, lbs, ubs, tol, total_iters, n_block, verbose,
