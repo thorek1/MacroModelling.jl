@@ -1098,7 +1098,7 @@ function update_calibration_equations!(𝓂::ℳ,
     )
     push!(𝓂.revision_history, revision_entry)
     
-    # Parse the new equation to the internal format (convert = to -)
+    # Parse the new equation to the internal format (convert = to -, remove SS refs)
     parsed_equation = postwalk(x -> 
         x isa Expr ? 
             x.head == :(=) ? 
@@ -1106,13 +1106,15 @@ function update_calibration_equations!(𝓂::ℳ,
             x.head == :ref ?
                 occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i, string(x.args[2])) ?
                     x.args[1] : 
-                x : 
-            x :
+                x :
+            x.head == :call && x.args[1] == :* && length(x.args) >= 3 && x.args[2] isa Int && !(x.args[3] isa Int) ?
+                Expr(:call, :*, x.args[3:end]..., x.args[2]) :
+            unblock(x) :
         x,
     new_equation)
     
     # Update the calibration equation
-    𝓂.calibration_equations[equation_index] = parsed_equation
+    𝓂.calibration_equations[equation_index] = unblock(parsed_equation)
     
     # Update the calibrated parameter if provided
     if calibrated_parameter !== nothing

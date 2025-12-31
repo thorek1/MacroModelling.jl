@@ -1045,6 +1045,502 @@ end
 
 
 """
+    reprocess_model!(𝓂; verbose=false, silent=false, perturbation_order=1)
+
+Re-process the model after equations have been modified via `update_equations!` or `update_calibration_equations!`.
+This function regenerates all derived equation structures and re-solves the model.
+"""
+function reprocess_model!(𝓂::ℳ; 
+                          verbose::Bool = false, 
+                          silent::Bool = false,
+                          perturbation_order::Int = 1)
+    # Clear existing solution caches
+    clear_solution_caches!(𝓂, :first_order)
+    
+    if !silent 
+        println("Re-processing model after equation update...")
+    end
+    
+    # Step 1: Re-parse equations from original_equations
+    start_time = time()
+    if !silent 
+        print("Parsing equations:\t\t\t\t\t\t\t")
+    end
+    
+    reparse_equations!(𝓂)
+    
+    if !silent 
+        println(round(time() - start_time, digits = 3), " seconds")
+    end
+    
+    # Step 2: Create symbolic equations and remove redundant SS variables
+    start_time = time()
+    if !silent 
+        print("Remove redundant variables in non-stochastic steady state problem:\t") 
+    end
+    
+    symbolics = create_symbols_eqs!(𝓂)
+    remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = false)
+    
+    if !silent 
+        println(round(time() - start_time, digits = 3), " seconds") 
+    end
+    
+    # Step 3: Set up steady state problem
+    start_time = time()
+    if !silent 
+        print("Set up non-stochastic steady state problem:\t\t\t\t") 
+    end
+    
+    solve_steady_state!(𝓂, false, symbolics, verbose = verbose, avoid_solve = false)
+    
+    𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+    set_up_obc_violation_function!(𝓂)
+    
+    if !silent 
+        println(round(time() - start_time, digits = 3), " seconds") 
+    end
+    
+    # Step 4: Find the steady state
+    start_time = time()
+    𝓂.solution.functions_written = true
+    opts = merge_calculation_options(verbose = verbose)
+    
+    if !silent 
+        print("Find non-stochastic steady state:\t\t\t\t\t") 
+    end
+    
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, opts.tol, opts.verbose, true, 𝓂.solver_parameters)
+    
+    select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
+    
+    found_solution = true
+    if solution_error > opts.tol.NSSS_acceptance_tol
+        found_solution = find_SS_solver_parameters!(𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
+        if found_solution
+            SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, opts.tol, opts.verbose, true, 𝓂.solver_parameters)
+        end
+    end
+    
+    if !silent 
+        println(round(time() - start_time, digits = 3), " seconds") 
+    end
+    
+    if !found_solution
+        @warn "Could not find non-stochastic steady state after equation update."
+    end
+    
+    𝓂.solution.non_stochastic_steady_state = SS_and_pars
+    𝓂.solution.outdated_NSSS = false
+    
+    # Step 5: Compute derivatives
+    start_time = time()
+    if !silent
+        if perturbation_order == 1
+            print("Take symbolic derivatives up to first order:\t\t\t\t")
+        elseif perturbation_order == 2
+            print("Take symbolic derivatives up to second order:\t\t\t\t")
+        elseif perturbation_order == 3
+            print("Take symbolic derivatives up to third order:\t\t\t\t")
+        end
+    end
+    
+    write_auxiliary_indices!(𝓂)
+    write_functions_mapping!(𝓂, perturbation_order)
+    
+    𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+    
+    if !silent
+        println(round(time() - start_time, digits = 3), " seconds")
+    end
+    
+    if !silent 
+        Base.show(𝓂) 
+    end
+    
+    return nothing
+end
+
+
+"""
+Re-parse the original equations to regenerate all internal equation structures.
+This follows the same logic as the @model macro.
+"""
+function reparse_equations!(𝓂::ℳ)
+    # Reset equation-derived structures
+    empty!(𝓂.dyn_equations)
+    empty!(𝓂.ss_equations)
+    empty!(𝓂.ss_aux_equations)
+    empty!(𝓂.➕_vars)
+    𝓂.ss_equations_with_aux_variables = Int[]
+    
+    # Reset variable lists
+    empty!(𝓂.var_list_aux_SS)
+    empty!(𝓂.ss_list_aux_SS)
+    empty!(𝓂.par_list_aux_SS)
+    empty!(𝓂.var_future_list_aux_SS)
+    empty!(𝓂.var_present_list_aux_SS)
+    empty!(𝓂.var_past_list_aux_SS)
+    empty!(𝓂.dyn_var_future_list)
+    empty!(𝓂.dyn_var_present_list)
+    empty!(𝓂.dyn_var_past_list)
+    empty!(𝓂.dyn_ss_list)
+    empty!(𝓂.dyn_exo_list)
+    empty!(𝓂.dyn_future_list)
+    empty!(𝓂.dyn_present_list)
+    empty!(𝓂.dyn_past_list)
+    
+    # Temporary containers for auxiliary variables
+    aux_vars_created = Set{Symbol}()
+    dyn_eq_aux_ind = Int[]
+    ss_eq_aux_ind = Int[]
+    unique_➕_eqs = Dict{Union{Expr,Symbol},Expr}()
+    
+    # Containers for equations
+    dyn_equations = Expr[]
+    ss_equations = Expr[]
+    ss_and_aux_equations = Expr[]
+    
+    # Parse each original equation
+    for (i, orig_eq) in enumerate(𝓂.original_equations)
+        # Parse to dynamic equation format (same logic as @model macro)
+        dyn_eq = postwalk(x -> 
+            x isa Expr ? 
+                x.head == :(=) ? 
+                    Expr(:call, :(-), x.args[1], x.args[2]) :
+                x.head == :ref ?
+                    occursin(r"^(x|ex|exo|exogenous){1}$"i, string(x.args[2])) ?
+                        Symbol(string(x.args[1]) * "₍ₓ₎") :
+                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i, string(x.args[2])) ?
+                        Symbol(string(x.args[1]) * "₍ₛₛ₎") :
+                    x.args[2] isa Int ? 
+                        x.args[2] > 1 ? 
+                            begin
+                                k = x.args[2]
+                                while k > 2
+                                    sym = Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎")
+                                    if sym ∉ aux_vars_created
+                                        push!(aux_vars_created, sym)
+                                        push!(dyn_equations, Expr(:call, :-, sym, Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 2))) * "⁾₍₁₎")))
+                                        push!(dyn_eq_aux_ind, length(dyn_equations))
+                                    end
+                                    k -= 1
+                                end
+                                if Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎") ∉ aux_vars_created
+                                    push!(aux_vars_created, Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎"))
+                                    push!(dyn_equations, Expr(:call, :-, Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎"), Symbol(string(x.args[1]) * "₍₁₎")))
+                                    push!(dyn_eq_aux_ind, length(dyn_equations))
+                                end
+                                Symbol(string(x.args[1]) * "ᴸ⁽" * super(string(abs(x.args[2] - 1))) * "⁾₍₁₎")
+                            end :
+                        x.args[2] == 1 ? Symbol(string(x.args[1]) * "₍₁₎") :
+                        x.args[2] == 0 ? Symbol(string(x.args[1]) * "₍₀₎") :
+                        x.args[2] == -1 ? Symbol(string(x.args[1]) * "₍₋₁₎") :
+                        x.args[2] < -1 ?
+                            begin
+                                k = x.args[2]
+                                while k < -2
+                                    sym = Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎")
+                                    if sym ∉ aux_vars_created
+                                        push!(aux_vars_created, sym)
+                                        push!(dyn_equations, Expr(:call, :-, sym, Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 2))) * "⁾₍₋₁₎")))
+                                        push!(dyn_eq_aux_ind, length(dyn_equations))
+                                    end
+                                    k += 1
+                                end
+                                if Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎") ∉ aux_vars_created
+                                    push!(aux_vars_created, Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎"))
+                                    push!(dyn_equations, Expr(:call, :-, Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎"), Symbol(string(x.args[1]) * "₍₋₁₎")))
+                                    push!(dyn_eq_aux_ind, length(dyn_equations))
+                                end
+                                Symbol(string(x.args[1]) * "ᴸ⁽⁻" * super(string(abs(x.args[2] + 1))) * "⁾₍₋₁₎")
+                            end :
+                        x.args[1] :
+                    x.args[1] :
+                unblock(x) :
+            x,
+        orig_eq)
+        push!(dyn_equations, unblock(dyn_eq))
+        
+        # Parse to steady state equation format
+        ss_eq = postwalk(x -> 
+            x isa Expr ? 
+                x.head == :(=) ? 
+                    Expr(:call, :(-), x.args[1], x.args[2]) :
+                x.head == :ref ?
+                    occursin(r"^(x|ex|exo|exogenous){1}"i, string(x.args[2])) ? 0 :
+                    x.args[1] :
+                x.head == :call && x.args[1] == :* && length(x.args) >= 3 && x.args[2] isa Int && !(x.args[3] isa Int) ?
+                    Expr(:call, :*, x.args[3:end]..., x.args[2]) :
+                x :
+            x,
+        orig_eq)
+        push!(ss_equations, flatten(unblock(ss_eq)))
+        
+        # Parse to SS auxiliary equation format (with nonnegativity handling)
+        ss_aux_eq = postwalk(x -> 
+            x isa Expr ? 
+                x.head == :(=) ? 
+                    Expr(:call, :(-), x.args[1], x.args[2]) :
+                x.head == :ref ?
+                    occursin(r"^(x|ex|exo|exogenous){1}"i, string(x.args[2])) ? 0 :
+                    x :
+                x.head == :call && x.args[1] == :* && length(x.args) >= 3 && x.args[2] isa Int && !(x.args[3] isa Int) ?
+                    Expr(:call, :*, x.args[3:end]..., x.args[2]) :
+                x.head == :call && x.args[1] ∈ [:^] && length(x.args) >= 3 && !(x.args[3] isa Int) && x.args[2] isa Symbol ?
+                    begin
+                        𝓂.bounds[x.args[2]] = haskey(𝓂.bounds, x.args[2]) ? 
+                            (max(𝓂.bounds[x.args[2]][1], eps()), min(𝓂.bounds[x.args[2]][2], 1e12)) : 
+                            (eps(), 1e12)
+                        x
+                    end :
+                x.head == :call && x.args[1] ∈ [:log] && length(x.args) >= 2 && x.args[2] isa Symbol ?
+                    begin
+                        𝓂.bounds[x.args[2]] = haskey(𝓂.bounds, x.args[2]) ? 
+                            (max(𝓂.bounds[x.args[2]][1], eps()), min(𝓂.bounds[x.args[2]][2], 1e12)) : 
+                            (eps(), 1e12)
+                        x
+                    end :
+                x :
+            x,
+        orig_eq)
+        push!(ss_and_aux_equations, unblock(ss_aux_eq))
+    end
+    
+    # Store the parsed equations
+    append!(𝓂.dyn_equations, dyn_equations)
+    append!(𝓂.ss_equations, ss_equations)
+    𝓂.ss_equations_with_aux_variables = ss_eq_aux_ind
+    
+    # Process SS auxiliary equations and collect variable info
+    for (idx, eq) in enumerate(ss_and_aux_equations)
+        var_tmp = Set{Symbol}()
+        ss_tmp = Set{Symbol}()
+        par_tmp = Set{Symbol}()
+        var_future_tmp = Set{Symbol}()
+        var_present_tmp = Set{Symbol}()
+        var_past_tmp = Set{Symbol}()
+
+        # Remove terms multiplied with 0
+        eq = postwalk(x -> 
+            x isa Expr ? 
+                x.head == :call && x.args[1] == :* && any(x.args[2:end] .== 0) ? 0 : x :
+            x,
+        eq)
+
+        # Label variables, parameters and timings
+        postwalk(x -> 
+            x isa Expr ? 
+                x.head == :call ? 
+                    begin
+                        for i in 2:length(x.args)
+                            if x.args[i] isa Symbol && !occursin(r"^(ss|stst|steady|steadystate|steady_state|x|ex|exo|exogenous){1}$"i, string(x.args[i]))
+                                push!(par_tmp, x.args[i])
+                            end
+                        end
+                        x
+                    end :
+                x.head == :ref ? 
+                    x.args[2] isa Int ? 
+                        x.args[2] == 0 ? push!(var_present_tmp, x.args[1]) : 
+                        x.args[2] > 0 ? push!(var_future_tmp, x.args[1]) : 
+                        x.args[2] < 0 ? push!(var_past_tmp, x.args[1]) : x :
+                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i, string(x.args[2])) ?
+                        push!(ss_tmp, x.args[1]) : x : 
+                x :
+            x,
+        eq)
+
+        var_tmp = union(var_future_tmp, var_present_tmp, var_past_tmp)
+        
+        push!(𝓂.var_list_aux_SS, var_tmp)
+        push!(𝓂.ss_list_aux_SS, ss_tmp)
+        push!(𝓂.par_list_aux_SS, par_tmp)
+        push!(𝓂.var_future_list_aux_SS, var_future_tmp)
+        push!(𝓂.var_present_list_aux_SS, var_present_tmp)
+        push!(𝓂.var_past_list_aux_SS, var_past_tmp)
+
+        # Convert to SS equation format
+        prs_ex = convert_to_ss_equation(eq)
+        
+        if idx ∈ ss_eq_aux_ind
+            ss_aux_equation = Expr(:call, :-, unblock(prs_ex).args[2], simplify(unblock(prs_ex).args[3]))
+        else
+            ss_aux_equation = simplify(unblock(prs_ex))
+        end
+        
+        if ss_aux_equation isa Symbol 
+            push!(𝓂.ss_aux_equations, Expr(:call, :-, ss_aux_equation, 0))
+        else
+            push!(𝓂.ss_aux_equations, ss_aux_equation)
+        end
+    end
+    
+    # Build variable timing lists from dynamic equations (matching the macro's approach)
+    𝓂.dyn_var_future_list = map(x -> Set{Symbol}(map(s -> Symbol(replace(string(s), "₍₁₎" => "")), x)), collect.(match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₁₎")))
+    𝓂.dyn_var_present_list = map(x -> Set{Symbol}(map(s -> Symbol(replace(string(s), "₍₀₎" => "")), x)), collect.(match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₀₎")))
+    𝓂.dyn_var_past_list = map(x -> Set{Symbol}(map(s -> Symbol(replace(string(s), "₍₋₁₎" => "")), x)), collect.(match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₋₁₎")))
+    𝓂.dyn_exo_list = map(x -> Set{Symbol}(map(s -> Symbol(replace(string(s), "₍ₓ₎" => "")), x)), collect.(match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍ₓ₎")))
+    𝓂.dyn_ss_list = map(x -> Set{Symbol}(map(s -> Symbol(replace(string(s), "₍ₛₛ₎" => "")), x)), collect.(match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍ₛₛ₎")))
+    
+    # These lists contain the FULL symbols with subscripts (needed by create_symbols_eqs!)
+    𝓂.dyn_future_list = match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₁₎")
+    𝓂.dyn_present_list = match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₀₎")
+    𝓂.dyn_past_list = match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₋₁₎")
+    
+    # Rebuild parameters_in_equations
+    all_symbols = reduce(union, collect.(get_symbols.(𝓂.dyn_equations)))
+    𝓂.parameters_in_equations = sort(collect(setdiff(all_symbols, match_pattern(all_symbols, r"₎$"))))
+    
+    # Rebuild vars_in_ss_equations
+    𝓂.vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_aux_equations)), Set(𝓂.parameters_in_equations))))
+    
+    # Rebuild ss_calib_list and par_calib_list from calibration_equations
+    empty!(𝓂.ss_calib_list)
+    empty!(𝓂.par_calib_list)
+    for cal_eq in 𝓂.calibration_equations
+        ss_tmp = Set{Symbol}()
+        par_tmp = Set{Symbol}()
+        
+        # Parse SS variables from calibration equation
+        postwalk(x -> 
+            x isa Expr ? 
+                x.head == :ref ?
+                    occursin(r"^(ss|stst|steady|steadystate|steady_state){1}$"i, string(x.args[2])) ?
+                        push!(ss_tmp, x.args[1]) :
+                    x : 
+                x :
+            x,
+        cal_eq)
+        
+        # Separate out parameters - anything that's a symbol and not an SS variable
+        eq_symbols = get_symbols(cal_eq)
+        postwalk(x -> 
+            x isa Symbol ? 
+                occursin(r"^(\+|\-|\*|\/|\^|ss|stst|steady|steadystate|steady_state){1}$"i, string(x)) ?
+                    x :
+                    begin
+                        diffed = intersect(setdiff([x], ss_tmp), eq_symbols)
+                        if !isempty(diffed)
+                            push!(par_tmp, diffed[1])
+                        end
+                    end :
+            x,
+        cal_eq)
+        
+        push!(𝓂.ss_calib_list, ss_tmp)
+        push!(𝓂.par_calib_list, par_tmp)
+    end
+    
+    # Rebuild timings structure
+    rebuild_timings!(𝓂)
+    
+    return nothing
+end
+
+
+"""
+Rebuild the timings structure from variable lists.
+"""
+function rebuild_timings!(𝓂::ℳ)
+    # Aggregate variable sets
+    dyn_var_future = isempty(𝓂.dyn_var_future_list) ? Symbol[] : sort(collect(reduce(union, 𝓂.dyn_var_future_list)))
+    dyn_var_present = isempty(𝓂.dyn_var_present_list) ? Symbol[] : sort(collect(reduce(union, 𝓂.dyn_var_present_list)))
+    dyn_var_past = isempty(𝓂.dyn_var_past_list) ? Symbol[] : sort(collect(reduce(union, 𝓂.dyn_var_past_list)))
+    dyn_var_ss = isempty(𝓂.dyn_ss_list) ? Symbol[] : sort(collect(reduce(union, 𝓂.dyn_ss_list)))
+    exo = isempty(𝓂.dyn_exo_list) ? Symbol[] : sort(collect(reduce(union, 𝓂.dyn_exo_list)))
+    
+    # Compute variable categories
+    all_dyn_vars = union(Set(dyn_var_future), Set(dyn_var_present), Set(dyn_var_past))
+    all_vars = union(all_dyn_vars, Set(dyn_var_ss))
+    
+    present_only = sort(collect(setdiff(Set(dyn_var_present), union(Set(dyn_var_past), Set(dyn_var_future)))))
+    future_not_past = sort(collect(setdiff(Set(dyn_var_future), Set(dyn_var_past))))
+    past_not_future = sort(collect(setdiff(Set(dyn_var_past), Set(dyn_var_future))))
+    mixed = sort(collect(setdiff(Set(dyn_var_present), union(Set(present_only), Set(future_not_past), Set(past_not_future)))))
+    future_not_past_and_mixed = sort(collect(union(Set(future_not_past), Set(mixed))))
+    past_not_future_and_mixed = sort(collect(union(Set(past_not_future), Set(mixed))))
+    present_but_not_only = sort(collect(setdiff(Set(dyn_var_present), Set(present_only))))
+    mixed_in_past = sort(collect(intersect(Set(dyn_var_past), Set(mixed))))
+    not_mixed_in_past = sort(collect(setdiff(Set(dyn_var_past), Set(mixed_in_past))))
+    mixed_in_future = sort(collect(intersect(Set(dyn_var_future), Set(mixed))))
+    
+    var = sort(dyn_var_present)
+    
+    # Identify auxiliary variables
+    aux_tmp = sort(filter(x -> occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾", string(x)), dyn_var_present))
+    aux = filter(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_tmp)
+    
+    # Calculate exo_present
+    exo_present = dyn_var_present[map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∈ exo, dyn_var_present)]
+    
+    # Counts
+    nPresent_only = length(present_only)
+    nMixed = length(mixed)
+    nFuture_not_past_and_mixed = length(future_not_past_and_mixed)
+    nPast_not_future_and_mixed = length(past_not_future_and_mixed)
+    nPresent_but_not_only = length(present_but_not_only)
+    nVars = length(all_vars)
+    nExo = length(exo)
+    
+    # Index arrays
+    present_only_idx = indexin(present_only, var)
+    present_but_not_only_idx = indexin(present_but_not_only, var)
+    future_not_past_and_mixed_idx = indexin(future_not_past_and_mixed, var)
+    past_not_future_and_mixed_idx = indexin(past_not_future_and_mixed, var)
+    mixed_in_future_idx = indexin(mixed_in_future, dyn_var_future)
+    mixed_in_past_idx = indexin(mixed_in_past, dyn_var_past)
+    not_mixed_in_past_idx = indexin(not_mixed_in_past, dyn_var_past)
+    past_not_future_idx = indexin(past_not_future, var)
+    
+    reorder = indexin(var, vcat(present_only, past_not_future, future_not_past_and_mixed))
+    dynamic_order = indexin(present_but_not_only, vcat(past_not_future, future_not_past_and_mixed))
+    
+    # Update the model's timings
+    𝓂.timings = timings(
+        present_only,
+        future_not_past,
+        past_not_future,
+        mixed,
+        future_not_past_and_mixed,
+        past_not_future_and_mixed,
+        present_but_not_only,
+        mixed_in_past,
+        not_mixed_in_past,
+        mixed_in_future,
+        exo,
+        var,
+        aux,
+        exo_present,
+        nPresent_only,
+        nMixed,
+        nFuture_not_past_and_mixed,
+        nPast_not_future_and_mixed,
+        nPresent_but_not_only,
+        nVars,
+        nExo,
+        collect(Int, present_only_idx),
+        collect(Int, present_but_not_only_idx),
+        collect(Int, future_not_past_and_mixed_idx),
+        collect(Int, not_mixed_in_past_idx),
+        collect(Int, past_not_future_and_mixed_idx),
+        collect(Int, mixed_in_past_idx),
+        collect(Int, mixed_in_future_idx),
+        collect(Int, past_not_future_idx),
+        collect(Int, reorder),
+        collect(Int, dynamic_order)
+    )
+    
+    # Update model's main variable lists
+    𝓂.var = var
+    𝓂.aux = aux
+    𝓂.exo = exo
+    
+    return nothing
+end
+
+
+"""
     infer_step(x_axis)
 
 Infer the step for an axis.
