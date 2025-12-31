@@ -34,7 +34,7 @@ import LoopVectorization: @turbo
 # import Polyester
 import NLopt
 import Optim, LineSearches
-# import Zygote
+# import Zygote  # Not needed - rrule uses ChainRulesCore directly
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse, nonzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
 import LinearSolve as 𝒮
@@ -200,6 +200,7 @@ export get_fevd, fevd, get_forecast_error_variance_decomposition, get_conditiona
 export calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 export calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution #, calculate_jacobian_manual, calculate_jacobian_sparse, calculate_jacobian_threaded
 export get_shock_decomposition, get_model_estimates, get_estimated_shocks, get_estimated_variables, get_estimated_variable_standard_deviations, get_loglikelihood
+export get_NSSS_and_parameters_with_jacobian  # For differentiation with Mooncake/Zygote
 export Tolerances
 
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
@@ -9583,6 +9584,128 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     # end # timeit_debug
     return SS_and_pars, (solution_error, iters)
 end
+
+
+"""
+    get_NSSS_and_parameters_with_jacobian(𝓂, parameter_values; opts)
+
+Compute the non-stochastic steady state AND its Jacobian with respect to parameters.
+
+This function computes both values in a single call without using ForwardDiff,
+making it compatible with both Zygote and Mooncake via the rrule.
+
+Returns:
+- `SS_and_pars::Vector{S}`: The steady state values
+- `jvp::Matrix{S}`: The Jacobian ∂SS_and_pars/∂parameter_values  
+- `solution_error::S`: The solution error
+- `iters::Int`: Number of iterations
+"""
+function get_NSSS_and_parameters_with_jacobian(𝓂::ℳ, 
+                                                parameter_values::Vector{S}; 
+                                                opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{S}, Matrix{S}, S, Int} where S <: Real
+    # Compute steady state
+    SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+    
+    # Initialize jacobian
+    jvp = zeros(S, length(SS_and_pars), length(𝓂.parameters))
+    
+    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+        if opts.verbose 
+            println("Failed to find NSSS") 
+        end
+        return SS_and_pars, jvp, S(10.0), iters
+    end
+    
+    # Compute the Jacobian using implicit function theorem
+    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+    SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+    
+    ∂ = parameter_values
+    C = SS_and_pars[indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag)]
+    
+    # Compute ∂SS_equations/∂parameters
+    if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
+        if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
+            jac_buffer.nzval .= 0
+        else
+            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
+        end
+    else
+        jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
+    end
+    𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
+    ∂SS_equations_∂parameters = jac_buffer
+    
+    # Compute ∂SS_equations/∂SS_and_pars
+    if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(SS_and_pars)
+        if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
+            jac_buffer.nzval .= 0
+        else
+            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
+        end
+    else
+        jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
+    end
+    𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
+    ∂SS_equations_∂SS_and_pars = jac_buffer
+    
+    # Solve for jacobian using implicit function theorem
+    ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
+    
+    if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
+        if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
+        return SS_and_pars, jvp, S(10.0), iters
+    end
+    
+    JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)
+    
+    for (i,v) in enumerate(SS_and_pars_names)
+        if v in unknowns
+            jvp[i,:] = JVP[indexin([v], unknowns),:]
+        end
+    end
+    
+    return SS_and_pars, jvp, solution_error, iters
+end
+
+
+"""
+ChainRulesCore rrule for get_NSSS_and_parameters_with_jacobian.
+
+The pullback uses the pre-computed Jacobian (jvp) for efficient gradient computation.
+Both Zygote and Mooncake can dispatch to this rrule.
+"""
+function rrule(::typeof(get_NSSS_and_parameters_with_jacobian),
+                𝓂::ℳ,
+                parameter_values::Vector{S};
+                opts::CalculationOptions = merge_calculation_options()) where S <: Real
+    
+    # Forward pass - compute SS, jacobian, and error
+    SS_and_pars, jvp, solution_error, iters = get_NSSS_and_parameters_with_jacobian(𝓂, parameter_values, opts = opts)
+    
+    # Pullback function using pre-computed jacobian
+    function get_NSSS_with_jacobian_pullback(Δ)
+        # Δ is a tuple: (∂SS_and_pars, ∂jvp, ∂solution_error, ∂iters)
+        # We only propagate gradients through SS_and_pars
+        ∂SS_and_pars = Δ[1]
+        
+        if solution_error > opts.tol.NSSS_acceptance_tol
+            return NoTangent(), NoTangent(), zeros(S, length(parameter_values)), NoTangent()
+        end
+        
+        # Use the pre-computed jacobian for the pullback
+        ∂params = jvp' * ∂SS_and_pars
+        
+        return NoTangent(), NoTangent(), ∂params, NoTangent()
+    end
+    
+    return (SS_and_pars, jvp, solution_error, iters), get_NSSS_with_jacobian_pullback
+end
+
 
 end # dispatch_doctor
 

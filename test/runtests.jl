@@ -113,6 +113,10 @@ if test_set == "pruned_3rd_order_estimation_pigeons"
     include("test_pruned_3rd_order_estimation_pigeons.jl")
 end
 
+if test_set == "gradient_consistency"
+    include("test_gradient_consistency.jl")
+end
+
 
 if test_set == "plots_1"
     plots = true
