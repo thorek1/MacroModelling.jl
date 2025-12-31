@@ -1048,7 +1048,7 @@ end
     reprocess_model!(𝓂; verbose=false, silent=false, perturbation_order=1)
 
 Re-process the model after equations have been modified via `update_equations!` or `update_calibration_equations!`.
-This function regenerates all derived equation structures and re-solves the model.
+This function regenerates all derived equation structures. The model will be re-solved lazily on next use.
 """
 function reprocess_model!(𝓂::ℳ; 
                           verbose::Bool = false, 
@@ -1189,6 +1189,10 @@ function reparse_equations!(𝓂::ℳ)
     empty!(𝓂.dyn_future_list)
     empty!(𝓂.dyn_present_list)
     empty!(𝓂.dyn_past_list)
+    
+    # Reset solved vars/vals for SS solver regeneration
+    empty!(𝓂.solved_vars)
+    empty!(𝓂.solved_vals)
     
     # Temporary containers for auxiliary variables
     aux_vars_created = Set{Symbol}()
@@ -1388,9 +1392,14 @@ function reparse_equations!(𝓂::ℳ)
     𝓂.dyn_present_list = match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₀₎")
     𝓂.dyn_past_list = match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₋₁₎")
     
-    # Rebuild parameters_in_equations
+    # Rebuild parameters_in_equations - exclude calibrated parameters and variables
     all_symbols = reduce(union, collect.(get_symbols.(𝓂.dyn_equations)))
-    𝓂.parameters_in_equations = sort(collect(setdiff(all_symbols, match_pattern(all_symbols, r"₎$"))))
+    all_params_in_eqs = sort(collect(setdiff(all_symbols, match_pattern(all_symbols, r"₎$"))))
+    # Keep only parameters that are in 𝓂.parameters (excludes calibrated params)
+    𝓂.parameters_in_equations = sort(collect(union(
+        intersect(Set(all_params_in_eqs), Set(𝓂.parameters)),
+        intersect(Set(all_params_in_eqs), Set(𝓂.calibration_equations_parameters))
+    )))
     
     # Rebuild vars_in_ss_equations
     𝓂.vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_aux_equations)), Set(𝓂.parameters_in_equations))))
