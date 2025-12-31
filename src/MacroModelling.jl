@@ -1057,6 +1057,14 @@ function reprocess_model!(𝓂::ℳ;
     # Clear existing solution caches
     clear_solution_caches!(𝓂, :first_order)
     
+    # Completely clear NSSS_solver_cache - the new SS solver will have a different block structure
+    # which makes old cached solutions incompatible (different number of inner vectors)
+    empty!(𝓂.NSSS_solver_cache)
+    
+    # Clear SS solver block structures - these are rebuilt by solve_steady_state!
+    # and the indices in generated code depend on their length
+    empty!(𝓂.ss_solve_blocks_in_place)
+    
     if !silent 
         println("Re-processing model after equation update...")
     end
