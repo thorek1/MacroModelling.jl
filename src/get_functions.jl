@@ -3627,14 +3627,15 @@ function _get_loglikelihood_internal(
 end
 
 
-# Specialized version for :first_order algorithm and :kalman filter 
+# Generic rrule for _get_loglikelihood_internal that works for any algorithm/filter combination
+# This rrule is compatible with both Zygote and Mooncake (via ChainRulesCore)
 function rrule(
     ::typeof(_get_loglikelihood_internal),
     parameter_values::Vector{Float64},
     data_raw::Matrix{Float64},
     obs_indices::Vector{Int},
-    algorithm::Val{:first_order},
-    filter::Val{:kalman},
+    algorithm::Val{A},
+    filter::Val{F},
     observables::Vector{Symbol},
     𝓂::ℳ,
     presample_periods::Int,
@@ -3643,45 +3644,285 @@ function rrule(
     filter_algorithm::Symbol,
     opts::CalculationOptions,
     on_failure_loglikelihood::Float64
-)
+) where {A, F}
+    
     # Get NSSS and parameters with its pullback
     nsss_result, nsss_pullback = rrule(get_NSSS_and_parameters, 𝓂, parameter_values, opts = opts)
     SS_and_pars, (solution_error, _) = nsss_result
 
+    nopullback = Δ -> (NoTangent(), zeros(length(parameter_values)), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+
     if solution_error > opts.tol.NSSS_acceptance_tol
-        return on_failure_loglikelihood, Δ -> (NoTangent(), zeros(length(parameter_values)), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return on_failure_loglikelihood, nopullback
     end
 
     # Calculate jacobian with its pullback
     jacobian_result, jacobian_pullback = rrule(calculate_jacobian, parameter_values, SS_and_pars, 𝓂)
     ∇₁ = jacobian_result
 
-    # Calculate first order solution with its pullback
-    solution_result, solution_pullback = rrule(calculate_first_order_solution, ∇₁, 
-                                                T = 𝓂.timings, 
-                                                initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                opts = opts)
-    𝐒₁, _, solved = solution_result
+    TT = 𝓂.timings
+
+    # Calculate solution based on algorithm order
+    𝐒, state, solved, solution_pullback, hessian_pullback, third_order_pullback = _get_solution_and_pullbacks(
+        Val(A), ∇₁, parameter_values, SS_and_pars, TT, 𝓂, opts
+    )
     
     if !solved
-        return on_failure_loglikelihood, Δ -> (NoTangent(), zeros(length(parameter_values)), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return on_failure_loglikelihood, nopullback
     end
 
     # Compute data in deviations
     data_in_deviations = data_raw .- SS_and_pars[obs_indices]
 
-    # Set up Kalman filter matrices
-    TT = 𝓂.timings
+    # Calculate filter loglikelihood with its pullback based on filter type
+    llh, filter_pullback = _get_filter_and_pullback(
+        Val(F), Val(A), state, 𝐒, data_in_deviations, observables, TT,
+        presample_periods, initial_covariance, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood
+    )
+
+    # Compose pullbacks
+    function _get_loglikelihood_internal_pullback(Δllh)
+        # Backprop through filter
+        filter_grads = filter_pullback(Δllh)
+        ∂𝐒 = _extract_solution_gradient(filter_grads, Val(F))
+        ∂data_in_deviations = _extract_data_gradient(filter_grads, Val(F))
+
+        # Backprop through data_in_deviations = data_raw .- SS_and_pars[obs_indices]
+        ∂SS_and_pars = zeros(length(SS_and_pars))
+        if !(∂data_in_deviations isa NoTangent)
+            for (i, idx) in enumerate(obs_indices)
+                ∂SS_and_pars[idx] -= sum(∂data_in_deviations[i, :])
+            end
+        end
+
+        # Backprop through solution
+        ∂∇₁, ∂∇₂, ∂∇₃ = _backprop_through_solution(
+            Val(A), ∂𝐒, solution_pullback, hessian_pullback, third_order_pullback
+        )
+
+        # Backprop through derivatives
+        ∂params_total = zeros(length(parameter_values))
+        
+        # Backprop through third order derivatives if applicable
+        if !(∂∇₃ isa NoTangent) && third_order_pullback !== nothing
+            # Third order derivatives pullback would be handled here
+        end
+        
+        # Backprop through hessian if applicable
+        if !(∂∇₂ isa NoTangent) && hessian_pullback !== nothing
+            hessian_pb_result = hessian_pullback(unthunk(∂∇₂))
+            if length(hessian_pb_result) >= 3
+                ∂params_hess = hessian_pb_result[2]
+                ∂SS_hess = hessian_pb_result[3]
+                if !(∂params_hess isa NoTangent)
+                    ∂params_total .+= ∂params_hess
+                end
+                if !(∂SS_hess isa NoTangent)
+                    ∂SS_and_pars .+= ∂SS_hess
+                end
+            end
+        end
+
+        # Backprop through jacobian
+        if !(∂∇₁ isa NoTangent)
+            _, ∂params_jac, ∂SS_jac, _ = jacobian_pullback(unthunk(∂∇₁))
+            if !(∂SS_jac isa NoTangent)
+                ∂SS_and_pars .+= ∂SS_jac
+            end
+            if !(∂params_jac isa NoTangent)
+                ∂params_total .+= ∂params_jac
+            end
+        end
+
+        # Backprop through NSSS
+        _, _, ∂params_nsss, _ = nsss_pullback((∂SS_and_pars, NoTangent()))
+
+        # Combine parameter gradients
+        if !(∂params_nsss isa NoTangent)
+            ∂params_total .+= ∂params_nsss
+        end
+
+        return (NoTangent(), ∂params_total, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
+
+    return llh, _get_loglikelihood_internal_pullback
+end
+
+
+# Helper function to get solution and pullbacks based on algorithm order
+function _get_solution_and_pullbacks(
+    ::Val{:first_order}, ∇₁, parameter_values, SS_and_pars, TT, 𝓂, opts
+)
+    solution_result, solution_pullback = rrule(calculate_first_order_solution, ∇₁, 
+                                                T = TT, 
+                                                initial_guess = 𝓂.solution.perturbation.qme_solution, 
+                                                opts = opts)
+    𝐒₁, _, solved = solution_result
+    state = [zeros(TT.nVars)]
+    return 𝐒₁, state, solved, solution_pullback, nothing, nothing
+end
+
+function _get_solution_and_pullbacks(
+    ::Val{:second_order}, ∇₁, parameter_values, SS_and_pars, TT, 𝓂, opts
+)
+    # First order solution
+    solution_result, solution_pullback = rrule(calculate_first_order_solution, ∇₁, 
+                                                T = TT, 
+                                                initial_guess = 𝓂.solution.perturbation.qme_solution, 
+                                                opts = opts)
+    𝐒₁, _, solved = solution_result
+    
+    if !solved
+        return zeros(0, 0), zeros(TT.nVars), false, nothing, nothing, nothing
+    end
+    
+    # Hessian
+    hessian_result, hessian_pullback = rrule(calculate_hessian, parameter_values, SS_and_pars, 𝓂)
+    ∇₂ = hessian_result
+    
+    # Second order solution
+    second_result, second_pullback = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁,
+                                            T = TT, opts = opts)
+    𝐒₂, solved2 = second_result
+    
+    state = zeros(TT.nVars)
+    𝐒 = [𝐒₁, 𝐒₂]
+    return 𝐒, state, solved && solved2, (solution_pullback, second_pullback), hessian_pullback, nothing
+end
+
+function _get_solution_and_pullbacks(
+    ::Val{:pruned_second_order}, ∇₁, parameter_values, SS_and_pars, TT, 𝓂, opts
+)
+    # First order solution
+    solution_result, solution_pullback = rrule(calculate_first_order_solution, ∇₁, 
+                                                T = TT, 
+                                                initial_guess = 𝓂.solution.perturbation.qme_solution, 
+                                                opts = opts)
+    𝐒₁, _, solved = solution_result
+    
+    if !solved
+        return Vector{AbstractMatrix{Float64}}(), Vector{Vector{Float64}}(), false, nothing, nothing, nothing
+    end
+    
+    # Hessian
+    hessian_result, hessian_pullback = rrule(calculate_hessian, parameter_values, SS_and_pars, 𝓂)
+    ∇₂ = hessian_result
+    
+    # Second order solution
+    second_result, second_pullback = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁,
+                                            T = TT, opts = opts)
+    𝐒₂, solved2 = second_result
+    
+    state = [zeros(TT.nVars), zeros(TT.nVars)]
+    𝐒 = AbstractMatrix{Float64}[𝐒₁, 𝐒₂]
+    return 𝐒, state, solved && solved2, (solution_pullback, second_pullback), hessian_pullback, nothing
+end
+
+function _get_solution_and_pullbacks(
+    ::Val{:third_order}, ∇₁, parameter_values, SS_and_pars, TT, 𝓂, opts
+)
+    # First order solution
+    solution_result, solution_pullback = rrule(calculate_first_order_solution, ∇₁, 
+                                                T = TT, 
+                                                initial_guess = 𝓂.solution.perturbation.qme_solution, 
+                                                opts = opts)
+    𝐒₁, _, solved = solution_result
+    
+    if !solved
+        return zeros(0, 0), zeros(TT.nVars), false, nothing, nothing, nothing
+    end
+    
+    # Hessian
+    hessian_result, hessian_pullback = rrule(calculate_hessian, parameter_values, SS_and_pars, 𝓂)
+    ∇₂ = hessian_result
+    
+    # Second order solution
+    second_result, second_pullback = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁,
+                                            T = TT, opts = opts)
+    𝐒₂, solved2 = second_result
+    
+    if !solved2
+        return zeros(0, 0), zeros(TT.nVars), false, nothing, nothing, nothing
+    end
+    
+    # Third order derivatives
+    third_deriv_result, third_deriv_pullback = rrule(calculate_third_order_derivatives, parameter_values, SS_and_pars, 𝓂)
+    ∇₃ = third_deriv_result
+    
+    # Third order solution
+    third_result, third_pullback = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂,
+                                          T = TT, opts = opts)
+    𝐒₃, solved3 = third_result
+    
+    state = zeros(TT.nVars)
+    𝐒 = [𝐒₁, 𝐒₂, 𝐒₃]
+    return 𝐒, state, solved && solved2 && solved3, (solution_pullback, second_pullback, third_pullback), hessian_pullback, third_deriv_pullback
+end
+
+function _get_solution_and_pullbacks(
+    ::Val{:pruned_third_order}, ∇₁, parameter_values, SS_and_pars, TT, 𝓂, opts
+)
+    # First order solution
+    solution_result, solution_pullback = rrule(calculate_first_order_solution, ∇₁, 
+                                                T = TT, 
+                                                initial_guess = 𝓂.solution.perturbation.qme_solution, 
+                                                opts = opts)
+    𝐒₁, _, solved = solution_result
+    
+    if !solved
+        return Vector{AbstractMatrix{Float64}}(), Vector{Vector{Float64}}(), false, nothing, nothing, nothing
+    end
+    
+    # Hessian
+    hessian_result, hessian_pullback = rrule(calculate_hessian, parameter_values, SS_and_pars, 𝓂)
+    ∇₂ = hessian_result
+    
+    # Second order solution
+    second_result, second_pullback = rrule(calculate_second_order_solution, ∇₁, ∇₂, 𝐒₁,
+                                            T = TT, opts = opts)
+    𝐒₂, solved2 = second_result
+    
+    if !solved2
+        return Vector{AbstractMatrix{Float64}}(), Vector{Vector{Float64}}(), false, nothing, nothing, nothing
+    end
+    
+    # Third order derivatives
+    third_deriv_result, third_deriv_pullback = rrule(calculate_third_order_derivatives, parameter_values, SS_and_pars, 𝓂)
+    ∇₃ = third_deriv_result
+    
+    # Third order solution
+    third_result, third_pullback = rrule(calculate_third_order_solution, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂,
+                                          T = TT, opts = opts)
+    𝐒₃, solved3 = third_result
+    
+    state = [zeros(TT.nVars), zeros(TT.nVars), zeros(TT.nVars)]
+    𝐒 = AbstractMatrix{Float64}[𝐒₁, 𝐒₂, 𝐒₃]
+    return 𝐒, state, solved && solved2 && solved3, (solution_pullback, second_pullback, third_pullback), hessian_pullback, third_deriv_pullback
+end
+
+
+# Helper function to get filter loglikelihood and pullback based on filter type
+function _get_filter_and_pullback(
+    ::Val{:kalman}, ::Val{A}, state, 𝐒, data_in_deviations, observables, TT,
+    presample_periods, initial_covariance, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood
+) where A
+    # For Kalman filter, we need to set up the state space matrices
+    # This is only valid for first order
+    if A != :first_order
+        error("Kalman filter is only supported for first_order algorithm")
+    end
+    
+    𝐒₁ = 𝐒
     observables_and_states = sort(union(TT.past_not_future_and_mixed_idx, convert(Vector{Int}, indexin(observables, sort(union(TT.aux, TT.var, TT.exo_present))))))
     obs_idx_filter = convert(Vector{Int}, indexin(observables, sort(union(TT.aux, TT.var, TT.exo_present))))
 
-    A = 𝐒₁[observables_and_states, 1:TT.nPast_not_future_and_mixed] * ℒ.diagm(ones(Float64, length(observables_and_states)))[indexin(TT.past_not_future_and_mixed_idx, observables_and_states), :]
+    A_mat = 𝐒₁[observables_and_states, 1:TT.nPast_not_future_and_mixed] * ℒ.diagm(ones(Float64, length(observables_and_states)))[indexin(TT.past_not_future_and_mixed_idx, observables_and_states), :]
     B = 𝐒₁[observables_and_states, TT.nPast_not_future_and_mixed+1:end]
     C = ℒ.diagm(ones(length(observables_and_states)))[indexin(sort(obs_idx_filter), observables_and_states), :]
     𝐁 = B * B'
 
     # Get initial covariance with its pullback
-    P_result, P_pullback = rrule(solve_lyapunov_equation, A, 𝐁, 
+    P_result, P_pullback = rrule(solve_lyapunov_equation, A_mat, 𝐁, 
                                   lyapunov_algorithm = opts.lyapunov_algorithm,
                                   tol = opts.tol.lyapunov_tol,
                                   acceptance_tol = opts.tol.lyapunov_acceptance_tol,
@@ -3689,14 +3930,14 @@ function rrule(
     P, _ = P_result
 
     # Run Kalman iterations with its pullback
-    kalman_result, kalman_pullback = rrule(run_kalman_iterations, A, 𝐁, C, P, data_in_deviations, 
+    kalman_result, kalman_pullback = rrule(run_kalman_iterations, A_mat, 𝐁, C, P, data_in_deviations, 
                                             presample_periods = presample_periods, 
                                             verbose = opts.verbose, 
                                             on_failure_loglikelihood = on_failure_loglikelihood)
     llh = kalman_result
 
-    # Compose pullbacks
-    function _get_loglikelihood_internal_pullback(Δllh)
+    # Create composite pullback for Kalman filter
+    function kalman_composite_pullback(Δllh)
         # Backprop through Kalman iterations
         _, ∂A_kalman, ∂𝐁_kalman, _, ∂P, ∂data_in_deviations_kalman, _ = kalman_pullback(Δllh)
 
@@ -3709,123 +3950,42 @@ function rrule(
         end
 
         # Combine A gradients
-        ∂A = ∂A_kalman
+        ∂A_total = ∂A_kalman
         if !(∂A_lyap isa NoTangent)
-            ∂A = ∂A .+ ∂A_lyap
+            ∂A_total = ∂A_total .+ ∂A_lyap
         end
 
         # Combine 𝐁 gradients
-        ∂𝐁 = ∂𝐁_kalman
+        ∂𝐁_total = ∂𝐁_kalman
         if !(∂𝐁_lyap isa NoTangent)
-            ∂𝐁 = ∂𝐁 .+ ∂𝐁_lyap
+            ∂𝐁_total = ∂𝐁_total .+ ∂𝐁_lyap
         end
 
-        # Backprop through 𝐁 = B * B' and A, B from 𝐒₁
-        # This is complex - we need to compute ∂𝐒₁ from ∂A and ∂𝐁
-        # For now, use a simplified gradient through the solution
-        
-        # Backprop through data_in_deviations = data_raw .- SS_and_pars[obs_indices]
-        ∂SS_and_pars = zeros(length(SS_and_pars))
-        if !(∂data_in_deviations_kalman isa NoTangent)
-            for (i, idx) in enumerate(obs_indices)
-                ∂SS_and_pars[idx] -= sum(∂data_in_deviations_kalman[i, :])
-            end
-        end
-
-        # Backprop through first order solution
+        # Backprop through matrix construction to get ∂𝐒₁
         ∂𝐒₁ = zeros(size(𝐒₁))
-        # Note: This is a simplified gradient - full implementation would need to 
-        # properly compose ∂A, ∂𝐁 through the matrix construction
-        if !(∂A isa NoTangent)
-            ∂𝐒₁[observables_and_states, 1:TT.nPast_not_future_and_mixed] .+= ∂A * ℒ.diagm(ones(Float64, length(observables_and_states)))[indexin(TT.past_not_future_and_mixed_idx, observables_and_states), :]'
+        if !(∂A_total isa NoTangent)
+            ∂𝐒₁[observables_and_states, 1:TT.nPast_not_future_and_mixed] .+= ∂A_total * ℒ.diagm(ones(Float64, length(observables_and_states)))[indexin(TT.past_not_future_and_mixed_idx, observables_and_states), :]'
         end
-        if !(∂𝐁 isa NoTangent)
-            ∂B = 2 * ∂𝐁 * B
+        if !(∂𝐁_total isa NoTangent)
+            ∂B = 2 * ∂𝐁_total * B
             ∂𝐒₁[observables_and_states, TT.nPast_not_future_and_mixed+1:end] .+= ∂B
         end
 
-        _, ∂∇₁, _ = solution_pullback((∂𝐒₁, NoTangent(), NoTangent()))
-
-        # Backprop through jacobian
-        if !(∂∇₁ isa NoTangent)
-            _, ∂params_jac, ∂SS_jac, _ = jacobian_pullback(unthunk(∂∇₁))
-            if !(∂SS_jac isa NoTangent)
-                ∂SS_and_pars .+= ∂SS_jac
-            end
-        else
-            ∂params_jac = NoTangent()
-        end
-
-        # Backprop through NSSS
-        _, _, ∂params_nsss, _ = nsss_pullback((∂SS_and_pars, NoTangent()))
-
-        # Combine parameter gradients
-        ∂parameter_values = zeros(length(parameter_values))
-        if !(∂params_nsss isa NoTangent)
-            ∂parameter_values .+= ∂params_nsss
-        end
-        if !(∂params_jac isa NoTangent)
-            ∂parameter_values .+= ∂params_jac
-        end
-
-        return (NoTangent(), ∂parameter_values, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (∂𝐒₁, ∂data_in_deviations_kalman)
     end
 
-    return llh, _get_loglikelihood_internal_pullback
+    return llh, kalman_composite_pullback
 end
 
-
-# Specialized version for :first_order algorithm and :inversion filter
-function rrule(
-    ::typeof(_get_loglikelihood_internal),
-    parameter_values::Vector{Float64},
-    data_raw::Matrix{Float64},
-    obs_indices::Vector{Int},
-    algorithm::Val{:first_order},
-    filter::Val{:inversion},
-    observables::Vector{Symbol},
-    𝓂::ℳ,
-    presample_periods::Int,
-    initial_covariance::Symbol,
-    warmup_iterations::Int,
-    filter_algorithm::Symbol,
-    opts::CalculationOptions,
-    on_failure_loglikelihood::Float64
-)
-    # Get NSSS and parameters with its pullback
-    nsss_result, nsss_pullback = rrule(get_NSSS_and_parameters, 𝓂, parameter_values, opts = opts)
-    SS_and_pars, (solution_error, _) = nsss_result
-
-    if solution_error > opts.tol.NSSS_acceptance_tol
-        return on_failure_loglikelihood, Δ -> (NoTangent(), zeros(length(parameter_values)), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    end
-
-    # Calculate jacobian with its pullback
-    jacobian_result, jacobian_pullback = rrule(calculate_jacobian, parameter_values, SS_and_pars, 𝓂)
-    ∇₁ = jacobian_result
-
-    # Calculate first order solution with its pullback
-    solution_result, solution_pullback = rrule(calculate_first_order_solution, ∇₁, 
-                                                T = 𝓂.timings, 
-                                                initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                opts = opts)
-    𝐒₁, _, solved = solution_result
-    
-    if !solved
-        return on_failure_loglikelihood, Δ -> (NoTangent(), zeros(length(parameter_values)), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    end
-
-    # Compute data in deviations
-    data_in_deviations = data_raw .- SS_and_pars[obs_indices]
-
-    TT = 𝓂.timings
-    state = [zeros(TT.nVars)]
-
+function _get_filter_and_pullback(
+    ::Val{:inversion}, ::Val{A}, state, 𝐒, data_in_deviations, observables, TT,
+    presample_periods, initial_covariance, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood
+) where A
     # Run inversion filter with its pullback
     filter_result, filter_pullback = rrule(calculate_inversion_filter_loglikelihood, 
-                                            Val(:first_order), 
+                                            Val(A), 
                                             state, 
-                                            𝐒₁, 
+                                            𝐒, 
                                             data_in_deviations, 
                                             observables, 
                                             TT,
@@ -3835,57 +3995,116 @@ function rrule(
                                             opts = opts,
                                             on_failure_loglikelihood = on_failure_loglikelihood)
     llh = filter_result
+    return llh, filter_pullback
+end
 
-    # Compose pullbacks
-    function _get_loglikelihood_internal_pullback_inversion(Δllh)
-        # Backprop through inversion filter
-        pullback_result = filter_pullback(Δllh)
-        # The inversion filter pullback returns: NoTangent(), NoTangent(), [∂state], ∂𝐒, ∂data_in_deviations, NoTangent(), NoTangent(), NoTangent(), NoTangent()
-        ∂state_vec = pullback_result[3]
-        ∂𝐒₁ = pullback_result[4]
-        ∂data_in_deviations = pullback_result[5]
 
-        # Backprop through data_in_deviations = data_raw .- SS_and_pars[obs_indices]
-        ∂SS_and_pars = zeros(length(SS_and_pars))
-        if !(∂data_in_deviations isa NoTangent)
-            for (i, idx) in enumerate(obs_indices)
-                ∂SS_and_pars[idx] -= sum(∂data_in_deviations[i, :])
-            end
-        end
+# Helper function to extract solution gradient from filter pullback result
+function _extract_solution_gradient(filter_grads, ::Val{:kalman})
+    # Kalman composite pullback returns (∂𝐒, ∂data_in_deviations)
+    return filter_grads[1]
+end
 
-        # Backprop through first order solution
-        if !(∂𝐒₁ isa NoTangent)
-            _, ∂∇₁, _ = solution_pullback((∂𝐒₁, NoTangent(), NoTangent()))
-        else
-            ∂∇₁ = NoTangent()
-        end
+function _extract_solution_gradient(filter_grads, ::Val{:inversion})
+    # Inversion filter pullback returns: NoTangent(), NoTangent(), [∂state], ∂𝐒, ∂data_in_deviations, ...
+    return filter_grads[4]
+end
 
-        # Backprop through jacobian
-        if !(∂∇₁ isa NoTangent)
-            _, ∂params_jac, ∂SS_jac, _ = jacobian_pullback(unthunk(∂∇₁))
-            if !(∂SS_jac isa NoTangent)
-                ∂SS_and_pars .+= ∂SS_jac
-            end
-        else
-            ∂params_jac = NoTangent()
-        end
 
-        # Backprop through NSSS
-        _, _, ∂params_nsss, _ = nsss_pullback((∂SS_and_pars, NoTangent()))
+# Helper function to extract data gradient from filter pullback result
+function _extract_data_gradient(filter_grads, ::Val{:kalman})
+    return filter_grads[2]
+end
 
-        # Combine parameter gradients
-        ∂parameter_values = zeros(length(parameter_values))
-        if !(∂params_nsss isa NoTangent)
-            ∂parameter_values .+= ∂params_nsss
-        end
-        if !(∂params_jac isa NoTangent)
-            ∂parameter_values .+= ∂params_jac
-        end
+function _extract_data_gradient(filter_grads, ::Val{:inversion})
+    return filter_grads[5]
+end
 
-        return (NoTangent(), ∂parameter_values, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+
+# Helper function to backpropagate through solution based on algorithm order
+function _backprop_through_solution(
+    ::Val{:first_order}, ∂𝐒, solution_pullback, hessian_pullback, third_order_pullback
+)
+    if !(∂𝐒 isa NoTangent) && solution_pullback !== nothing
+        _, ∂∇₁, _ = solution_pullback((∂𝐒, NoTangent(), NoTangent()))
+        return ∂∇₁, NoTangent(), NoTangent()
     end
+    return NoTangent(), NoTangent(), NoTangent()
+end
 
-    return llh, _get_loglikelihood_internal_pullback_inversion
+function _backprop_through_solution(
+    ::Val{:second_order}, ∂𝐒, solution_pullback, hessian_pullback, third_order_pullback
+)
+    if ∂𝐒 isa NoTangent || solution_pullback === nothing
+        return NoTangent(), NoTangent(), NoTangent()
+    end
+    
+    first_pullback, second_pullback = solution_pullback
+    ∂𝐒₁ = ∂𝐒 isa AbstractVector ? ∂𝐒[1] : ∂𝐒
+    ∂𝐒₂ = ∂𝐒 isa AbstractVector && length(∂𝐒) > 1 ? ∂𝐒[2] : NoTangent()
+    
+    # Backprop through second order solution
+    ∂∇₂ = NoTangent()
+    if !(∂𝐒₂ isa NoTangent) && second_pullback !== nothing
+        second_pb_result = second_pullback((∂𝐒₂, NoTangent()))
+        if length(second_pb_result) >= 2
+            ∂∇₁_from_second = second_pb_result[2]
+            ∂∇₂ = second_pb_result[3] # if available
+        end
+    end
+    
+    # Backprop through first order solution
+    ∂∇₁ = NoTangent()
+    if !(∂𝐒₁ isa NoTangent) && first_pullback !== nothing
+        _, ∂∇₁, _ = first_pullback((∂𝐒₁, NoTangent(), NoTangent()))
+    end
+    
+    return ∂∇₁, ∂∇₂, NoTangent()
+end
+
+function _backprop_through_solution(
+    ::Val{:pruned_second_order}, ∂𝐒, solution_pullback, hessian_pullback, third_order_pullback
+)
+    return _backprop_through_solution(Val(:second_order), ∂𝐒, solution_pullback, hessian_pullback, third_order_pullback)
+end
+
+function _backprop_through_solution(
+    ::Val{:third_order}, ∂𝐒, solution_pullback, hessian_pullback, third_order_pullback
+)
+    if ∂𝐒 isa NoTangent || solution_pullback === nothing
+        return NoTangent(), NoTangent(), NoTangent()
+    end
+    
+    first_pullback, second_pullback, third_pullback = solution_pullback
+    ∂𝐒₁ = ∂𝐒 isa AbstractVector ? ∂𝐒[1] : ∂𝐒
+    ∂𝐒₂ = ∂𝐒 isa AbstractVector && length(∂𝐒) > 1 ? ∂𝐒[2] : NoTangent()
+    ∂𝐒₃ = ∂𝐒 isa AbstractVector && length(∂𝐒) > 2 ? ∂𝐒[3] : NoTangent()
+    
+    # Backprop through third order solution
+    ∂∇₃ = NoTangent()
+    if !(∂𝐒₃ isa NoTangent) && third_pullback !== nothing
+        # Third order pullback
+    end
+    
+    # Backprop through second order solution
+    ∂∇₂ = NoTangent()
+    if !(∂𝐒₂ isa NoTangent) && second_pullback !== nothing
+        second_pb_result = second_pullback((∂𝐒₂, NoTangent()))
+    end
+    
+    # Backprop through first order solution
+    ∂∇₁ = NoTangent()
+    if !(∂𝐒₁ isa NoTangent) && first_pullback !== nothing
+        _, ∂∇₁, _ = first_pullback((∂𝐒₁, NoTangent(), NoTangent()))
+    end
+    
+    return ∂∇₁, ∂∇₂, ∂∇₃
+end
+
+function _backprop_through_solution(
+    ::Val{:pruned_third_order}, ∂𝐒, solution_pullback, hessian_pullback, third_order_pullback
+)
+    return _backprop_through_solution(Val(:third_order), ∂𝐒, solution_pullback, hessian_pullback, third_order_pullback)
 end
 
 

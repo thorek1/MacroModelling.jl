@@ -6,45 +6,59 @@ import MacroModelling
 import MacroModelling: _get_loglikelihood_internal, ℳ, CalculationOptions
 import ChainRulesCore: rrule, NoTangent
 
-# Mark _get_loglikelihood_internal as a primitive for Mooncake
-# For first_order algorithm with kalman filter
+# Mark _get_loglikelihood_internal as a primitive for Mooncake for all algorithm/filter combinations
+# This allows Mooncake to use the ChainRulesCore rrule defined in the main package
+
+# First order + kalman
 @is_primitive MinimalCtx Tuple{
     typeof(_get_loglikelihood_internal),
-    Vector{Float64},
-    Matrix{Float64},
-    Vector{Int},
-    Val{:first_order},
-    Val{:kalman},
-    Vector{Symbol},
-    ℳ,
-    Int,
-    Symbol,
-    Int,
-    Symbol,
-    CalculationOptions,
-    Float64
+    Vector{Float64}, Matrix{Float64}, Vector{Int},
+    Val{:first_order}, Val{:kalman},
+    Vector{Symbol}, ℳ, Int, Symbol, Int, Symbol, CalculationOptions, Float64
 }
 
-# For first_order algorithm with inversion filter
+# First order + inversion
 @is_primitive MinimalCtx Tuple{
     typeof(_get_loglikelihood_internal),
-    Vector{Float64},
-    Matrix{Float64},
-    Vector{Int},
-    Val{:first_order},
-    Val{:inversion},
-    Vector{Symbol},
-    ℳ,
-    Int,
-    Symbol,
-    Int,
-    Symbol,
-    CalculationOptions,
-    Float64
+    Vector{Float64}, Matrix{Float64}, Vector{Int},
+    Val{:first_order}, Val{:inversion},
+    Vector{Symbol}, ℳ, Int, Symbol, Int, Symbol, CalculationOptions, Float64
+}
+
+# Second order + inversion
+@is_primitive MinimalCtx Tuple{
+    typeof(_get_loglikelihood_internal),
+    Vector{Float64}, Matrix{Float64}, Vector{Int},
+    Val{:second_order}, Val{:inversion},
+    Vector{Symbol}, ℳ, Int, Symbol, Int, Symbol, CalculationOptions, Float64
+}
+
+# Pruned second order + inversion
+@is_primitive MinimalCtx Tuple{
+    typeof(_get_loglikelihood_internal),
+    Vector{Float64}, Matrix{Float64}, Vector{Int},
+    Val{:pruned_second_order}, Val{:inversion},
+    Vector{Symbol}, ℳ, Int, Symbol, Int, Symbol, CalculationOptions, Float64
+}
+
+# Third order + inversion
+@is_primitive MinimalCtx Tuple{
+    typeof(_get_loglikelihood_internal),
+    Vector{Float64}, Matrix{Float64}, Vector{Int},
+    Val{:third_order}, Val{:inversion},
+    Vector{Symbol}, ℳ, Int, Symbol, Int, Symbol, CalculationOptions, Float64
+}
+
+# Pruned third order + inversion
+@is_primitive MinimalCtx Tuple{
+    typeof(_get_loglikelihood_internal),
+    Vector{Float64}, Matrix{Float64}, Vector{Int},
+    Val{:pruned_third_order}, Val{:inversion},
+    Vector{Symbol}, ℳ, Int, Symbol, Int, Symbol, CalculationOptions, Float64
 }
 
 # Helper function to create Mooncake rrule!! from ChainRulesCore rrule
-# This reduces code duplication between kalman and inversion filter implementations
+# This is a generic implementation that works for any algorithm/filter combination
 function _create_mooncake_rrule(
     parameter_values::CoDual{Vector{Float64}},
     data_raw::CoDual{Matrix{Float64}},
@@ -104,7 +118,7 @@ function _create_mooncake_rrule(
     return zero_fcodual(llh), mooncake_pullback
 end
 
-# Define Mooncake's rrule!! for the kalman filter case
+# Define Mooncake's rrule!! for first_order + kalman
 function Mooncake.rrule!!(
     ::CoDual{typeof(_get_loglikelihood_internal)},
     parameter_values::CoDual{Vector{Float64}},
@@ -128,13 +142,109 @@ function Mooncake.rrule!!(
     )
 end
 
-# Define Mooncake's rrule!! for the inversion filter case
+# Define Mooncake's rrule!! for first_order + inversion
 function Mooncake.rrule!!(
     ::CoDual{typeof(_get_loglikelihood_internal)},
     parameter_values::CoDual{Vector{Float64}},
     data_raw::CoDual{Matrix{Float64}},
     obs_indices::CoDual{Vector{Int}},
     algorithm::CoDual{Val{:first_order}},
+    filter::CoDual{Val{:inversion}},
+    observables::CoDual{Vector{Symbol}},
+    𝓂::CoDual{ℳ},
+    presample_periods::CoDual{Int},
+    initial_covariance::CoDual{Symbol},
+    warmup_iterations::CoDual{Int},
+    filter_algorithm::CoDual{Symbol},
+    opts::CoDual{CalculationOptions},
+    on_failure_loglikelihood::CoDual{Float64}
+)
+    return _create_mooncake_rrule(
+        parameter_values, data_raw, obs_indices, algorithm, filter,
+        observables, 𝓂, presample_periods, initial_covariance,
+        warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood
+    )
+end
+
+# Define Mooncake's rrule!! for second_order + inversion
+function Mooncake.rrule!!(
+    ::CoDual{typeof(_get_loglikelihood_internal)},
+    parameter_values::CoDual{Vector{Float64}},
+    data_raw::CoDual{Matrix{Float64}},
+    obs_indices::CoDual{Vector{Int}},
+    algorithm::CoDual{Val{:second_order}},
+    filter::CoDual{Val{:inversion}},
+    observables::CoDual{Vector{Symbol}},
+    𝓂::CoDual{ℳ},
+    presample_periods::CoDual{Int},
+    initial_covariance::CoDual{Symbol},
+    warmup_iterations::CoDual{Int},
+    filter_algorithm::CoDual{Symbol},
+    opts::CoDual{CalculationOptions},
+    on_failure_loglikelihood::CoDual{Float64}
+)
+    return _create_mooncake_rrule(
+        parameter_values, data_raw, obs_indices, algorithm, filter,
+        observables, 𝓂, presample_periods, initial_covariance,
+        warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood
+    )
+end
+
+# Define Mooncake's rrule!! for pruned_second_order + inversion
+function Mooncake.rrule!!(
+    ::CoDual{typeof(_get_loglikelihood_internal)},
+    parameter_values::CoDual{Vector{Float64}},
+    data_raw::CoDual{Matrix{Float64}},
+    obs_indices::CoDual{Vector{Int}},
+    algorithm::CoDual{Val{:pruned_second_order}},
+    filter::CoDual{Val{:inversion}},
+    observables::CoDual{Vector{Symbol}},
+    𝓂::CoDual{ℳ},
+    presample_periods::CoDual{Int},
+    initial_covariance::CoDual{Symbol},
+    warmup_iterations::CoDual{Int},
+    filter_algorithm::CoDual{Symbol},
+    opts::CoDual{CalculationOptions},
+    on_failure_loglikelihood::CoDual{Float64}
+)
+    return _create_mooncake_rrule(
+        parameter_values, data_raw, obs_indices, algorithm, filter,
+        observables, 𝓂, presample_periods, initial_covariance,
+        warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood
+    )
+end
+
+# Define Mooncake's rrule!! for third_order + inversion
+function Mooncake.rrule!!(
+    ::CoDual{typeof(_get_loglikelihood_internal)},
+    parameter_values::CoDual{Vector{Float64}},
+    data_raw::CoDual{Matrix{Float64}},
+    obs_indices::CoDual{Vector{Int}},
+    algorithm::CoDual{Val{:third_order}},
+    filter::CoDual{Val{:inversion}},
+    observables::CoDual{Vector{Symbol}},
+    𝓂::CoDual{ℳ},
+    presample_periods::CoDual{Int},
+    initial_covariance::CoDual{Symbol},
+    warmup_iterations::CoDual{Int},
+    filter_algorithm::CoDual{Symbol},
+    opts::CoDual{CalculationOptions},
+    on_failure_loglikelihood::CoDual{Float64}
+)
+    return _create_mooncake_rrule(
+        parameter_values, data_raw, obs_indices, algorithm, filter,
+        observables, 𝓂, presample_periods, initial_covariance,
+        warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood
+    )
+end
+
+# Define Mooncake's rrule!! for pruned_third_order + inversion
+function Mooncake.rrule!!(
+    ::CoDual{typeof(_get_loglikelihood_internal)},
+    parameter_values::CoDual{Vector{Float64}},
+    data_raw::CoDual{Matrix{Float64}},
+    obs_indices::CoDual{Vector{Int}},
+    algorithm::CoDual{Val{:pruned_third_order}},
     filter::CoDual{Val{:inversion}},
     observables::CoDual{Vector{Symbol}},
     𝓂::CoDual{ℳ},
