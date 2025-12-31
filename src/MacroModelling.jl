@@ -2936,6 +2936,11 @@ end
 Max = max
 Min = min
 
+# Simplify methods for non-Expr types (pass through)
+simplify(ex::Symbol)::Symbol = ex
+simplify(ex::Int)::Int = ex
+simplify(ex::Float64)::Float64 = ex
+
 function simplify(ex::Expr)::Union{Expr,Symbol,Int}
     ex_ss = convert_to_ss_equation(ex)
 
@@ -2953,7 +2958,7 @@ function simplify(ex::Expr)::Union{Expr,Symbol,Int}
                     x, parsed)
 end
 
-function convert_to_ss_equation(eq::Expr)::Expr
+function convert_to_ss_equation(eq::Expr)::Union{Expr, Symbol, Int}
     postwalk(x -> 
         x isa Expr ? 
             x.head == :(=) ? 
