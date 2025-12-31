@@ -5038,6 +5038,46 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 end
 
 
+"""
+    build_extended_parameters(𝓂::ℳ)
+
+Build an extended parameters vector that includes both base parameters and 
+computed parameter definitions (parameters_as_function_of_parameters).
+This is needed for the vector-based fill functions.
+"""
+function build_extended_parameters(𝓂::ℳ)
+    # Start with base parameters
+    extended_pars = copy(𝓂.parameter_values)
+    
+    # Compute and append parameter definitions
+    for eq in 𝓂.calibration_equations_no_var
+        # eq is like :(Pi_ss = R_ss - Pi_real)
+        # We need to evaluate the RHS using the already computed parameters
+        target_par = eq.args[1]
+        value_expr = eq.args[2]
+        
+        # Build a dict to substitute parameter values
+        par_dict = Dict{Symbol, Float64}()
+        for (i, par) in enumerate(𝓂.parameters)
+            par_dict[par] = extended_pars[i]
+        end
+        # Also include already computed derived parameters
+        for (i, par) in enumerate(𝓂.parameters_as_function_of_parameters)
+            if length(extended_pars) >= length(𝓂.parameters) + i
+                par_dict[par] = extended_pars[length(𝓂.parameters) + i]
+            end
+        end
+        
+        # Substitute and evaluate
+        substituted_expr = postwalk(x -> x isa Symbol && haskey(par_dict, x) ? par_dict[x] : x, value_expr)
+        value = eval(substituted_expr)
+        push!(extended_pars, value)
+    end
+    
+    return extended_pars
+end
+
+
 
 
 function solve_steady_state!(𝓂::ℳ;
@@ -5688,9 +5728,23 @@ function setup_index_mappings!(𝓂::ℳ)
         𝓂.ss_var_indices[par] = n_vars + i
     end
     
+    # Add auxiliary ➕ variables - they come after calibration parameters
+    # These are intermediate variables used in domain-safe transformations
+    n_calib = length(𝓂.calibration_equations_parameters)
+    for (i, aux_var) in enumerate(𝓂.➕_vars)
+        𝓂.ss_var_indices[aux_var] = n_vars + n_calib + i
+    end
+    
     # Build parameter index mapping (input parameters)
     for (i, par) in enumerate(𝓂.parameters)
         𝓂.ss_par_indices[par] = i
+    end
+    
+    # Also add parameters_as_function_of_parameters to the parameter indices
+    # These are derived parameters computed from other parameters
+    n_pars = length(𝓂.parameters)
+    for (i, par) in enumerate(𝓂.parameters_as_function_of_parameters)
+        𝓂.ss_par_indices[par] = n_pars + i
     end
     
     return nothing
