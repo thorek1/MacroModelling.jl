@@ -4605,9 +4605,34 @@ function solve_steady_state!(𝓂::ℳ;
         # end
     
         # aux_replacements = Dict(aux_vars .=> aux_expr)
+
+        # Build a dict to replace parameters that are not passed as function arguments
+        # This handles parameters like K_ss = 11 that have fixed numeric values
+        fixed_param_replacements = Dict{Symbol, Any}()
+        
+        # Add parameters from calibration_equations_no_var
+        for eq in 𝓂.calibration_equations_no_var
+            if eq isa Expr && eq.head == :(=)
+                param_name = eq.args[1]
+                param_value = eq.args[2]
+                if param_name isa Symbol
+                    fixed_param_replacements[param_name] = param_value
+                end
+            end
+        end
+        
+        # Add regular parameters that have fixed values and are not in parameters_and_solved_vars
+        params_in_solved_vars = Set(parameters_and_solved_vars)
+        for (i, param) in enumerate(𝓂.parameters)
+            if param ∉ params_in_solved_vars && param ∉ sorted_vars
+                # This parameter has a fixed value and is not being solved for
+                fixed_param_replacements[param] = 𝓂.parameter_values[i]
+            end
+        end
     
         replaced_solved_vals = solved_vals |> 
             # x -> replace_symbols.(x, Ref(aux_replacements)) |> 
+            x -> replace_symbols.(x, Ref(fixed_param_replacements)) |>
             x -> replace_symbols.(x, Ref(parameter_dict)) |> 
             x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
             x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
