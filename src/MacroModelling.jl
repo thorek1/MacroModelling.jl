@@ -4980,6 +4980,9 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
     # 𝓂.SS_solve_func = eval(solve_exp)
+    
+    # Set up index mappings for the vector-based approach
+    setup_index_mappings!(𝓂)
 
     return nothing
 end
@@ -5583,7 +5586,96 @@ function solve_steady_state!(𝓂::ℳ;
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
     # 𝓂.SS_solve_func = eval(solve_exp)
 
+    # Set up index mappings for the vector-based approach
+    setup_index_mappings!(𝓂)
+
     return nothing
+end
+
+
+"""
+    setup_index_mappings!(𝓂::ℳ)
+
+Set up the index mappings for the vector-based steady state solver.
+Creates mappings from variable/parameter names to their indices in the SS_and_pars_values vector.
+"""
+function setup_index_mappings!(𝓂::ℳ)
+    # Clear existing mappings
+    empty!(𝓂.ss_var_indices)
+    empty!(𝓂.ss_par_indices)
+    
+    # Variables and calibration parameters that we solve for in steady state
+    # These are in the same order as the output of SS_solve_func
+    ss_vars = sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))
+    ss_vars_clean = Symbol.(replace.(string.(ss_vars), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    
+    # Build variable index mapping
+    for (i, var) in enumerate(ss_vars_clean)
+        𝓂.ss_var_indices[var] = i
+    end
+    
+    # Calibration parameters come after variables
+    n_vars = length(ss_vars_clean)
+    for (i, par) in enumerate(𝓂.calibration_equations_parameters)
+        𝓂.ss_var_indices[par] = n_vars + i
+    end
+    
+    # Build parameter index mapping (input parameters)
+    for (i, par) in enumerate(𝓂.parameters)
+        𝓂.ss_par_indices[par] = i
+    end
+    
+    return nothing
+end
+
+
+"""
+    block_solver_vectorized(SS_and_pars_values, parameters, block, solver_parameters, fail_fast_solvers_only, cold_start, verbose)
+
+Solve a block of steady state equations using the vector-based approach.
+The block contains indices for reading inputs and writing outputs to the SS_and_pars_values vector.
+"""
+function block_solver_vectorized(SS_and_pars_values::Vector{T}, 
+                                  parameters::Vector{T},
+                                  block::ss_solve_block_new,
+                                  guess::Vector{T},
+                                  solver_parameters::Vector{solver_parameters},
+                                  fail_fast_solvers_only::Bool,
+                                  cold_start::Bool,
+                                  verbose::Bool) where T <: Real
+    # Extract inputs from SS_and_pars_values using input indices
+    params_and_solved = T[SS_and_pars_values[i] for i in block.input_indices]
+    
+    # Add parameters from parameters vector using parameter indices
+    for i in block.parameter_indices
+        push!(params_and_solved, parameters[i])
+    end
+    
+    # If all params_and_solved are NaN (shouldn't happen in correct order), return error
+    if all(isnan, params_and_solved)
+        return (fill(NaN, length(block.target_indices)), (Inf, 0))
+    end
+    
+    # Use the standard block solver
+    guess_and_pars = [max.(block.lbs[1:length(guess)], min.(block.ubs[1:length(guess)], guess)), [Inf]]
+    
+    solution = block_solver(length(params_and_solved) == 0 ? [0.0] : params_and_solved,
+                            1,
+                            ss_solve_block(block.ss_problem, block.extended_ss_problem),
+                            guess_and_pars,
+                            block.lbs,
+                            block.ubs,
+                            solver_parameters,
+                            fail_fast_solvers_only,
+                            cold_start,
+                            verbose)
+    
+    # Write results to SS_and_pars_values
+    for (local_idx, global_idx) in enumerate(block.target_indices)
+        SS_and_pars_values[global_idx] = solution[1][local_idx]
+    end
+    
+    return solution
 end
 
 

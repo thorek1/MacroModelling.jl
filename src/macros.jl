@@ -90,6 +90,13 @@ macro model(𝓂,ex...)
     
     # ss_solve_blocks = []
     ss_solve_blocks_in_place = ss_solve_block[]
+    # New vector-based approach fields
+    ss_solve_blocks_new = ss_solve_block_new[]
+    ss_fill_functions = ss_fill_function[]
+    ss_solve_order = Tuple{Symbol, Int}[]
+    ss_var_indices = Dict{Symbol, Int}()
+    ss_par_indices = Dict{Symbol, Int}()
+    
     NSSS_solver_cache = CircularBuffer{Vector{Vector{Float64}}}(500)
     SS_solve_func = x->x
     # SS_calib_func = x->x
@@ -880,6 +887,11 @@ macro model(𝓂,ex...)
 
                         # $ss_solve_blocks,
                         $ss_solve_blocks_in_place,
+                        $ss_solve_blocks_new,
+                        $ss_fill_functions,
+                        $ss_solve_order,
+                        $ss_var_indices,
+                        $ss_par_indices,
                         $NSSS_solver_cache,
                         $SS_solve_func,
                         # $SS_calib_func,
