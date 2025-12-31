@@ -4610,24 +4610,41 @@ function solve_steady_state!(𝓂::ℳ;
         # This handles parameters like K_ss = 11 that have fixed numeric values
         fixed_param_replacements = Dict{Symbol, Any}()
         
-        # Add parameters from calibration_equations_no_var
-        for eq in 𝓂.calibration_equations_no_var
-            if eq isa Expr && eq.head == :(=)
-                param_name = eq.args[1]
-                param_value = eq.args[2]
-                if param_name isa Symbol
-                    fixed_param_replacements[param_name] = param_value
-                end
-            end
-        end
-        
-        # Add regular parameters that have fixed values and are not in parameters_and_solved_vars
+        # First add all regular parameters that have fixed values and are not in parameters_and_solved_vars
         params_in_solved_vars = Set(parameters_and_solved_vars)
         for (i, param) in enumerate(𝓂.parameters)
             if param ∉ params_in_solved_vars && param ∉ sorted_vars
                 # This parameter has a fixed value and is not being solved for
                 fixed_param_replacements[param] = 𝓂.parameter_values[i]
             end
+        end
+        
+        # Now add parameters from calibration_equations_no_var with iterative substitution
+        # This handles cases like: cgamma = 1 + ctrend / 100 where ctrend = 0.4
+        calib_vars = Symbol[]
+        calib_exprs = Any[]
+        for eq in 𝓂.calibration_equations_no_var
+            if eq isa Expr && eq.head == :(=)
+                param_name = eq.args[1]
+                param_value = eq.args[2]
+                if param_name isa Symbol
+                    push!(calib_vars, param_name)
+                    push!(calib_exprs, param_value)
+                end
+            end
+        end
+        
+        # Iteratively substitute values - first substitute fixed_param_replacements into expressions
+        # then substitute earlier calib expressions into later ones
+        for (i, var) in enumerate(calib_vars)
+            # First substitute fixed params (like ctrend = 0.4) into expression
+            calib_exprs[i] = replace_symbols(calib_exprs[i], fixed_param_replacements)
+            # Then substitute earlier calib vars into this expression
+            for j in 1:i-1
+                calib_exprs[i] = replace_symbols(calib_exprs[i], Dict(calib_vars[j] => calib_exprs[j]))
+            end
+            # Add to fixed_param_replacements for subsequent use
+            fixed_param_replacements[var] = calib_exprs[i]
         end
     
         replaced_solved_vals = solved_vals |> 
