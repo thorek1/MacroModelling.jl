@@ -3625,6 +3625,93 @@ function _get_loglikelihood_internal(
 
     return llh
 end
+
+
+# ChainRulesCore rrule for get_loglikelihood
+# This rrule is compatible with both Zygote (via ChainRulesCore) and Mooncake (via the extension)
+# It computes the gradient with respect to parameter_values by differentiating through _get_loglikelihood_internal
+function rrule(
+    ::typeof(get_loglikelihood),
+    𝓂::ℳ, 
+    data::KeyedArray{Float64}, 
+    parameter_values::Vector{Float64};
+    algorithm::Symbol = DEFAULT_ALGORITHM, 
+    filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
+    on_failure_loglikelihood::Float64 = -Inf,
+    warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS, 
+    presample_periods::Int = DEFAULT_PRESAMPLE_PERIODS,
+    initial_covariance::Symbol = :theoretical,
+    filter_algorithm::Symbol = :LagrangeNewton,
+    tol::Tolerances = Tolerances(), 
+    quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM, 
+    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM, 
+    sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
+    verbose::Bool = DEFAULT_VERBOSE
+)
+    # Build calculation options (non-differentiable setup)
+    opts = merge_calculation_options(tol = tol, verbose = verbose,
+                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
+                            sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            lyapunov_algorithm = lyapunov_algorithm)
+
+    # Normalize options (non-differentiable)
+    filter_norm, _, algorithm_norm, _, _, warmup_iterations_norm = normalize_filtering_options(filter, false, algorithm, false, warmup_iterations)
+    
+    # Get observables (non-differentiable)
+    observables = get_and_check_observables(𝓂, data)
+    
+    # Solve model (non-differentiable)
+    solve!(𝓂, opts = opts, algorithm = algorithm_norm)
+    
+    # Check bounds (non-differentiable)
+    bounds_violated = check_bounds(parameter_values, 𝓂)
+    
+    if bounds_violated 
+        return on_failure_loglikelihood, Δ -> (NoTangent(), NoTangent(), NoTangent(), zeros(length(parameter_values)))
+    end
+    
+    # Get labels and indices (non-differentiable)
+    NSSS_labels = [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
+    obs_indices = convert(Vector{Int}, indexin(observables, NSSS_labels))
+    
+    # Prepare data (non-differentiable)
+    if collect(axiskeys(data,1)) isa Vector{String}
+        data = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
+    end
+    data_raw = collect(data(observables))
+
+    # Call the internal function which does the bulk of the differentiable computation
+    # Use Zygote to get the pullback for the internal function
+    llh, internal_pullback = Zygote.pullback(parameter_values) do params
+        _get_loglikelihood_internal(
+            params,
+            data_raw,
+            obs_indices,
+            Val(algorithm_norm),
+            Val(filter_norm),
+            observables,
+            𝓂,
+            presample_periods,
+            initial_covariance,
+            warmup_iterations_norm,
+            filter_algorithm,
+            opts,
+            Float64(on_failure_loglikelihood)
+        )
+    end
+
+    # Create pullback that wraps the internal pullback
+    function get_loglikelihood_pullback(Δllh)
+        (∂params,) = internal_pullback(Δllh)
+        ∂parameter_values = ∂params === nothing ? zeros(length(parameter_values)) : ∂params
+        return (NoTangent(), NoTangent(), NoTangent(), ∂parameter_values)
+    end
+
+    return llh, get_loglikelihood_pullback
+end
+
+
 """
 $(SIGNATURES)
 Calculate the residuals of the non-stochastic steady state equations of the model for a given set of values. Values not provided, will be filled with the non-stochastic steady state values corresponding to the current parameters.
