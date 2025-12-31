@@ -27,7 +27,7 @@ using Test
         ss_before = get_steady_state(RBC_test, derivatives = false)
         irf_before = get_irf(RBC_test)
         
-        # Update equation 3 - change the production function with * 1.0 (mathematically equivalent)
+        # Update equation 3 - change the production function by multiplying by 1.0 (mathematically equivalent)
         update_equations!(RBC_test, 3, :(q[0] = exp(z[0]) * k[-1]^α * 1.0), silent = true)
         
         # Check revision history was recorded
@@ -289,9 +289,11 @@ end
         @test "alpha" in params
         
         # Adding new calibration equations to a model that doesn't have any is currently
-        # not supported because it requires modifying the model's parameter structure.
-        # This test documents that limitation. Only updating existing calibration equations works.
-        # Use index 0 to indicate "add new" - this should error or be handled
+        # not supported because it requires modifying the model's parameter structure:
+        # - Moving a parameter from the fixed parameter list to the calibrated parameter list
+        # - This affects many internal data structures (parameter_values, parameter indexing, etc.)
+        # - Only updating existing calibration equations works because the structure remains the same
+        # Use index 0 to indicate "add new" - this should error
         @test_throws AssertionError update_calibration_equations!(RBC_add_calib, 0, :(k[ss] / (4 * y[ss]) = 1.5), :alpha, silent = true)
         
         RBC_add_calib = nothing

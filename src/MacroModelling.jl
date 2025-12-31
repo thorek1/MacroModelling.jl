@@ -1058,11 +1058,14 @@ function reprocess_model!(𝓂::ℳ;
     clear_solution_caches!(𝓂, :first_order)
     
     # Completely clear NSSS_solver_cache - the new SS solver will have a different block structure
-    # which makes old cached solutions incompatible (different number of inner vectors)
+    # which makes old cached solutions incompatible (different number of inner vectors).
+    # This fixes the BoundsError when generated SS solver code accesses hardcoded block indices.
     empty!(𝓂.NSSS_solver_cache)
     
     # Clear SS solver block structures - these are rebuilt by solve_steady_state!
-    # and the indices in generated code depend on their length
+    # The generated code uses indices like closest_solution[$(2*(n_block-1)+1)] where n_block
+    # is determined by length(ss_solve_blocks_in_place) + 1. If not cleared, old blocks cause
+    # index mismatches (e.g., accessing index 4 of a 3-element vector).
     empty!(𝓂.ss_solve_blocks_in_place)
     
     if !silent 
