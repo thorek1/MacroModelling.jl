@@ -149,6 +149,66 @@ using Test
         
         RBC_test4 = nothing
     end
+
+    # Test that modifying shock equation produces same results as changing parameter
+    # NOTE: This test documents a known limitation - after equation updates involving
+    # shock terms, the shock standard deviation matrix may not be properly recalculated.
+    # This is marked as broken until the reprocess_model! function fully handles
+    # shock coefficient recalculation.
+    @testset "Shock equation modification vs parameter change equivalence" begin
+        # Model 1: We will modify the shock equation to use a larger std directly
+        @model RBC_eq_mod begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_eq_mod begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Model 2: Same model but we'll change the parameter instead
+        @model RBC_param_mod begin
+            1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_param_mod begin
+            std_z = 0.025  # 2.5 times the original 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Update the shock equation in Model 1: use a new parameter value for std
+        # Replace the equation to use 0.025 directly instead of std_z
+        # This tests that equation modification works for shock equations
+        update_equations!(RBC_eq_mod, 4, :(z[0] = ρ * z[-1] + 0.025 * eps_z[x]), silent = true)
+        
+        # Verify the update was recorded
+        history = get_revision_history(RBC_eq_mod)
+        @test length(history) == 1
+        @test history[1].action == :update_equation
+        
+        # Get IRFs from both models - they should be identical
+        irf_eq_mod = get_irf(RBC_eq_mod)
+        irf_param_mod = get_irf(RBC_param_mod)
+        
+        # The IRFs should be identical since both have effective shock std of 0.025
+        # This is marked as broken until shock coefficient recalculation is fixed
+        @test_broken isapprox(irf_eq_mod, irf_param_mod, rtol = 1e-10)
+        
+        RBC_eq_mod = nothing
+        RBC_param_mod = nothing
+    end
 end
 
 
@@ -182,9 +242,10 @@ end
         @test calib_params[1] == "alpha"
         
         # Update calibration equation - change target from 1.5 to 1.6
+        # Include the calibrated parameter in the call (alpha)
         # This is a @test_broken because of the known SS solver regeneration issue
         @test_broken begin
-            update_calibration_equations!(RBC_calib, 1, :(k[ss] / (4 * y[ss]) = 1.6), silent = true)
+            update_calibration_equations!(RBC_calib, 1, :(k[ss] / (4 * y[ss]) = 1.6), :alpha, silent = true)
             
             # Check revision history was recorded
             history = get_revision_history(RBC_calib)
@@ -194,6 +255,51 @@ end
         end
         
         RBC_calib = nothing
+    end
+
+    # Test adding a calibration equation to replace a fixed parameter
+    @testset "Replace parameter with calibration equation" begin
+        # Model where alpha is initially a fixed parameter
+        @model RBC_add_calib begin
+            y[0] = A[0] * k[-1]^alpha
+            1/c[0] = beta * 1/c[1] * (alpha * A[1] * k[0]^(alpha - 1) + (1 - delta))
+            y[0] = c[0] + k[0] - (1 - delta) * k[-1]
+            A[0] = 1 - rhoz + rhoz * A[-1] + std_eps * eps_z[x]
+        end
+
+        @parameters RBC_add_calib begin
+            std_eps = 0.01
+            rhoz = 0.9
+            delta = 0.025
+            alpha = 0.33  # Fixed parameter initially
+            beta = 0.99
+        end
+
+        # Verify no calibration equations initially
+        calib_eqs_before = get_calibration_equations(RBC_add_calib)
+        @test length(calib_eqs_before) == 0
+        
+        # Get original steady state with fixed alpha
+        ss_before = get_steady_state(RBC_add_calib, derivatives = false)
+        @test !any(isnan, ss_before)
+        
+        # Verify alpha is in the parameter list
+        params = get_parameters(RBC_add_calib)
+        @test "alpha" in params
+        
+        # This test would add a calibration equation to determine alpha
+        # For now, this is marked as broken due to the known issue
+        @test_broken begin
+            # Add calibration equation: k[ss] / (4 * y[ss]) = 1.5 | alpha
+            # This would replace the fixed alpha = 0.33 with a calibrated value
+            update_calibration_equations!(RBC_add_calib, 0, :(k[ss] / (4 * y[ss]) = 1.5), :alpha, silent = true)
+            
+            # Check that calibration equation was added
+            calib_eqs_after = get_calibration_equations(RBC_add_calib)
+            length(calib_eqs_after) == 1
+        end
+        
+        RBC_add_calib = nothing
     end
 end
 
