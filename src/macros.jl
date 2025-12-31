@@ -1,5 +1,177 @@
 const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
+# ============================================================================
+# Helper functions for parsing macros
+# ============================================================================
+
+"""
+Create auxiliary dynamic equations for variables with leads > 1.
+
+Returns the transformed symbol and pushes any new auxiliary equations to `dyn_equations`.
+"""
+function create_lead_auxiliary_equations!(var_name::Symbol, k::Int, aux_vars_created::Set, dyn_equations::Vector, dyn_eq_aux_ind::Vector{Int})
+    while k > 2
+        aux_sym = Symbol(string(var_name) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎")
+        if aux_sym ∈ aux_vars_created
+            break
+        else
+            push!(aux_vars_created, aux_sym)
+            next_aux = Symbol(string(var_name) * "ᴸ⁽" * super(string(abs(k - 2))) * "⁾₍₁₎")
+            push!(dyn_equations, Expr(:call, :-, aux_sym, next_aux))
+            push!(dyn_eq_aux_ind, length(dyn_equations))
+            k -= 1
+        end
+    end
+
+    # Handle the base case (k == 2)
+    aux_sym = Symbol(string(var_name) * "ᴸ⁽" * super(string(abs(k - 1))) * "⁾₍₀₎")
+    if aux_sym ∉ aux_vars_created && k > 1
+        push!(aux_vars_created, aux_sym)
+        base_sym = Symbol(string(var_name) * "₍₁₎")
+        push!(dyn_equations, Expr(:call, :-, aux_sym, base_sym))
+        push!(dyn_eq_aux_ind, length(dyn_equations))
+    end
+end
+
+"""
+Create auxiliary dynamic equations for variables with lags < -1.
+
+Returns the transformed symbol and pushes any new auxiliary equations to `dyn_equations`.
+"""
+function create_lag_auxiliary_equations!(var_name::Symbol, k::Int, aux_vars_created::Set, dyn_equations::Vector, dyn_eq_aux_ind::Vector{Int})
+    while k < -2
+        aux_sym = Symbol(string(var_name) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎")
+        if aux_sym ∈ aux_vars_created
+            break
+        else
+            push!(aux_vars_created, aux_sym)
+            next_aux = Symbol(string(var_name) * "ᴸ⁽⁻" * super(string(abs(k + 2))) * "⁾₍₋₁₎")
+            push!(dyn_equations, Expr(:call, :-, aux_sym, next_aux))
+            push!(dyn_eq_aux_ind, length(dyn_equations))
+            k += 1
+        end
+    end
+
+    # Handle the base case (k == -2)
+    aux_sym = Symbol(string(var_name) * "ᴸ⁽⁻" * super(string(abs(k + 1))) * "⁾₍₀₎")
+    if aux_sym ∉ aux_vars_created && k < -1
+        push!(aux_vars_created, aux_sym)
+        base_sym = Symbol(string(var_name) * "₍₋₁₎")
+        push!(dyn_equations, Expr(:call, :-, aux_sym, base_sym))
+        push!(dyn_eq_aux_ind, length(dyn_equations))
+    end
+end
+
+"""
+Update bounds dictionary, merging with existing bounds if present.
+"""
+function update_bounds!(bounds::Dict{Symbol,Tuple{Float64,Float64}}, sym::Symbol, lb::Float64, ub::Float64)
+    if haskey(bounds, sym)
+        bounds[sym] = (max(bounds[sym][1], lb), min(bounds[sym][2], ub))
+    else
+        bounds[sym] = (lb, ub)
+    end
+end
+
+"""
+Handle special function arguments that require bounds or auxiliary variables.
+
+Returns the (possibly transformed) expression.
+"""
+function handle_bounded_arg(x::Expr, func_name::Symbol, lb::Float64, ub::Float64, 
+                           bounds::Dict{Symbol,Tuple{Float64,Float64}}, 
+                           ➕_vars::Vector, ss_and_aux_equations::Vector,
+                           ss_eq_aux_ind::Vector{Int}, unique_➕_eqs::Dict,
+                           precompile::Bool)
+    arg = x.args[2]
+    
+    if arg isa Symbol
+        # Parameter case
+        update_bounds!(bounds, arg, lb, ub)
+        return x
+    elseif arg isa Expr && arg.head == :ref && arg.args[1] isa Symbol
+        # Variable case (e.g., k[0])
+        update_bounds!(bounds, arg.args[1], lb, ub)
+        return x
+    elseif arg isa Expr && arg.head == :call
+        # Expression case - may need auxiliary variable
+        replacement = precompile ? arg : simplify(arg)
+        
+        if replacement isa Int
+            # Constant - no auxiliary variable needed
+            return :($(Expr(:call, func_name, replacement)))
+        end
+        
+        if haskey(unique_➕_eqs, arg)
+            replacement = unique_➕_eqs[arg]
+        else
+            aux_name = Symbol("➕" * sub(string(length(➕_vars) + 1)))
+            push!(ss_and_aux_equations, Expr(:call, :-, Expr(:ref, aux_name, 0), arg))
+            update_bounds!(bounds, aux_name, lb, ub)
+            push!(ss_eq_aux_ind, length(ss_and_aux_equations))
+            push!(➕_vars, aux_name)
+            replacement = Expr(:ref, aux_name, 0)
+            unique_➕_eqs[arg] = replacement
+        end
+        
+        return :($(Expr(:call, func_name, replacement)))
+    else
+        return x
+    end
+end
+
+"""
+Handle power expressions that require nonnegativity bounds or auxiliary variables.
+
+Similar to `handle_bounded_arg` but for expressions like `x^y` where y is non-integer.
+"""
+function handle_power_arg(x::Expr, lb::Float64, ub::Float64,
+                         bounds::Dict{Symbol,Tuple{Float64,Float64}},
+                         ➕_vars::Vector, ss_and_aux_equations::Vector,
+                         ss_eq_aux_ind::Vector{Int}, unique_➕_eqs::Dict,
+                         precompile::Bool)
+    base = x.args[2]
+    exponent = x.args[3]
+    
+    if base isa Symbol
+        # Parameter case
+        update_bounds!(bounds, base, lb, ub)
+        return x
+    elseif base isa Expr && base.head == :ref && base.args[1] isa Symbol
+        # Variable case
+        update_bounds!(bounds, base.args[1], lb, ub)
+        return x
+    elseif base isa Expr && base.head == :call
+        # Expression case
+        replacement = precompile ? base : simplify(base)
+        
+        if replacement isa Int
+            return :($(replacement) ^ $(exponent))
+        end
+        
+        if haskey(unique_➕_eqs, base)
+            replacement = unique_➕_eqs[base]
+        else
+            aux_name = Symbol("➕" * sub(string(length(➕_vars) + 1)))
+            push!(ss_and_aux_equations, Expr(:call, :-, Expr(:ref, aux_name, 0), base))
+            update_bounds!(bounds, aux_name, lb, ub)
+            push!(ss_eq_aux_ind, length(ss_and_aux_equations))
+            push!(➕_vars, aux_name)
+            replacement = Expr(:ref, aux_name, 0)
+            unique_➕_eqs[base] = replacement
+        end
+        
+        return :($(replacement) ^ $(exponent))
+    else
+        return x
+    end
+end
+
+# Bounds constants for different function types
+const BOUNDS_POSITIVE = (eps(), 1e12)
+const BOUNDS_PROB = (eps(), 1 - eps())
+const BOUNDS_EXP = (-1e12, 600.0)
+const BOUNDS_ERFCINV = (eps(), 2 - eps())
 
 """
 $(SIGNATURES)
