@@ -870,20 +870,19 @@ end
 
 """
 $(SIGNATURES)
-Modify or replace a model equation. This function updates the `original_equations` field and marks the model solution as outdated. The model will be re-solved on the next call to any function that requires a solution.
-
-**Note:** Due to the complexity of the model's internal representation, this function only updates the `original_equations` field. Full recompilation of the model with all derived equations and symbolic processing would require re-invoking the `@model` and `@parameters` macros. This function is useful for tracking equation changes and for simple modifications, but for complex changes you may want to redefine the model using the macros.
+Modify or replace a model equation. This function updates the model equations and automatically re-parses, re-solves, and recomputes derivatives.
 
 # Arguments
 - $MODEL®
-- `equation_index::Int`: Index of the equation to modify (1-based). Use `get_equations` to see current equations and their indices.
+- `old_equation_or_index::Union{Int, Expr, String}`: Either the index of the equation to modify (1-based), or the old equation itself (as `Expr` or `String`) to be matched and replaced. Use `get_equations` to see current equations.
 - `new_equation::Union{Expr, String}`: The new equation to replace the old one. Can be an `Expr` or a `String` that will be parsed.
 
 # Keyword Arguments
-- `verbose` [Default: `false`, Type: `Bool`]: Print information about the update process.
+- `verbose` [Default: `false`, Type: `Bool`]: Print detailed information about the update process.
+- `silent` [Default: `false`, Type: `Bool`]: Suppress all output during reprocessing.
 
 # Returns
-- `Nothing`. The model's `original_equations` is modified in place.
+- `Nothing`. The model is modified in place and re-solved.
 
 # Examples
 ```julia
@@ -907,20 +906,37 @@ end
 # Get current equations
 get_equations(RBC)
 
-# Update the third equation
+# Update the third equation by index
 update_equations!(RBC, 3, :(q[0] = exp(z[0]) * k[-1]^α + 0.01))
+
+# Or update by specifying the old equation
+update_equations!(RBC, :(q[0] = exp(z[0]) * k[-1]^α + 0.01), :(q[0] = exp(z[0]) * k[-1]^α + 0.02))
+
+# The model is automatically re-solved - verify with:
+get_steady_state(RBC)
 
 # View revision history
 get_revision_history(RBC)
 ```
 """
 function update_equations!(𝓂::ℳ, 
-                          equation_index::Int, 
+                          old_equation_or_index::Union{Int, Expr, String}, 
                           new_equation::Union{Expr, String}; 
-                          verbose::Bool = false)
-    # Validate equation index
-    n_equations = length(𝓂.original_equations)
-    @assert 1 <= equation_index <= n_equations "Equation index must be between 1 and $n_equations. Use `get_equations(𝓂)` to see current equations."
+                          verbose::Bool = false,
+                          silent::Bool = false)
+    # Determine equation index
+    if old_equation_or_index isa Int
+        equation_index = old_equation_or_index
+        n_equations = length(𝓂.original_equations)
+        @assert 1 <= equation_index <= n_equations "Equation index must be between 1 and $n_equations. Use `get_equations(model)` to see current equations."
+    else
+        # Parse string to Expr if needed
+        old_eq_to_match = old_equation_or_index isa String ? Meta.parse(old_equation_or_index) : old_equation_or_index
+        
+        # Find the equation index by matching
+        equation_index = find_equation_index(𝓂.original_equations, old_eq_to_match)
+        @assert equation_index !== nothing "Could not find equation matching: $(replace(string(old_eq_to_match), "◖" => "{", "◗" => "}")). Use `get_equations(model)` to see current equations."
+    end
     
     # Parse string to Expr if needed
     if new_equation isa String
@@ -947,13 +963,28 @@ function update_equations!(𝓂::ℳ,
         println("Updated equation $equation_index:")
         println("  Old: ", replace(string(old_equation), "◖" => "{", "◗" => "}"))
         println("  New: ", replace(string(new_equation), "◖" => "{", "◗" => "}"))
-        println("\nNote: Model solution marked as outdated. Re-invoke @model and @parameters macros for full recompilation.")
     end
     
-    # Mark solution as outdated
-    𝓂.solution.outdated_NSSS = true
-    for algo in [:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order]
-        push!(𝓂.solution.outdated_algorithms, algo)
+    # Re-process the model with the updated equations
+    reprocess_model!(𝓂, verbose = verbose, silent = silent)
+    
+    return nothing
+end
+
+
+"""
+Helper function to find the index of an equation by matching its expression.
+Returns the index if found, or nothing if not found.
+"""
+function find_equation_index(equations::Vector{Expr}, target_eq::Expr)::Union{Int, Nothing}
+    # Normalize the target equation for comparison
+    target_str = normalize_equation_string(string(target_eq))
+    
+    for (i, eq) in enumerate(equations)
+        eq_str = normalize_equation_string(string(eq))
+        if eq_str == target_str
+            return i
+        end
     end
     
     return nothing
@@ -961,22 +992,34 @@ end
 
 
 """
-$(SIGNATURES)
-Modify or replace a calibration equation. This function updates the `calibration_equations` field and marks the model solution as outdated. The model will be re-solved on the next call to any function that requires a solution.
+Helper function to normalize equation strings for comparison.
+Removes whitespace variations and normalizes special characters.
+"""
+function normalize_equation_string(s::String)::String
+    # Replace special characters used internally
+    s = replace(s, "◖" => "{", "◗" => "}")
+    # Remove all whitespace for comparison
+    s = replace(s, r"\s+" => "")
+    return s
+end
 
-**Note:** Due to the complexity of the model's internal representation, this function only updates the calibration equation. Full recompilation of the model with all derived equations and symbolic processing would require re-invoking the `@model` and `@parameters` macros.
+
+"""
+$(SIGNATURES)
+Modify or replace a calibration equation. This function updates the calibration equations and automatically re-parses, re-solves, and recomputes derivatives.
 
 # Arguments
 - $MODEL®
-- `equation_index::Int`: Index of the calibration equation to modify (1-based). Use `get_calibration_equations` to see current calibration equations and their indices.
+- `old_equation_or_index::Union{Int, Expr, String}`: Either the index of the calibration equation to modify (1-based), or the old equation itself (as `Expr` or `String`) to be matched and replaced. Use `get_calibration_equations` to see current calibration equations.
 - `new_equation::Union{Expr, String}`: The new calibration equation to replace the old one. Can be an `Expr` or a `String` that will be parsed. The equation should be in the form `lhs = rhs` (e.g., `k[ss] / (4 * q[ss]) = 1.5`).
 - `calibrated_parameter::Union{Symbol, String, Nothing}` [Optional]: The parameter to calibrate. If `nothing`, keeps the existing calibrated parameter.
 
 # Keyword Arguments
-- `verbose` [Default: `false`, Type: `Bool`]: Print information about the update process.
+- `verbose` [Default: `false`, Type: `Bool`]: Print detailed information about the update process.
+- `silent` [Default: `false`, Type: `Bool`]: Suppress all output during reprocessing.
 
 # Returns
-- `Nothing`. The model's calibration equations are modified in place.
+- `Nothing`. The model is modified in place and re-solved.
 
 # Examples
 ```julia
@@ -1000,22 +1043,37 @@ end
 # Get current calibration equations
 get_calibration_equations(RBC_calibrated)
 
-# Update the calibration equation to target a different ratio
+# Update the calibration equation by index
 update_calibration_equations!(RBC_calibrated, 1, :(k[ss] / (4 * q[ss]) = 2.0))
+
+# The model is automatically re-solved - verify with:
+get_steady_state(RBC_calibrated)
 
 # View revision history
 get_revision_history(RBC_calibrated)
 ```
 """
 function update_calibration_equations!(𝓂::ℳ, 
-                                       equation_index::Int, 
+                                       old_equation_or_index::Union{Int, Expr, String}, 
                                        new_equation::Union{Expr, String},
                                        calibrated_parameter::Union{Symbol, String, Nothing} = nothing;
-                                       verbose::Bool = false)
-    # Validate equation index
+                                       verbose::Bool = false,
+                                       silent::Bool = false)
+    # Validate and determine equation index
     n_equations = length(𝓂.calibration_equations)
     @assert n_equations > 0 "Model has no calibration equations."
-    @assert 1 <= equation_index <= n_equations "Calibration equation index must be between 1 and $n_equations. Use `get_calibration_equations(𝓂)` to see current calibration equations."
+    
+    if old_equation_or_index isa Int
+        equation_index = old_equation_or_index
+        @assert 1 <= equation_index <= n_equations "Calibration equation index must be between 1 and $n_equations. Use `get_calibration_equations(model)` to see current calibration equations."
+    else
+        # Parse string to Expr if needed
+        old_eq_to_match = old_equation_or_index isa String ? Meta.parse(old_equation_or_index) : old_equation_or_index
+        
+        # Find the equation index by matching
+        equation_index = find_equation_index(𝓂.calibration_equations, old_eq_to_match)
+        @assert equation_index !== nothing "Could not find calibration equation matching: $(replace(string(old_eq_to_match), "◖" => "{", "◗" => "}")). Use `get_calibration_equations(model)` to see current calibration equations."
+    end
     
     # Parse string to Expr if needed
     if new_equation isa String
@@ -1069,14 +1127,10 @@ function update_calibration_equations!(𝓂::ℳ,
         println("Updated calibration equation $equation_index:")
         println("  Old: ", replace(string(old_equation), "◖" => "{", "◗" => "}"))
         println("  New: ", replace(string(parsed_equation), "◖" => "{", "◗" => "}"))
-        println("\nNote: Model solution marked as outdated. Re-invoke @model and @parameters macros for full recompilation.")
     end
     
-    # Mark solution as outdated
-    𝓂.solution.outdated_NSSS = true
-    for algo in [:first_order, :pruned_second_order, :second_order, :pruned_third_order, :third_order]
-        push!(𝓂.solution.outdated_algorithms, algo)
-    end
+    # Re-process the model with the updated calibration equations
+    reprocess_model!(𝓂, verbose = verbose, silent = silent)
     
     return nothing
 end

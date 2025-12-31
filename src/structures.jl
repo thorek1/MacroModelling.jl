@@ -58,6 +58,8 @@
 
 # using ForwardDiff
 
+# Type alias for revision history entries
+const RevisionEntry = NamedTuple{(:timestamp, :action, :equation_index, :old_equation, :new_equation), Tuple{Dates.DateTime, Symbol, Union{Int, Nothing}, Union{Expr, Nothing}, Union{Expr, Nothing}}}
 
 struct timings
     present_only::Vector{Symbol}
@@ -449,5 +451,5 @@ mutable struct ℳ
 
     estimation_helper::Dict{Vector{Symbol}, timings}
 
-    revision_history::Vector{NamedTuple{(:timestamp, :action, :equation_index, :old_equation, :new_equation), Tuple{Dates.DateTime, Symbol, Union{Int, Nothing}, Union{Expr, Nothing}, Union{Expr, Nothing}}}}
+    revision_history::Vector{RevisionEntry}
 end
