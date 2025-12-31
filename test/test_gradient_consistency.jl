@@ -1,5 +1,5 @@
 # Test gradient consistency between FiniteDiff, Zygote, and Mooncake
-# for get_loglikelihood across all algorithm/filter combinations
+# for get_loglikelihood and get_NSSS_and_parameters_with_jacobian
 
 using MacroModelling
 using Test
@@ -33,16 +33,64 @@ simulated_data = simulate(RBC)
 observables = [:c]  # Must have same number of observables as shocks
 data = simulated_data(observables, :, :simulate)
 
-# Test configurations - use only first_order for speed
-test_configs = [
-    (algorithm = :first_order, filter = :kalman, name = "first_order + kalman"),
-    (algorithm = :first_order, filter = :inversion, name = "first_order + inversion"),
-]
-
 @testset "Gradient Consistency Tests" begin
     params = copy(RBC.parameter_values)
     
-    @testset "First-order algorithms" begin
+    @testset "get_NSSS_and_parameters_with_jacobian" begin
+        # Test that the function returns the correct jacobian
+        SS_and_pars, jvp, solution_error, iters = get_NSSS_and_parameters_with_jacobian(RBC, params)
+        
+        @test solution_error < 1e-8
+        @test size(jvp, 1) == length(SS_and_pars)
+        @test size(jvp, 2) == length(params)
+        
+        # Compare jacobian against FiniteDiff
+        f_ss = x -> get_NSSS_and_parameters_with_jacobian(RBC, x)[1]  # Returns just SS_and_pars
+        jac_finitediff = FiniteDifferences.jacobian(
+            FiniteDifferences.central_fdm(5, 1),
+            f_ss,
+            params
+        )[1]
+        
+        # Check that jacobian from function matches FiniteDiff
+        rel_diff = ℒ.norm(jvp - jac_finitediff) / max(ℒ.norm(jac_finitediff), 1e-10)
+        println("\nJacobian comparison:")
+        println("  Direct jvp vs FiniteDiff relative diff: $rel_diff")
+        @test rel_diff < 1e-6
+        
+        # Test gradient of sum(SS_and_pars) using Zygote
+        f_sum = x -> sum(get_NSSS_and_parameters_with_jacobian(RBC, x)[1])
+        
+        grad_zygote = Zygote.gradient(f_sum, params)[1]
+        grad_finitediff = FiniteDifferences.grad(
+            FiniteDifferences.central_fdm(5, 1),
+            f_sum,
+            params
+        )[1]
+        
+        rel_diff_grad = ℒ.norm(grad_zygote - grad_finitediff) / max(ℒ.norm(grad_finitediff), 1e-10)
+        println("  Zygote vs FiniteDiff gradient relative diff: $rel_diff_grad")
+        @test rel_diff_grad < 1e-6
+        
+        # Test Mooncake gradient
+        grad_mooncake = DifferentiationInterface.gradient(
+            f_sum,
+            DifferentiationInterface.AutoMooncake(; config = nothing),
+            params
+        )
+        
+        rel_diff_mooncake = ℒ.norm(grad_mooncake - grad_zygote) / max(ℒ.norm(grad_zygote), 1e-10)
+        println("  Mooncake vs Zygote gradient relative diff: $rel_diff_mooncake")
+        @test rel_diff_mooncake < 1e-10
+    end
+    
+    # Test configurations for get_loglikelihood
+    test_configs = [
+        (algorithm = :first_order, filter = :kalman, name = "first_order + kalman"),
+        (algorithm = :first_order, filter = :inversion, name = "first_order + inversion"),
+    ]
+    
+    @testset "get_loglikelihood" begin
         for config in test_configs
             @testset "$(config.name)" begin
                 # Create wrapper function for this config
