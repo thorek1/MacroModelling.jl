@@ -1381,16 +1381,17 @@ function reparse_equations!(𝓂::ℳ)
     end
     
     # Build variable timing lists from dynamic equations (matching the macro's approach)
+    # These lists contain symbols with timing subscripts STRIPPED (for variable categorization)
     𝓂.dyn_var_future_list = map(x -> Set{Symbol}(map(s -> Symbol(replace(string(s), "₍₁₎" => "")), x)), collect.(match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₁₎")))
     𝓂.dyn_var_present_list = map(x -> Set{Symbol}(map(s -> Symbol(replace(string(s), "₍₀₎" => "")), x)), collect.(match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₀₎")))
     𝓂.dyn_var_past_list = map(x -> Set{Symbol}(map(s -> Symbol(replace(string(s), "₍₋₁₎" => "")), x)), collect.(match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₋₁₎")))
-    𝓂.dyn_exo_list = map(x -> Set{Symbol}(map(s -> Symbol(replace(string(s), "₍ₓ₎" => "")), x)), collect.(match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍ₓ₎")))
     𝓂.dyn_ss_list = map(x -> Set{Symbol}(map(s -> Symbol(replace(string(s), "₍ₛₛ₎" => "")), x)), collect.(match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍ₛₛ₎")))
     
-    # These lists contain the FULL symbols with subscripts (needed by create_symbols_eqs!)
+    # These lists contain the FULL symbols with subscripts (matching macro line 787-790)
     𝓂.dyn_future_list = match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₁₎")
     𝓂.dyn_present_list = match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₀₎")
     𝓂.dyn_past_list = match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍₋₁₎")
+    𝓂.dyn_exo_list = match_pattern.(get_symbols.(𝓂.dyn_equations), r"₍ₓ₎")
     
     # Rebuild parameters_in_equations - exclude calibrated parameters and variables
     all_symbols = reduce(union, collect.(get_symbols.(𝓂.dyn_equations)))

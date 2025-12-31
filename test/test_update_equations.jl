@@ -150,10 +150,6 @@ using Test
     end
 
     # Test that modifying shock equation produces same results as changing parameter
-    # NOTE: This test documents a known limitation - after equation updates involving
-    # shock terms, the shock standard deviation matrix may not be properly recalculated.
-    # This is marked as broken until the reprocess_model! function fully handles
-    # shock coefficient recalculation.
     @testset "Shock equation modification vs parameter change equivalence" begin
         # Model 1: We will modify the shock equation to use a larger std directly
         @model RBC_eq_mod begin
@@ -202,8 +198,7 @@ using Test
         irf_param_mod = get_irf(RBC_param_mod)
         
         # The IRFs should be identical since both have effective shock std of 0.025
-        # This is marked as broken until shock coefficient recalculation is fixed
-        @test_broken isapprox(irf_eq_mod, irf_param_mod, rtol = 1e-10)
+        @test isapprox(collect(irf_eq_mod), collect(irf_param_mod), rtol = 1e-10)
         
         RBC_eq_mod = nothing
         RBC_param_mod = nothing
