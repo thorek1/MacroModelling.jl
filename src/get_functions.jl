@@ -1648,15 +1648,15 @@ This function allows computing the mean of the ergodic distribution when the per
 solution is computed around a different point than the non-stochastic steady state.
 
 # Arguments
-- \$MODEL®
+- $MODEL®
 # Keyword Arguments
-- \$PARAMETERS®
+- $PARAMETERS®
 - `approximation_point` [Default: `nothing`, Type: `Union{Nothing, KeyedArray}`]: the point around which to compute the perturbation solution. If `nothing`, uses the non-stochastic steady state.
 - `algorithm` [Default: `:pruned_second_order`, Type: `Symbol`]: algorithm to use. Currently only `:pruned_second_order` is supported.
-- \$QME®
-- \$SYLVESTER®
-- \$TOLERANCES®
-- \$VERBOSE®
+- $QME®
+- $SYLVESTER®
+- $TOLERANCES®
+- $VERBOSE®
 
 # Returns
 - `KeyedArray` with the mean values.
@@ -1712,7 +1712,7 @@ function get_mean_at_approximation_point(𝓂::ℳ;
 
     # Convert approximation_point KeyedArray to Vector if provided
     approx_point_vec = nothing
-    if !isnothing(approximation_point)
+    if !isnothing(approximation_point) && approximation_point isa KeyedArray
         # Get NSSS to understand the structure 
         SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
         
