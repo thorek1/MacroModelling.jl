@@ -516,7 +516,7 @@ macro model(𝓂,ex...)
                             x.args[2] isa Expr && x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
-                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]] ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 2-eps())) : (eps(), 2-eps())
+                                        bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 2-eps())) : (eps(), 2-eps())
                                         x
                                     end :
                                 x :
