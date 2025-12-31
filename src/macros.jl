@@ -978,7 +978,9 @@ macro model(𝓂,ex...)
                             false
                         ),
 
-                        Dict{Vector{Symbol}, timings}() # estimation_helper
+                        Dict{Vector{Symbol}, timings}(), # estimation_helper
+
+                        RevisionEntry[] # revision_history
                     );
     end
 end
