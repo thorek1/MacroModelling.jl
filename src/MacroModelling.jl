@@ -5630,6 +5630,101 @@ end
 
 
 """
+    convert_expr_to_indexed(expr, var_indices, par_indices, var_vec_name=:SS_and_pars_values, par_vec_name=:parameters)
+
+Convert an expression using named variables and parameters to one using indexed vectors.
+"""
+function convert_expr_to_indexed(expr, var_indices::Dict{Symbol,Int}, par_indices::Dict{Symbol,Int};
+                                  var_vec_name::Symbol=:SS_and_pars_values, 
+                                  par_vec_name::Symbol=:parameters)
+    return postwalk(x -> 
+        x isa Symbol ?
+            haskey(var_indices, x) ?
+                :($var_vec_name[$(var_indices[x])]) :
+            haskey(par_indices, x) ?
+                :($par_vec_name[$(par_indices[x])]) :
+            x :
+        x,
+    expr)
+end
+
+
+"""
+    create_fill_function(target_var::Symbol, value_expr::Expr, 𝓂::ℳ)
+
+Create a function that fills a single variable in the SS_and_pars_values vector.
+Returns a ss_fill_function struct.
+"""
+function create_fill_function(target_var::Symbol, value_expr, 𝓂::ℳ)
+    target_idx = 𝓂.ss_var_indices[target_var]
+    
+    # Convert the value expression to use indexed vectors
+    indexed_expr = convert_expr_to_indexed(value_expr, 𝓂.ss_var_indices, 𝓂.ss_par_indices)
+    
+    # Build a function that fills this value
+    fill_func_expr = quote
+        function fill_value!(SS_and_pars_values::Vector{T}, parameters::Vector{T}) where T
+            SS_and_pars_values[$target_idx] = $indexed_expr
+            return nothing
+        end
+    end
+    
+    # Create the function using eval (during model compilation)
+    fill_func = eval(fill_func_expr)
+    
+    return ss_fill_function(fill_func, [target_idx])
+end
+
+
+"""
+    solve_steady_state_vectorized!(SS_and_pars_values, parameters, 𝓂, solver_parameters, tol, verbose, cold_start)
+
+Solve the steady state using the vector-based approach.
+Each block fills values in SS_and_pars_values sequentially.
+"""
+function solve_steady_state_vectorized!(SS_and_pars_values::Vector{T}, 
+                                        parameters::Vector{T},
+                                        𝓂::ℳ,
+                                        solver_parameters::Vector{solver_parameters},
+                                        tol::Tolerances,
+                                        verbose::Bool,
+                                        cold_start::Bool) where T <: Real
+    solution_error = 0.0
+    iters = 0
+    
+    # Execute each operation in order
+    for (op_type, idx) in 𝓂.ss_solve_order
+        if op_type == :analytical
+            # Execute analytical fill function
+            𝓂.ss_fill_functions[idx].fill!(SS_and_pars_values, parameters)
+        elseif op_type == :numerical
+            # Execute numerical block solver
+            block = 𝓂.ss_solve_blocks_new[idx]
+            # Get initial guess from SS_and_pars_values or use default
+            guess = T[SS_and_pars_values[i] for i in block.target_indices]
+            # Replace NaN with default guess
+            for (j, g) in enumerate(guess)
+                if !isfinite(g)
+                    guess[j] = 1.205996189998029  # default initial guess
+                end
+            end
+            
+            solution = block_solver_vectorized(SS_and_pars_values, parameters, block, guess,
+                                               solver_parameters, false, cold_start, verbose)
+            solution_error += solution[2][1]
+            iters += solution[2][2]
+            
+            if solution_error > tol.NSSS_acceptance_tol
+                return (solution_error, iters)
+            end
+        end
+    end
+    
+    return (solution_error, iters)
+end
+
+
+"""
     block_solver_vectorized(SS_and_pars_values, parameters, block, solver_parameters, fail_fast_solvers_only, cold_start, verbose)
 
 Solve a block of steady state equations using the vector-based approach.
