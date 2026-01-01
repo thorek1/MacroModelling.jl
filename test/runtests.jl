@@ -3868,4 +3868,221 @@ if test_set == "basic"
         RBC_CME = nothing
     end
     GC.gc()
+
+
+    @testset verbose = true "AD Backend Comparison (Mooncake, Zygote, FiniteDiff)" begin
+        using DifferentiationInterface
+        import Mooncake
+        
+        # Note on Mooncake performance:
+        # Mooncake.jl has an inherent "time to first gradient" compilation cost.
+        # The prepare_gradient step can take 30-90+ seconds, but subsequent gradient
+        # evaluations are very fast (~0.01-0.1s). This is a fundamental design aspect
+        # of Mooncake and not a bug. For estimation workflows with many gradient 
+        # evaluations, the prep cost is quickly amortized.
+        
+        # Define a simple RBC model for testing gradients
+        @model RBC_AD begin
+            1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_AD begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Helper function to compare gradients across backends
+        # The retry loop (max 100 iterations) for finite differences is needed because numerical
+        # differentiation can occasionally produce NaN/Inf values due to floating point issues
+        function compare_gradients(func, params; rtol=1e-5, test_fin_diff=true, max_fin_diff_retries=100, print_times=true)
+            # Get Zygote gradient and measure time
+            zygote_time = @elapsed zygote_grad = Zygote.gradient(func, params)[1]
+            
+            # Get Mooncake gradient via DifferentiationInterface and measure time
+            # Note: Mooncake prep time is expected to be slower than Zygote (30-90s vs 1-10s)
+            # but subsequent gradient evaluations are very fast
+            mooncake_backend = DifferentiationInterface.AutoMooncake(; config=nothing)
+            mooncake_prep_time = @elapsed mooncake_prep = DifferentiationInterface.prepare_gradient(func, mooncake_backend, params)
+            mooncake_time = @elapsed mooncake_grad = DifferentiationInterface.gradient(func, mooncake_prep, mooncake_backend, params)
+            
+            # Get FiniteDifferences gradient (with retry for numerical stability)
+            fin_grad = nothing
+            if test_fin_diff
+                for i in 1:max_fin_diff_retries
+                    local fin_grad_try = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), func, params)[1]
+                    if isfinite(ℒ.norm(fin_grad_try))
+                        fin_grad = fin_grad_try
+                        break
+                    end
+                end
+            end
+            
+            # Print timing information for comparison
+            # Note: Mooncake prep time is a one-time cost, eval time is what matters for repeated calls
+            if print_times
+                println("  Zygote time: $(round(zygote_time, digits=3))s")
+                println("  Mooncake prep time: $(round(mooncake_prep_time, digits=3))s (one-time cost), eval time: $(round(mooncake_time, digits=3))s")
+            end
+            
+            return (zygote_grad=zygote_grad, mooncake_grad=mooncake_grad, fin_grad=fin_grad,
+                    zygote_time=zygote_time, mooncake_prep_time=mooncake_prep_time, mooncake_time=mooncake_time,
+                    rtol=rtol)
+        end
+
+        # Test 1: NSSS gradient comparison
+        @testset "NSSS gradient comparison" begin
+            function nsss_sum(p)
+                SS_and_pars, _ = MacroModelling.get_NSSS_and_parameters(RBC_AD, p)
+                return sum(SS_and_pars)
+            end
+
+            params = copy(RBC_AD.parameter_values)
+            result = compare_gradients(nsss_sum, params)
+            
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
+            if result.fin_grad !== nothing
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
+                @test isapprox(result.mooncake_grad, result.fin_grad, rtol=result.rtol)
+            end
+        end
+
+        # Test 2: Jacobian gradient comparison
+        @testset "Jacobian gradient comparison" begin
+            function jacobian_sum(p)
+                SS_and_pars, _ = MacroModelling.get_NSSS_and_parameters(RBC_AD, p)
+                jac = MacroModelling.calculate_jacobian(p, SS_and_pars, RBC_AD)
+                return sum(jac)
+            end
+
+            params = copy(RBC_AD.parameter_values)
+            result = compare_gradients(jacobian_sum, params)
+            
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
+            if result.fin_grad !== nothing
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
+            end
+        end
+
+        # Test 3: Log-likelihood with first_order algorithm and kalman filter (default)
+        @testset "Log-likelihood (first_order, kalman)" begin
+            Random.seed!(42)
+            simulated_data = simulate(RBC_AD)
+            observables = [:k]
+            data = simulated_data(observables, :, :simulate)
+            
+            function ll_first_order_kalman(p)
+                get_loglikelihood(RBC_AD, data, p, algorithm = :first_order, filter = :kalman)
+            end
+            
+            params = copy(RBC_AD.parameter_values)
+            result = compare_gradients(ll_first_order_kalman, params)
+            
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
+            if result.fin_grad !== nothing
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
+            end
+        end
+
+        # Test 4: Log-likelihood with first_order algorithm and inversion filter
+        @testset "Log-likelihood (first_order, inversion)" begin
+            Random.seed!(42)
+            simulated_data = simulate(RBC_AD)
+            observables = [:k]
+            data = simulated_data(observables, :, :simulate)
+            
+            function ll_first_order_inversion(p)
+                get_loglikelihood(RBC_AD, data, p, algorithm = :first_order, filter = :inversion)
+            end
+            
+            params = copy(RBC_AD.parameter_values)
+            result = compare_gradients(ll_first_order_inversion, params)
+            
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
+            if result.fin_grad !== nothing
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
+            end
+        end
+
+        # Test 5: Log-likelihood with pruned_second_order algorithm
+        @testset "Log-likelihood (pruned_second_order, inversion)" begin
+            Random.seed!(42)
+            simulated_data = simulate(RBC_AD)
+            observables = [:k]
+            data = simulated_data(observables, :, :simulate)
+            
+            function ll_pruned_second_order(p)
+                get_loglikelihood(RBC_AD, data, p, algorithm = :pruned_second_order, filter = :inversion)
+            end
+            
+            params = copy(RBC_AD.parameter_values)
+            result = compare_gradients(ll_pruned_second_order, params, test_fin_diff=false)  # Skip finite diff for higher order
+            
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
+        end
+
+        # Test 6: Log-likelihood with second_order algorithm  
+        @testset "Log-likelihood (second_order, inversion)" begin
+            Random.seed!(42)
+            simulated_data = simulate(RBC_AD)
+            observables = [:k]
+            data = simulated_data(observables, :, :simulate)
+            
+            function ll_second_order(p)
+                get_loglikelihood(RBC_AD, data, p, algorithm = :second_order, filter = :inversion)
+            end
+            
+            params = copy(RBC_AD.parameter_values)
+            result = compare_gradients(ll_second_order, params, test_fin_diff=false)  # Skip finite diff for higher order
+            
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
+        end
+
+        # Test 7: Lyapunov equation solver gradient
+        @testset "Lyapunov equation gradient" begin
+            # Create a simple test case for lyapunov equation
+            function lyapunov_test(p)
+                # Use a parameter-dependent matrix
+                A = [p[1] 0.1; 0.0 p[2]]
+                C = [p[3] 0.0; 0.0 p[4]]
+                X = MacroModelling.solve_lyapunov_equation(A, C)
+                return sum(X)
+            end
+            
+            params = [0.5, 0.3, 1.0, 1.0]
+            result = compare_gradients(lyapunov_test, params)
+            
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
+            if result.fin_grad !== nothing
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
+            end
+        end
+
+        # Test 8: Sylvester equation solver gradient
+        @testset "Sylvester equation gradient" begin
+            function sylvester_test(p)
+                A = [p[1] 0.1; 0.0 p[2]]
+                B = [p[3] 0.0; 0.0 p[4]]
+                C = [1.0 0.0; 0.0 1.0]
+                X = MacroModelling.solve_sylvester_equation(A, B, C)
+                return sum(X)
+            end
+            
+            params = [0.5, 0.3, -0.5, -0.3]
+            result = compare_gradients(sylvester_test, params)
+            
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
+            if result.fin_grad !== nothing
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
+            end
+        end
+
+        RBC_AD = nothing
+    end
+    GC.gc()
 end
