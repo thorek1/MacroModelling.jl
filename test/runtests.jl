@@ -3868,4 +3868,106 @@ if test_set == "basic"
         RBC_CME = nothing
     end
     GC.gc()
+
+
+    @testset verbose = true "AD Backend Comparison (Mooncake, Zygote, FiniteDiff)" begin
+        using DifferentiationInterface
+        import Mooncake
+        
+        # Define a simple RBC model for testing gradients
+        @model RBC_AD begin
+            1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_AD begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Test 1: NSSS gradient comparison
+        @testset "NSSS gradient comparison" begin
+            function nsss_sum(p)
+                SS_and_pars, _ = MacroModelling.get_NSSS_and_parameters(RBC_AD, p)
+                return sum(SS_and_pars)
+            end
+
+            params = copy(RBC_AD.parameter_values)
+            
+            # Get Zygote gradient
+            zygote_grad = Zygote.gradient(nsss_sum, params)[1]
+            
+            # Get FiniteDifferences gradient
+            fin_grad = nothing
+            for i in 1:100
+                local fin_grad_try = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), nsss_sum, params)
+                if isfinite(ℒ.norm(fin_grad_try))
+                    fin_grad = fin_grad_try[1]
+                    break
+                end
+            end
+            
+            # Get Mooncake gradient via DifferentiationInterface
+            mooncake_backend = DifferentiationInterface.AutoMooncake(; config=nothing)
+            mooncake_prep = DifferentiationInterface.prepare_gradient(nsss_sum, mooncake_backend, params)
+            mooncake_grad = DifferentiationInterface.gradient(nsss_sum, mooncake_prep, mooncake_backend, params)
+            
+            # Compare gradients
+            @test isapprox(zygote_grad, mooncake_grad, rtol=1e-6)
+            if fin_grad !== nothing
+                @test isapprox(zygote_grad, fin_grad, rtol=1e-6)
+                @test isapprox(mooncake_grad, fin_grad, rtol=1e-6)
+            end
+        end
+
+        # Test 2: Log-likelihood gradient comparison
+        @testset "Log-likelihood gradient comparison" begin
+            Random.seed!(42)
+            
+            # Generate simulated data with 1 observable (since we have 1 shock)
+            simulated_data = simulate(RBC_AD)
+            observables = [:k]
+            data = simulated_data(observables, :, :simulate)
+            
+            # Define log-likelihood function
+            function ll_func(p)
+                get_loglikelihood(RBC_AD, data, p)
+            end
+            
+            params = copy(RBC_AD.parameter_values)
+            
+            # Get Zygote gradient
+            zygote_grad = Zygote.gradient(ll_func, params)[1]
+            
+            # Get FiniteDifferences gradient (with retry for numerical stability)
+            fin_grad = nothing
+            for i in 1:100
+                local fin_grad_try = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), ll_func, params)
+                if isfinite(ℒ.norm(fin_grad_try))
+                    fin_grad = fin_grad_try[1]
+                    break
+                end
+            end
+            
+            # Get Mooncake gradient via DifferentiationInterface
+            mooncake_backend = DifferentiationInterface.AutoMooncake(; config=nothing)
+            mooncake_prep = DifferentiationInterface.prepare_gradient(ll_func, mooncake_backend, params)
+            mooncake_grad = DifferentiationInterface.gradient(ll_func, mooncake_prep, mooncake_backend, params)
+            
+            # Compare gradients
+            @test isapprox(zygote_grad, mooncake_grad, rtol=1e-6)
+            if fin_grad !== nothing
+                @test isapprox(zygote_grad, fin_grad, rtol=1e-6)
+                @test isapprox(mooncake_grad, fin_grad, rtol=1e-6)
+            end
+        end
+
+        RBC_AD = nothing
+    end
+    GC.gc()
 end
