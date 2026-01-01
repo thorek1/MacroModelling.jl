@@ -80,7 +80,8 @@ import Accessors: @ignore_derivatives
 
 # Mark get_loglikelihood as a primitive for Mooncake - this prevents it from 
 # trying to differentiate through the internals
-@is_primitive MinimalCtx Tuple{typeof(get_loglikelihood), ℳ, KeyedArray{Float64}, Vector{Float64}}
+# Use DefaultCtx and generic KeyedArray type to match all instances
+@is_primitive DefaultCtx Tuple{typeof(get_loglikelihood), ℳ, <:KeyedArray, Vector{Float64}}
 
 """
     compute_analytical_gradient_first_order_kalman(...)
@@ -293,7 +294,7 @@ end
 function Mooncake.rrule!!(
     ::Mooncake.CoDual{typeof(get_loglikelihood)},
     𝓂_dual::Mooncake.CoDual{ℳ},
-    data_dual::Mooncake.CoDual{KeyedArray{Float64}},
+    data_dual::Mooncake.CoDual{<:KeyedArray},
     parameter_values_dual::Mooncake.CoDual{Vector{Float64}};
     algorithm::Symbol = :first_order,
     filter::Symbol = algorithm == :first_order ? :kalman : :inversion,
