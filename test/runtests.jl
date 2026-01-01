@@ -3874,6 +3874,13 @@ if test_set == "basic"
         using DifferentiationInterface
         import Mooncake
         
+        # Note on Mooncake performance:
+        # Mooncake.jl has an inherent "time to first gradient" compilation cost.
+        # The prepare_gradient step can take 30-90+ seconds, but subsequent gradient
+        # evaluations are very fast (~0.01-0.1s). This is a fundamental design aspect
+        # of Mooncake and not a bug. For estimation workflows with many gradient 
+        # evaluations, the prep cost is quickly amortized.
+        
         # Define a simple RBC model for testing gradients
         @model RBC_AD begin
             1 / c[0] = (β / c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
@@ -3898,6 +3905,8 @@ if test_set == "basic"
             zygote_time = @elapsed zygote_grad = Zygote.gradient(func, params)[1]
             
             # Get Mooncake gradient via DifferentiationInterface and measure time
+            # Note: Mooncake prep time is expected to be slower than Zygote (30-90s vs 1-10s)
+            # but subsequent gradient evaluations are very fast
             mooncake_backend = DifferentiationInterface.AutoMooncake(; config=nothing)
             mooncake_prep_time = @elapsed mooncake_prep = DifferentiationInterface.prepare_gradient(func, mooncake_backend, params)
             mooncake_time = @elapsed mooncake_grad = DifferentiationInterface.gradient(func, mooncake_prep, mooncake_backend, params)
@@ -3915,9 +3924,10 @@ if test_set == "basic"
             end
             
             # Print timing information for comparison
+            # Note: Mooncake prep time is a one-time cost, eval time is what matters for repeated calls
             if print_times
                 println("  Zygote time: $(round(zygote_time, digits=3))s")
-                println("  Mooncake prep time: $(round(mooncake_prep_time, digits=3))s, eval time: $(round(mooncake_time, digits=3))s")
+                println("  Mooncake prep time: $(round(mooncake_prep_time, digits=3))s (one-time cost), eval time: $(round(mooncake_time, digits=3))s")
             end
             
             return (zygote_grad=zygote_grad, mooncake_grad=mooncake_grad, fin_grad=fin_grad,

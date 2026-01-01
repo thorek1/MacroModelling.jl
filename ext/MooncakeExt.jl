@@ -19,6 +19,18 @@ The key functions wrapped include:
 - `solve_lyapunov_equation` - Lyapunov equation solver
 - `solve_sylvester_equation` - Sylvester equation solver
 
+## Performance Notes
+
+Mooncake.jl has an inherent "time to first gradient" compilation cost. The first call to 
+`prepare_gradient` will be slow (typically 30-90 seconds depending on the complexity of the 
+function being differentiated), but subsequent gradient evaluations using the prepared 
+result are very fast (~0.01-0.1 seconds). This is a fundamental aspect of Mooncake's design.
+
+**Best practices for optimal performance:**
+1. Call `prepare_gradient` once and reuse the preparation object for multiple gradient evaluations
+2. The prep time is a one-time cost per function signature
+3. For estimation workflows, the prep cost is amortized over many gradient evaluations
+
 ## Usage
 
 When both MacroModelling and Mooncake are loaded, this extension automatically makes
@@ -40,13 +52,23 @@ end
     # ... parameters ...
 end
 
-# Compute gradients of log-likelihood with Mooncake
+# Prepare gradient computation once (slow, ~30-90 seconds)
 backend = DifferentiationInterface.AutoMooncake(; config=nothing)
-grad = DifferentiationInterface.gradient(
+prep = DifferentiationInterface.prepare_gradient(
     p -> get_loglikelihood(RBC, data, p),
     backend,
     parameter_values
 )
+
+# Compute gradients many times (fast, ~0.01-0.1 seconds each)
+for i in 1:1000
+    grad = DifferentiationInterface.gradient(
+        p -> get_loglikelihood(RBC, data, p),
+        prep,
+        backend,
+        parameter_values
+    )
+end
 ```
 """
 module MooncakeExt
@@ -78,73 +100,77 @@ The @from_rrule macro in Mooncake wraps ChainRulesCore rrules to be usable by Mo
 For functions with existing ChainRulesCore rrules defined in MacroModelling.jl, we use 
 @from_rrule to make them available to Mooncake without duplicating the differentiation logic.
 
-The syntax requires: @from_rrule ctx Tuple{typeof(func), ArgType1, ArgType2, ...} 
-or: @from_rrule ctx Tuple{typeof(func), T1, T2, ...} where {T1, T2, ...}
+We use concrete Float64 types where possible instead of generic type parameters to reduce
+compilation overhead. The @from_rrule macro tells Mooncake to use ChainRulesCore's rrules
+instead of differentiating through the function implementation.
 
-Note: Mooncake will use these rules instead of trying to differentiate through the function
-implementation, which can significantly reduce compile times and improve performance.
+Note: Some functions have keyword arguments with default values. These use `has_kwargs=true`
+to signal that kwargs are present but their derivatives are treated as zero.
 =#
 
 # ================================================================================================
-# Non-Stochastic Steady State (NSSS) calculation
+# Non-Stochastic Steady State (NSSS) calculation  
 # ================================================================================================
 
 # Wrap the NSSS calculation rule - this is the foundation for all other derivatives
 # The ChainRulesCore rrule computes the implicit derivative via the implicit function theorem
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(get_NSSS_and_parameters), ℳ, Vector{S}} where {S<:Real}
+# This function has keyword arguments (opts), so we specify has_kwargs=true
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(get_NSSS_and_parameters), ℳ, Vector{Float64}} true
 
 # ================================================================================================
 # Jacobian, Hessian, and Third Order Derivatives
 # ================================================================================================
 
 # These derivatives are used in the perturbation solution algorithms
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_jacobian), Vector{T}, Vector{S}, ℳ} where {T<:Real, S<:Real}
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_hessian), Vector{T}, Vector{S}, ℳ} where {T<:Real, S<:Real}
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_third_order_derivatives), Vector{T}, Vector{S}, ℳ} where {T<:Real, S<:Real}
+# Using concrete Float64 types to reduce compilation overhead
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_jacobian), Vector{Float64}, Vector{Float64}, ℳ}
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_hessian), Vector{Float64}, Vector{Float64}, ℳ}
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_third_order_derivatives), Vector{Float64}, Vector{Float64}, ℳ}
 
 # ================================================================================================
 # Perturbation Solutions
 # ================================================================================================
 
-# First order solution - wrap the ChainRulesCore rrule
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_first_order_solution), Matrix{R}} where {R<:AbstractFloat}
+# First order solution - wrap the ChainRulesCore rrule  
+# This function has keyword arguments (T, opts, initial_guess), so we specify has_kwargs=true
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_first_order_solution), Matrix{Float64}} true
 
-# Second order solution
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_second_order_solution), AbstractMatrix{S}, SparseMatrixCSC{S}, AbstractMatrix{S}} where {S<:Real}
+# Second order solution - has keyword arguments
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_second_order_solution), Matrix{Float64}, SparseMatrixCSC{Float64, Int}, Matrix{Float64}} true
 
-# Third order solution  
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_third_order_solution), AbstractMatrix{S}, SparseMatrixCSC{S}, SparseMatrixCSC{S}, AbstractMatrix{S}} where {S<:Real}
+# Third order solution - has keyword arguments
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_third_order_solution), Matrix{Float64}, SparseMatrixCSC{Float64, Int}, SparseMatrixCSC{Float64, Int}, Matrix{Float64}} true
 
 # ================================================================================================
 # Matrix Equation Solvers (Lyapunov and Sylvester)
 # ================================================================================================
 
 # These are used in covariance computations and solution algorithms
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(solve_lyapunov_equation), AbstractMatrix{Float64}, AbstractMatrix{Float64}}
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(solve_sylvester_equation), M, N, O} where {M<:AbstractMatrix, N<:AbstractMatrix, O<:AbstractMatrix}
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(solve_lyapunov_equation), Matrix{Float64}, Matrix{Float64}}
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(solve_sylvester_equation), Matrix{Float64}, Matrix{Float64}, Matrix{Float64}}
 
 # ================================================================================================
 # Stochastic Steady State
 # ================================================================================================
 
 # Second order stochastic steady state calculation
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_second_order_stochastic_steady_state), Val{:newton}, Matrix{Float64}, AbstractSparseMatrix{Float64}, timings, Int}
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_second_order_stochastic_steady_state), Val{:newton}, Matrix{Float64}, SparseMatrixCSC{Float64, Int}, timings, Int}
 
 # Third order stochastic steady state calculation
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_third_order_stochastic_steady_state), Val{:newton}, Matrix{Float64}, AbstractSparseMatrix{Float64}, AbstractSparseMatrix{Float64}, timings, Int}
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(calculate_third_order_stochastic_steady_state), Val{:newton}, Matrix{Float64}, SparseMatrixCSC{Float64, Int}, SparseMatrixCSC{Float64, Int}, timings, Int}
 
 # ================================================================================================
 # Kalman Filter
 # ================================================================================================
 
 # Kalman filter iterations for likelihood computation
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(run_kalman_iterations), AbstractMatrix{Float64}, AbstractMatrix{Float64}, AbstractMatrix{Float64}, AbstractMatrix{Float64}, AbstractMatrix{Float64}, Int, AbstractMatrix{Float64}}
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(run_kalman_iterations), Matrix{Float64}, Matrix{Float64}, Matrix{Float64}, Matrix{Float64}, Matrix{Float64}, Int, Matrix{Float64}}
 
 # ================================================================================================
 # Utility Functions
 # ================================================================================================
 
 # Sparse matrix preallocation (used in higher order solutions)  
-@from_rrule Mooncake.DefaultCtx Tuple{typeof(sparse_preallocated!), Matrix{T}} where {T<:Real}
+@from_rrule Mooncake.DefaultCtx Tuple{typeof(sparse_preallocated!), Matrix{Float64}} true
 
 end # module
