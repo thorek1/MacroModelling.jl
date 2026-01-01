@@ -1,4 +1,4 @@
-const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order, :newton]
 
 
 """
@@ -913,6 +913,7 @@ macro model(𝓂,ex...)
                         (zeros(0,0), x->x), # third_order_derivatives
                         (zeros(0,0), x->x), # third_order_derivatives_parameters
                         (zeros(0,0), x->x), # third_order_derivatives_SS_and_pars
+                        (residual_func = (x,y,z)->nothing, jacobian_func = (x,y,z)->nothing, residual_buffer = Float64[], jacobian_buffer = zeros(0,0)), # newton_simulation_functions
                         # (x->x, SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0), 𝒟.prepare_jacobian(x->x, 𝒟.AutoForwardDiff(), [0]), SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)), # model_jacobian
                         # ([], Int[], zeros(1,1)), # model_jacobian

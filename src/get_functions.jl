@@ -1447,12 +1447,12 @@ function get_steady_state(𝓂::ℳ;
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
     
     if stochastic
-        if algorithm == :first_order
+        if algorithm ∈ [:first_order, :newton]
             @info "Stochastic steady state requested but algorithm is $algorithm. Setting `algorithm = :second_order`." maxlog = DEFAULT_MAXLOG
             algorithm = :second_order
         end
     else
-        if algorithm != :first_order
+        if algorithm ∉ [:first_order, :newton]
             @info "Non-stochastic steady state requested but algorithm is $algorithm. Setting `stochastic = true`." maxlog = DEFAULT_MAXLOG
             stochastic = true
         end
@@ -1741,7 +1741,7 @@ function get_solution(𝓂::ℳ;
             silent = silent, 
             algorithm = algorithm)
 
-    if algorithm == :first_order
+    if algorithm ∈ [:first_order, :newton]
         solution_matrix = 𝓂.solution.perturbation.first_order.solution_matrix
     end
 

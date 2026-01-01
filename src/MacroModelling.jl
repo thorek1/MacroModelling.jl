@@ -2906,7 +2906,7 @@ function get_relevant_steady_states(𝓂::ℳ,
     end
 
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, 
-                                    stochastic = algorithm != :first_order,
+                                    stochastic = algorithm ∉ [:first_order, :newton],
                                     return_variables_only = true, 
                                     derivatives = false, 
                                     verbose = opts.verbose,
@@ -6795,7 +6795,8 @@ function solve!(𝓂::ℳ;
             ((:second_order        == algorithm) && ((:second_order        ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_second_order == algorithm) && ((:pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+            ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
+            ((:newton              == algorithm) && ((:newton              ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
             # @timeit_debug timer "Solve for NSSS (if necessary)" begin
 
@@ -6858,6 +6859,12 @@ function solve!(𝓂::ℳ;
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
             𝓂.solution.outdated_NSSS = solution_error > opts.tol.NSSS_acceptance_tol
+            
+            # Generate newton simulation functions for backward looking models
+            if 𝓂.timings.nFuture_not_past_and_mixed == 0
+                write_newton_simulation_functions!(𝓂)
+                𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:newton])
+            end
         end
 
         obc_not_solved = isnothing(𝓂.solution.perturbation.second_order.state_update_obc(zeros(𝓂.timings.nVars), zeros(𝓂.timings.nExo)))
@@ -7994,6 +8001,131 @@ function write_auxiliary_indices!(𝓂::ℳ)
 
     𝓂.solution.perturbation.auxiliary_indices = auxiliary_indices(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx, dyn_ss_idx, shocks_ss)
 
+    return nothing
+end
+
+
+"""
+    write_newton_simulation_functions!(𝓂::ℳ)
+
+Generate residual and jacobian functions for newton-based simulation of backward looking models.
+The residual function evaluates F(x_t, x_{t-1}, e_t) = 0 
+The jacobian function computes ∂F/∂x_t (derivatives w.r.t. present values)
+
+These functions are only generated for backward looking models (nFuture_not_past_and_mixed = 0).
+"""
+function write_newton_simulation_functions!(𝓂::ℳ;
+                                            cse = true,
+                                            skipzeros = true)
+    # Only generate for backward looking models
+    if 𝓂.timings.nFuture_not_past_and_mixed > 0
+        return nothing
+    end
+    
+    # Get all variable lists from dynamic equations
+    dyn_var_present_list = collect(reduce(union, 𝓂.dyn_present_list))
+    dyn_var_past_list = collect(reduce(union, 𝓂.dyn_past_list))
+    dyn_exo_list = collect(reduce(union, 𝓂.dyn_exo_list))
+    dyn_ss_list = Symbol.(string.(collect(reduce(union, 𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+    
+    present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")), string.(dyn_var_present_list))
+    past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")), string.(dyn_var_past_list))
+    exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")), string.(dyn_exo_list))
+    stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")), string.(dyn_ss_list))
+    
+    # Sort variables
+    vars_raw = vcat(dyn_var_present_list[indexin(sort(present), present)],
+                    dyn_var_past_list[indexin(sort(past), past)],
+                    dyn_exo_list[indexin(sort(exo), exo)])
+    
+    pars_ext = vcat(𝓂.parameters, 𝓂.calibration_equations_parameters)
+    parameters_and_SS = vcat(pars_ext, dyn_ss_list[indexin(sort(stst), stst)])
+    
+    np = length(parameters_and_SS)
+    nv = length(vars_raw)
+    nps = length(𝓂.parameters)
+    
+    # Number of present, past, and shock variables
+    n_present = length(dyn_var_present_list)
+    n_past = length(dyn_var_past_list)
+    n_exo = length(dyn_exo_list)
+    nVars = 𝓂.timings.nVars
+    
+    # Create symbolic variables: 𝔙 = [present; past; shocks]
+    Symbolics.@variables 𝔓[1:np] 𝔙[1:nv]
+    
+    parameter_dict = Dict{Symbol, Symbol}()
+    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+    
+    for (i, v) in enumerate(parameters_and_SS)
+        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+    end
+    
+    for (i, v) in enumerate(vars_raw)
+        push!(parameter_dict, v => :($(Symbol("𝔙_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔙_$i"))), @__MODULE__) => 𝔙[i])
+    end
+    
+    # Handle calibration equations
+    calib_vars = Symbol[]
+    calib_expr = []
+    for v in 𝓂.calibration_equations_no_var
+        push!(calib_vars, v.args[1])
+        push!(calib_expr, v.args[2])
+    end
+    
+    calib_replacements = Dict{Symbol, Any}()
+    for (i, x) in enumerate(calib_vars)
+        replacement = Dict(x => calib_expr[i])
+        for ii in i+1:length(calib_vars)
+            calib_expr[ii] = replace_symbols(calib_expr[ii], replacement)
+        end
+        push!(calib_replacements, x => calib_expr[i])
+    end
+    
+    # Parse dynamic equations
+    dyn_equations = 𝓂.dyn_equations |> 
+        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+        x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+    
+    # Convert to vector for build_function
+    dyn_equations_vec = Symbolics.Num.(dyn_equations)
+    
+    # Build residual function: F(present, past, shocks; parameters) = 0
+    _, residual_func = Symbolics.build_function(dyn_equations_vec, 𝔓, 𝔙,
+                                                cse = cse,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    
+    # Compute jacobian w.r.t. present variables only (first n_present elements of 𝔙)
+    present_vars = 𝔙[1:n_present]
+    ∇_present = Symbolics.sparsejacobian(dyn_equations_vec, collect(present_vars))
+    
+    # Convert to matrix form
+    ∇_present_mat = convert(Matrix, ∇_present)
+    
+    # Build jacobian function
+    _, jacobian_func = Symbolics.build_function(∇_present_mat, 𝔓, 𝔙,
+                                                cse = cse,
+                                                skipzeros = skipzeros,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    
+    # Create buffers
+    residual_buffer = zeros(Float64, length(dyn_equations))
+    jacobian_buffer = zeros(Float64, size(∇_present_mat))
+    
+    # Store in model
+    𝓂.newton_simulation_functions = (
+        residual_func = residual_func,
+        jacobian_func = jacobian_func,
+        residual_buffer = residual_buffer,
+        jacobian_buffer = jacobian_buffer
+    )
+    
     return nothing
 end
 
@@ -9506,6 +9638,11 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
         elseif :pruned_third_order == algorithm
             state_update = 𝓂.solution.perturbation.pruned_third_order.state_update_obc
             pruning = true
+        elseif :newton == algorithm
+            @assert 𝓂.timings.nFuture_not_past_and_mixed == 0 "Newton algorithm is only available for backward looking models (nFuture_not_past_and_mixed = 0)."
+            # For OBC, fall back to first order for now
+            state_update = 𝓂.solution.perturbation.first_order.state_update_obc
+            pruning = false
         else
             # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
             state_update = (x,y)->nothing
@@ -9527,6 +9664,11 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
         elseif :pruned_third_order == algorithm
             state_update = 𝓂.solution.perturbation.pruned_third_order.state_update
             pruning = true
+        elseif :newton == algorithm
+            @assert 𝓂.timings.nFuture_not_past_and_mixed == 0 "Newton algorithm is only available for backward looking models (nFuture_not_past_and_mixed = 0)."
+            # Create newton-based state update function
+            state_update = create_newton_state_update(𝓂)
+            pruning = false
         else
             # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
             state_update = (x,y)->nothing
@@ -9535,6 +9677,139 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
     end
 
     return state_update, pruning
+end
+
+
+"""
+    create_newton_state_update(𝓂::ℳ)
+
+Create a state update function that uses Newton's method to solve for present values
+given past values and shocks. Only for backward looking models.
+"""
+function create_newton_state_update(𝓂::ℳ)
+    # Get the newton simulation functions
+    residual_func = 𝓂.newton_simulation_functions.residual_func
+    jacobian_func = 𝓂.newton_simulation_functions.jacobian_func
+    
+    # Get steady state and parameters
+    SS_and_pars = 𝓂.solution.non_stochastic_steady_state
+    parameters = 𝓂.parameter_values
+    
+    # Get variable indices
+    dyn_var_present_list = collect(reduce(union, 𝓂.dyn_present_list))
+    dyn_var_past_list = collect(reduce(union, 𝓂.dyn_past_list))
+    dyn_exo_list = collect(reduce(union, 𝓂.dyn_exo_list))
+    
+    present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")), string.(dyn_var_present_list))
+    past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")), string.(dyn_var_past_list))
+    exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")), string.(dyn_exo_list))
+    
+    n_present = length(present)
+    n_past = length(past)
+    n_exo = length(exo)
+    nVars = 𝓂.timings.nVars
+    
+    # Get SS and parameter info
+    dyn_ss_list = Symbol.(string.(collect(reduce(union, 𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+    stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")), string.(dyn_ss_list))
+    
+    pars_ext = vcat(𝓂.parameters, 𝓂.calibration_equations_parameters)
+    parameters_and_SS_syms = vcat(pars_ext, dyn_ss_list[indexin(sort(stst), stst)])
+    
+    SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+    
+    # Get indices for mapping
+    present_sorted = sort(present)
+    past_sorted = sort(past)
+    exo_sorted = sort(exo)
+    
+    present_idx_in_SS = indexin(present_sorted, SS_and_pars_names)
+    past_idx_in_SS = indexin(past_sorted, SS_and_pars_names)
+    
+    # Get indices for past_not_future_and_mixed (used in state vector)
+    past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+    
+    # Create the state update function
+    function state_update_newton(state::Vector{T}, shock::Vector{S}) where {T, S}
+        # Get steady state values for parameters and SS variables
+        # Parameters are in the first part, SS values come after
+        pars_values = 𝓂.parameter_values
+        ss_values = SS_and_pars[indexin(sort(stst), SS_and_pars_names)]
+        params_and_ss = vcat(pars_values, ss_values)
+        
+        # Initial guess: steady state values for present variables
+        present_guess = SS_and_pars[present_idx_in_SS]
+        
+        # Get past values from state
+        past_values = state[past_not_future_and_mixed_idx][indexin(past_sorted, 𝓂.timings.past_not_future_and_mixed[indexin(past_sorted, 𝓂.timings.past_not_future_and_mixed)])]
+        
+        # Reorder past values to match the sorted order in the dynamic equations
+        # past_values should be ordered same as past_sorted
+        past_from_state = zeros(n_past)
+        for (i, p) in enumerate(past_sorted)
+            idx_in_state = findfirst(x -> x == p, 𝓂.timings.past_not_future_and_mixed)
+            if idx_in_state !== nothing
+                past_from_state[i] = state[past_not_future_and_mixed_idx][idx_in_state]
+            end
+        end
+        
+        # Get shock values - reorder to match sorted order
+        shock_values = zeros(n_exo)
+        for (i, e) in enumerate(exo_sorted)
+            idx_in_shock = findfirst(x -> x == e, 𝓂.timings.exo)
+            if idx_in_shock !== nothing
+                shock_values[i] = shock[idx_in_shock]
+            end
+        end
+        
+        # Combine: 𝔙 = [present; past; shocks]
+        vars = vcat(present_guess, past_from_state, shock_values)
+        
+        # Newton iterations
+        max_iter = 50
+        tol = 1e-10
+        
+        residual = zeros(length(present_guess))
+        jacobian = zeros(length(present_guess), n_present)
+        
+        for iter in 1:max_iter
+            # Update vars with current present guess
+            vars[1:n_present] = present_guess
+            
+            # Evaluate residual and jacobian
+            residual_func(residual, params_and_ss, vars)
+            jacobian_func(jacobian, params_and_ss, vars)
+            
+            # Check convergence
+            if ℒ.norm(residual) < tol
+                break
+            end
+            
+            # Newton step: present_new = present_old - J^{-1} * F
+            try
+                Δ = jacobian \ residual
+                present_guess = present_guess - Δ
+            catch
+                # If jacobian is singular, break
+                break
+            end
+        end
+        
+        # Construct full state vector in the correct order
+        result = copy(SS_and_pars[1:nVars])  # Start with SS values
+        
+        # Fill in the present values we just computed
+        for (i, p) in enumerate(present_sorted)
+            idx = findfirst(x -> x == p, 𝓂.timings.var)
+            if idx !== nothing
+                result[idx] = present_guess[i]
+            end
+        end
+        
+        return result
+    end
+    
+    return state_update_newton
 end
 
 @stable default_mode = "disable" begin

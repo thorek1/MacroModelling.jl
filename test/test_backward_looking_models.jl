@@ -31,14 +31,22 @@
         sol = get_solution(VAR2)
         @test !isnothing(sol)
         
-        # Test IRFs
-        irf = get_irf(VAR2)
-        @test size(irf, 1) == 2  # 2 variables
-        @test size(irf, 3) == 2  # 2 shocks
+        # Test IRFs with first_order algorithm
+        irf_first = get_irf(VAR2, algorithm = :first_order)
+        @test size(irf_first, 1) == 2  # 2 variables
+        @test size(irf_first, 3) == 2  # 2 shocks
         
         # Test simulation
         sim = simulate(VAR2)
         @test size(sim, 1) == 2  # 2 variables
+        
+        # Test newton algorithm - should produce same results as first_order for linear model
+        irf_newton = get_irf(VAR2, algorithm = :newton)
+        @test size(irf_newton, 1) == 2  # 2 variables
+        @test size(irf_newton, 3) == 2  # 2 shocks
+        
+        # For linear models, first_order and newton should give approximately the same results
+        @test isapprox(collect(irf_first), collect(irf_newton), rtol=1e-6)
         
         VAR2 = nothing
     end
@@ -77,7 +85,7 @@
         sol = get_solution(SolowGrowth)
         @test !isnothing(sol)
         
-        # Test IRFs
+        # Test IRFs with first_order algorithm
         irf = get_irf(SolowGrowth)
         @test size(irf, 1) == 2  # 2 variables (k, z)
         @test size(irf, 3) == 1  # 1 shock
@@ -85,6 +93,15 @@
         # Test simulation
         sim = simulate(SolowGrowth)
         @test size(sim, 1) == 2  # 2 variables
+        
+        # Test newton algorithm for nonlinear backward looking model
+        irf_newton = get_irf(SolowGrowth, algorithm = :newton)
+        @test size(irf_newton, 1) == 2  # 2 variables (k, z)
+        @test size(irf_newton, 3) == 1  # 1 shock
+        
+        # Test simulation with newton
+        sim_newton = simulate(SolowGrowth, algorithm = :newton)
+        @test size(sim_newton, 1) == 2  # 2 variables
         
         SolowGrowth = nothing
     end

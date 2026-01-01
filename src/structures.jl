@@ -426,6 +426,9 @@ mutable struct ℳ
     third_order_derivatives_parameters::Tuple{AbstractMatrix{<: Real},Function}
     third_order_derivatives_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
 
+    # Newton simulation functions for backward looking models
+    newton_simulation_functions::NamedTuple{(:residual_func, :jacobian_func, :residual_buffer, :jacobian_buffer), Tuple{Function, Function, Vector{Float64}, Matrix{Float64}}}
+
     # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
     # model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
     # # model_jacobian_parameters::Function
