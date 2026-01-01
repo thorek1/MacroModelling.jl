@@ -189,7 +189,7 @@ export plot_irfs!, plot_irf!, plot_IRF!, plot_girf!, plot_simulations!, plot_sim
 
 export Normal, Beta, Cauchy, Gamma, InverseGamma
 
-export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations, get_girf, simulate_newton
+export get_irfs, get_irf, get_IRF, simulate, get_simulation, get_simulations, get_girf
 export get_conditional_forecast
 export get_solution, get_first_order_solution, get_perturbation_solution, get_second_order_solution, get_third_order_solution
 export get_steady_state, get_SS, get_ss, get_non_stochastic_steady_state, get_stochastic_steady_state, get_SSS, steady_state, SS, SSS, ss, sss

@@ -106,7 +106,7 @@
         SolowGrowth = nothing
     end
     
-    @testset "Backward looking model with custom initial state (simulate_newton)" begin
+    @testset "Backward looking model with initial_state in levels" begin
         # Test with Solow growth model from custom initial capital
         @model SolowGrowth2 begin
             k[0] = (1 - delta) * k[-1] + s * k[-1]^alpha * exp(z[-1])
@@ -129,21 +129,77 @@
         initial_k = k_ss * 0.5  # Start at 50% of steady state capital
         initial_state_solow = [initial_k, 0.0]  # [k, z]
         
-        result_solow = simulate_newton(SolowGrowth2, initial_state_solow, periods = 10, shocks = :none)
+        # For backward looking models with newton algorithm, initial_state is in levels
+        result = get_irf(SolowGrowth2, 
+                        algorithm = :newton, 
+                        initial_state = initial_state_solow, 
+                        shocks = :none,
+                        periods = 10)
         
-        @test size(result_solow, 1) == 2  # 2 variables
-        @test size(result_solow, 2) == 10  # 10 periods
+        @test size(result, 1) == 2  # 2 variables
+        @test size(result, 2) == 10  # 10 periods
         
         # Capital should increase over time (converging toward steady state)
-        @test result_solow(:k, 1) > initial_k  # First period k should increase
-        @test result_solow(:k, 10) > result_solow(:k, 1)  # Later periods should be higher
-        
-        # Test simulation with shocks
-        result_with_shocks = simulate_newton(SolowGrowth2, initial_state_solow, periods = 10, shocks = :simulate)
-        @test size(result_with_shocks, 1) == 2
-        @test size(result_with_shocks, 2) == 10
+        @test result(:k, 1) > initial_k  # First period k should increase
+        @test result(:k, 10) > result(:k, 1)  # Later periods should be higher
         
         SolowGrowth2 = nothing
+    end
+    
+    @testset "Model without analytical steady state (explosive growth)" begin
+        # Explosive growth model - no stable steady state
+        # y[0] = (1 + g) * y[-1] + a * z[-1] where g > 0 leads to explosive growth
+        # This model doesn't have a finite steady state - it grows forever
+        @model ExplosiveGrowth begin
+            y[0] = (1 + g) * y[-1] + a * z[-1]
+            z[0] = rho * z[-1] + sigma * eps_z[x]
+        end
+
+        @parameters ExplosiveGrowth begin
+            g = 0.02      # 2% growth rate - no convergence to steady state
+            a = 0.5
+            rho = 0.9
+            sigma = 0.01
+        end
+        
+        # Verify it's a backward looking model  
+        @test ExplosiveGrowth.timings.nFuture_not_past_and_mixed == 0
+        
+        # For explosive backward looking models:
+        # - must use algorithm = :newton
+        # - must provide initial_state (in levels)
+        initial_y = 100.0  # Start at y = 100
+        initial_state = [initial_y, 0.0]  # [y, z]
+        
+        result = get_irf(ExplosiveGrowth,
+                        algorithm = :newton,
+                        initial_state = initial_state,
+                        shocks = :none,
+                        periods = 10)
+        
+        @test size(result, 1) == 2  # 2 variables
+        @test size(result, 2) == 10  # 10 periods
+        
+        # Access values properly (result is 3D with shocks dimension)
+        y_values = result(:y, :, :none)
+        z_values = result(:z, :, :none)
+        
+        # y should grow each period at rate g (with z = 0)
+        @test y_values[1] ≈ initial_y * (1 + 0.02) rtol=1e-6  # y_1 = (1+g) * y_0
+        @test y_values[2] > y_values[1]  # Continues growing
+        @test y_values[10] > y_values[1]  # Still growing at period 10
+        
+        # z should stay at 0 with no shocks
+        @test isapprox(z_values[1], 0.0, atol=1e-10)
+        @test isapprox(z_values[10], 0.0, atol=1e-10)
+        
+        # Test that calling without initial_state on explosive model throws error
+        @test_throws AssertionError get_irf(ExplosiveGrowth, algorithm = :newton)
+        
+        # Test that calling with wrong algorithm on explosive model throws error  
+        @test_throws AssertionError get_irf(ExplosiveGrowth, algorithm = :first_order, initial_state = initial_state)
+        
+        ExplosiveGrowth = nothing
     end
     
     GC.gc()

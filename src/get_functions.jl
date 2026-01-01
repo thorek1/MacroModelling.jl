@@ -1244,6 +1244,66 @@ function get_irf(𝓂::ℳ;
 
     # end # timeit_debug
     
+    # Check if model is backward looking and has no valid steady state or is explosive
+    is_backward_looking = 𝓂.timings.nFuture_not_past_and_mixed == 0
+    unspecified_initial_state = initial_state == [0.0]
+    
+    # For backward looking models, check steady state validity and if model is explosive
+    no_valid_steady_state = false
+    is_explosive = false
+    
+    if is_backward_looking
+        # Try to get steady state and check if it's valid
+        param_vals = isnothing(parameters) ? 𝓂.parameter_values : parameters isa AbstractDict ? [parameters[k] for k in 𝓂.parameters] : parameters
+        SS_and_pars, (solution_error, _) = get_NSSS_and_parameters(𝓂, Float64.(param_vals), opts = opts)
+        
+        # Check if steady state solution failed or contains invalid values
+        ss_invalid = solution_error > tol.NSSS_acceptance_tol || 
+                     isnan(solution_error) || 
+                     any(isnan, SS_and_pars) || 
+                     any(isinf, SS_and_pars)
+        
+        if ss_invalid
+            no_valid_steady_state = true
+        else
+            # Steady state found - check if model is explosive by doing one newton iteration
+            # First, ensure newton functions are generated
+            solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = :newton)
+            
+            # Create newton state update function
+            state_update_check = create_newton_state_update(𝓂, levels = true)
+            
+            # Get steady state values for variables only
+            SS_vars = SS_and_pars[1:𝓂.timings.nVars]
+            
+            # Do one iteration with no shocks starting from steady state
+            zero_shocks = zeros(𝓂.timings.nExo)
+            next_state = state_update_check(SS_vars, zero_shocks)
+            
+            # If next state differs from SS, model is explosive
+            is_explosive = !isapprox(next_state, SS_vars, rtol = 1e-8)
+        end
+        
+        no_valid_steady_state = no_valid_steady_state || is_explosive
+    end
+    
+    # For backward looking models without valid steady state or explosive:
+    # - algorithm must be :newton
+    # - initial_state must be provided (in levels)
+    if is_backward_looking && no_valid_steady_state
+        if algorithm != :newton
+            @assert false "Model is backward looking with no valid steady state (or is explosive). Use algorithm = :newton and provide initial_state in levels."
+        end
+        if unspecified_initial_state
+            @assert false "Model is backward looking with no valid steady state (or is explosive). Provide initial_state in levels."
+        end
+    end
+    
+    # Determine if we should use levels mode:
+    # - backward looking model with newton algorithm and provided initial_state
+    # - OR backward looking model with no valid steady state (already checked algorithm = :newton and initial_state provided above)
+    use_levels_mode = is_backward_looking && algorithm == :newton && !unspecified_initial_state
+    
     # @timeit_debug timer "Solve model" begin
 
     solve!(𝓂, 
@@ -1261,10 +1321,12 @@ function get_irf(𝓂::ℳ;
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
     # end # timeit_debug
-
-    unspecified_initial_state = initial_state == [0.0]
-
-    if unspecified_initial_state
+    
+    if use_levels_mode
+        @assert initial_state isa Vector{Float64} "initial_state must be a Vector{Float64} for backward looking models with newton algorithm."
+        @assert length(initial_state) == 𝓂.timings.nVars "initial_state must have $(𝓂.timings.nVars) elements (one for each variable: $(𝓂.timings.var))"
+        # initial_state is already in levels, don't modify it
+    elseif unspecified_initial_state
         if algorithm == :pruned_second_order
             initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
@@ -1295,10 +1357,16 @@ function get_irf(𝓂::ℳ;
 
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     else
-        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false, levels = use_levels_mode)
     end
     
-    level = levels ? reference_steady_state + SSS_delta : SSS_delta
+    # When using levels mode, output is always in levels
+    level = (levels || use_levels_mode) ? reference_steady_state + SSS_delta : SSS_delta
+    
+    # For use_levels_mode, the level adjustment is different since state_update returns levels directly
+    if use_levels_mode
+        level = zeros(𝓂.timings.nVars)  # No adjustment needed, state_update returns levels
+    end
 
     responses = compute_irf_responses(𝓂,
                                         state_update,
@@ -1365,120 +1433,6 @@ get_simulations(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., shocks = :simu
 Wrapper for [`get_irf`](@ref) with `generalised_irf = true`.
 """
 get_girf(𝓂::ℳ; kwargs...) =  get_irf(𝓂; kwargs..., generalised_irf = true)
-
-
-"""
-$(SIGNATURES)
-Simulate a backward looking model forward from an initial state using Newton's method.
-
-This function is designed for backward looking models (models with no forward-looking variables) 
-that may not have a steady state or stable growth path. It iterates the system forward using 
-Newton's method to solve the nonlinear equations at each time step.
-
-# Arguments
-- `𝓂`: The model object
-- `initial_state`: A `Vector{Float64}` or `KeyedArray` with initial values for state variables in levels.
-                   For `KeyedArray`, keys should be variable names (Symbols).
-
-# Keyword Arguments
-- `periods` [Default: `40`, Type: `Int`]: Number of periods to simulate
-- `shocks` [Default: `:simulate`, Type: `Union{Symbol, Matrix{Float64}, KeyedArray{Float64}}`]: 
-    Shock values. Use `:simulate` for random shocks, `:none` for no shocks, or provide a matrix/KeyedArray.
-- `parameters` [Default: `nothing`]: Parameter values to use
-- `variables` [Default: `:all_excluding_obc`]: Variables to return
-- `verbose` [Default: `false`]: Print progress information
-
-# Returns
-- `KeyedArray` with variables in rows and periods in columns, values in levels.
-
-# Example
-```julia
-# Model without steady state (random walk)
-@model RandomWalk begin
-    x[0] = x[-1] + sigma * eps_x[x]
-end
-
-@parameters RandomWalk begin
-    sigma = 0.1
-end
-
-# Simulate from initial state x = 5.0
-result = simulate_newton(RandomWalk, [5.0], periods = 20)
-```
-"""
-function simulate_newton(𝓂::ℳ, 
-                        initial_state::Union{Vector{Float64}, KeyedArray{Float64}};
-                        periods::Int = DEFAULT_PERIODS,
-                        shocks::Union{Symbol_input, String_input, Matrix{Float64}, KeyedArray{Float64}} = :simulate,
-                        parameters::ParameterType = nothing,
-                        variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC,
-                        verbose::Bool = DEFAULT_VERBOSE,
-                        tol::Tolerances = Tolerances())
-    
-    @assert 𝓂.timings.nFuture_not_past_and_mixed == 0 "simulate_newton is only available for backward looking models (nFuture_not_past_and_mixed = 0)."
-    
-    opts = merge_calculation_options(tol = tol, verbose = verbose)
-    
-    # Solve the model to get newton functions
-    solve!(𝓂, 
-            parameters = parameters, 
-            opts = opts,
-            dynamics = true, 
-            algorithm = :newton)
-    
-    # Process shocks
-    shocks_processed, negative_shock, shock_size, periods, _, _ = process_shocks_input(shocks, false, 1.0, periods, 𝓂)
-    
-    # Generate shock history
-    if shocks_processed == :simulate
-        shock_history = randn(𝓂.timings.nExo, periods)
-    elseif shocks_processed == :none
-        shock_history = zeros(𝓂.timings.nExo, periods)
-    elseif shocks_processed isa Matrix
-        shock_history = shocks_processed
-        periods = size(shock_history, 2)
-    else
-        shock_history = zeros(𝓂.timings.nExo, periods)
-    end
-    
-    # Convert KeyedArray initial_state to Vector if needed
-    if initial_state isa KeyedArray
-        state_vec = zeros(𝓂.timings.nVars)
-        for (var, val) in zip(axiskeys(initial_state, 1), initial_state)
-            idx = findfirst(x -> x == var, 𝓂.timings.var)
-            if idx !== nothing
-                state_vec[idx] = val
-            end
-        end
-        initial_state = state_vec
-    end
-    
-    @assert length(initial_state) == 𝓂.timings.nVars "Initial state must have $(𝓂.timings.nVars) elements (one for each variable: $(𝓂.timings.var))"
-    
-    # Create newton state update in levels mode
-    state_update = create_newton_state_update(𝓂, levels = true)
-    
-    # Simulate forward
-    Y = zeros(𝓂.timings.nVars, periods)
-    current_state = copy(initial_state)
-    
-    for t in 1:periods
-        current_state = state_update(current_state, shock_history[:, t])
-        Y[:, t] = current_state
-    end
-    
-    # Process variables
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
-    
-    axis1 = 𝓂.timings.var[var_idx]
-    
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-    end
-    
-    return KeyedArray(Y[var_idx, :]; Variables = axis1, Periods = 1:periods)
-end
 
 
 
