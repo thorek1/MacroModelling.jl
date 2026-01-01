@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Model Estimates · MacroModelling.jl</title><meta name="title" content="Model Estimates · MacroModelling.jl"/><meta property="og:title" content="Model Estimates · MacroModelling.jl"/><meta property="twitter:title" content="Model Estimates · MacroModelling.jl"/><meta name="description" content="Documentation for MacroModelling.jl."/><meta property="og:description" content="Documentation for MacroModelling.jl."/><meta property="twitter:description" content="Documentation for MacroModelling.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">MacroModelling.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><span class="tocitem">Tutorials</span><ul><li><a class="tocitem" href="../tutorials/install/">Installation</a></li><li><a class="tocitem" href="../tutorials/rbc/">Write your first simple model - RBC</a></li><li><a class="tocitem" href="../tutorials/sw03/">Work with a more complex model - Smets and Wouters (2003)</a></li><li><a class="tocitem" href="../tutorials/calibration/">Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)</a></li><li><a class="tocitem" href="../tutorials/estimation/">Estimate a model using gradient based samplers - Schorfheide (2000)</a></li></ul></li><li><span class="tocitem">Plotting</span><ul><li><a class="tocitem" href="../plotting/">Overview</a></li><li><a class="tocitem" href="../plot_irf/">Impulse Response Functions</a></li><li><a class="tocitem" href="../plot_solution/">Policy Functions</a></li><li><a class="tocitem" href="../plot_conditional_forecast/">Conditional Forecasts</a></li><li><a class="tocitem" href="../plot_conditional_variance_decomposition/">Variance Decomposition</a></li><li class="is-active"><a class="tocitem" href>Model Estimates</a><ul class="internal"><li><a class="tocitem" href="#Compare-Model-Estimates-with-plot_model_estimates!"><span>Compare Model Estimates with <code>plot_model_estimates!</code></span></a></li><li><a class="tocitem" href="#Data-(Required)"><span>Data (Required)</span></a></li><li><a class="tocitem" href="#Data-in-levels"><span>Data in levels</span></a></li><li><a class="tocitem" href="#Filter"><span>Filter</span></a></li><li><a class="tocitem" href="#Smooth"><span>Smooth</span></a></li><li><a class="tocitem" href="#Presample-periods"><span>Presample periods</span></a></li><li><a class="tocitem" href="#Forecast-periods"><span>Forecast periods</span></a></li><li><a class="tocitem" href="#Shock-decomposition"><span>Shock decomposition</span></a></li><li><a class="tocitem" href="#Shocks"><span>Shocks</span></a></li><li><a class="tocitem" href="#Solution-Algorithm"><span>Solution Algorithm</span></a></li><li><a class="tocitem" href="#Variables-to-Plot"><span>Variables to Plot</span></a></li><li><a class="tocitem" href="#Parameter-Values"><span>Parameter Values</span></a></li><li><a class="tocitem" href="#Plot-Labels"><span>Plot Labels</span></a></li><li><a class="tocitem" href="#Plot-Attributes"><span>Plot Attributes</span></a></li><li><a class="tocitem" href="#Plots-Per-Page"><span>Plots Per Page</span></a></li><li><a class="tocitem" href="#Display-Plots"><span>Display Plots</span></a></li><li><a class="tocitem" href="#Saving-Plots"><span>Saving Plots</span></a></li><li><a class="tocitem" href="#Variable-and-Shock-Renaming-(rename-dictionary)"><span>Variable and Shock Renaming (rename dictionary)</span></a></li><li><a class="tocitem" href="#Verbose-Output"><span>Verbose Output</span></a></li><li><a class="tocitem" href="#Numerical-Tolerances"><span>Numerical Tolerances</span></a></li><li><a class="tocitem" href="#Quadratic-Matrix-Equation-Solver"><span>Quadratic Matrix Equation Solver</span></a></li><li><a class="tocitem" href="#Sylvester-Equation-Solver"><span>Sylvester Equation Solver</span></a></li></ul></li></ul></li><li><span class="tocitem">How-to guides</span><ul><li><a class="tocitem" href="../how-to/loops/">Programmatic model writing using for-loops</a></li><li><a class="tocitem" href="../how-to/obc/">Occasionally binding constraints</a></li></ul></li><li><a class="tocitem" href="../api/">API</a></li><li><a class="tocitem" href="../call_index/">Index</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Plotting</a></li><li class="is-active"><a href>Model Estimates</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Model Estimates</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/thorek1/MacroModelling.jl/blob/main/docs/src/plot_model_estimates.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Model-Estimates"><a class="docs-heading-anchor" href="#Model-Estimates">Model Estimates</a><a id="Model-Estimates-1"></a><a class="docs-heading-anchor-permalink" href="#Model-Estimates" title="Permalink"></a></h1><p><code>plot_model_estimates</code> visualizes the variables used in an estimation problem: the filtered or smoothed estimates of endogenous variables and exogenous shocks, an unconditional forecast extending beyond the last data period, and optionally the contribution of each shock to the endogenous variables. Each subplot shows a variable or shock as a line and, when enabled, shock contributions as stacked bars measured against the non‑stochastic or stochastic steady state relevant for the selected solution algorithm. The unconditional forecast (shown as a dashed line by default for 12 periods) displays the model&#39;s expected path absent any exongeos shocks starting from the final filtered state. Occasionally binding constraints are not supported by this function. The function returns a <code>Vector{Plots.Plot}</code>, enabling the figures to be displayed, saved, or combined further.</p><p>The figures are built with StatsPlots.jl/Plots.jl and expect a <code>KeyedArray</code> from the AxisKeys package as data input. Axis 1 must contain the observable names, axis 2 the period labels. Observables are automatically matched to model variables, renamed (if desired), and sorted alphabetically in the plot legends. Period labels can be of any format compatible with Plots.jl and are used to fill the x-axis of the plots.</p><p>In order to run the examples on this page, the following packages need to be installed and loaded:</p><pre><code class="language-julia hljs">using MacroModelling, StatsPlots, CSV, DataFrames, AxisKeys, Dates</code></pre><p>The latter four packages are only needed to load the data.</p><p>Next, define and load a model:</p><pre><code class="language-julia hljs">@model FS2000 begin
+    dA[0] = exp(gam + z_e_a  *  e_a[x])
+    log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+    - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+    W[0] = l[0] / n[0]
+    - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+    R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+    1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+    c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+    P[0] * c[0] = m[0]
+    m[0] - 1 + d[0] = l[0]
+    e[0] = exp(z_e_a  *  e_a[x])
+    y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+    gy_obs[0] = dA[0] * y[0] / y[-1]
+    gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+    log_gy_obs[0] = log(gy_obs[0])
+    log_gp_obs[0] = log(gp_obs[0])
+end
+
+@parameters FS2000 begin
+    alp     = 0.356
+    bet     = 0.993
+    gam     = 0.0085
+    mst     = 1.0002
+    rho     = 0.129
+    psi     = 0.65
+    del     = 0.01
+    z_e_a   = 0.035449
+    z_e_m   = 0.008862
+end</code></pre><p>The second argument is always the data on which to base the model estimates. The following code loads data from a CSV file and converts it to a <code>KeyedArray</code>:</p><pre><code class="language-julia hljs">dat = CSV.read(&quot;test/data/FS2000_data.csv&quot;, DataFrame)
+data = KeyedArray(Array(dat)&#39;,Variable = Symbol.(&quot;log_&quot;.*names(dat)),Time = 1:size(dat)[1])
+data = log.(data)</code></pre><p>Given the model and data the model estimates can be plotted as follows:</p><pre><code class="language-julia hljs">plot_model_estimates(FS2000, data)</code></pre><p><img src="../assets/estimates__FS2000__3.png" alt="FS2000 model estimates"/></p><p>The function plots the filtered or smoothed estimates of the model variables that correspond to the observables in the data, along with the shock decomposition. Each subplot displays an observable or filtered variable (as a line plot) or the contribution of a shock (as stacked bars) measured against the relevant steady state for the chosen solution algorithm.</p><p>Another way to plot the model estimates including the shock decomposition is by calling:</p><pre><code class="language-julia hljs">plot_shock_decomposition(FS2000, data)</code></pre><p>This produces the same output as <code>plot_model_estimates</code> with <code>shock_decomposition = true</code>, which is the default setting for first order, pruned second order, and pruned third order solution algorithms.</p><h2 id="Compare-Model-Estimates-with-plot_model_estimates!"><a class="docs-heading-anchor" href="#Compare-Model-Estimates-with-plot_model_estimates!">Compare Model Estimates with <code>plot_model_estimates!</code></a><a id="Compare-Model-Estimates-with-plot_model_estimates!-1"></a><a class="docs-heading-anchor-permalink" href="#Compare-Model-Estimates-with-plot_model_estimates!" title="Permalink"></a></h2><p>The <code>plot_model_estimates!</code> function (note the exclamation mark <code>!</code>) adds additional model estimates to an existing plot created with <code>plot_model_estimates</code>, enabling direct comparison between different scenarios. Any input argument that affects the model&#39;s output (such as datasets, solution algorithm, parameter values, filtering methods, or smoothing options) can be varied to compare how these changes influence the estimates. See the respective subsections below (e.g., <a href="#data-required">Data</a>, <a href="#filter">Filter</a>, <a href="#solution-algorithm">Solution Algorithm</a>, <a href="#parameter-values">Parameter Values</a>) for details on specific arguments.</p><p>When using <code>plot_model_estimates!</code>, the new estimates are overlaid on the existing plot with a different color. Note that when combining multiple plots, shock decomposition is automatically disabled to avoid visual clutter - only the line plots showing the estimates are displayed.</p><p><strong>Legend and table behavior:</strong></p><ul><li>When inputs differ in <strong>one dimension</strong> (e.g., only the algorithm changes), the legend displays the value of that input dimension for each line (e.g., <code>:first_order</code>, <code>:second_order</code>).</li><li>When inputs differ in <strong>multiple dimensions</strong> (e.g., different datasets and parameters), the legend shows sequential numbers (1, 2, 3, ...) and references a table below the plot that details all input differences for each numbered scenario.</li><li>Different data inputs are indexed with a running number in the legend for easy reference.</li><li>Additional tables below show the relevant steady state values for each scenario to help identify differences across solution methods or parameter values.</li></ul><p><strong>Example with single input difference:</strong></p><p>When only one input differs (e.g., the solution algorithm), the legend shows the algorithm names directly:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+
+# Plot first-order estimates
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data)
+
+# Add second-order estimates to the same plot
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :second_order)</code></pre><p><img src="../assets/estimates_first_and_second_order__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - first and second order"/></p><p>The legend will display <code>:first_order</code> and <code>:second_order</code> to identify each estimate.</p><p>The subplot y-axis labels change depending on the steady state values and data availability for each scenario. If the steady state values differ across scenarios and there is no data for a variable, the y-axis label will indicate that the lines are in absolute deviations from the steady state. In that case no percent deviation is shown on the secondary y-axis, as the steady state values differ. In case the steady state values are the same across scenarios or there is data for a variable, the y-axis label indicates absolute levels on the primary y-axis. If the steady state values are the same and if the values are strictly positive the secondary y-axis shows the percent deviation scale. In case the steady state values differ but there is data for a variable, then levels are shown without percent deviation as the secondary axis and the steady states are shown as horizontal black lines.</p><p><strong>Example with multiple input differences:</strong></p><p>When multiple inputs differ (e.g., both algorithm and parameters), the legend shows sequential numbers and a table details the differences:</p><pre><code class="language-julia hljs"># Plot with baseline parameters
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                    sim_data,
+                    parameters = :β =&gt; 0.99)
+
+# Add with different algorithm AND parameters
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β =&gt; 0.95,
+                     algorithm = :second_order)</code></pre><p><img src="../assets/estimates_compare_beta_and_orders__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - comparing β values across algorithms"/></p><p>The legend will show <code>1</code> and <code>2</code>, with a table below the plot listing the parameter and algorithm values for each scenario.</p><h2 id="Data-(Required)"><a class="docs-heading-anchor" href="#Data-(Required)">Data (Required)</a><a id="Data-(Required)-1"></a><a class="docs-heading-anchor-permalink" href="#Data-(Required)" title="Permalink"></a></h2><p>The <code>data</code> argument [Type: <code>KeyedArray{Float64}</code>] contains the data used for filtering or smoothing the model estimates. The first axis must contain variable names (as <code>Symbol</code>s or <code>String</code>s) and the second axis must contain period labels (as any format compatible with Plots.jl). Note that the second axis is used to fill the x-axis of the plots.</p><p>Plotting model estimates with <code>Symbol</code>s as variable names can be done as follows, but here the way to load the data is shown again for completeness, and can be done in various ways:</p><pre><code class="language-julia hljs">variable_names = Symbol.(&quot;log_&quot;.*names(dat))
+
+dat = CSV.read(&quot;test/data/FS2000_data.csv&quot;, DataFrame)
+data = KeyedArray(Array(dat)&#39;,Variable = variable_names, Time = 1:size(dat)[1])
+data = log.(data)
+
+plot_model_estimates(FS2000, data)</code></pre><p>The same can be done with <code>String</code>s as variable names:</p><pre><code class="language-julia hljs">variable_names = &quot;log_&quot;.*names(dat)
+
+dat = CSV.read(&quot;test/data/FS2000_data.csv&quot;, DataFrame)
+data = KeyedArray(Array(dat)&#39;,Variable = variable_names, Time = 1:size(dat)[1])
+data = log.(data)
+
+plot_model_estimates(FS2000, data)</code></pre><p>A useful feature is that the second dimension of the <code>KeyedArray</code> can be used to customize the x-axis labels of the plots. The following example shows how to create date labels for quarterly data starting from 1960-01-01:</p><pre><code class="language-julia hljs">dat = CSV.read(&quot;test/data/FS2000_data.csv&quot;, DataFrame)
+data = KeyedArray(Array(dat)&#39;, Variable = Symbol.(&quot;log_&quot;.*names(dat)), Time = 1:size(dat)[1])
+data = log.(data)
+
+function quarterly_dates(start_date::Date, len::Int)
+    dates = Vector{Date}(undef, len)
+    current_date = start_date
+    for i in 1:len
+        dates[i] = current_date
+        current_date = current_date + Dates.Month(3)
+    end
+    return dates
+end
+
+data_rekey = rekey(data, :Time =&gt; quarterly_dates(Date(1960, 1, 1), size(data,2)))
+
+plot_model_estimates(FS2000, data_rekey)</code></pre><p><img src="../assets/estimates_rekey__FS2000__3.png" alt="FS2000 model estimates - custom x-axis"/></p><p>The function generates the date labels by starting from a given date and adding three months for each subsequent period. The <code>rekey</code> function from AxisKeys is then used to replace the second axis of the <code>KeyedArray</code> with the generated date labels. The resulting plot now has dates on the x-axis. Note that any input type for the second axis that <code>Plots.jl</code> can handle is valid.</p><p>Estimates based on different data can also be compared:</p><pre><code class="language-julia hljs">sim_data = simulate(FS2000)([:log_gy_obs,:log_gp_obs],:,:simulate)
+plot_model_estimates!(FS2000, sim_data)</code></pre><p><img src="../assets/estimates_multiple_data__FS2000__3.png" alt="FS2000 model estimates - different data"/></p><p>Note that the different data inputs are indexed with a running number in the legend.</p><h2 id="Data-in-levels"><a class="docs-heading-anchor" href="#Data-in-levels">Data in levels</a><a id="Data-in-levels-1"></a><a class="docs-heading-anchor-permalink" href="#Data-in-levels" title="Permalink"></a></h2><p>By default, the data is assumed to be in levels (<code>data_in_levels = true</code>). If the data is in absolute deviations from the non-stochastic steady state, set <code>data_in_levels = false</code>.</p><p>The previously shown example uses data in levels, so that it is compatible with the default setting:</p><pre><code class="language-julia hljs">dat = CSV.read(&quot;test/data/FS2000_data.csv&quot;, DataFrame)
+data = KeyedArray(Array(dat)&#39;, Variable = &quot;log_&quot;.*names(dat), Time = 1:size(dat)[1])
+data = log.(data)
+
+plot_model_estimates(FS2000, data)</code></pre><p>Data in absolute deviations from the non-stochastic steady state can be used as follows.</p><p>A practical way to create data in deviation from the non-stochastic steady state is to use the <code>simulate</code> function with the argument <code>levels = false</code>. This generates random data in deviations for all endogenous variables, of which in the example below only <code>R</code> and <code>y</code> are used:</p><pre><code class="language-julia hljs">sim = simulate(FS2000, levels = false)
+plot_model_estimates(FS2000, sim([:y,:R],:,:simulate), data_in_levels = false)</code></pre><p><img src="../assets/estimates_levels_false__FS2000__3.png" alt="FS2000 model estimates - data in deviations from non-stochastic steady state"/></p><h2 id="Filter"><a class="docs-heading-anchor" href="#Filter">Filter</a><a id="Filter-1"></a><a class="docs-heading-anchor-permalink" href="#Filter" title="Permalink"></a></h2><p>The <code>filter</code> argument [Type: <code>Symbol</code>] specifies the filtering method to use. Options are <code>:kalman</code> for the Kalman filter or smoother (depending on the <code>smooth</code> argument) and <code>:inversion</code> for the inversion filter. By default, the Kalman smoother is used for first order solutions and the inversion method for higher order (nonlinear) solutions.</p><p>A model featuring more than two shocks clearly illustrates the difference between the two filtering methods. The Gali (2015) model from chapter 3 with three shocks is presented below:</p><pre><code class="language-julia hljs">@model Gali_2015_chapter_3_nonlinear begin
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    R[0] = 1 / Q[0]
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+    R[0] = Pi[1] * realinterest[0]
+    R[0] = 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0])
+    C[0] = Y[0]
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+    log_y[0] = log(Y[0])
+    log_W_real[0] = log(W_real[0])
+    log_N[0] = log(N[0])
+    pi_ann[0] = 4 * log(Pi[0])
+    i_ann[0] = 4 * log(R[0])
+    r_real_ann[0] = 4 * log(realinterest[0])
+    M_real[0] = Y[0] / R[0] ^ η
+end
+
+@parameters Gali_2015_chapter_3_nonlinear begin
+    σ = 1
+    φ = 5
+    ϕᵖⁱ = 1.5
+    ϕʸ = 0.125
+    θ = 0.75
+    ρ_ν = 0.5
+    ρ_z = 0.5
+    ρ_a = 0.9
+    β = 0.99
+    η = 3.77
+    α = 0.25
+    ϵ = 9
+    τ = 0
+    std_a = .01
+    std_z = .05
+    std_nu = .0025
+end</code></pre><p>The Kalman smoother (because by default <code>smooth = true</code> for the first order solution algorithm) can be explicitly specified as follows (but it would be the default in this case and there is no need to specify it):</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, filter = :kalman)</code></pre><p>and the inversion filter can be overlayed, in order to compare with the Kalman smoother, as:</p><pre><code class="language-julia hljs">plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, filter = :inversion)</code></pre><p><img src="../assets/estimates_filters__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - inversion and Kalman filters"/></p><p>Note that the two filtering methods yield different results when there are more shocks than observables, as is the case here. The Kalman smoother (due to the default setting <code>smooth = true</code>) produces smoother estimates by optimally combining information from all periods, while the inversion filter directly solves for shocks that match the observables in each period. Furthermore, when comparing two estimates only the estimates but not the shock decomposition are shown.</p><h2 id="Smooth"><a class="docs-heading-anchor" href="#Smooth">Smooth</a><a id="Smooth-1"></a><a class="docs-heading-anchor-permalink" href="#Smooth" title="Permalink"></a></h2><p>The <code>smooth</code> argument [Default: <code>true</code>, Type: <code>Bool</code>] specifies whether to use smoothing (only available for the Kalman filter and set to <code>true</code> by default for the Kalman filter) or filtering (available for both and set to <code>true</code> in case the inversion filter is used). If <code>true</code>, smoothed estimates are plotted, otherwise filtered estimates are shown. Smoothing uses information from the entire sample to estimate the states at each point in time, while filtering only uses information up to the current period.</p><p>Smoothed estimates using the Kalman filter can be plotted as follows (this is the default behaviour and does not need to be specified explicitly):</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, 
+                    sim_data, 
+                    smooth = true)</code></pre><p>comparing with filtered estimates (using the Kalman filter) can be done like this:</p><pre><code class="language-julia hljs">plot_model_estimates!(Gali_2015_chapter_3_nonlinear, 
+                    sim_data, 
+                    smooth = false)</code></pre><p><img src="../assets/estimates_smooth__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - smoothing options"/></p><p>additionally the filtered estimates can be compared using the inversion filter (with <code>smooth = false</code> being the default for the inversion filter which doesn&#39;t need to be specified explicitly):</p><pre><code class="language-julia hljs">plot_model_estimates!(Gali_2015_chapter_3_nonlinear, 
+                    sim_data, 
+                    filter = :inversion, 
+                    smooth = false)</code></pre><p><img src="../assets/estimates_smooth_inversion__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - smoothing options and inversion filter"/></p><h2 id="Presample-periods"><a class="docs-heading-anchor" href="#Presample-periods">Presample periods</a><a id="Presample-periods-1"></a><a class="docs-heading-anchor-permalink" href="#Presample-periods" title="Permalink"></a></h2><p>The <code>presample_periods</code> argument [Default: <code>0</code>, Type: <code>Int</code>] specifies the number of periods at the beginning of the data that are not shown in the plots but are used for filtering. This is useful if the goal is to view only later periods in the sample, while still using the earlier periods for filtering.</p><p>For example, to exclude the first 20 periods from the plots, while still using them for filtering, run:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, presample_periods = 20)</code></pre><p><img src="../assets/estimates_presample__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - 20 presample periods"/></p><p>Note that now only 20 periods of the 40 periods in the data are shown in the plots, starting from period 21, while the first 20 periods were used in the filtering process.</p><h2 id="Forecast-periods"><a class="docs-heading-anchor" href="#Forecast-periods">Forecast periods</a><a id="Forecast-periods-1"></a><a class="docs-heading-anchor-permalink" href="#Forecast-periods" title="Permalink"></a></h2><p>The <code>forecast_periods</code> argument [Default: <code>12</code>, Type: <code>Int</code>] specifies the number of unconditional forecast periods to display after the last data period. The forecast shows the model&#39;s expected dynamics without further exogenous shocks, starting from the final filtered state. The forecast is displayed as a dashed line to distinguish it from the model estimates, and a &quot;Forecast&quot; entry is added to the legend.</p><p>To plot model estimates with the default 12-period forecast:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data)</code></pre><p><img src="../assets/estimates_forecast_default__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - default forecast"/></p><p>The dashed line shows the unconditional forecast extending 12 periods beyond the last data point.</p><p>To specify a custom forecast horizon, for example 24 periods:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, forecast_periods = 24)</code></pre><p><img src="../assets/estimates_forecast_24__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - 24 period forecast"/></p><p>To disable the forecast and show only model estimates, set <code>forecast_periods = 0</code>:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, forecast_periods = 0)</code></pre><p><img src="../assets/estimates_forecast_0__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - no forecast"/></p><p>The forecast also works with <code>plot_model_estimates!</code> for comparing multiple scenarios. Each scenario can have its own forecast horizon:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, parameters = :β =&gt; 0.99)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear, sim_data, parameters = :β =&gt; 0.95, forecast_periods = 18)</code></pre><p><img src="../assets/estimates_forecast_compare__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - forecast comparison"/></p><p>The legend shows each scenario with its corresponding forecast as a dashed line in the same color.</p><h2 id="Shock-decomposition"><a class="docs-heading-anchor" href="#Shock-decomposition">Shock decomposition</a><a id="Shock-decomposition-1"></a><a class="docs-heading-anchor-permalink" href="#Shock-decomposition" title="Permalink"></a></h2><p>The <code>shock_decomposition</code> argument [Type: <code>Bool</code>] specifies whether to include shock decompositions in the plots. By default, it is set to <code>true</code> for first order, pruned second order, and pruned third order solutions. For second order and third order solutions <code>shock_decomposition = false</code>, as the algorithm is not designed to handle it. If set to <code>true</code>, stacked bar charts showing the contribution of each shock to the variable&#39;s deviation from its steady state are included below the line plots for each variable.</p><p>Shock decompositions are included by default in the plots (except for second and third order solutions), and it can be specified explicitly as follows:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = true)</code></pre><p><img src="../assets/estimates_shock_decomp_true__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - shock decomposition true"/></p><p>This will generate plots with stacked bar charts below the line plots, illustrating how each shock contributes to the variable&#39;s deviation from its steady state over time.</p><p>To exclude shock decomposition from the plots, set the argument to <code>false</code>:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear, sim_data, shock_decomposition = false)</code></pre><p><img src="../assets/estimates_shock_decomp__Gali_2015_chapter_3_nonlinear__1.png" alt="Gali 2015 model estimates - shock decomposition"/></p><p>This shows only the line plots without the stacked bar charts for shock contributions. When combining multiple plots, the setting for <code>shock_decomposition</code> is ignored and <code>false</code>.</p><h2 id="Shocks"><a class="docs-heading-anchor" href="#Shocks">Shocks</a><a id="Shocks-1"></a><a class="docs-heading-anchor-permalink" href="#Shocks" title="Permalink"></a></h2><p>The <code>shocks</code> argument determines the shocks shown in the plots as subplots and in the shock decomposition. By default, all shocks are included (<code>:all</code>).  Inputs can be either a <code>Symbol</code> or <code>String</code> (e.g. <code>:eps_a</code>, <code>&quot;eps_a&quot;</code>, or <code>:all</code>), or <code>Tuple</code>, <code>Matrix</code> or <code>Vector</code> of <code>String</code> or <code>Symbol</code>. <code>:none</code> means no shocks are shown, and <code>:all</code> shows all shocks. If not all shocks are shown, then their respective subplot is ommitted and if a shock decomposition was intended to be shown, the ommitted shocks will be summarised and netted under the label <code>Other shocks (net)</code>.</p><p>To recall the shocks of a model use the <code>get_shocks</code> function:</p><pre><code class="language-julia hljs">get_shocks(Gali_2015_chapter_3_nonlinear)
+# 3-element Vector{String}:
+#  &quot;eps_a&quot;
+#  &quot;eps_nu&quot;
+#  &quot;eps_z&quot;</code></pre><p>To plot only a subset of shocks, specify them as follows, using a <code>Vector</code> of <code>Symbol</code>s:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = [:eps_a, :eps_nu])</code></pre><p><img src="../assets/estimates_selected_shocks__Gali_2015_chapter_3_nonlinear__4.png" alt="Gali 2015 model estimates - selected shocks"/></p><p>Note, how the ommitted shock: <code>:eps_z</code> is not shown but (the only) part of <code>Other shocks (net)</code>.</p><p>The same can be done with a <code>Vector</code> of <code>String</code>s:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = [&quot;eps_a&quot;, &quot;eps_nu&quot;])</code></pre><p>or <code>Tuple</code>s of <code>Symbol</code>s:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = (:eps_a, :eps_nu))</code></pre><p>or <code>Tuple</code>s of <code>String</code>s:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = (&quot;eps_a&quot;, &quot;eps_nu&quot;))</code></pre><p>or <code>Matrix</code> of <code>Symbol</code>s:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = [:eps_a  :eps_z])</code></pre><p>or <code>Matrix</code> of <code>String</code>s:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = [&quot;eps_a&quot;  &quot;eps_z&quot;])</code></pre><p>or simply as a <code>Symbol</code></p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = :eps_a)</code></pre><p>or simply as a <code>String</code></p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = &quot;eps_a&quot;)</code></pre><p>Not showing any shocks by using <code>shocks = :none</code>:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     shocks = :none)</code></pre><p><img src="../assets/estimates_no_shocks__Gali_2015_chapter_3_nonlinear__4.png" alt="Gali 2015 model estimates - no shocks"/></p><p>means that no subplots with the estimated shocks are shown and the shock decompositions only distinguish between the initial state and <code>Other shocks (net)</code>.</p><h2 id="Solution-Algorithm"><a class="docs-heading-anchor" href="#Solution-Algorithm">Solution Algorithm</a><a id="Solution-Algorithm-1"></a><a class="docs-heading-anchor-permalink" href="#Solution-Algorithm" title="Permalink"></a></h2><p>The <code>algorithm</code> argument [Default: <code>:first_order</code>, Type: <code>Symbol</code>] specifies the solution algorithm used for the filtering. Options include <code>:first_order</code>, <code>:second_order</code>, <code>:third_order</code>, as well as <code>:pruned_second_order</code> and <code>:pruned_third_order</code>. The choice of algorithm affects the available filtering method (only first order support the Kalman filter, all solution algorithms support the inversion filter), steady state levels used in the plots and the dynamics of the variables.</p><p>The following example uses a second-order perturbation solution:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :second_order)</code></pre><p><img src="../assets/estimates_second_order__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - second order"/></p><p>The most notable difference is that at second order, dynamics are observed for <code>S</code>, which remains constant at first order (under certainty equivalence). Additionally, the steady state levels change because the stochastic steady state incorporates risk effects (see horizontal lines). This has consequences for the conditions as they are in levels.</p><p>To compare the two solution methods side by side, use <code>plot_conditional_forecast!</code> to add to an existing plot:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :second_order)</code></pre><p><img src="../assets/estimates_first_and_second_order__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - first and second order"/></p><p>The plots now show both solution methods overlaid. The first-order solution is shown in blue, the second-order solution in orange, as indicated in the legend below the plot. Note that the steady state levels can be different for the two solution methods. For variables where the relevant steady state is the same for both methods (e.g., <code>S</code>), the level appears on the left axis and percentage deviations on the right axis. For variables where the steady state differs between methods (e.g., <code>R</code>), only absolute level deviations (<code>abs. Δ</code>) appear on the left axis. The relevant steady state levels are shown in a table below the plot for reference (rounded to help identify differences). The relevant steady state also implies that the conditions vary in terms of distance to steady state and thereby in the shocks they require for them to be fulfilled. For the variable <code>Y</code> the conditions given a first order solution imply a lower absolute deviation from the relevant steady state than for the second order solution.</p><p>Additional solution methods can be added to the same plot:</p><pre><code class="language-julia hljs">plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     algorithm = :pruned_third_order)</code></pre><p><img src="../assets/estimates_multiple_orders__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - multiple orders"/></p><p>Note that the pruned third-order solution incorporates time-varying risk and the dynamics differ relative to lower order solutions. The additional solution appears as another colored line with corresponding entries in both the legend and the steady state table below.</p><h2 id="Variables-to-Plot"><a class="docs-heading-anchor" href="#Variables-to-Plot">Variables to Plot</a><a id="Variables-to-Plot-1"></a><a class="docs-heading-anchor-permalink" href="#Variables-to-Plot" title="Permalink"></a></h2><p>The <code>variables</code> argument (default: <code>:all_excluding_obc</code>) specifies for which variables to show results. Variable names can be specified as either a <code>Symbol</code> or <code>String</code> (e.g. <code>:y</code> or <code>&quot;y&quot;</code>), or <code>Tuple</code>, <code>Matrix</code> or <code>Vector</code> of <code>String</code> or <code>Symbol</code>. Any variables not part of the model will trigger a warning. <code>:all_excluding_auxiliary_and_obc</code> includes all variables except auxiliary variables and those related to occasionally binding constraints (OBC). <code>:all_excluding_obc</code> includes all variables except those related to occasionally binding constraints. <code>:all</code> includes all variables.</p><p>Specific variables can be selected to plot. The following example selects only output (<code>Y</code>) and inflation (<code>Pi</code>) using a <code>Vector</code> of <code>Symbol</code>s. Note that selecting shocks can be done using the <code>shocks</code> argument as shown above.</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = [:Y, :Pi])</code></pre><p><img src="../assets/estimates_vars__Gali_2015_chapter_3_nonlinear__1.png" alt="Gali 2015 model estimates - selected variables (Y, Pi)"/></p><p>The plot now displays the two selected variables (sorted alphabetically) as well as the corresponding shocks.</p><p>The same can be done using a <code>Tuple</code>:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = (:Y, :Pi))</code></pre><p>a <code>Matrix</code>:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = [:Y :Pi])</code></pre><p>or providing the variable names as <code>String</code>s:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = [&quot;Y&quot;, &quot;Pi&quot;])</code></pre><p>or a single variable as a <code>Symbol</code>:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = :Y)</code></pre><p>or as a <code>String</code>:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = &quot;Y&quot;)</code></pre><p>Then there are some predefined options:</p><p><code>:all_excluding_auxiliary_and_obc</code> (default) plots all variables except auxiliary variables and those used to enforce occasionally binding constraints (OBC).</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = :all_excluding_auxiliary_and_obc)</code></pre><p><code>:all_excluding_obc</code> plots all variables except those used to enforce occasionally binding constraints (OBC).</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = :all_excluding_obc)</code></pre><p>To see auxiliary variables, use a model that defines them. The FS2000 model can be used:</p><pre><code class="language-julia hljs">@model FS2000 begin
+    dA[0] = exp(gam + z_e_a  *  e_a[x])
+    log(m[0]) = (1 - rho) * log(mst)  +  rho * log(m[-1]) + z_e_m  *  e_m[x]
+    - P[0] / (c[1] * P[1] * m[0]) + bet * P[1] * (alp * exp( - alp * (gam + log(e[1]))) * k[0] ^ (alp - 1) * n[1] ^ (1 - alp) + (1 - del) * exp( - (gam + log(e[1])))) / (c[2] * P[2] * m[1])=0
+    W[0] = l[0] / n[0]
+    - (psi / (1 - psi)) * (c[0] * P[0] / (1 - n[0])) + l[0] / n[0] = 0
+    R[0] = P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ ( - alp) / W[0]
+    1 / (c[0] * P[0]) - bet * P[0] * (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) / (m[0] * l[0] * c[1] * P[1]) = 0
+    c[0] + k[0] = exp( - alp * (gam + z_e_a  *  e_a[x])) * k[-1] ^ alp * n[0] ^ (1 - alp) + (1 - del) * exp( - (gam + z_e_a  *  e_a[x])) * k[-1]
+    P[0] * c[0] = m[0]
+    m[0] - 1 + d[0] = l[0]
+    e[0] = exp(z_e_a  *  e_a[x])
+    y[0] = k[-1] ^ alp * n[0] ^ (1 - alp) * exp( - alp * (gam + z_e_a  *  e_a[x]))
+    gy_obs[0] = dA[0] * y[0] / y[-1]
+    gp_obs[0] = (P[0] / P[-1]) * m[-1] / dA[0]
+    log_gy_obs[0] = log(gy_obs[0])
+    log_gp_obs[0] = log(gp_obs[0])
+end
+
+@parameters FS2000 begin
+    alp     = 0.356
+    bet     = 0.993
+    gam     = 0.0085
+    mst     = 1.0002
+    rho     = 0.129
+    psi     = 0.65
+    del     = 0.01
+    z_e_a   = 0.035449
+    z_e_m   = 0.008862
+end</code></pre><p>Since both <code>c</code> and <code>P</code> appear in t+2, they generate auxiliary variables in the model. Plotting the model estimates for all variables excluding OBC-related ones means auxiliary variables are shown:</p><pre><code class="language-julia hljs">sim_data_FS2000 = simulate(FS2000)([:y],:,:simulate)
+plot_model_estimates(FS2000,
+                     sim_data_FS2000,
+                     variables = :all_excluding_obc)</code></pre><p><img src="../assets/estimates_all_excluding_obc__FS2000__1.png" alt="FS2000 model estimates - e_a shock with auxiliary variables"/></p><p>Both <code>c</code> and <code>P</code> appear twice: once as the variable itself and once as an auxiliary variable with the <code>ᴸ⁽¹⁾</code> superscript, representing the value of the variable in t+1 as expected in t.</p><p><code>:all</code> plots all variables including auxiliary variables and those used to enforce occasionally binding constraints (OBC).</p><p>Use the <code>Gali_2015_chapter_3</code> model with an effective lower bound (note the use of the <code>max</code> function in the Taylor rule):</p><pre><code class="language-julia hljs">@model Gali_2015_chapter_3_obc begin
+    W_real[0] = C[0] ^ σ * N[0] ^ φ
+    Q[0] = β * (C[1] / C[0]) ^ (-σ) * Z[1] / Z[0] / Pi[1]
+    R[0] = 1 / Q[0]
+    Y[0] = A[0] * (N[0] / S[0]) ^ (1 - α)
+    R[0] = Pi[1] * realinterest[0]
+    R[0] = max(R̄ , 1 / β * Pi[0] ^ ϕᵖⁱ * (Y[0] / Y[ss]) ^ ϕʸ * exp(nu[0]))
+    C[0] = Y[0]
+    log(A[0]) = ρ_a * log(A[-1]) + std_a * eps_a[x]
+    log(Z[0]) = ρ_z * log(Z[-1]) - std_z * eps_z[x]
+    nu[0] = ρ_ν * nu[-1] + std_nu * eps_nu[x]
+    MC[0] = W_real[0] / (S[0] * Y[0] * (1 - α) / N[0])
+    1 = θ * Pi[0] ^ (ϵ - 1) + (1 - θ) * Pi_star[0] ^ (1 - ϵ)
+    S[0] = (1 - θ) * Pi_star[0] ^ (( - ϵ) / (1 - α)) + θ * Pi[0] ^ (ϵ / (1 - α)) * S[-1]
+    Pi_star[0] ^ (1 + ϵ * α / (1 - α)) = ϵ * x_aux_1[0] / x_aux_2[0] * (1 - τ) / (ϵ - 1)
+    x_aux_1[0] = MC[0] * Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ + α * ϵ / (1 - α)) * x_aux_1[1]
+    x_aux_2[0] = Y[0] * Z[0] * C[0] ^ (-σ) + β * θ * Pi[1] ^ (ϵ - 1) * x_aux_2[1]
+    log_y[0] = log(Y[0])
+    log_W_real[0] = log(W_real[0])
+    log_N[0] = log(N[0])
+    pi_ann[0] = 4 * log(Pi[0])
+    i_ann[0] = 4 * log(R[0])
+    r_real_ann[0] = 4 * log(realinterest[0])
+    M_real[0] = Y[0] / R[0] ^ η
+end
+
+@parameters Gali_2015_chapter_3_obc begin
+    R̄ = 1.0
+    σ = 1
+    φ = 5
+    ϕᵖⁱ = 1.5
+    ϕʸ = 0.125
+    θ = 0.75
+    ρ_ν = 0.5
+    ρ_z = 0.5
+    ρ_a = 0.9
+    β = 0.99
+    η = 3.77
+    α = 0.25
+    ϵ = 9
+    τ = 0
+    std_a = .01
+    std_z = .05
+    std_nu = .0025
+    R &gt; 1.0001
+end</code></pre><p>Plotting the model estimates for all variables including OBC-related ones reveals the OBC-related auxiliary variables:</p><pre><code class="language-julia hljs">sim_data_Gali_obc = simulate(Gali_2015_chapter_3_obc)([:R],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_obc,
+                     sim_data_Gali_obc,
+                     variables = :all)</code></pre><p><img src="../assets/estimates_all__Gali_2015_chapter_3_obc__4.png" alt="Gali 2015 OBC model estimates - with OBC variables"/></p><p>The OBC-related variables appear in the last subplot, but note that simulated data respected the OBCs but the model estimates do not and explain the data using the standard model equations.</p><h2 id="Parameter-Values"><a class="docs-heading-anchor" href="#Parameter-Values">Parameter Values</a><a id="Parameter-Values-1"></a><a class="docs-heading-anchor-permalink" href="#Parameter-Values" title="Permalink"></a></h2><p>When no parameters are provided, the solution uses the previously defined parameter values. Parameters can be provided as a <code>Vector</code> of values, or as a <code>Vector</code> or <code>Tuple</code> of <code>Pair</code>s mapping parameter <code>Symbol</code>s or <code>String</code>s to values. The solution is recalculated when new parameter values differ from the previous ones.</p><p>Start by changing the discount factor <code>β</code> from 0.99 to 0.95:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β =&gt; 0.95)</code></pre><p><img src="../assets/estimates_beta_95__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - `β = 0.95`"/></p><p>The steady states and dynamics changed as a result of changing the discount factor, also because the absolute deviation of the conditons on the endogenous variables from the relevant steady state changed. To better visualize the differences between <code>β = 0.99</code> and <code>β = 0.95</code>, the two conditional forecasts can be overlaid (compared). Since parameter changes are permanent, first reset <code>β = 0.99</code> before overlaying the model estimates with <code>β = 0.95</code> on top of it:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β =&gt; 0.99)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = :β =&gt; 0.95)</code></pre><p><img src="../assets/estimates_beta_95_vs_99__Gali_2015_chapter_3_nonlinear__1.png" alt="Gali 2015 model estimates - comparing β values"/></p><p>The legend below the plot indicates which color corresponds to which <code>β</code> value, with the table underneath showing the relevant steady states. Note that both the steady states and dynamics differ across the two <code>β</code> values, even when the steady state remains the same (e.g., for <code>Y</code>).</p><p>Multiple parameters can also be changed simultaneously to compare the results to previous plots. This example changes <code>β</code> to 0.97 and <code>τ</code> to 0.5 using a <code>Tuple</code> of <code>Pair</code>s and define the variables with <code>Symbol</code>s:</p><pre><code class="language-julia hljs">plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = (:β =&gt; 0.97, :τ =&gt; 0.5))</code></pre><p><img src="../assets/estimates_multi_params__Gali_2015_chapter_3_nonlinear__1.png" alt="Gali 2015 model estimates - multiple parameter changes"/></p><p>Since the plot function calls now differ in multiple input arguments, the legend indicates which color corresponds to which input combination, with the table showing steady states for all three combinations. The change in steady state for the latest change means substantially different absolute differences relevant for the conditions and therefore also different size of shocks to enforce the conditions.</p><p>A <code>Vector</code> of <code>Pair</code>s can also be used:</p><pre><code class="language-julia hljs">plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = [:β =&gt; 0.98, :τ =&gt; 0.25])</code></pre><p><img src="../assets/estimates_multi_params_2__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - multiple parameter changes (2)"/></p><p>Note that the parameter change led to a different relevant steady state for variable <code>Y</code>. Since <code>Y</code> is also an observable, the subplot is shown in levels with the relevant steady states being indicated by black lines and their respective values mentioned in the table below the plot. This behaviour is in contrast to cases where the variables is not an observable, in which case absolute deviations from steady state are shown.</p><p>Alternatively, use a <code>Vector</code> of parameter values in the order they were defined in the model. To obtain them:</p><pre><code class="language-julia hljs">params = get_parameters(Gali_2015_chapter_3_nonlinear, values = true)
+# 16-element Vector{Pair{String, Float64}}:
+#       &quot;σ&quot; =&gt; 1.0
+#       &quot;φ&quot; =&gt; 5.0
+#     &quot;ϕᵖⁱ&quot; =&gt; 1.5
+#      &quot;ϕʸ&quot; =&gt; 0.125
+#       &quot;θ&quot; =&gt; 0.75
+#     &quot;ρ_ν&quot; =&gt; 0.5
+#     &quot;ρ_z&quot; =&gt; 0.5
+#     &quot;ρ_a&quot; =&gt; 0.9
+#       &quot;β&quot; =&gt; 0.95
+#       &quot;η&quot; =&gt; 3.77
+#       &quot;α&quot; =&gt; 0.25
+#       &quot;ϵ&quot; =&gt; 9.0
+#       &quot;τ&quot; =&gt; 0.5
+#   &quot;std_a&quot; =&gt; 0.01
+#   &quot;std_z&quot; =&gt; 0.05
+#  &quot;std_nu&quot; =&gt; 0.0025
+
+param_vals = [p[2] for p in params]
+# 16-element Vector{Float64}:
+#  1.0
+#  5.0
+#  1.5
+#  0.125
+#  0.75
+#  0.5
+#  0.5
+#  0.9
+#  0.95
+#  3.77
+#  0.25
+#  9.0
+#  0.5
+#  0.01
+#  0.05
+#  0.0025
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = param_vals)</code></pre><h2 id="Plot-Labels"><a class="docs-heading-anchor" href="#Plot-Labels">Plot Labels</a><a id="Plot-Labels-1"></a><a class="docs-heading-anchor-permalink" href="#Plot-Labels" title="Permalink"></a></h2><p>The <code>label</code> argument (type: <code>Union{String,Symbol,Real}</code>) controls labels that appear in plots when using the <code>plot_conditional_forecast!</code> function to overlay multiple conditional forecasts. By default, labels take on the values of the one dimensional input that differs and are sequential numbers in case the input differs along more than one dimension. Furthermore, custom labels can be provided using this argument. Acceptable inputs are a <code>String</code>, <code>Symbol</code>, or a <code>Real</code>.</p><p>Custom labels are particularly useful when inputs differ in complex ways (e.g., shock matrices or multiple input changes). For example, let&#39;s compare the model estimates of the <code>Gali_2015_chapter_3_nonlinear</code> model for a 1 standard deviation <code>eps_a</code> shock with <code>β = 0.99</code> and <code>τ = 0</code> to the model estimates with <code>β = 0.95</code> and <code>τ = 0.5</code> using custom labels <code>String</code> input:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = (:β =&gt; 0.99, :τ =&gt; 0.0),
+                     label = &quot;Std. params&quot;)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+                      sim_data,
+                      parameters = (:β =&gt; 0.95, :τ =&gt; 0.5),
+                      label = &quot;Alt. params&quot;)</code></pre><p><img src="../assets/estimates_labels__Gali_2015_chapter_3_nonlinear__2.png" alt="Gali 2015 model estimates - custom labels"/></p><p>The legend now displays the custom label names instead of sequential numbers (1 and 2). Additionally, the tables showing input differences and steady states use the custom labels in the first column instead of sequential numbers.</p><p>The same result can be achieved using <code>Symbol</code>s (though they are less expressive):</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     parameters = (:β =&gt; 0.99, :τ =&gt; 0.0),
+                     label = :standard)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    parameters = (:β =&gt; 0.95, :τ =&gt; 0.5),
+    label = :alternative)</code></pre><p>or with <code>Real</code> inputs:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    parameters = (:β =&gt; 0.99, :τ =&gt; 0.0),
+    label = 0.99)
+
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    parameters = (:β =&gt; 0.95, :τ =&gt; 0.5),
+    label = 0.95)</code></pre><h2 id="Plot-Attributes"><a class="docs-heading-anchor" href="#Plot-Attributes">Plot Attributes</a><a id="Plot-Attributes-1"></a><a class="docs-heading-anchor-permalink" href="#Plot-Attributes" title="Permalink"></a></h2><p>The <code>plot_attributes</code> argument (default: <code>Dict()</code>, type: <code>Dict</code>) accepts a dictionary of attributes passed on to the plotting function. See the Plots.jl documentation for details.</p><p>The color palette can be customized using the <code>plot_attributes</code> argument. The following example defines a custom color palette (inspired by the European Commission&#39;s economic reports) to plot the model estimates (colors are used for the shock decomposition) of the <code>Gali_2015_chapter_3_nonlinear</code> model. First, define the custom color palette using hex color codes:</p><pre><code class="language-julia hljs">ec_color_palette =
+[
+    &quot;#FFD724&quot;,  # &quot;Sunflower Yellow&quot;
+    &quot;#353B73&quot;,  # &quot;Navy Blue&quot;
+    &quot;#2F9AFB&quot;,  # &quot;Sky Blue&quot;
+    &quot;#B8AAA2&quot;,  # &quot;Taupe Grey&quot;
+    &quot;#E75118&quot;,  # &quot;Vermilion&quot;
+    &quot;#6DC7A9&quot;,  # &quot;Mint Green&quot;
+    &quot;#F09874&quot;,  # &quot;Coral&quot;
+    &quot;#907800&quot;   # &quot;Olive&quot;
+]</code></pre><p>Then plot the model estimates:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     plot_attributes = Dict(:palette =&gt; ec_color_palette))</code></pre><p><img src="../assets/estimates_color__Gali_2015_chapter_3_nonlinear__1.png" alt="Gali 2015 model estimates - custom color palette"/></p><p>The colors of the bars now follow the custom color palette.</p><p>Other attributes such as the font family can also be modified (see here for <a href="https://github.com/JuliaPlots/Plots.jl/blob/v1.41.1/src/backends/gr.jl#L61">GR font options</a>):</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     plot_attributes = Dict(:fontfamily =&gt; &quot;computer modern&quot;))</code></pre><p><img src="../assets/estimates_font__Gali_2015_chapter_3_nonlinear__1.png" alt="Gali 2015 model estimates - custom font"/></p><p>All text in the plot now uses the Computer Modern font. Note that font rendering inherits the constraints of the plotting backend (GR in this case).</p><h2 id="Plots-Per-Page"><a class="docs-heading-anchor" href="#Plots-Per-Page">Plots Per Page</a><a id="Plots-Per-Page-1"></a><a class="docs-heading-anchor-permalink" href="#Plots-Per-Page" title="Permalink"></a></h2><p>The <code>plots_per_page</code> argument (default: <code>9</code>, type: <code>Int</code>) controls the number of subplots per page. When the number of variables exceeds this value, multiple pages are created. The following example selects 9 variables and sets <code>plots_per_page</code> to 2:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     variables = [:Y, :Pi, :R, :C, :N, :W_real, :MC, :i_ann, :A],
+                     plots_per_page = 2)</code></pre><p><img src="../assets/estimates_2_per_page__Gali_2015_chapter_3_nonlinear__1.png" alt="Gali 2015 model estimates - 2 plots per page"/></p><p>The first four pages display two variables (sorted alphabetically). The title indicates the current page and the total number of pages.</p><h2 id="Display-Plots"><a class="docs-heading-anchor" href="#Display-Plots">Display Plots</a><a id="Display-Plots-1"></a><a class="docs-heading-anchor-permalink" href="#Display-Plots" title="Permalink"></a></h2><p>The <code>show_plots</code> argument (default: <code>true</code>, type: <code>Bool</code>), when <code>true</code>, displays the plots; otherwise, they are only returned as an object.</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                     sim_data,
+                     show_plots = false)</code></pre><h2 id="Saving-Plots"><a class="docs-heading-anchor" href="#Saving-Plots">Saving Plots</a><a id="Saving-Plots-1"></a><a class="docs-heading-anchor-permalink" href="#Saving-Plots" title="Permalink"></a></h2><p>The <code>save_plots</code> argument (default: <code>false</code>, type: <code>Bool</code>), when <code>true</code>, saves the plots to disk; otherwise, they are only displayed and returned as an object.</p><p>Related arguments control the saving behavior:</p><ul><li><code>save_plots_format</code> (default: <code>:pdf</code>, type: <code>Symbol</code>): output format of saved plots. See <a href="https://docs.juliaplots.org/latest/output/#Supported-output-file-formats">input formats compatible with GR</a> for valid formats.</li><li><code>save_plots_path</code> (default: <code>&quot;.&quot;</code>, type: <code>String</code>): path where plots are saved. If the path does not exist, it will be created automatically.</li><li><code>save_plots_name</code> (default: <code>&quot;estimation&quot;</code>, type: <code>Union{String, Symbol}</code>): prefix prepended to the filename when saving plots.</li></ul><p>Each plot is saved as a separate file with a name indicating the prefix, model name, shocks, and a sequential number for multiple plots (e.g., <code>estimation__ModelName__1.pdf</code>).</p><p>The following example saves all conditional forecasts for the <code>Gali_2015_chapter_3_nonlinear</code> model as PNG files in the <code>../plots</code> directory with <code>estim</code> as the filename prefix:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    save_plots = true,
+    save_plots_format = :png,
+    save_plots_path = &quot;./../plots&quot;,
+    save_plots_name = :estim)</code></pre><p>The plots appear in the specified folder with the specified prefix. Each plot is saved in a separate file with a name reflecting the model, and a sequential index when the number of variables exceeds the plots per page.</p><h2 id="Variable-and-Shock-Renaming-(rename-dictionary)"><a class="docs-heading-anchor" href="#Variable-and-Shock-Renaming-(rename-dictionary)">Variable and Shock Renaming (rename dictionary)</a><a id="Variable-and-Shock-Renaming-(rename-dictionary)-1"></a><a class="docs-heading-anchor-permalink" href="#Variable-and-Shock-Renaming-(rename-dictionary)" title="Permalink"></a></h2><p>The <code>rename_dictionary</code> argument (default: <code>Dict()</code>, type: <code>AbstractDict{&lt;:Union{Symbol, String}, &lt;:Union{Symbol, String}}</code>) maps variable or shock symbols to custom display names in plots. This is particularly useful when comparing models with different variable naming conventions, allowing them to be displayed with consistent labels.</p><p>For example, to rename variables for clearer display:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    rename_dictionary = Dict(:Y =&gt; &quot;Output&quot;, :Pi =&gt; &quot;Inflation&quot;, :R =&gt; &quot;Interest Rate&quot;))</code></pre><p><img src="../assets/estimates_rename_dict__Gali_2015_chapter_3_nonlinear__1.png" alt="Gali 2015 model estimates - rename dictionary"/></p><p>This feature is especially valuable when overlaying conditional forecasts from different models. Consider comparing FS2000 (which uses lowercase variable names like <code>c</code>) with <code>Gali_2015_chapter_3_nonlinear</code> (which uses uppercase variable names like <code>C</code>). The <code>rename_dictionary</code> allows harmonizing these names when plotting them together:</p><pre><code class="language-julia hljs">sim_data_FS2000 = simulate(FS2000)([:y],:,:simulate)
+plot_model_estimates(FS2000,
+                         sim_data_FS2000,
+                         rename_dictionary = Dict(
+                            :c =&gt; &quot;Consumption&quot;, 
+                            :y =&gt; &quot;Output&quot;, 
+                            :R =&gt; &quot;Interest Rate&quot;
+                         ))
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates!(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    rename_dictionary = Dict(
+        :C =&gt; &quot;Consumption&quot;, 
+        :Y =&gt; &quot;Output&quot;, 
+        :R =&gt; &quot;Interest Rate&quot;
+        ))</code></pre><p><img src="../assets/estimates_rename_dict_multiple_models__multiple_models__1.png" alt="FS2000 and Gali 2015 model estimates - multiple models with rename dictionary"/></p><p>Both models now appear in the plot with consistent labels, facilitating comparison.</p><p>The <code>rename_dictionary</code> also works with shocks. For example, <code>Gali_2015_chapter_3_nonlinear</code> has shocks <code>eps_a</code> and <code>eps_nu</code>, while FS2000 has <code>e_a</code> and <code>e_m</code>. To compare these with consistent labels:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+                            sim_data,
+                            rename_dictionary = Dict(
+                                :eps_a =&gt; &quot;Technology Shock&quot;, 
+                                :eps_nu =&gt; &quot;Monetary Policy Shock&quot;
+                                ))
+
+plot_model_estimates!(FS2000,
+                         sim_data_FS2000,
+                         rename_dictionary = Dict(
+                            :e_a =&gt; &quot;Technology Shock&quot;, 
+                            :e_m =&gt; &quot;Monetary Policy Shock&quot;
+                            ))</code></pre><p><img src="../assets/estimates_rename_dict_multiple_models_shocks__multiple_models__7.png" alt="FS2000 and Gali 2015 model estimates - multiple models with shock rename dictionary"/></p><p>The <code>rename_dictionary</code> accepts flexible type combinations for keys and values, both <code>Symbol</code> and <code>String</code> types work interchangeably:</p><pre><code class="language-julia hljs"># All of these are valid and equivalent:
+Dict(:Y =&gt; &quot;Output&quot;)              # Symbol key, String value
+Dict(&quot;Y&quot; =&gt; &quot;Output&quot;)             # String key, String value
+Dict(:Y =&gt; :Output)               # Symbol key, Symbol value
+Dict(&quot;Y&quot; =&gt; :Output)              # String key, Symbol value</code></pre><p>This flexibility is particularly useful for models like <code>Backus_Kehoe_Kydland_1992</code>, which uses <code>String</code> representations of variable and shock names (because of <code>{}</code>):</p><pre><code class="language-julia hljs"># Define the Backus model (abbreviated for clarity)
+@model Backus_Kehoe_Kydland_1992 begin
+    for co in [H, F]
+        Y{co}[0] = ((LAMBDA{co}[0] * K{co}[-4]^theta{co} * N{co}[0]^(1-theta{co}))^(-nu{co}) + sigma{co} * Z{co}[-1]^(-nu{co}))^(-1/nu{co})
+        K{co}[0] = (1-delta{co})*K{co}[-1] + S{co}[0]
+        X{co}[0] = for lag in (-4+1):0 phi{co} * S{co}[lag] end
+        A{co}[0] = (1-eta{co}) * A{co}[-1] + N{co}[0]
+        L{co}[0] = 1 - alpha{co} * N{co}[0] - (1-alpha{co})*eta{co} * A{co}[-1]
+        U{co}[0] = (C{co}[0]^mu{co}*L{co}[0]^(1-mu{co}))^gamma{co}
+        psi{co} * mu{co} / C{co}[0]*U{co}[0] = LGM[0]
+        psi{co} * (1-mu{co}) / L{co}[0] * U{co}[0] * (-alpha{co}) = - LGM[0] * (1-theta{co}) / N{co}[0] * (LAMBDA{co}[0] * K{co}[-4]^theta{co}*N{co}[0]^(1-theta{co}))^(-nu{co})*Y{co}[0]^(1+nu{co})
+
+        for lag in 0:(4-1)  
+            beta{co}^lag * LGM[lag]*phi{co}
+        end +
+        for lag in 1:4
+            -beta{co}^lag * LGM[lag] * phi{co} * (1-delta{co})
+        end = beta{co}^4 * LGM[+4] * theta{co} / K{co}[0] * (LAMBDA{co}[+4] * K{co}[0]^theta{co} * N{co}[+4]^(1-theta{co})) ^ (-nu{co})* Y{co}[+4]^(1+nu{co})
+
+        LGM[0] = beta{co} * LGM[+1] * (1+sigma{co} * Z{co}[0]^(-nu{co}-1)*Y{co}[+1]^(1+nu{co}))
+        NX{co}[0] = (Y{co}[0] - (C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1]))/Y{co}[0]
+    end
+
+    (LAMBDA{H}[0]-1) = rho{H}{H}*(LAMBDA{H}[-1]-1) + rho{H}{F}*(LAMBDA{F}[-1]-1) + Z_E{H} * E{H}[x]
+    (LAMBDA{F}[0]-1) = rho{F}{F}*(LAMBDA{F}[-1]-1) + rho{F}{H}*(LAMBDA{H}[-1]-1) + Z_E{F} * E{F}[x]
+
+    for co in [H,F] C{co}[0] + X{co}[0] + Z{co}[0] - Z{co}[-1] end = for co in [H,F] Y{co}[0] end
+end
+
+@parameters Backus_Kehoe_Kydland_1992 begin
+    K_ss = 11
+    K[ss] = K_ss | beta
+    
+    mu      =    0.34
+    gamma   =    -1.0
+    alpha   =    1
+    eta     =    0.5
+    theta   =    0.36
+    nu      =    3
+    sigma   =    0.01
+    delta   =    0.025
+    phi     =    1/4
+    psi     =    0.5
+
+    Z_E = 0.00852
+    
+    rho{H}{H} = 0.906
+    rho{F}{F} = rho{H}{H}
+    rho{H}{F} = 0.088
+    rho{F}{H} = rho{H}{F}
+end
+
+sim_data = simulate(Backus_Kehoe_Kydland_1992)([&quot;Y{H}&quot;],:,:simulate)
+plot_model_estimates(Backus_Kehoe_Kydland_1992,
+    sim_data,
+    rename_dictionary = Dict(&quot;C{H}&quot; =&gt; &quot;Home Consumption&quot;, 
+                             &quot;C{F}&quot; =&gt; &quot;Foreign Consumption&quot;,
+                             &quot;Y{H}&quot; =&gt; &quot;Home Output&quot;,
+                             &quot;Y{F}&quot; =&gt; &quot;Foreign Output&quot;))</code></pre><p><img src="../assets/estimates_rename_dict_string__Backus_Kehoe_Kydland_1992__1.png" alt="Backus, Kehoe, Kydland 1992 model estimates - E{H} shock with rename dictionary"/></p><p>Variables or shocks not included in the dictionary retain their default names. The renaming applies to all plot elements including legends, axis labels, and tables.</p><h2 id="Verbose-Output"><a class="docs-heading-anchor" href="#Verbose-Output">Verbose Output</a><a id="Verbose-Output-1"></a><a class="docs-heading-anchor-permalink" href="#Verbose-Output" title="Permalink"></a></h2><p>The <code>verbose</code> argument (default: <code>false</code>, type: <code>Bool</code>), when <code>true</code>, enables verbose output related to solving the model</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    verbose = true)</code></pre><p>The code outputs information about solving the steady state blocks. When parameters change, the first-order solution is recomputed; otherwise, it uses the cached solution:</p><pre><code class="language-julia hljs">plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    parameters = :β =&gt; 0.955,
+    verbose = true)
+# Parameter changes: 
+#         β       from 0.95       to 0.955
+# New parameters changed the steady state.
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.438959822042073e-16
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 4.3825585462666584e-15
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.438959822042073e-16
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 5.438959822042073e-16</code></pre><h2 id="Numerical-Tolerances"><a class="docs-heading-anchor" href="#Numerical-Tolerances">Numerical Tolerances</a><a id="Numerical-Tolerances-1"></a><a class="docs-heading-anchor-permalink" href="#Numerical-Tolerances" title="Permalink"></a></h2><p>The <code>tol</code> argument (default: <code>Tolerances()</code>, type: <code>Tolerances</code>) defines various tolerances for the algorithm used to solve the model. See the Tolerances documentation for more details: <code>?Tolerances</code>. The tolerances used by the numerical solvers can be adjusted. The Tolerances object allows setting tolerances for the non-stochastic steady state solver (NSSS), Sylvester equations, Lyapunov equation, and quadratic matrix equation (QME). For example, to set tighter tolerances (this example also changes parameters to force recomputation):</p><pre><code class="language-julia hljs">custom_tol = Tolerances(qme_acceptance_tol = 1e-12,
+    sylvester_acceptance_tol = 1e-12)
+
+sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    tol = custom_tol,
+    algorithm = :second_order,
+    parameters = :β =&gt; 0.9555,
+    verbose = true)
+# Parameter changes: 
+#         β       from 0.955      to 0.9555
+# New parameters changed the steady state.
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 7.021666937153402e-16
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 3.692979383228777e-15
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 7.021666937153402e-16
+# Quadratic matrix equation solver: schur - converged: true in 0 iterations to tolerance: 3.692979383228777e-15
+# Sylvester equation - converged to tol 1.0e-12: true; iterations: 10; reached tol: 6.494758134185766e-17; algorithm: doubling
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 7.021666937153402e-16
+# Block: 1, - Solved using previous solution; residual norm: 0.0
+# Block: 2, - Solved using previous solution; residual norm: 7.021666937153402e-16</code></pre><p>This is useful when higher precision is needed or when the default tolerances are insufficient for convergence. Use this argument for specific needs or when encountering issues with the default solver.</p><h2 id="Quadratic-Matrix-Equation-Solver"><a class="docs-heading-anchor" href="#Quadratic-Matrix-Equation-Solver">Quadratic Matrix Equation Solver</a><a id="Quadratic-Matrix-Equation-Solver-1"></a><a class="docs-heading-anchor-permalink" href="#Quadratic-Matrix-Equation-Solver" title="Permalink"></a></h2><p>The <code>quadratic_matrix_equation_algorithm</code> argument (default: <code>:schur</code>, type: <code>Symbol</code>) specifies the algorithm to solve quadratic matrix equation (<code>A * X ^ 2 + B * X + C = 0</code>). Available algorithms: <code>:schur</code>, <code>:doubling</code> The quadratic matrix equation solver is used internally when solving the model to first order. Different algorithms are available. The <code>:schur</code> algorithm is generally faster and more reliable, while <code>:doubling</code> can be more precise in some cases (this example also changes parameters to force recomputation):</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    quadratic_matrix_equation_algorithm = :doubling,
+    parameters = :β =&gt; 0.95555,
+    verbose = true)
+# Parameter changes: 
+#         β       from 0.9555     to 0.95555
+# New parameters changed the steady state.
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Quadratic matrix equation solver: doubling - converged: true in 8 iterations to tolerance: 1.517007008035588e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]</code></pre><p>For most use cases, the default <code>:schur</code> algorithm is recommended. Use this argument for specific needs or when encountering issues with the default solver.</p><h2 id="Sylvester-Equation-Solver"><a class="docs-heading-anchor" href="#Sylvester-Equation-Solver">Sylvester Equation Solver</a><a id="Sylvester-Equation-Solver-1"></a><a class="docs-heading-anchor-permalink" href="#Sylvester-Equation-Solver" title="Permalink"></a></h2><p>[Default: selector that uses <code>:doubling</code> for smaller problems and switches to <code>:bicgstab</code> for larger problems, Type: <code>Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}}</code>]: Algorithm to solve the Sylvester equation (<code>A * X * B + C = X</code>). Available algorithms: <code>:doubling</code>, <code>:bartels_stewart</code>, <code>:bicgstab</code>, <code>:dqgmres</code>, <code>:gmres</code>. The input argument can contain up to two elements in a <code>Vector</code> or <code>Tuple</code>. The first (second) element corresponds to the second (third) order perturbation solution&#39;s Sylvester equation. When only one element is provided, it corresponds to the second-order perturbation solution&#39;s Sylvester equation. The algorithm to use can be specified for solving Sylvester equations in higher-order solutions. For example, select the <code>:bartels_stewart</code> algorithm for solving the second-order perturbation problem:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    algorithm = :second_order,
+    sylvester_algorithm = :bartels_stewart,
+    verbose = true)
+# Quadratic matrix equation solver previous solution has tolerance: 1.517007008035588e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 1.517007008035588e-16
+# Sylvester equation - converged to tol 1.0e-10: true; iterations: -1; reached tol: 6.19336731775721e-17; algorithm: bartels_stewart
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]</code></pre><p>For third-order solutions, different algorithms can be specified for the second- and third-order Sylvester equations using a <code>Tuple</code>:</p><pre><code class="language-julia hljs">sim_data = simulate(Gali_2015_chapter_3_nonlinear)([:Y],:,:simulate)
+plot_model_estimates(Gali_2015_chapter_3_nonlinear,
+    sim_data,
+    algorithm = :third_order,
+    sylvester_algorithm = (:doubling, :bicgstab),
+    verbose = true)
+# Quadratic matrix equation solver previous solution has tolerance: 1.517007008035588e-16
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 1.517007008035588e-16
+# Sylvester equation - previous solution achieves relative tol of 3.838708060339852e-17
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Quadratic matrix equation solver previous solution has tolerance: 1.517007008035588e-16
+# Sylvester equation - previous solution achieves relative tol of 3.838708060339852e-17
+# Sylvester equation - converged to tol 1.0e-10: true; iterations: 23; reached tol: 8.328904812714592e-17; algorithm: bicgstab
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]
+# Block: 1, - Solved with newton using previous solution - 0.0 - 0.0 - [4, 4]
+# Block: 2, - Solved with newton using previous solution - 2.220446049250313e-16 - 1.2990825655800334e-16 - [3, 3]</code></pre><p>The choice of algorithm affects both speed and precision: <code>:doubling</code> and <code>:bartels_stewart</code> are generally faster, while <code>:bicgstab</code>, <code>:dqgmres</code>, and <code>:gmres</code> are better for large sparse problems. Use this argument for specific needs or when encountering issues with the default solver.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../plot_conditional_variance_decomposition/">« Variance Decomposition</a><a class="docs-footer-nextpage" href="../how-to/loops/">Programmatic model writing using for-loops »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Thursday 1 January 2026 21:08">Thursday 1 January 2026</span>. Using Julia version 1.12.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
