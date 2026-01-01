@@ -9,7 +9,6 @@ using ReverseDiff: record!, SpecialInstruction, InstructionTape, special_forward
 import MacroModelling: solve_sylvester_equation, solve_lyapunov_equation
 import MacroModelling: calculate_jacobian, calculate_hessian, calculate_third_order_derivatives
 import MacroModelling: get_NSSS_and_parameters
-import MacroModelling: run_kalman_iterations
 import MacroModelling: timings, ℳ, CalculationOptions, sylvester_caches, Sylvester_caches, higher_order_caches, Higher_order_caches
 
 import LinearAlgebra
@@ -40,6 +39,7 @@ struct JacobianCalculation end
 struct HessianCalculation end 
 struct ThirdOrderCalculation end
 struct NSSSCalculation end
+struct NSSSCalculationFailed end  # For failed solutions - returns zero gradients
 struct KalmanFilter end
 
 const LYAPUNOV_SOLVER = LyapunovSolver()
@@ -48,6 +48,7 @@ const JACOBIAN_CALCULATION = JacobianCalculation()
 const HESSIAN_CALCULATION = HessianCalculation()
 const THIRD_ORDER_CALCULATION = ThirdOrderCalculation()
 const NSSS_CALCULATION = NSSSCalculation()
+const NSSS_CALCULATION_FAILED = NSSSCalculationFailed()
 const KALMAN_FILTER = KalmanFilter()
 
 # =============================================================================
@@ -576,7 +577,10 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(params_val, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
     
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+        # Record a failed instruction that returns zero gradients
         SS_tracked = track(copy(SS_and_pars), D, tp)
+        cache = (length(params_val),)
+        record!(tp, SpecialInstruction, NSSS_CALCULATION_FAILED, (parameter_values,), SS_tracked, cache)
         return (SS_tracked, (solution_error, iters))
     end
     
@@ -610,7 +614,10 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     ∂SS_equations_∂SS_and_pars_lu = MacroModelling.RF.lu(∂SS_equations_∂SS_and_pars, check = false)
     
     if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
+        # Record a failed instruction that returns zero gradients
         SS_tracked = track(copy(SS_and_pars), D, tp)
+        cache = (length(params_val),)
+        record!(tp, SpecialInstruction, NSSS_CALCULATION_FAILED, (parameter_values,), SS_tracked, cache)
         return (SS_tracked, (10.0, iters))
     end
     
@@ -644,6 +651,22 @@ end
     ∂parameters = jvp' * ∂SS
     
     increment_deriv!(parameter_values, ∂parameters)
+    unseed!(output)
+    return nothing
+end
+
+# Failed NSSS calculation - returns zero gradients
+@noinline function ReverseDiff.special_forward_exec!(instruction::SpecialInstruction{NSSSCalculationFailed})
+    return nothing
+end
+
+@noinline function ReverseDiff.special_reverse_exec!(instruction::SpecialInstruction{NSSSCalculationFailed})
+    parameter_values = instruction.input[1]
+    output = instruction.output
+    n_params, = instruction.cache
+    
+    # Return zero gradients for failed solutions
+    increment_deriv!(parameter_values, zeros(n_params))
     unseed!(output)
     return nothing
 end
