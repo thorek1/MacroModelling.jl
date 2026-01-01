@@ -106,5 +106,45 @@
         SolowGrowth = nothing
     end
     
+    @testset "Backward looking model with custom initial state (simulate_newton)" begin
+        # Test with Solow growth model from custom initial capital
+        @model SolowGrowth2 begin
+            k[0] = (1 - delta) * k[-1] + s * k[-1]^alpha * exp(z[-1])
+            z[0] = rho * z[-1] + sigma * eps_z[x]
+        end
+
+        @parameters SolowGrowth2 begin
+            alpha = 0.3
+            delta = 0.1
+            s = 0.2
+            rho = 0.9
+            sigma = 0.01
+        end
+        
+        # Verify it's a backward looking model
+        @test SolowGrowth2.timings.nFuture_not_past_and_mixed == 0
+        
+        # Start from initial capital below steady state
+        k_ss = (0.2/0.1)^(1/(1-0.3))
+        initial_k = k_ss * 0.5  # Start at 50% of steady state capital
+        initial_state_solow = [initial_k, 0.0]  # [k, z]
+        
+        result_solow = simulate_newton(SolowGrowth2, initial_state_solow, periods = 10, shocks = :none)
+        
+        @test size(result_solow, 1) == 2  # 2 variables
+        @test size(result_solow, 2) == 10  # 10 periods
+        
+        # Capital should increase over time (converging toward steady state)
+        @test result_solow(:k, 1) > initial_k  # First period k should increase
+        @test result_solow(:k, 10) > result_solow(:k, 1)  # Later periods should be higher
+        
+        # Test simulation with shocks
+        result_with_shocks = simulate_newton(SolowGrowth2, initial_state_solow, periods = 10, shocks = :simulate)
+        @test size(result_with_shocks, 1) == 2
+        @test size(result_with_shocks, 2) == 10
+        
+        SolowGrowth2 = nothing
+    end
+    
     GC.gc()
 end
