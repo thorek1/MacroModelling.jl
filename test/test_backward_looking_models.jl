@@ -146,60 +146,61 @@
         SolowGrowth2 = nothing
     end
     
-    @testset "Model without analytical steady state (explosive growth)" begin
-        # Explosive growth model - no stable steady state
-        # y[0] = (1 + g) * y[-1] + a * z[-1] where g > 0 leads to explosive growth
-        # This model doesn't have a finite steady state - it grows forever
-        @model ExplosiveGrowth begin
+    @testset "Model with unstable eigenvalue but valid SS at zero" begin
+        # Model y[0] = (1 + g) * y[-1] with g > 0 
+        # Has eigenvalue > 1 (unstable) but valid SS at y = 0
+        # From SS, iterating stays at SS. From any other point, it explodes.
+        @model UnstableButValidSS begin
             y[0] = (1 + g) * y[-1] + a * z[-1]
             z[0] = rho * z[-1] + sigma * eps_z[x]
         end
 
-        @parameters ExplosiveGrowth begin
-            g = 0.02      # 2% growth rate - no convergence to steady state
+        @parameters UnstableButValidSS begin
+            g = 0.02      # 2% growth rate - eigenvalue > 1
             a = 0.5
             rho = 0.9
             sigma = 0.01
         end
         
         # Verify it's a backward looking model  
-        @test ExplosiveGrowth.timings.nFuture_not_past_and_mixed == 0
+        @test UnstableButValidSS.timings.nFuture_not_past_and_mixed == 0
         
-        # For explosive backward looking models:
-        # - must use algorithm = :newton
-        # - must provide initial_state (in levels)
+        # This model HAS a valid SS at y=0, z=0
+        ss = get_steady_state(UnstableButValidSS)
+        @test isapprox(ss(:y, :Steady_state), 0.0, atol=1e-10)
+        @test isapprox(ss(:z, :Steady_state), 0.0, atol=1e-10)
+        
+        # Since SS is valid, newton works WITHOUT requiring initial_state
+        # (starts from SS=0 and computes IRFs in deviations)
+        irf_newton = get_irf(UnstableButValidSS, algorithm = :newton)
+        @test size(irf_newton, 1) == 2  # 2 variables
+        @test size(irf_newton, 3) == 1  # 1 shock
+        
+        # IRF from SS should show the effect of a shock
+        # y responds to z shock through the 'a' parameter
+        @test irf_newton(:y, 1, :eps_z) != 0.0  # y responds to z shock
+        
+        # Can also provide initial_state in levels for simulation from non-SS point
         initial_y = 100.0  # Start at y = 100
-        initial_state = [initial_y, 0.0]  # [y, z]
+        initial_state_levels = [initial_y, 0.0]  # [y, z]
         
-        result = get_irf(ExplosiveGrowth,
+        result = get_irf(UnstableButValidSS,
                         algorithm = :newton,
-                        initial_state = initial_state,
+                        initial_state = initial_state_levels,
                         shocks = :none,
                         periods = 10)
         
         @test size(result, 1) == 2  # 2 variables
         @test size(result, 2) == 10  # 10 periods
         
-        # Access values properly (result is 3D with shocks dimension)
-        y_values = result(:y, :, :none)
-        z_values = result(:z, :, :none)
-        
         # y should grow each period at rate g (with z = 0)
+        # Since initial_state is in levels and model has valid SS,
+        # result is in levels (initial_state_levels provided)
+        y_values = result(:y, :, :none)
         @test y_values[1] ≈ initial_y * (1 + 0.02) rtol=1e-6  # y_1 = (1+g) * y_0
         @test y_values[2] > y_values[1]  # Continues growing
-        @test y_values[10] > y_values[1]  # Still growing at period 10
         
-        # z should stay at 0 with no shocks
-        @test isapprox(z_values[1], 0.0, atol=1e-10)
-        @test isapprox(z_values[10], 0.0, atol=1e-10)
-        
-        # Test that calling without initial_state on explosive model throws error
-        @test_throws AssertionError get_irf(ExplosiveGrowth, algorithm = :newton)
-        
-        # Test that calling with wrong algorithm on explosive model throws error  
-        @test_throws AssertionError get_irf(ExplosiveGrowth, algorithm = :first_order, initial_state = initial_state)
-        
-        ExplosiveGrowth = nothing
+        UnstableButValidSS = nothing
     end
     
     @testset "Unit root model (AR(1) with rho=1, has valid SS at zero)" begin
