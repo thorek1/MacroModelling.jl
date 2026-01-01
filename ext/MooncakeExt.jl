@@ -106,7 +106,7 @@ function compute_analytical_gradient_first_order_kalman(
     # Forward pass with caching for backward pass
     # Step 1: Get NSSS and parameters with its rrule
     (SS_and_pars, (solution_error, iters)), nsss_pullback = rrule(
-        get_NSSS_and_parameters, 𝓂, parameter_values, opts = opts
+        get_NSSS_and_parameters, 𝓂, parameter_values; opts = opts
     )
     
     if solution_error > opts.tol.NSSS_acceptance_tol
@@ -119,7 +119,7 @@ function compute_analytical_gradient_first_order_kalman(
     # Step 3: Calculate first-order solution with its rrule
     TT = 𝓂.timings
     (𝐒₁, qme_sol, solved), first_order_pullback = rrule(
-        calculate_first_order_solution, ∇₁, 
+        calculate_first_order_solution, ∇₁; 
         T = TT, 
         opts = opts,
         initial_guess = 𝓂.solution.perturbation.qme_solution
@@ -143,7 +143,7 @@ function compute_analytical_gradient_first_order_kalman(
     
     # Step 5: Get initial covariance with rrule for solve_lyapunov_equation
     (P, lyap_solved), lyapunov_pullback = rrule(
-        solve_lyapunov_equation, A, 𝐁,
+        solve_lyapunov_equation, A, 𝐁;
         lyapunov_algorithm = opts.lyapunov_algorithm,
         tol = opts.tol.lyapunov_tol,
         acceptance_tol = opts.tol.lyapunov_acceptance_tol,
@@ -156,7 +156,7 @@ function compute_analytical_gradient_first_order_kalman(
     
     # Step 6: Run Kalman iterations with rrule
     llh, kalman_pullback = rrule(
-        run_kalman_iterations, A, 𝐁, C, P, data_in_deviations,
+        run_kalman_iterations, A, 𝐁, C, P, data_in_deviations;
         presample_periods = presample_periods,
         verbose = opts.verbose
     )
@@ -225,7 +225,7 @@ function compute_analytical_gradient_first_order_inversion(
     # Forward pass with caching for backward pass
     # Step 1: Get NSSS and parameters with its rrule
     (SS_and_pars, (solution_error, iters)), nsss_pullback = rrule(
-        get_NSSS_and_parameters, 𝓂, parameter_values, opts = opts
+        get_NSSS_and_parameters, 𝓂, parameter_values; opts = opts
     )
     
     if solution_error > opts.tol.NSSS_acceptance_tol
@@ -238,7 +238,7 @@ function compute_analytical_gradient_first_order_inversion(
     # Step 3: Calculate first-order solution with its rrule
     TT = 𝓂.timings
     (𝐒₁, qme_sol, solved), first_order_pullback = rrule(
-        calculate_first_order_solution, ∇₁, 
+        calculate_first_order_solution, ∇₁; 
         T = TT, 
         opts = opts,
         initial_guess = 𝓂.solution.perturbation.qme_solution
@@ -254,7 +254,7 @@ function compute_analytical_gradient_first_order_inversion(
     # Step 5: Run inversion filter with rrule
     llh, inversion_pullback = rrule(
         calculate_inversion_filter_loglikelihood, Val(:first_order),
-        state, 𝐒₁, data_in_deviations, observables, TT,
+        state, 𝐒₁, data_in_deviations, observables, TT;
         warmup_iterations = warmup_iterations,
         presample_periods = presample_periods,
         filter_algorithm = filter_algorithm,
@@ -363,7 +363,7 @@ function Mooncake.rrule!!(
     obs_indices = convert(Vector{Int}, indexin(observables, NSSS_labels))
     
     # Get steady state for data transformation
-    SS_and_pars, _ = get_NSSS_and_parameters(𝓂, parameter_values, opts = opts)
+    SS_and_pars, _ = get_NSSS_and_parameters(𝓂, parameter_values; opts = opts)
     
     if collect(axiskeys(data,1)) isa Vector{String}
         data_rekey = rekey(data, 1 => axiskeys(data,1) .|> Meta.parse .|> replace_indices)
