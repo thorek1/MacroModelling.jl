@@ -9729,6 +9729,11 @@ function create_newton_state_update(𝓂::ℳ)
     # Get indices for past_not_future_and_mixed (used in state vector)
     past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
     
+    # Get steady state values for present and past variables
+    SS_present = SS_and_pars[present_idx_in_SS]
+    SS_past = SS_and_pars[past_idx_in_SS]
+    SS_vars = SS_and_pars[1:nVars]
+    
     # Create the state update function
     function state_update_newton(state::Vector{T}, shock::Vector{S}) where {T, S}
         # Get steady state values for parameters and SS variables
@@ -9737,19 +9742,17 @@ function create_newton_state_update(𝓂::ℳ)
         ss_values = SS_and_pars[indexin(sort(stst), SS_and_pars_names)]
         params_and_ss = vcat(pars_values, ss_values)
         
-        # Initial guess: steady state values for present variables
-        present_guess = SS_and_pars[present_idx_in_SS]
+        # Initial guess: steady state values for present variables (in levels)
+        present_guess = copy(SS_present)
         
-        # Get past values from state
-        past_values = state[past_not_future_and_mixed_idx][indexin(past_sorted, 𝓂.timings.past_not_future_and_mixed[indexin(past_sorted, 𝓂.timings.past_not_future_and_mixed)])]
-        
-        # Reorder past values to match the sorted order in the dynamic equations
-        # past_values should be ordered same as past_sorted
+        # Get past values from state (which are in deviations from SS)
+        # Add steady state to convert to levels
         past_from_state = zeros(n_past)
         for (i, p) in enumerate(past_sorted)
             idx_in_state = findfirst(x -> x == p, 𝓂.timings.past_not_future_and_mixed)
             if idx_in_state !== nothing
-                past_from_state[i] = state[past_not_future_and_mixed_idx][idx_in_state]
+                # state is in deviations, add SS to get levels
+                past_from_state[i] = state[past_not_future_and_mixed_idx][idx_in_state] + SS_past[i]
             end
         end
         
@@ -9762,7 +9765,7 @@ function create_newton_state_update(𝓂::ℳ)
             end
         end
         
-        # Combine: 𝔙 = [present; past; shocks]
+        # Combine: 𝔙 = [present; past; shocks] (all in levels for present/past)
         vars = vcat(present_guess, past_from_state, shock_values)
         
         # Newton iterations
@@ -9773,10 +9776,10 @@ function create_newton_state_update(𝓂::ℳ)
         jacobian = zeros(length(present_guess), n_present)
         
         for iter in 1:max_iter
-            # Update vars with current present guess
+            # Update vars with current present guess (in levels)
             vars[1:n_present] = present_guess
             
-            # Evaluate residual and jacobian
+            # Evaluate residual and jacobian (with values in levels)
             residual_func(residual, params_and_ss, vars)
             jacobian_func(jacobian, params_and_ss, vars)
             
@@ -9795,18 +9798,19 @@ function create_newton_state_update(𝓂::ℳ)
             end
         end
         
-        # Construct full state vector in the correct order
-        result = copy(SS_and_pars[1:nVars])  # Start with SS values
+        # Construct full state vector in the correct order (in levels first)
+        result_levels = copy(SS_vars)
         
-        # Fill in the present values we just computed
+        # Fill in the present values we just computed (in levels)
         for (i, p) in enumerate(present_sorted)
             idx = findfirst(x -> x == p, 𝓂.timings.var)
             if idx !== nothing
-                result[idx] = present_guess[i]
+                result_levels[idx] = present_guess[i]
             end
         end
         
-        return result
+        # Subtract steady state to return deviations from SS
+        return result_levels - SS_vars
     end
     
     return state_update_newton
