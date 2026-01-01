@@ -3905,9 +3905,9 @@ if test_set == "basic"
             # Get FiniteDifferences gradient
             fin_grad = nothing
             for i in 1:100
-                local fin_grad_try = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), nsss_sum, params)
+                local fin_grad_try = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), nsss_sum, params)[1]
                 if isfinite(ℒ.norm(fin_grad_try))
-                    fin_grad = fin_grad_try[1]
+                    fin_grad = fin_grad_try
                     break
                 end
             end
@@ -3947,9 +3947,9 @@ if test_set == "basic"
             # Get FiniteDifferences gradient (with retry for numerical stability)
             fin_grad = nothing
             for i in 1:100
-                local fin_grad_try = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), ll_func, params)
+                local fin_grad_try = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), ll_func, params)[1]
                 if isfinite(ℒ.norm(fin_grad_try))
-                    fin_grad = fin_grad_try[1]
+                    fin_grad = fin_grad_try
                     break
                 end
             end
