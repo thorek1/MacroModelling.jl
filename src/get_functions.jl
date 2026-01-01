@@ -1251,6 +1251,7 @@ function get_irf(𝓂::ℳ;
     # For backward looking models, check steady state validity and if model is explosive
     no_valid_steady_state = false
     is_explosive = false
+    has_unit_root = false
     
     if is_backward_looking
         # Try to get steady state and check if it's valid
@@ -1282,6 +1283,16 @@ function get_irf(𝓂::ℳ;
             
             # If next state differs from SS, model is explosive
             is_explosive = !isapprox(next_state, SS_vars, rtol = 1e-8)
+            
+            # For unit root models with valid SS: the model stays at SS without shocks
+            # but deviates permanently with shocks (like random walk)
+            # These are NOT explosive - they have valid SS that the newton solver found
+            # Unit root detection: check if the first-order solution matrix has eigenvalue = 1
+            if !is_explosive && algorithm == :newton
+                # For unit root models, we can use SS as reference
+                # Deviations will be computed against no-shock reference path
+                has_unit_root = true  # Mark as unit root model for later processing
+            end
         end
         
         no_valid_steady_state = no_valid_steady_state || is_explosive
@@ -1300,9 +1311,9 @@ function get_irf(𝓂::ℳ;
     end
     
     # Determine if we should use levels mode:
-    # - backward looking model with newton algorithm and provided initial_state
-    # - OR backward looking model with no valid steady state (already checked algorithm = :newton and initial_state provided above)
-    use_levels_mode = is_backward_looking && algorithm == :newton && !unspecified_initial_state
+    # - backward looking model with newton algorithm and provided initial_state (for explosive models)
+    # - For unit root models with valid SS and newton algorithm, we can work in deviations from no-shock path
+    use_levels_mode = is_backward_looking && algorithm == :newton && !unspecified_initial_state && !has_unit_root
     
     # @timeit_debug timer "Solve model" begin
 

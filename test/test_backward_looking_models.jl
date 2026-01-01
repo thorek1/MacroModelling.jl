@@ -202,5 +202,53 @@
         ExplosiveGrowth = nothing
     end
     
+    @testset "Unit root model (AR(1) with rho=1, has valid SS at zero)" begin
+        # Unit root model using AR(1) formulation with rho=1
+        # y[0] = rho_y * y[-1] + sigma * eps_y[x] with rho_y = 1.0
+        # This has a valid steady state at y = 0 but has a unit root
+        # Written this way (instead of y[0] = y[-1] + e[x]) so SymPy can solve SS
+        @model UnitRootAR1 begin
+            y[0] = rho_y * y[-1] + sigma * eps_y[x]
+            z[0] = rho_z * z[-1] + sigma_z * eps_z[x]
+        end
+
+        @parameters UnitRootAR1 begin
+            rho_y = 1.0  # Unit root - permanent shocks
+            rho_z = 0.5  # Stationary
+            sigma = 0.1
+            sigma_z = 0.1
+        end
+        
+        # Verify it's a backward looking model  
+        @test UnitRootAR1.timings.nFuture_not_past_and_mixed == 0
+        
+        # Should find steady state at zero
+        ss = get_steady_state(UnitRootAR1)
+        @test isapprox(ss(:y, :Steady_state), 0.0, atol=1e-10)
+        @test isapprox(ss(:z, :Steady_state), 0.0, atol=1e-10)
+        
+        # For unit root models with valid SS, newton algorithm should work WITHOUT requiring initial_state
+        # Deviations are computed against the no-shock reference path
+        irf_newton = get_irf(UnitRootAR1, algorithm = :newton)
+        @test size(irf_newton, 1) == 2  # 2 variables
+        @test size(irf_newton, 3) == 2  # 2 shocks
+        
+        # The IRF for y to eps_y shock should show permanent effect (unit root)
+        # First period deviation should be equal to sigma (shock size = 1)
+        @test isapprox(irf_newton(:y, 1, :eps_y), 0.1, rtol=1e-6)  # sigma * 1
+        # Effect should persist (unit root with rho=1)
+        @test isapprox(irf_newton(:y, 10, :eps_y), 0.1, rtol=1e-6)  # Still 0.1
+        
+        # For z with rho = 0.5, effect should decay
+        @test isapprox(irf_newton(:z, 1, :eps_z), 0.1, rtol=1e-6)  # sigma_z * 1
+        @test irf_newton(:z, 10, :eps_z) < irf_newton(:z, 1, :eps_z)  # Decays
+        
+        # First order and newton should give same results for linear model
+        irf_first = get_irf(UnitRootAR1, algorithm = :first_order)
+        @test isapprox(collect(irf_first), collect(irf_newton), rtol=1e-6)
+        
+        UnitRootAR1 = nothing
+    end
+    
     GC.gc()
 end

@@ -647,13 +647,20 @@ macro model(𝓂,ex...)
             if precompile
                 ss_aux_equation = unblock(prs_ex)
             else
-                ss_aux_equation = simplify(unblock(prs_ex))
+                simplified_eq = simplify(unblock(prs_ex))
+                # If equation simplifies to a constant (Int/Float), keep the original unsimplified form
+                # This preserves variable dependencies for the incidence matrix
+                if simplified_eq isa Int || simplified_eq isa Float64
+                    ss_aux_equation = unblock(prs_ex)
+                else
+                    ss_aux_equation = simplified_eq
+                end
             end
         end
         
         if ss_aux_equation isa Symbol 
             push!(ss_aux_equations, Expr(:call,:-,ss_aux_equation,0))
-        else#if !(ss_aux_equation isa Int)
+        else
             # println(eq)
             push!(ss_aux_equations, ss_aux_equation)
         end
