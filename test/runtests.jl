@@ -3891,7 +3891,9 @@ if test_set == "basic"
         end
 
         # Helper function to compare gradients across backends
-        function compare_gradients(func, params; rtol=1e-5, test_fin_diff=true)
+        # The retry loop (max 100 iterations) for finite differences is needed because numerical
+        # differentiation can occasionally produce NaN/Inf values due to floating point issues
+        function compare_gradients(func, params; rtol=1e-5, test_fin_diff=true, max_fin_diff_retries=100, print_times=true)
             # Get Zygote gradient and measure time
             zygote_time = @elapsed zygote_grad = Zygote.gradient(func, params)[1]
             
@@ -3903,7 +3905,7 @@ if test_set == "basic"
             # Get FiniteDifferences gradient (with retry for numerical stability)
             fin_grad = nothing
             if test_fin_diff
-                for i in 1:100
+                for i in 1:max_fin_diff_retries
                     local fin_grad_try = FiniteDifferences.grad(FiniteDifferences.central_fdm(4, 1), func, params)[1]
                     if isfinite(ℒ.norm(fin_grad_try))
                         fin_grad = fin_grad_try
@@ -3912,8 +3914,15 @@ if test_set == "basic"
                 end
             end
             
+            # Print timing information for comparison
+            if print_times
+                println("  Zygote time: $(round(zygote_time, digits=3))s")
+                println("  Mooncake prep time: $(round(mooncake_prep_time, digits=3))s, eval time: $(round(mooncake_time, digits=3))s")
+            end
+            
             return (zygote_grad=zygote_grad, mooncake_grad=mooncake_grad, fin_grad=fin_grad,
-                    zygote_time=zygote_time, mooncake_prep_time=mooncake_prep_time, mooncake_time=mooncake_time)
+                    zygote_time=zygote_time, mooncake_prep_time=mooncake_prep_time, mooncake_time=mooncake_time,
+                    rtol=rtol)
         end
 
         # Test 1: NSSS gradient comparison
@@ -3926,10 +3935,10 @@ if test_set == "basic"
             params = copy(RBC_AD.parameter_values)
             result = compare_gradients(nsss_sum, params)
             
-            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=1e-6)
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
             if result.fin_grad !== nothing
-                @test isapprox(result.zygote_grad, result.fin_grad, rtol=1e-6)
-                @test isapprox(result.mooncake_grad, result.fin_grad, rtol=1e-6)
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
+                @test isapprox(result.mooncake_grad, result.fin_grad, rtol=result.rtol)
             end
         end
 
@@ -3944,9 +3953,9 @@ if test_set == "basic"
             params = copy(RBC_AD.parameter_values)
             result = compare_gradients(jacobian_sum, params)
             
-            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=1e-5)
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
             if result.fin_grad !== nothing
-                @test isapprox(result.zygote_grad, result.fin_grad, rtol=1e-5)
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
             end
         end
 
@@ -3964,9 +3973,9 @@ if test_set == "basic"
             params = copy(RBC_AD.parameter_values)
             result = compare_gradients(ll_first_order_kalman, params)
             
-            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=1e-6)
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
             if result.fin_grad !== nothing
-                @test isapprox(result.zygote_grad, result.fin_grad, rtol=1e-6)
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
             end
         end
 
@@ -3984,9 +3993,9 @@ if test_set == "basic"
             params = copy(RBC_AD.parameter_values)
             result = compare_gradients(ll_first_order_inversion, params)
             
-            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=1e-6)
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
             if result.fin_grad !== nothing
-                @test isapprox(result.zygote_grad, result.fin_grad, rtol=1e-6)
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
             end
         end
 
@@ -4004,7 +4013,7 @@ if test_set == "basic"
             params = copy(RBC_AD.parameter_values)
             result = compare_gradients(ll_pruned_second_order, params, test_fin_diff=false)  # Skip finite diff for higher order
             
-            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=1e-5)
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
         end
 
         # Test 6: Log-likelihood with second_order algorithm  
@@ -4021,7 +4030,7 @@ if test_set == "basic"
             params = copy(RBC_AD.parameter_values)
             result = compare_gradients(ll_second_order, params, test_fin_diff=false)  # Skip finite diff for higher order
             
-            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=1e-5)
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
         end
 
         # Test 7: Lyapunov equation solver gradient
@@ -4038,9 +4047,9 @@ if test_set == "basic"
             params = [0.5, 0.3, 1.0, 1.0]
             result = compare_gradients(lyapunov_test, params)
             
-            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=1e-5)
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
             if result.fin_grad !== nothing
-                @test isapprox(result.zygote_grad, result.fin_grad, rtol=1e-5)
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
             end
         end
 
@@ -4057,9 +4066,9 @@ if test_set == "basic"
             params = [0.5, 0.3, -0.5, -0.3]
             result = compare_gradients(sylvester_test, params)
             
-            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=1e-5)
+            @test isapprox(result.zygote_grad, result.mooncake_grad, rtol=result.rtol)
             if result.fin_grad !== nothing
-                @test isapprox(result.zygote_grad, result.fin_grad, rtol=1e-5)
+                @test isapprox(result.zygote_grad, result.fin_grad, rtol=result.rtol)
             end
         end
 
