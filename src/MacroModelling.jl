@@ -8118,12 +8118,31 @@ function write_newton_simulation_functions!(𝓂::ℳ;
     residual_buffer = zeros(Float64, length(dyn_equations))
     jacobian_buffer = zeros(Float64, size(∇_present_mat))
     
-    # Store in model
-    𝓂.newton_simulation_functions = (
-        residual_func = residual_func,
-        jacobian_func = jacobian_func,
-        residual_buffer = residual_buffer,
-        jacobian_buffer = jacobian_buffer
+    # Compute jacobian w.r.t. shocks for conditional forecasting
+    shock_vars = 𝔙[n_present + n_past + 1 : n_present + n_past + n_exo]
+    ∇_shocks = Symbolics.sparsejacobian(dyn_equations_vec, collect(shock_vars))
+    ∇_shocks_mat = convert(Matrix, ∇_shocks)
+    
+    _, jacobian_shock_func = Symbolics.build_function(∇_shocks_mat, 𝔓, 𝔙,
+                                                cse = cse,
+                                                skipzeros = skipzeros,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    
+    jacobian_shock_buffer = zeros(Float64, size(∇_shocks_mat))
+    
+    # Create newton state update function
+    state_update = create_newton_state_update(𝓂, residual_func, jacobian_func, residual_buffer, jacobian_buffer)
+    
+    # Store in model's solution.backward_looking struct
+    𝓂.solution.backward_looking = backward_looking_solution(
+        state_update,
+        residual_func,
+        jacobian_func,
+        jacobian_shock_func,
+        residual_buffer,
+        jacobian_buffer,
+        jacobian_shock_buffer
     )
     
     return nothing
@@ -9666,8 +9685,8 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
             pruning = true
         elseif :newton == algorithm
             @assert 𝓂.timings.nFuture_not_past_and_mixed == 0 "Newton algorithm is only available for backward looking models (nFuture_not_past_and_mixed = 0)."
-            # Create newton-based state update function with levels option
-            state_update = create_newton_state_update(𝓂, levels = levels)
+            # Use the stored backward_looking state update function
+            state_update = 𝓂.solution.backward_looking.state_update
             pruning = false
         else
             # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
@@ -9681,19 +9700,15 @@ end
 
 
 """
-    create_newton_state_update(𝓂::ℳ; levels::Bool = false)
+    create_newton_state_update(𝓂::ℳ, residual_func, jacobian_func, residual_buffer, jacobian_buffer)
 
 Create a state update function that uses Newton's method to solve for present values
 given past values and shocks. Only for backward looking models.
 
-When `levels = false` (default): Input state is in deviations from SS, output is in deviations.
-When `levels = true`: Input state is in levels, output is in levels. Use this for models without a steady state.
+Works in deviations from SS: Input state is in deviations from SS, output is in deviations.
 """
-function create_newton_state_update(𝓂::ℳ; levels::Bool = false)
-    # Get the newton simulation functions
-    residual_func = 𝓂.newton_simulation_functions.residual_func
-    jacobian_func = 𝓂.newton_simulation_functions.jacobian_func
-    
+function create_newton_state_update(𝓂::ℳ, residual_func::Function, jacobian_func::Function, 
+                                    residual_buffer::Vector{Float64}, jacobian_buffer::Matrix{Float64})
     # Get steady state and parameters
     SS_and_pars = 𝓂.solution.non_stochastic_steady_state
     parameters = 𝓂.parameter_values
@@ -9745,38 +9760,17 @@ function create_newton_state_update(𝓂::ℳ; levels::Bool = false)
         ss_values = SS_and_pars[indexin(sort(stst), SS_and_pars_names)]
         params_and_ss = vcat(pars_values, ss_values)
         
-        # Get past values from state
+        # Get past values from state (state is in deviations, add SS to get levels)
         past_from_state = zeros(n_past)
         for (i, p) in enumerate(past_sorted)
             idx_in_state = findfirst(x -> x == p, 𝓂.timings.past_not_future_and_mixed)
             if idx_in_state !== nothing
-                if levels
-                    # state is already in levels, use directly
-                    past_from_state[i] = state[past_not_future_and_mixed_idx][idx_in_state]
-                else
-                    # state is in deviations, add SS to get levels
-                    past_from_state[i] = state[past_not_future_and_mixed_idx][idx_in_state] + SS_past[i]
-                end
+                past_from_state[i] = state[past_not_future_and_mixed_idx][idx_in_state] + SS_past[i]
             end
         end
         
-        # Initial guess: use past values as starting point for present (in levels)
-        # For models without SS, this is more robust than using SS values
-        if levels
-            present_guess = zeros(n_present)
-            for (i, p) in enumerate(present_sorted)
-                idx_in_past = findfirst(x -> x == p, past_sorted)
-                if idx_in_past !== nothing
-                    present_guess[i] = past_from_state[idx_in_past]
-                else
-                    # For variables not in past, use 1.0 as default (common for capital, etc.)
-                    present_guess[i] = 1.0
-                end
-            end
-        else
-            # Use steady state values for present variables (in levels)
-            present_guess = copy(SS_present)
-        end
+        # Initial guess: use steady state values for present variables (in levels)
+        present_guess = copy(SS_present)
         
         # Get shock values - reorder to match sorted order
         # Use similar type as shock to support ForwardDiff dual numbers
@@ -9825,11 +9819,7 @@ function create_newton_state_update(𝓂::ℳ; levels::Bool = false)
         end
         
         # Construct full state vector in the correct order (in levels)
-        if levels
-            result_levels = zeros(ShockType, nVars)
-        else
-            result_levels = convert(Vector{ShockType}, copy(SS_vars))
-        end
+        result_levels = convert(Vector{ShockType}, copy(SS_vars))
         
         # Fill in the present values we just computed (in levels)
         for (i, p) in enumerate(present_sorted)
@@ -9839,13 +9829,8 @@ function create_newton_state_update(𝓂::ℳ; levels::Bool = false)
             end
         end
         
-        if levels
-            # Return in levels (no SS subtraction)
-            return result_levels
-        else
-            # Subtract steady state to return deviations from SS
-            return result_levels - SS_vars
-        end
+        # Subtract steady state to return deviations from SS
+        return result_levels - SS_vars
     end
     
     return state_update_newton

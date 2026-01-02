@@ -240,8 +240,19 @@ struct ss_solve_block
     extended_ss_problem::function_and_jacobian
 end
 
+struct backward_looking_solution
+    state_update::Function
+    residual_func::Function
+    jacobian_func::Function
+    jacobian_shock_func::Function  # Jacobian w.r.t. shocks for conditional forecasting
+    residual_buffer::Vector{Float64}
+    jacobian_buffer::Matrix{Float64}
+    jacobian_shock_buffer::Matrix{Float64}
+end
+
 mutable struct solution
     perturbation::perturbation
+    backward_looking::backward_looking_solution
     non_stochastic_steady_state::Vector{Float64}
     # algorithms::Set{Symbol}
     outdated_algorithms::Set{Symbol}
@@ -425,9 +436,6 @@ mutable struct ℳ
     third_order_derivatives::Tuple{AbstractMatrix{<: Real},Function}
     third_order_derivatives_parameters::Tuple{AbstractMatrix{<: Real},Function}
     third_order_derivatives_SS_and_pars::Tuple{AbstractMatrix{<: Real},Function}
-
-    # Newton simulation functions for backward looking models
-    newton_simulation_functions::NamedTuple{(:residual_func, :jacobian_func, :residual_buffer, :jacobian_buffer), Tuple{Function, Function, Vector{Float64}, Matrix{Float64}}}
 
     # model_jacobian::Tuple{Vector{Function}, SparseMatrixCSC{Float64}}
     # model_jacobian::Tuple{Vector{Function}, Vector{Int}, Matrix{<: Real}}
