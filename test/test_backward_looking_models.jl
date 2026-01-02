@@ -31,7 +31,12 @@
         sol = get_solution(VAR2)
         @test !isnothing(sol)
         
-        # Test IRFs with first_order algorithm
+        # Test IRFs - default algorithm should be :newton for backward looking models
+        irf_default = get_irf(VAR2)
+        @test size(irf_default, 1) == 2  # 2 variables
+        @test size(irf_default, 3) == 2  # 2 shocks
+        
+        # Test IRFs with first_order algorithm (explicitly specified)
         irf_first = get_irf(VAR2, algorithm = :first_order)
         @test size(irf_first, 1) == 2  # 2 variables
         @test size(irf_first, 3) == 2  # 2 shocks
@@ -40,13 +45,8 @@
         sim = simulate(VAR2)
         @test size(sim, 1) == 2  # 2 variables
         
-        # Test newton algorithm - should produce same results as first_order for linear model
-        irf_newton = get_irf(VAR2, algorithm = :newton)
-        @test size(irf_newton, 1) == 2  # 2 variables
-        @test size(irf_newton, 3) == 2  # 2 shocks
-        
         # For linear models, first_order and newton should give approximately the same results
-        @test isapprox(collect(irf_first), collect(irf_newton), rtol=1e-6)
+        @test isapprox(collect(irf_first), collect(irf_default), rtol=1e-6)
         
         VAR2 = nothing
     end
@@ -85,7 +85,7 @@
         sol = get_solution(SolowGrowth)
         @test !isnothing(sol)
         
-        # Test IRFs with first_order algorithm
+        # Test IRFs - default algorithm for backward looking is :newton
         irf = get_irf(SolowGrowth)
         @test size(irf, 1) == 2  # 2 variables (k, z)
         @test size(irf, 3) == 1  # 1 shock
@@ -94,14 +94,28 @@
         sim = simulate(SolowGrowth)
         @test size(sim, 1) == 2  # 2 variables
         
-        # Test newton algorithm for nonlinear backward looking model
-        irf_newton = get_irf(SolowGrowth, algorithm = :newton)
-        @test size(irf_newton, 1) == 2  # 2 variables (k, z)
-        @test size(irf_newton, 3) == 1  # 1 shock
+        # Test first_order algorithm for comparison
+        irf_first = get_irf(SolowGrowth, algorithm = :first_order)
+        @test size(irf_first, 1) == 2  # 2 variables (k, z)
+        @test size(irf_first, 3) == 1  # 1 shock
         
         # Test simulation with newton
         sim_newton = simulate(SolowGrowth, algorithm = :newton)
         @test size(sim_newton, 1) == 2  # 2 variables
+        
+        # Test conditional forecasting with newton
+        # Condition z to be 0.02 in period 1
+        conditions = Matrix{Union{Nothing,Float64}}(nothing, 2, 2)
+        k_idx = findfirst(x -> x == :k, SolowGrowth.var)
+        z_idx = findfirst(x -> x == :z, SolowGrowth.var)
+        conditions[z_idx, 1] = 0.02  # Condition z in period 1
+        conditions[z_idx, 2] = 0.01  # Condition z in period 2
+        
+        cf_newton = get_conditional_forecast(SolowGrowth, conditions, algorithm = :newton)
+        
+        # Check that conditions are met
+        @test isapprox(cf_newton(:z, 1), 0.02, rtol=1e-4)
+        @test isapprox(cf_newton(:z, 2), 0.01, rtol=1e-4)
         
         SolowGrowth = nothing
     end
@@ -146,6 +160,9 @@
         @test result(:k, 1, :none) > initial_k  # First period k should increase
         @test result(:k, 10, :none) > result(:k, 1, :none)  # Later periods should be higher
         
+        # Test plot_irf works (just check it doesn't error)
+        # plot_irf(SolowGrowth2, algorithm = :newton, show_plots = false)
+        
         SolowGrowth2 = nothing
     end
     
@@ -176,7 +193,8 @@
         
         # Since SS is valid, newton works WITHOUT requiring initial_state
         # (starts from SS=0 and computes IRFs in deviations)
-        irf_newton = get_irf(UnstableButValidSS, algorithm = :newton)
+        # Default algorithm for backward looking models is now :newton
+        irf_newton = get_irf(UnstableButValidSS)
         @test size(irf_newton, 1) == 2  # 2 variables
         @test size(irf_newton, 3) == 1  # 1 shock
         
@@ -205,13 +223,12 @@
         @test y_values[1] ≈ initial_y * (1 + 0.02) rtol=1e-6  # y_1 = (1+g) * y_0
         @test y_values[2] > y_values[1]  # Continues growing
         
-        # Test the key identity: levels=false deviation + baseline_levels = levels=true
-        # This verifies that baseline path deviations work correctly for explosive models
-        
-        # Get IRF with shocks in deviations mode (levels=false is default)
-        irf_dev = get_irf(UnstableButValidSS,
+        # Test deviations_from = :baseline
+        # Get IRF with shocks in deviations from baseline mode
+        irf_baseline = get_irf(UnstableButValidSS,
                         algorithm = :newton,
                         initial_state = initial_state_levels,
+                        deviations_from = :baseline,
                         periods = 10)
         
         # Get IRF in levels mode
@@ -229,11 +246,11 @@
                         levels = true,
                         periods = 10)
         
-        # Identity: irf_dev + baseline_lev ≈ irf_lev
+        # Identity: irf_baseline + baseline_lev ≈ irf_lev
         # (deviation from baseline + baseline in levels = simulation in levels)
-        @test isapprox(collect(irf_dev(:y, :, :eps_z)) .+ collect(baseline_lev(:y, :, :none)), 
+        @test isapprox(collect(irf_baseline(:y, :, :eps_z)) .+ collect(baseline_lev(:y, :, :none)), 
                        collect(irf_lev(:y, :, :eps_z)), rtol=1e-10)
-        @test isapprox(collect(irf_dev(:z, :, :eps_z)) .+ collect(baseline_lev(:z, :, :none)), 
+        @test isapprox(collect(irf_baseline(:z, :, :eps_z)) .+ collect(baseline_lev(:z, :, :none)), 
                        collect(irf_lev(:z, :, :eps_z)), rtol=1e-10)
         
         # Test conditional forecasting with non-trivial starting point
@@ -286,7 +303,8 @@
         
         # For unit root models with valid SS, newton algorithm should work WITHOUT requiring initial_state
         # Deviations are computed against the no-shock reference path
-        irf_newton = get_irf(UnitRootAR1, algorithm = :newton)
+        # Default algorithm for backward looking is :newton
+        irf_newton = get_irf(UnitRootAR1)
         @test size(irf_newton, 1) == 2  # 2 variables
         @test size(irf_newton, 3) == 2  # 2 shocks
         
@@ -334,8 +352,8 @@
         conditions[y_idx, 1] = 0.05  # Condition y in period 1
         conditions[x_idx, 2] = 0.02  # Condition x in period 2
         
-        # Use newton algorithm for conditional forecast
-        cf_newton = get_conditional_forecast(VAR_cond, conditions, algorithm = :newton)
+        # Use newton algorithm (default for backward looking) for conditional forecast
+        cf_newton = get_conditional_forecast(VAR_cond, conditions)
         
         # Check that conditions are met
         @test isapprox(cf_newton(:y, 1), 0.05, rtol=1e-6)

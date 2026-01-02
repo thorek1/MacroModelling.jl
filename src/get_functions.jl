@@ -1439,10 +1439,11 @@ And data, 4×40×1 Array{Float64, 3}:
 """
 function get_irf(𝓂::ℳ; 
                 periods::Int = DEFAULT_PERIODS, 
-                algorithm::Symbol = DEFAULT_ALGORITHM, 
+                algorithm::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? DEFAULT_ALGORITHM_BACKWARD_LOOKING : DEFAULT_ALGORITHM, 
                 parameters::ParameterType = nothing,
                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                 shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCKS_EXCLUDING_OBC,
+                deviations_from::Symbol = DEFAULT_DEVIATIONS_FROM,
                 negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK, 
                 generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
                 generalised_irf_warmup_iterations::Int = DEFAULT_GENERALISED_IRF_WARMUP,
@@ -1514,6 +1515,14 @@ function get_irf(𝓂::ℳ;
         
         @assert !unspecified_initial_state "Model is backward looking with no valid steady state. Provide initial_state in levels."
     end
+    
+    # Validate deviations_from parameter
+    @assert deviations_from ∈ [:steady_state, :baseline] "deviations_from must be either :steady_state or :baseline"
+    
+    # If levels = true, ignore deviations_from (levels are levels)
+    if levels && deviations_from == :baseline
+        @warn "deviations_from = :baseline is ignored when levels = true (returning levels)"
+    end
 
     # @timeit_debug timer "Get relevant steady state" begin
 
@@ -1559,12 +1568,12 @@ function get_irf(𝓂::ℳ;
     
     level = levels ? reference_steady_state + SSS_delta : SSS_delta
     
-    # For backward looking models with initial_state provided, compute baseline path
+    # For backward looking models with deviations_from = :baseline, compute baseline path
     # The baseline path is the no-shock forward iteration from initial_state
-    # When levels=false: IRFs will show deviations from this baseline (shock effect)
-    # When levels=true: baseline_path is not used (return simulation in levels)
+    # When deviations_from = :baseline and levels = false: IRFs will show deviations from this baseline (shock effect)
+    # When levels = true: baseline_path is not used (return simulation in levels)
     baseline_path = nothing
-    if is_backward_looking && !unspecified_initial_state && algorithm == :newton && !levels
+    if !levels && deviations_from == :baseline && is_backward_looking && algorithm == :newton
         # Compute the no-shock baseline path in deviations from NSSS
         nVars = 𝓂.timings.nVars
         baseline_path = zeros(nVars, periods)
