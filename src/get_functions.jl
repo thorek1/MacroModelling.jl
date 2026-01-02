@@ -990,79 +990,88 @@ function get_conditional_forecast(𝓂::ℳ,
         end
     elseif algorithm == :newton
         # For backward looking models with newton algorithm
-        # Use optimization to find minimum norm shocks that satisfy conditions
-        precision_factor = 1.0
+        # Use LagrangeNewton formulation to find minimum norm shocks that satisfy conditions
+        # Solve: min ||e||² s.t. y[cond_var_idx] = conditions where y = state_update(past, e)
         
-        p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state, false, precision_factor)
-
-        res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                            zeros(length(free_shock_idx)), 
-                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward) end
-
-        matched = Optim.minimum(res) < 1e-12
-
-        if !matched
-            res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zeros(length(free_shock_idx)), 
-                                Optim.LBFGS(), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
-
-            matched = Optim.minimum(res) < 1e-12
+        # For linear backward looking models, the shock jacobian is constant
+        # Get the shock impact matrix from the solution
+        shock_impact = 𝓂.solution.perturbation.first_order.solution_matrix[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
+        
+        # LagrangeNewton: solve for minimum norm shocks
+        # The system for period 1:
+        # target = y[cond_var_idx] where y = state_update(initial_state, shocks)
+        # For linear model: target = (A * initial_state + B * shocks)[cond_var_idx]
+        # Minimum norm solution: shocks = B'[cond_var_idx,:] * (B[cond_var_idx,:] * B'[cond_var_idx,:])^{-1} * (target - A * initial_state)[cond_var_idx]
+        
+        # Get the state-independent part (from initial_state)
+        y_no_shock = state_update(initial_state, zeros(length(𝓂.exo)))
+        
+        # Extract shock jacobian for conditioned variables
+        B_cond = shock_impact[cond_var_idx, free_shock_idx]
+        
+        # Target residual (what we need from shocks)
+        target_residual = Float64[conditions[idx, 1] for idx in cond_var_idx] - y_no_shock[cond_var_idx]
+        
+        # Minimum norm solution using pseudoinverse
+        # x = B' * (B * B')^{-1} * target_residual
+        BBt = B_cond * B_cond'
+        
+        if length(cond_var_idx) == length(free_shock_idx)
+            # Square system - solve directly
+            x = B_cond \ target_residual
+        else
+            # Underdetermined - minimum norm solution
+            x = B_cond' * (BBt \ target_residual)
         end
-
-        @assert matched "Numerical stabiltiy issues for restrictions in period 1."
-    
-        x = Optim.minimizer(res)
-
-        shocks[free_shock_idx,1] .= x
-                
-        Y[:,1] = state_update(initial_state, Float64[shocks[:,1]...])
-
-        for i in 2:size(conditions,2)
-            cond_var_idx = findall(conditions[:,i] .!= nothing)
+        
+        shocks[free_shock_idx, 1] .= x
+        
+        Y[:, 1] = state_update(initial_state, Float64[shocks[:, 1]...])
+        
+        # Verify solution
+        matched = maximum(abs.(Y[cond_var_idx, 1] - Float64[conditions[idx, 1] for idx in cond_var_idx])) < 1e-10
+        @assert matched "Numerical stability issues for restrictions in period 1."
+        
+        for i in 2:size(conditions, 2)
+            cond_var_idx = findall(conditions[:, i] .!= nothing)
             
             if conditions_in_levels
-                conditions[cond_var_idx,i] .-= reference_steady_state[cond_var_idx] + SSS_delta[cond_var_idx]
+                conditions[cond_var_idx, i] .-= reference_steady_state[cond_var_idx] + SSS_delta[cond_var_idx]
             else
-                conditions[cond_var_idx,i] .-= SSS_delta[cond_var_idx]
+                conditions[cond_var_idx, i] .-= SSS_delta[cond_var_idx]
             end
-    
-            free_shock_idx = findall(shocks[:,i] .== nothing)
-
-            shocks[free_shock_idx,i] .= 0
-    
+            
+            free_shock_idx = findall(shocks[:, i] .== nothing)
+            
+            shocks[free_shock_idx, i] .= 0
+            
             @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
-    
-            p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, Y[:,i-1], false, precision_factor)
-
-            res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zeros(length(free_shock_idx)), 
-                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
-
-            matched = Optim.minimum(res) < 1e-12
-
-            if !matched
-                res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zeros(length(free_shock_idx)), 
-                                Optim.LBFGS(), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
-
-                matched = Optim.minimum(res) < 1e-12
+            
+            # Get the state-independent part for this period
+            y_no_shock = state_update(Y[:, i-1], zeros(length(𝓂.exo)))
+            
+            # Extract shock jacobian for conditioned variables
+            B_cond = shock_impact[cond_var_idx, free_shock_idx]
+            
+            # Target residual
+            target_residual = Float64[conditions[idx, i] for idx in cond_var_idx] - y_no_shock[cond_var_idx]
+            
+            # Minimum norm solution
+            BBt = B_cond * B_cond'
+            
+            if length(cond_var_idx) == length(free_shock_idx)
+                x = B_cond \ target_residual
+            else
+                x = B_cond' * (BBt \ target_residual)
             end
-
-            @assert matched "Numerical stabiltiy issues for restrictions in period $i."
-
-            x = Optim.minimizer(res)
-
-            shocks[free_shock_idx,i] .= x
-
-            Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
+            
+            shocks[free_shock_idx, i] .= x
+            
+            Y[:, i] = state_update(Y[:, i-1], Float64[shocks[:, i]...])
+            
+            # Verify solution
+            matched = maximum(abs.(Y[cond_var_idx, i] - Float64[conditions[idx, i] for idx in cond_var_idx])) < 1e-10
+            @assert matched "Numerical stability issues for restrictions in period $i."
         end
     end
 
