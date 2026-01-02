@@ -878,22 +878,36 @@ function get_conditional_forecast(𝓂::ℳ,
         if algorithm ∈ [:second_order, :pruned_second_order]
             # For second-order: get full matrix and extract columns for shock × shock interactions
             # The full second-order matrix is second_order_solution * 𝐔₂
-            𝐒²_full = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
-            tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-            shock²_idxs = tmp.nzind
-            𝐒²ᵉ = 𝐒²_full[:, shock²_idxs]
+            # Check if second_order_solution is non-empty
+            if size(𝓂.solution.perturbation.second_order_solution, 2) > 0
+                𝐒²_full = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+                tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+                shock²_idxs = tmp.nzind
+                𝐒²ᵉ = 𝐒²_full[:, shock²_idxs]
+            else
+                # Second-order solution is empty/not computed - use nothing (will fall back to first-order derivatives)
+                𝐒²ᵉ = nothing
+            end
             𝐒³ᵉ = nothing
         else # third_order or pruned_third_order
             # For third-order: extract columns for both second and third-order
-            𝐒²_full = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
-            tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-            shock²_idxs = tmp.nzind
-            𝐒²ᵉ = 𝐒²_full[:, shock²_idxs]
+            if size(𝓂.solution.perturbation.second_order_solution, 2) > 0
+                𝐒²_full = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+                tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+                shock²_idxs = tmp.nzind
+                𝐒²ᵉ = 𝐒²_full[:, shock²_idxs]
+            else
+                𝐒²ᵉ = nothing
+            end
             
-            𝐒³_full = 𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
-            tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-            shock³_idxs = tmp.nzind
-            𝐒³ᵉ = 𝐒³_full[:, shock³_idxs]
+            if size(𝓂.solution.perturbation.third_order_solution, 2) > 0
+                𝐒³_full = 𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
+                tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
+                shock³_idxs = tmp.nzind
+                𝐒³ᵉ = 𝐒³_full[:, shock³_idxs]
+            else
+                𝐒³ᵉ = nothing
+            end
         end
         
         # Use Lagrange-Newton algorithm to find shocks

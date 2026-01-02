@@ -23,6 +23,43 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          T::timings;
                                          max_iter::Int = 1000,
                                          tol::Float64 = 1e-13)
+    # First try without globalization (faster)
+    x, converged = find_shocks_conditional_forecast_core(
+        state_update, initial_state, all_shocks, conditions,
+        cond_var_idx, free_shock_idx, pruning,
+        𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
+        max_iter=max_iter, tol=tol, use_globalization=false)
+    
+    # If failed, try with globalization strategy as fallback
+    if !converged
+        x, converged = find_shocks_conditional_forecast_core(
+            state_update, initial_state, all_shocks, conditions,
+            cond_var_idx, free_shock_idx, pruning,
+            𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
+            max_iter=max_iter, tol=tol, use_globalization=true)
+    end
+    
+    return x, converged
+end
+end # dispatch_doctor
+
+
+@stable default_mode = "disable" begin
+function find_shocks_conditional_forecast_core(
+                                         state_update::Function,
+                                         initial_state::Union{Vector{Float64}, Vector{Vector{Float64}}},
+                                         all_shocks::Vector{Float64},
+                                         conditions::Vector{Float64},
+                                         cond_var_idx::Vector{Int},
+                                         free_shock_idx::Vector{Int},
+                                         pruning::Bool,
+                                         𝐒¹ᵉ::AbstractMatrix{Float64},  # Shock columns from first-order solution
+                                         𝐒²ᵉ::Union{AbstractMatrix{Float64}, Nothing},  # Second-order solution matrix
+                                         𝐒³ᵉ::Union{AbstractMatrix{Float64}, Nothing},  # Third-order solution matrix
+                                         T::timings;
+                                         max_iter::Int = 1000,
+                                         tol::Float64 = 1e-13,
+                                         use_globalization::Bool = false)
     # Initialize free shocks to zero
     x = zeros(length(free_shock_idx))
     
@@ -49,6 +86,12 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     kron_buffer2 = ℒ.kron(J, zeros(length(all_shocks)))  # Initialize with correct dimensions
     kron_buffer3 = ℒ.kron(J, kron_buffer)  # Initialize with correct dimensions for third-order
     ∂x = zero(𝐒¹ᵉ)
+    
+    # For globalization
+    prev_merit = Inf
+    if use_globalization
+        xλ_temp = copy(xλ)
+    end
     
     @inbounds for iter in 1:max_iter
         # Update all shocks with current free shock values
@@ -117,8 +160,56 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             break
         end
         
-        # Update
-        xλ .-= Δxλ
+        # Update with globalization if enabled
+        if use_globalization
+            # Compute merit function: ||x||^2 + penalty * ||residual||^2
+            penalty = 100.0
+            current_merit = ℒ.dot(x, x) + penalty * ℒ.dot(residual, residual)
+            
+            # Line search: try step sizes α = 1, 0.5, 0.25, 0.125, ...
+            α = 1.0
+            xλ_temp .= xλ
+            best_merit = current_merit
+            best_α = 0.0
+            
+            for _ in 1:10  # Try up to 10 backtracking steps
+                xλ_temp .= xλ - α * Δxλ
+                x_temp = xλ_temp[1:length(free_shock_idx)]
+                
+                # Evaluate merit at trial point
+                all_shocks[free_shock_idx] .= x_temp
+                new_state_temp = state_update(initial_state, all_shocks)
+                cond_vars_temp = pruning ? sum(new_state_temp) : new_state_temp
+                residual_temp = conditions - cond_vars_temp[cond_var_idx]
+                
+                trial_merit = ℒ.dot(x_temp, x_temp) + penalty * ℒ.dot(residual_temp, residual_temp)
+                
+                # Accept if merit improved
+                if trial_merit < best_merit
+                    best_merit = trial_merit
+                    best_α = α
+                end
+                
+                # Sufficient decrease condition (Armijo rule)
+                if trial_merit < current_merit - 1e-4 * α * ℒ.dot(Δxλ, Δxλ)
+                    break
+                end
+                
+                α *= 0.5
+            end
+            
+            # Use best step found
+            if best_α > 0.0
+                xλ .-= best_α * Δxλ
+            else
+                # No improvement found, take small step anyway
+                xλ .-= 0.01 * Δxλ
+            end
+        else
+            # Standard Newton update without globalization
+            xλ .-= Δxλ
+        end
+        
         x .= xλ[1:length(free_shock_idx)]
         λ .= xλ[length(free_shock_idx)+1:end]
         

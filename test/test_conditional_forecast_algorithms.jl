@@ -29,23 +29,28 @@ using AxisKeys
         β = 0.95
     end
 
-    # Test first-order with multiple periods
+    # Test first-order with multiple periods (extended to more periods)
     @testset "First-order - multiple periods" begin
-        periods = 3
+        periods = 8  # Extended from 3 to 8 periods
         
-        # Define conditions: c is conditioned in periods 1-3
+        # Define conditions: c is conditioned in periods 1-8
         conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef, 1, periods), 
                                Variables = [:c], 
                                Periods = 1:periods)
         conditions[1,1] = 0.01
         conditions[1,2] = 0.005
         conditions[1,3] = 0.002
+        conditions[1,4] = 0.001
+        conditions[1,5] = 0.0005
+        conditions[1,6] = 0.0002
+        conditions[1,7] = 0.0001
+        conditions[1,8] = 0.00005
 
         # Define shocks: all free
         shocks = Matrix{Union{Nothing,Float64}}(undef, 1, periods)
-        shocks[1,1] = nothing
-        shocks[1,2] = nothing
-        shocks[1,3] = nothing
+        for p in 1:periods
+            shocks[1,p] = nothing
+        end
 
         # Get conditional forecast
         result = get_conditional_forecast(RBC_test, 
@@ -71,53 +76,46 @@ using AxisKeys
         end
     end
 
-    # Test higher-order algorithms (with known limitations for multi-period forecasts)
-    # NOTE: Higher-order algorithms currently have numerical stability issues when
-    # computing conditional forecasts beyond the explicitly constrained periods.
-    # For now, we test that they at least work without crashing for the first period.
-    @testset "Higher-order - basic functionality: $algorithm" for algorithm in [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
-        periods = 1
+    # Test higher-order algorithms with same multi-period conditions
+    # Now that issues are fixed, these should work with multiple periods
+    @testset "Higher-order - multi-period: $algorithm" for algorithm in [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
+        periods = 3  # Use same multi-period setup as first-order (but fewer periods)
         
-        # Single period condition
+        # Define conditions: c is conditioned in periods 1-3
         conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef, 1, periods), 
                                Variables = [:c], 
                                Periods = 1:periods)
         conditions[1,1] = 0.01
+        conditions[1,2] = 0.005
+        conditions[1,3] = 0.002
 
-        # Single free shock
+        # Define shocks: all free
         shocks = Matrix{Union{Nothing,Float64}}(undef, 1, periods)
         shocks[1,1] = nothing
+        shocks[1,2] = nothing
+        shocks[1,3] = nothing
 
-        # Try to get conditional forecast - may fail for periods beyond the specified one
-        try
-            result = get_conditional_forecast(RBC_test, 
-                                             conditions, 
-                                             shocks = shocks,
-                                             conditions_in_levels = false, 
-                                             algorithm = algorithm,
-                                             periods = periods)
+        # Get conditional forecast
+        result = get_conditional_forecast(RBC_test, 
+                                         conditions, 
+                                         shocks = shocks,
+                                         conditions_in_levels = false, 
+                                         algorithm = algorithm,
+                                         periods = periods)
+        
+        # Find the index of variable c
+        c_idx = findfirst(x -> x == :c, axiskeys(result, 1))
+        @test !isnothing(c_idx)
+        
+        # Check that conditioned variable matches target in all periods
+        @testset "Period $p" for p in 1:periods
+            target = conditions[1, p]
+            actual = result[c_idx, p]
+            deviation = abs(actual - target)
             
-            # If it succeeds, verify the first period is correct
-            c_idx = findfirst(x -> x == :c, axiskeys(result, 1))
-            if !isnothing(c_idx)
-                target = conditions[1, 1]
-                actual = result[c_idx, 1]
-                deviation = abs(actual - target)
-                
-                @test deviation < 1e-8  # Slightly relaxed tolerance for higher-order
-                # Mark as passing if we got here
-                @test true
-            end
-        catch e
-            if e isa AssertionError && contains(string(e), "Numerical stabiltiy issues")
-                # Known issue: numerical stability for extended forecast periods
-                # The Lagrange-Newton algorithm works but the problem is ill-conditioned
-                # for periods beyond the explicit constraints
-                @test_broken false  # Document known limitation
-            else
-                # Unexpected error - rethrow
-                rethrow(e)
-            end
+            # Slightly relaxed tolerance for higher-order algorithms
+            @test deviation < 1e-8
+            @test isapprox(actual, target, atol=1e-8)
         end
     end
 
@@ -142,6 +140,57 @@ using AxisKeys
         @test result isa KeyedArray
         @test length(axiskeys(result, 1)) > 0  # Has variables
         @test length(axiskeys(result, 2)) >= 1  # Has at least requested periods
+    end
+    
+    # Test model with multiple shocks (more shocks than conditions)
+    # This tests the case where the system is underdetermined
+    @testset "Multiple shocks - more shocks than conditions" begin
+        # Use FS2000 model which has 2 shocks (e_a and e_m)
+        include("../models/FS2000.jl")
+        
+        # Test all algorithms with multiple shocks
+        @testset "Algorithm: $algorithm" for algorithm in [:first_order, :second_order, :third_order, :pruned_second_order, :pruned_third_order]
+            periods = 3
+            
+            # Condition only on y (output) - 1 condition, but have 2 shocks free
+            conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef, 1, periods), 
+                                   Variables = [:y], 
+                                   Periods = 1:periods)
+            conditions[1,1] = 0.001
+            conditions[1,2] = 0.0005
+            conditions[1,3] = 0.0002
+
+            # Both shocks are free (2 shocks > 1 condition per period)
+            shocks = Matrix{Union{Nothing,Float64}}(undef, 2, periods)
+            for p in 1:periods
+                shocks[1,p] = nothing  # e_a is free
+                shocks[2,p] = nothing  # e_m is free
+            end
+
+            # Get conditional forecast - should find solution minimizing shock magnitude
+            result = get_conditional_forecast(FS2000, 
+                                             conditions, 
+                                             shocks = shocks,
+                                             conditions_in_levels = false, 
+                                             algorithm = algorithm,
+                                             periods = periods)
+            
+            # Find the index of variable y
+            y_idx = findfirst(x -> x == :y, axiskeys(result, 1))
+            @test !isnothing(y_idx)
+            
+            # Check that conditioned variable matches target in all periods
+            for p in 1:periods
+                target = conditions[1, p]
+                actual = result[y_idx, p]
+                deviation = abs(actual - target)
+                
+                # Test that deviation is small
+                # Slightly relaxed tolerance for higher-order algorithms
+                tol = algorithm == :first_order ? 1e-8 : 1e-6
+                @test deviation < tol
+            end
+        end
     end
 end
 
