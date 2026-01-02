@@ -1324,10 +1324,6 @@ function get_irf(𝓂::ℳ;
     is_backward_looking = 𝓂.timings.nFuture_not_past_and_mixed == 0
     unspecified_initial_state = initial_state == [0.0]
     
-    # Determine if we should use levels mode for newton
-    # - Use levels mode when algorithm is newton AND initial_state is provided AND model is backward looking
-    use_levels_mode = is_backward_looking && algorithm == :newton && !unspecified_initial_state
-    
     # For backward looking models, check steady state validity and if model is explosive
     no_valid_steady_state = false
     is_explosive = false
@@ -1351,7 +1347,7 @@ function get_irf(𝓂::ℳ;
             solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = :newton)
             
             # Use parse_algorithm_to_state_update to get the newton state update function
-            state_update_check, _ = parse_algorithm_to_state_update(:newton, 𝓂, false, levels = false)
+            state_update_check, _ = parse_algorithm_to_state_update(:newton, 𝓂, false)
             
             # Get steady state values for variables only
             SS_vars = SS_and_pars[1:𝓂.timings.nVars]
@@ -1426,7 +1422,7 @@ function get_irf(𝓂::ℳ;
 
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     else
-        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false, levels = use_levels_mode)
+        state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
     end
     
     level = levels ? reference_steady_state + SSS_delta : SSS_delta
