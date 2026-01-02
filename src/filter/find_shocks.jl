@@ -46,8 +46,8 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     # Buffers for analytical derivative computation  
     J = ℒ.Diagonal(ones(Bool, length(all_shocks)))
     kron_buffer = zeros(length(all_shocks) * length(all_shocks))
-    kron_buffer2 = zeros(size(𝐒¹ᵉ, 1), length(all_shocks))
-    kron_buffer3 = zeros(size(𝐒¹ᵉ, 1), length(all_shocks) * length(all_shocks))
+    kron_buffer2 = ℒ.kron(J, zeros(length(all_shocks)))  # Initialize with correct dimensions
+    kron_buffer3 = ℒ.kron(J, kron_buffer)  # Initialize with correct dimensions for third-order
     ∂x = zero(𝐒¹ᵉ)
     
     @inbounds for iter in 1:max_iter
