@@ -2145,9 +2145,9 @@ function standard_subplot(irf_data::AbstractVector{S},
         # baseline_path is in levels - use it for reference
         reference_line = baseline_path
         # irf_data is in deviations from baseline, so we add baseline_path to get levels
-        plot_data = irf_data .+ baseline_path
+        plot_data = irf_data # .+ baseline_path
         finite_baseline_vals = filter(isfinite, baseline_path)
-        ref_for_dual_axis = (sum(finite_baseline_vals) / length(finite_baseline_vals))
+        ref_for_dual_axis = first(finite_baseline_vals)
     else
         reference_line = fill(steady_state, length(irf_data))
         plot_data = irf_data .+ steady_state
