@@ -845,11 +845,9 @@ end
 function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
     Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
 
-    # Create a copy of Shocks with the correct element type to support ForwardDiff
-    Shocks_typed = convert(Vector{S}, copy(Shocks))
-    Shocks_typed[Free_shock_idx] .= X
+    Shocks[Free_shock_idx] .= X
 
-    new_State = State_update(State, Shocks_typed)
+    new_State = State_update(State, convert(typeof(X), Shocks))
 
     cond_vars = Pruning ? sum(new_State) : new_State
 

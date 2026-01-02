@@ -1359,30 +1359,16 @@ function get_irf(𝓂::ℳ;
             # If next state differs from SS, model is explosive
             is_explosive = !isapprox(next_state, SS_vars, rtol = 1e-8)
         end
-        
-        no_valid_steady_state = no_valid_steady_state || is_explosive
     end
-    
-    # For backward looking models: determine if we have a valid SS to use as reference
-    # If SS is valid (not explosive), we can work in deviations from SS
-    has_valid_ss_for_reference = is_backward_looking && !no_valid_steady_state
     
     # For backward looking models without valid steady state or explosive:
     # - algorithm must be :newton
     # - initial_state must be provided (in levels)
     if is_backward_looking && no_valid_steady_state
-        if algorithm != :newton
-            @assert false "Model is backward looking with no valid steady state (or is explosive). Use algorithm = :newton and provide initial_state in levels."
-        end
-        if unspecified_initial_state
-            @assert false "Model is backward looking with no valid steady state (or is explosive). Provide initial_state in levels."
-        end
+        @assert algorithm == :newton "Model is backward looking with no valid steady state (or is explosive). Use algorithm = :newton and provide initial_state in levels."
+        
+        @assert !unspecified_initial_state "Model is backward looking with no valid steady state (or is explosive). Provide initial_state in levels."
     end
-    
-    # Determine if we should use levels mode:
-    # - backward looking model with newton algorithm and provided initial_state (for explosive models without valid SS)
-    # - For backward looking models with valid SS and newton algorithm, we work in deviations from SS (not levels)
-    use_levels_mode = is_backward_looking && algorithm == :newton && !unspecified_initial_state && !has_valid_ss_for_reference
     
     # @timeit_debug timer "Solve model" begin
 
@@ -1401,12 +1387,10 @@ function get_irf(𝓂::ℳ;
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
     # end # timeit_debug
-    
-    if use_levels_mode
-        @assert initial_state isa Vector{Float64} "initial_state must be a Vector{Float64} for backward looking models with newton algorithm."
-        @assert length(initial_state) == 𝓂.timings.nVars "initial_state must have $(𝓂.timings.nVars) elements (one for each variable: $(𝓂.timings.var))"
-        # initial_state is already in levels, don't modify it
-    elseif unspecified_initial_state
+
+    unspecified_initial_state = initial_state == [0.0]
+
+    if unspecified_initial_state
         if algorithm == :pruned_second_order
             initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
@@ -1440,13 +1424,7 @@ function get_irf(𝓂::ℳ;
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false, levels = use_levels_mode)
     end
     
-    # When using levels mode, output is always in levels
-    level = (levels || use_levels_mode) ? reference_steady_state + SSS_delta : SSS_delta
-    
-    # For use_levels_mode, the level adjustment is different since state_update returns levels directly
-    if use_levels_mode
-        level = zeros(𝓂.timings.nVars)  # No adjustment needed, state_update returns levels
-    end
+    level = levels ? reference_steady_state + SSS_delta : SSS_delta
 
     responses = compute_irf_responses(𝓂,
                                         state_update,
