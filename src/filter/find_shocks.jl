@@ -45,7 +45,9 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     
     # Buffers for analytical derivative computation  
     J = ℒ.Diagonal(ones(Bool, length(all_shocks)))
+    kron_buffer = zeros(length(all_shocks) * length(all_shocks))
     kron_buffer2 = zeros(size(𝐒¹ᵉ, 1), length(all_shocks))
+    kron_buffer3 = zeros(size(𝐒¹ᵉ, 1), length(all_shocks) * length(all_shocks))
     ∂x = zero(𝐒¹ᵉ)
     
     @inbounds for iter in 1:max_iter
@@ -61,10 +63,23 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
         
         # Compute Jacobian analytically using perturbation matrices
         # Following the same pattern as find_shocks
-        # ∂y/∂ε = 𝐒¹ᵉ + 2*𝐒²ᵉ*kron(I, ε) for second-order
+        # ∂y/∂ε = 𝐒¹ᵉ + 2*𝐒²ᵉ*kron(I, ε) + 3*𝐒³ᵉ*kron(I, kron(ε, ε))
         
-        if !isnothing(𝐒²ᵉ)
-            # Second-order or higher: analytical Jacobian
+        if !isnothing(𝐒³ᵉ)
+            # Third-order: analytical Jacobian with cubic term
+            # ∂x = 𝐒¹ᵉ + 2 * 𝐒²ᵉ * kron(I, all_shocks) + 3 * 𝐒³ᵉ * kron(I, kron(all_shocks, all_shocks))
+            ℒ.kron!(kron_buffer, all_shocks, all_shocks)
+            ℒ.kron!(kron_buffer2, J, all_shocks)
+            ℒ.kron!(kron_buffer3, J, kron_buffer)
+            
+            copy!(∂x, 𝐒¹ᵉ)
+            ℒ.mul!(∂x, 𝐒²ᵉ, kron_buffer2, 2, 1)
+            ℒ.mul!(∂x, 𝐒³ᵉ, kron_buffer3, 3, 1)
+            
+            # Extract rows for conditioned variables and columns for free shocks
+            jacobian .= -∂x[cond_var_idx, free_shock_idx]
+        elseif !isnothing(𝐒²ᵉ)
+            # Second-order: analytical Jacobian with quadratic term
             # ∂x = 𝐒¹ᵉ + 2 * 𝐒²ᵉ * kron(I, all_shocks)
             ℒ.kron!(kron_buffer2, J, all_shocks)
             ℒ.mul!(∂x, 𝐒²ᵉ, kron_buffer2)
