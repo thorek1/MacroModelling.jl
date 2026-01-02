@@ -28,15 +28,33 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
         state_update, initial_state, all_shocks, conditions,
         cond_var_idx, free_shock_idx, pruning,
         𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
-        max_iter=max_iter, tol=tol, use_globalization=false)
+        max_iter=max_iter, tol=tol, use_globalization=false, use_levenberg_marquardt=false, use_continuation=false)
     
-    # If failed, try with globalization strategy as fallback
+    # If failed, try with line search globalization
     if !converged
         x, converged = find_shocks_conditional_forecast_core(
             state_update, initial_state, all_shocks, conditions,
             cond_var_idx, free_shock_idx, pruning,
             𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
-            max_iter=max_iter, tol=tol, use_globalization=true)
+            max_iter=max_iter, tol=tol, use_globalization=true, use_levenberg_marquardt=false, use_continuation=false)
+    end
+    
+    # If still failed, try Levenberg-Marquardt
+    if !converged
+        x, converged = find_shocks_conditional_forecast_core(
+            state_update, initial_state, all_shocks, conditions,
+            cond_var_idx, free_shock_idx, pruning,
+            𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
+            max_iter=max_iter, tol=tol, use_globalization=false, use_levenberg_marquardt=true, use_continuation=false)
+    end
+    
+    # Last resort: continuation method for highly nonlinear problems
+    if !converged && (!isnothing(𝐒²ᵉ) || !isnothing(𝐒³ᵉ))
+        x, converged = find_shocks_conditional_forecast_core(
+            state_update, initial_state, all_shocks, conditions,
+            cond_var_idx, free_shock_idx, pruning,
+            𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
+            max_iter=max_iter, tol=tol, use_globalization=false, use_levenberg_marquardt=true, use_continuation=true)
     end
     
     return x, converged
@@ -59,9 +77,47 @@ function find_shocks_conditional_forecast_core(
                                          T::timings;
                                          max_iter::Int = 1000,
                                          tol::Float64 = 1e-13,
-                                         use_globalization::Bool = false)
-    # Initialize free shocks to zero
-    x = zeros(length(free_shock_idx))
+                                         use_globalization::Bool = false,
+                                         use_levenberg_marquardt::Bool = false,
+                                         use_continuation::Bool = false)
+    # Initialize free shocks
+    # For underdetermined systems (more shocks than conditions), use pseudoinverse for better initial guess
+    if length(free_shock_idx) > length(cond_var_idx) && !use_levenberg_marquardt && !use_continuation
+        # Get initial Jacobian (linear part)
+        jacobian_init = -𝐒¹ᵉ[cond_var_idx, free_shock_idx]
+        
+        # Compute initial state
+        new_state_init = state_update(initial_state, all_shocks)
+        cond_vars_init = pruning ? sum(new_state_init) : new_state_init
+        residual_init = conditions - cond_vars_init[cond_var_idx]
+        
+        # Use pseudoinverse to get minimum norm solution as initial guess
+        # x = J^+ * residual where J^+ is pseudoinverse
+        try
+            x = ℒ.pinv(jacobian_init) * residual_init
+            # Limit initial guess to reasonable range
+            x = clamp.(x, -10.0, 10.0)
+        catch
+            x = zeros(length(free_shock_idx))
+        end
+    else
+        x = zeros(length(free_shock_idx))
+    end
+    
+    # For continuation method, start by solving easier linear problem first
+    if use_continuation
+        # First solve with only first-order (linear) approximation
+        x_linear, conv_linear = find_shocks_conditional_forecast_core(
+            state_update, initial_state, all_shocks, conditions,
+            cond_var_idx, free_shock_idx, pruning,
+            𝐒¹ᵉ, nothing, nothing, T;  # Only first-order
+            max_iter=max_iter, tol=tol*10, use_globalization=false, 
+            use_levenberg_marquardt=true, use_continuation=false)
+        
+        if conv_linear
+            x = x_linear  # Use linear solution as starting point
+        end
+    end
     
     # Lagrange multipliers for equality constraints
     λ = zeros(length(cond_var_idx))
@@ -87,11 +143,16 @@ function find_shocks_conditional_forecast_core(
     kron_buffer3 = ℒ.kron(J, kron_buffer)  # Initialize with correct dimensions for third-order
     ∂x = zero(𝐒¹ᵉ)
     
-    # For globalization
+    # For globalization and Levenberg-Marquardt
     prev_merit = Inf
     if use_globalization
         xλ_temp = copy(xλ)
     end
+    
+    # Levenberg-Marquardt damping parameter
+    # Start with moderate damping for underdetermined systems
+    μ = length(free_shock_idx) > length(cond_var_idx) ? 0.1 : 0.01
+    ν = 2.0  # Scaling factor for damping updates
     
     @inbounds for iter in 1:max_iter
         # Update all shocks with current free shock values
@@ -148,11 +209,24 @@ function find_shocks_conditional_forecast_core(
         fxλp[length(x)+1:end, 1:length(x)] .= jacobian
         fxλp[length(x)+1:end, length(x)+1:end] .= 0.0
         
+        # Apply Levenberg-Marquardt damping if enabled
+        if use_levenberg_marquardt
+            # Add damping to the Hessian block: (H + μI)
+            for i in 1:length(x)
+                fxλp[i, i] -= 2.0 * μ  # Subtract 2μ because lI = -2I already
+            end
+        end
+        
         # Solve Newton step
         try
             f̂xλp = ℒ.factorize(fxλp)
             ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
         catch
+            if use_levenberg_marquardt && μ < 1e10
+                # Try with larger damping
+                μ *= ν
+                continue
+            end
             return x, false
         end
         
@@ -160,8 +234,56 @@ function find_shocks_conditional_forecast_core(
             break
         end
         
-        # Update with globalization if enabled
-        if use_globalization
+        # Update with Levenberg-Marquardt adaptive damping
+        if use_levenberg_marquardt
+            # Compute current cost: ||x||^2 + ||residual||^2
+            current_cost = ℒ.dot(x, x) + ℒ.dot(residual, residual)
+            
+            # Try the step
+            xλ_trial = xλ - Δxλ
+            x_trial = xλ_trial[1:length(x)]
+            λ_trial = xλ_trial[length(x)+1:end]
+            
+            # Compute actual reduction
+            all_shocks[free_shock_idx] .= x_trial
+            new_state_trial = state_update(initial_state, all_shocks)
+            cond_vars_trial = pruning ? sum(new_state_trial) : new_state_trial
+            residual_trial = conditions - cond_vars_trial[cond_var_idx]
+            
+            trial_cost = ℒ.dot(x_trial, x_trial) + ℒ.dot(residual_trial, residual_trial)
+            actual_reduction = current_cost - trial_cost
+            
+            # Predicted reduction from linear model
+            # For LM: F(x+h) ≈ F(x) + J*h + 0.5*h'*H*h where H includes damping
+            # Here we use simplified predicted reduction
+            predicted_reduction = -ℒ.dot(fxλ, Δxλ) - 0.5 * μ * ℒ.dot(Δxλ[1:length(x)], Δxλ[1:length(x)])
+            
+            # Compute gain ratio
+            ρ = actual_reduction / max(abs(predicted_reduction), 1e-20)
+            
+            if ρ > 0.001  # Accept step if we get any reasonable improvement
+                xλ .= xλ_trial
+                x .= x_trial
+                λ .= λ_trial
+                
+                # Update damping parameter based on gain ratio
+                if ρ > 0.75
+                    μ = max(μ / ν, 1e-12)  # Reduce damping (getting closer to Newton)
+                elseif ρ < 0.25
+                    μ = min(μ * ν, 1e8)    # Increase damping (more gradient descent)
+                end
+                # else: keep μ unchanged for moderate progress
+                
+            else  # Reject step, increase damping
+                μ = min(μ * ν, 1e8)
+                if μ > 1e7  # Damping too large, algorithm stuck
+                    break
+                end
+                continue  # Don't update x, λ, try again with larger damping
+            end
+            
+        # Update with line search globalization if enabled
+        elseif use_globalization
             # Compute merit function: ||x||^2 + penalty * ||residual||^2
             penalty = 100.0
             current_merit = ℒ.dot(x, x) + penalty * ℒ.dot(residual, residual)
