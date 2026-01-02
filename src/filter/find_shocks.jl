@@ -37,24 +37,33 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     
     lI = -2.0 * ℒ.I(length(free_shock_idx))
     
-    # Define constraint function for ForwardDiff
-    function constraint_func(free_shocks::AbstractVector{T}) where T
-        shocks_copy = convert(Vector{T}, all_shocks)
-        shocks_copy[free_shock_idx] .= free_shocks
-        new_state = state_update(initial_state, shocks_copy)
-        cond_vars = pruning ? sum(new_state) : new_state
-        return cond_vars[cond_var_idx] - conditions
-    end
+    # Buffers for Jacobian computation
+    all_shocks_perturbed = copy(all_shocks)
     
     @inbounds for iter in 1:max_iter
         # Update all shocks with current free shock values
         all_shocks[free_shock_idx] .= x
         
-        # Compute residual
-        residual .= constraint_func(x)
+        # Compute new state
+        new_state = state_update(initial_state, all_shocks)
+        cond_vars = pruning ? sum(new_state) : new_state
         
-        # Compute Jacobian using ForwardDiff
-        jacobian .= ℱ.jacobian(constraint_func, x)
+        # Compute residual: target - actual
+        residual .= conditions - cond_vars[cond_var_idx]
+        
+        # Compute Jacobian using analytical finite differences
+        # ∂(cond_vars)/∂(free_shocks)
+        h = 1e-7  # Finite difference step size
+        for j in 1:length(free_shock_idx)
+            all_shocks_perturbed .= all_shocks
+            all_shocks_perturbed[free_shock_idx[j]] += h
+            
+            new_state_perturbed = state_update(initial_state, all_shocks_perturbed)
+            cond_vars_perturbed = pruning ? sum(new_state_perturbed) : new_state_perturbed
+            
+            # Compute derivative: (f(x+h) - f(x)) / h
+            jacobian[:, j] .= -(cond_vars_perturbed[cond_var_idx] - cond_vars[cond_var_idx]) / h
+        end
         
         # Build KKT system
         # First order optimality: gradient of Lagrangian wrt x
@@ -87,9 +96,6 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
         λ .= xλ[length(free_shock_idx)+1:end]
         
         # Check convergence
-        all_shocks[free_shock_idx] .= x
-        new_state = state_update(initial_state, all_shocks)
-        cond_vars = pruning ? sum(new_state) : new_state
         norm2 = ℒ.norm(cond_vars[cond_var_idx])
         
         if ℒ.norm(residual) / max(norm1, norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
