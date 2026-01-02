@@ -1,0 +1,43 @@
+@testset "Traub nonlinear solver" begin
+    func_calls = Ref(0)
+    jac_calls = Ref(0)
+
+    function f!(out, x, _)
+        func_calls[] += 1
+        out[1] = x[1]^3 - 1
+        return nothing
+    end
+
+    function jac!(J, x, _)
+        jac_calls[] += 1
+        J[1,1] = 3 * x[1]^2
+        return nothing
+    end
+
+    func_buffer = zeros(Float64, 1)
+    jac_buffer = zeros(Float64, 1, 1)
+
+    prob = MacroModelling.𝒮.LinearProblem(jac_buffer, func_buffer)
+    lu_cache = MacroModelling.𝒮.init(prob, MacroModelling.𝒮.LUFactorization())
+    chol_cache = MacroModelling.𝒮.init(prob, MacroModelling.𝒮.CholeskyFactorization())
+
+    fnj = MacroModelling.function_and_jacobian(f!, func_buffer, jac!, jac_buffer, chol_cache, lu_cache)
+
+    params = MacroModelling.solver_parameters(1.0, 0.9, 1.0, 1.0, 1.0, 1.0,
+                                                0.5, 0.5, 0.5, 0.5, 0.5,
+                                                0.5, 0.5, 0.5, 0.5, 0.5,
+                                                0.5, 0.5, 0.5,
+                                                1.0, 0, 0.0, 2)
+
+    initial_guess = [1.2]
+    lbs = fill(-Inf, 1)
+    ubs = fill(Inf, 1)
+    params_and_solved_vars = Float64[]
+
+    sol, _ = MacroModelling.traub(fnj, initial_guess, params_and_solved_vars, lbs, ubs, params)
+
+    fnj.func(fnj.func_buffer, sol, params_and_solved_vars)
+    @test isapprox(fnj.func_buffer[1], 0.0; atol = 1e-10)
+    @test func_calls[] >= 2
+    @test jac_calls[] >= 1
+end

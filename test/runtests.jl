@@ -31,6 +31,10 @@ println("Threads used: ", Threads.nthreads())
 
 include("functionality_tests.jl")
 
+if test_set == "traub"
+    include("test_traub.jl")
+end
+
 # @testset verbose = true "Code formatting (JuliaFormatter.jl)" begin
 #     @test format(MacroModelling; verbose=true, overwrite=true)
 # end

@@ -8,7 +8,8 @@ function levenberg_marquardt(
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1},
     parameters::solver_parameters;
-    tol::Tolerances = Tolerances()
+    tol::Tolerances = Tolerances(),
+    traub::Bool = false
     )::Tuple{Vector{T}, Tuple{Int, Int, T, T}} where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
@@ -473,7 +474,34 @@ function newton(
             old_residuals_norm = new_residuals_norm
 
             new_residuals_norm = ℒ.norm(new_residuals)
-            
+
+        if ∇ isa SparseMatrixCSC
+            sol_cache.A = ∇
+            sol_cache.b = new_residuals
+            𝒮.solve!(sol_cache)
+            guess_update .= sol_cache.u
+            new_residuals .= guess_update
+        else
+            fact∇ = ℒ.lu!(∇, check = false)
+            try
+                if !ℒ.issuccess(fact∇)
+                    fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
+                end
+                ℒ.ldiv!(fact∇, new_residuals)
+            catch
+                rel_xtol_reached = typemax(T)
+                new_residuals_norm = typemax(T)
+                break
+            end
+        end
+
+        guess_update_norm = ℒ.norm(new_residuals)
+
+        ℒ.axpy!(-1, new_residuals, new_guess)
+
+        if traub
+            fnj.func(new_residuals, new_guess, parameters_and_solved_vars)
+
             if ∇ isa SparseMatrixCSC
                 sol_cache.A = ∇
                 sol_cache.b = new_residuals
@@ -481,11 +509,7 @@ function newton(
                 guess_update .= sol_cache.u
                 new_residuals .= guess_update
             else
-                fact∇ = ℒ.lu!(∇, check = false)
                 try
-                    if !ℒ.issuccess(fact∇)
-                        fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
-                    end
                     ℒ.ldiv!(fact∇, new_residuals)
                 catch
                     rel_xtol_reached = typemax(T)
@@ -494,14 +518,15 @@ function newton(
                 end
             end
 
-            guess_update_norm = ℒ.norm(new_residuals)
+            guess_update_norm = max(guess_update_norm, ℒ.norm(new_residuals))
             ℒ.axpy!(-1, new_residuals, new_guess)
+        end
 
-            # guess_update_norm = ℒ.norm(sol_cache.u)
-    
-            # ℒ.axpy!(-1, sol_cache.u, new_guess)
-    
-            iters[1] += 1
+        # guess_update_norm = ℒ.norm(sol_cache.u)
+
+        # ℒ.axpy!(-1, sol_cache.u, new_guess)
+
+        iters[1] += 1
             iters[2] += 1
 
             # println("GN worked with $(iter+1) iterations - xtol ($xtol): $guess_update_norm; ftol ($ftol): $new_residuals_norm; rel_xtol ($rel_xtol): $rel_xtol_reached")# rel_ftol: $rel_ftol_reached")
@@ -586,6 +611,18 @@ function newton(
     # best_guess = undo_transform(new_guess,transformation_level)
     
     return new_guess, (iters[1], iters[2], rel_xtol_reached, new_residuals_norm)
+end
+
+function traub(
+    fnj::function_and_jacobian, 
+    initial_guess::Array{T,1}, 
+    parameters_and_solved_vars::Array{T,1},
+    lower_bounds::Array{T,1}, 
+    upper_bounds::Array{T,1},
+    parameters::solver_parameters;
+    tol::Tolerances = Tolerances()
+    ) where {T <: AbstractFloat}
+    return newton(fnj, initial_guess, parameters_and_solved_vars, lower_bounds, upper_bounds, parameters; tol = tol, traub = true)
 end
 
 
