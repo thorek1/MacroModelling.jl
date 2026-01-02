@@ -361,6 +361,331 @@ end
 end # dispatch_doctor
 
 
+@stable default_mode = "disable" begin
+
+function find_shocks(::Val{:Traub},
+                    initial_guess::Vector{Float64},
+                    kron_buffer::Vector{Float64},
+                    kron_buffer2::AbstractMatrix{Float64},
+                    J::ℒ.Diagonal{Bool, Vector{Bool}},
+                    𝐒ⁱ::AbstractMatrix{Float64},
+                    𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
+                    shock_independent::Vector{Float64};
+                    max_iter::Int = 1000,
+                    tol::Float64 = 1e-13) # will fail for higher or lower precision
+    # Traub's method: A third-order iterative method for shock finding
+    # Uses two function evaluations per iteration for higher convergence order
+    x = copy(initial_guess)
+    y = copy(initial_guess)  # Intermediate point
+    
+    λ = zeros(size(𝐒ⁱ, 1))
+    λy = zeros(size(𝐒ⁱ, 1))
+    
+    xλ = [  x
+            λ   ]
+    yλ = [  y
+            λy  ]
+
+    Δxλ = copy(xλ)
+    Δyλ = copy(yλ)
+
+    norm1 = ℒ.norm(shock_independent) 
+
+    norm2 = 1.0
+    
+    x̂ = copy(shock_independent)
+    ŷ = copy(shock_independent)
+
+    x̄ = zeros(size(𝐒ⁱ,2))
+    ȳ = zeros(size(𝐒ⁱ,2))
+
+    ∂x = zero(𝐒ⁱ)
+    ∂y = zero(𝐒ⁱ)
+    
+    fxλ = zeros(length(xλ))
+    fyλ = zeros(length(yλ))
+    
+    fxλp = zeros(length(xλ), length(xλ))
+
+    tmp = zeros(size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+
+    lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
+
+    @inbounds for i in 1:max_iter
+        # Compute Jacobian and residuals at current point x
+        ℒ.kron!(kron_buffer2, J, x)
+
+        ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2)
+        ℒ.axpby!(1, 𝐒ⁱ, 2, ∂x)
+
+        ℒ.mul!(x̄, ∂x', λ)
+        
+        ℒ.axpy!(-2, x, x̄)
+
+        copyto!(fxλ, 1, x̄, 1, size(𝐒ⁱ,2))
+        copyto!(fxλ, size(𝐒ⁱ,2) + 1, x̂, 1, size(shock_independent,1))
+        
+        ℒ.mul!(tmp, 𝐒ⁱ²ᵉ', λ)
+        ℒ.axpby!(1, lI, 2, tmp)
+
+        fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp
+        fxλp[1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] = ∂x'
+
+        ℒ.rmul!(∂x, -1)
+        fxλp[size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] = ∂x
+
+        try
+            f̂xλp = ℒ.factorize(fxλp)
+            ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
+        catch
+            return x, false
+        end
+        
+        if !all(isfinite,Δxλ) break end
+        
+        # First step: Newton-like update to intermediate point y
+        ℒ.axpy!(-1, Δxλ, yλ)
+        
+        copyto!(y, 1, yλ, 1, size(𝐒ⁱ,2))
+        copyto!(λy, 1, yλ, size(𝐒ⁱ,2) + 1, length(λy))
+
+        # Compute residuals at intermediate point y
+        ℒ.kron!(kron_buffer, y, y)
+
+        ℒ.mul!(ŷ, 𝐒ⁱ²ᵉ, kron_buffer)
+
+        ℒ.mul!(ŷ, 𝐒ⁱ, y, 1, 1)
+
+        norm2 = ℒ.norm(ŷ)
+
+        ℒ.axpby!(1, shock_independent, -1, ŷ)
+
+        # Compute Jacobian at intermediate point y (for Lagrange multiplier)
+        ℒ.kron!(kron_buffer2, J, y)
+
+        ℒ.mul!(∂y, 𝐒ⁱ²ᵉ, kron_buffer2)
+        ℒ.axpby!(1, 𝐒ⁱ, 2, ∂y)
+
+        ℒ.mul!(ȳ, ∂y', λy)
+        
+        ℒ.axpy!(-2, y, ȳ)
+
+        copyto!(fyλ, 1, ȳ, 1, size(𝐒ⁱ,2))
+        copyto!(fyλ, size(𝐒ⁱ,2) + 1, ŷ, 1, size(shock_independent,1))
+
+        # Second step: Use original Jacobian with residuals at y
+        try
+            ℒ.ldiv!(Δyλ, f̂xλp, fyλ)
+        catch
+            return x, false
+        end
+        
+        if !all(isfinite,Δyλ) break end
+        
+        # Update to new point
+        ℒ.axpy!(-1, Δyλ, xλ)
+    
+        copyto!(x, 1, xλ, 1, size(𝐒ⁱ,2))
+        copyto!(λ, 1, xλ, size(𝐒ⁱ,2) + 1, length(λ))
+
+        ℒ.kron!(kron_buffer, x, x)
+
+        ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer)
+
+        ℒ.mul!(x̂, 𝐒ⁱ, x, 1, 1)
+
+        norm2 = ℒ.norm(x̂)
+
+        ℒ.axpby!(1, shock_independent, -1, x̂)
+
+        if ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+            break
+        end
+
+        # Reset intermediate point for next iteration
+        copyto!(yλ, xλ)
+    end
+
+    return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+end
+
+
+function find_shocks(::Val{:Traub},
+                    initial_guess::Vector{Float64},
+                    kron_buffer::Vector{Float64},
+                    kron_buffer²::Vector{Float64},
+                    kron_buffer2::AbstractMatrix{Float64},
+                    kron_buffer3::AbstractMatrix{Float64},
+                    kron_buffer4::AbstractMatrix{Float64},
+                    J::ℒ.Diagonal{Bool, Vector{Bool}},
+                    𝐒ⁱ::AbstractMatrix{Float64},
+                    𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
+                    𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
+                    shock_independent::Vector{Float64};
+                    max_iter::Int = 1000,
+                    tol::Float64 = 1e-13) # will fail for higher or lower precision
+    # Traub's method for third-order problems
+    x = copy(initial_guess)
+    y = copy(initial_guess)
+
+    λ = zeros(size(𝐒ⁱ, 1))
+    λy = zeros(size(𝐒ⁱ, 1))
+    
+    xλ = [  x
+            λ   ]
+    yλ = [  y
+            λy  ]
+
+    Δxλ = copy(xλ)
+    Δyλ = copy(yλ)
+
+    norm1 = ℒ.norm(shock_independent) 
+
+    norm2 = 1.0
+
+    x̂ = copy(shock_independent)
+    ŷ = copy(shock_independent)
+
+    x̄ = zeros(size(𝐒ⁱ,2))
+    ȳ = zeros(size(𝐒ⁱ,2))
+
+    ∂x = zero(𝐒ⁱ)
+    ∂y = zero(𝐒ⁱ)
+
+    ∂x̂ = zero(𝐒ⁱ)
+    
+    fxλ = zeros(length(xλ))
+    fyλ = zeros(length(yλ))
+    
+    fxλp = zeros(length(xλ), length(xλ))
+
+    tmp = zeros(size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+
+    tmp2 = zeros(size(𝐒ⁱ, 1),size(𝐒ⁱ, 2) * size(𝐒ⁱ, 2))
+
+    II = sparse(ℒ.I(length(x)^2))
+
+    lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
+    
+    @inbounds for i in 1:max_iter
+        # Compute Jacobian and residuals at current point x
+        ℒ.kron!(kron_buffer2, J, x)
+        ℒ.kron!(kron_buffer3, J, kron_buffer)
+
+        copy!(∂x, 𝐒ⁱ)
+        ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2, 2, 1)
+
+        ℒ.mul!(∂x, 𝐒ⁱ³ᵉ, kron_buffer3, 3, 1)
+
+        ℒ.mul!(x̄, ∂x', λ)
+        
+        ℒ.axpy!(-2, x, x̄)
+
+        copyto!(fxλ, 1, x̄, 1, size(𝐒ⁱ,2))
+        copyto!(fxλ, size(𝐒ⁱ,2) + 1, x̂, 1, size(shock_independent,1))
+        
+        x_kron_II!(kron_buffer4, x)
+        ℒ.mul!(tmp2, 𝐒ⁱ³ᵉ, kron_buffer4)
+        ℒ.mul!(tmp, tmp2', λ)
+        ℒ.mul!(tmp, 𝐒ⁱ²ᵉ', λ, 2, 6)
+        ℒ.axpy!(1,lI,tmp)
+
+        fxλp[1:size(𝐒ⁱ, 2), 1:size(𝐒ⁱ, 2)] = tmp
+        
+        fxλp[1:size(𝐒ⁱ, 2), size(𝐒ⁱ, 2)+1:end] = ∂x'
+
+        ℒ.rmul!(∂x, -1)
+        fxλp[size(𝐒ⁱ, 2)+1:end, 1:size(𝐒ⁱ, 2)] = ∂x
+        
+        try
+            f̂xλp = ℒ.factorize(fxλp)
+            ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
+        catch
+            return x, false
+        end
+        
+        if !all(isfinite,Δxλ) break end
+        
+        # First step: Newton-like update to intermediate point y
+        ℒ.axpy!(-1, Δxλ, yλ)
+    
+        copyto!(y, 1, yλ, 1, size(𝐒ⁱ,2))
+        copyto!(λy, 1, yλ, size(𝐒ⁱ,2) + 1, length(λy))
+
+        # Compute residuals at intermediate point y
+        ℒ.kron!(kron_buffer, y, y)
+
+        ℒ.kron!(kron_buffer², y, kron_buffer)
+
+        ℒ.mul!(ŷ, 𝐒ⁱ, y)
+
+        ℒ.mul!(ŷ, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
+
+        ℒ.mul!(ŷ, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
+
+        norm2 = ℒ.norm(ŷ)
+
+        ℒ.axpby!(1, shock_independent, -1, ŷ)
+
+        # Compute Jacobian at intermediate point y
+        ℒ.kron!(kron_buffer2, J, y)
+        ℒ.kron!(kron_buffer3, J, kron_buffer)
+
+        copy!(∂y, 𝐒ⁱ)
+        ℒ.mul!(∂y, 𝐒ⁱ²ᵉ, kron_buffer2, 2, 1)
+
+        ℒ.mul!(∂y, 𝐒ⁱ³ᵉ, kron_buffer3, 3, 1)
+
+        ℒ.mul!(ȳ, ∂y', λy)
+        
+        ℒ.axpy!(-2, y, ȳ)
+
+        copyto!(fyλ, 1, ȳ, 1, size(𝐒ⁱ,2))
+        copyto!(fyλ, size(𝐒ⁱ,2) + 1, ŷ, 1, size(shock_independent,1))
+
+        # Second step: Use original Jacobian with residuals at y
+        try
+            ℒ.ldiv!(Δyλ, f̂xλp, fyλ)
+        catch
+            return x, false
+        end
+        
+        if !all(isfinite,Δyλ) break end
+        
+        # Update to new point
+        ℒ.axpy!(-1, Δyλ, xλ)
+    
+        copyto!(x, 1, xλ, 1, size(𝐒ⁱ,2))
+        copyto!(λ, 1, xλ, size(𝐒ⁱ,2) + 1, length(λ))
+
+        ℒ.kron!(kron_buffer, x, x)
+
+        ℒ.kron!(kron_buffer², x, kron_buffer)
+
+        ℒ.mul!(x̂, 𝐒ⁱ, x)
+
+        ℒ.mul!(x̂, 𝐒ⁱ²ᵉ, kron_buffer, 1, 1)
+
+        ℒ.mul!(x̂, 𝐒ⁱ³ᵉ, kron_buffer², 1, 1)
+
+        norm2 = ℒ.norm(x̂)
+
+        ℒ.axpby!(1, shock_independent, -1, x̂)
+
+        if ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+            break
+        end
+
+        # Reset intermediate point for next iteration
+        copyto!(yλ, xλ)
+    end
+
+    return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+end
+
+end # dispatch_doctor
+
+
 function rrule(::typeof(find_shocks),
                 ::Val{:LagrangeNewton},
                 initial_guess::Vector{Float64},
