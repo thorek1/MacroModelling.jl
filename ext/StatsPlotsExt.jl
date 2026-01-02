@@ -1750,7 +1750,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $GENERALISED_IRF_DRAWS®
 - $INITIAL_STATE®
 - $IGNORE_OBC®
-- `plot_baseline` [Default: `true` for backward looking models, `false` otherwise, Type: `Bool`]: plot the baseline path (no-shock trajectory from `initial_state`) as a solid black line instead of the reference steady state. Useful for backward looking models with explosive dynamics.
+- `reference` [Default: `:baseline` for backward looking models, `:steady_state` otherwise, Type: `Symbol`]: reference path for plotting. Options: `:steady_state` (horizontal line at steady state) or `:baseline` (no-shock trajectory from `initial_state`). Useful for backward looking models with explosive dynamics.
 - `deviations_from` [Default: `:steady_state`, Type: `Symbol`]: reference point for deviations when not in levels mode. Options: `:steady_state` (deviations from relevant steady state) or `:baseline` (deviations from no-shock path starting from `initial_state`).
 - `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $SHOW_PLOTS®
@@ -1812,7 +1812,7 @@ function plot_irf(𝓂::ℳ;
                     generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
-                    plot_baseline::Bool = 𝓂.timings.nFuture_not_past_and_mixed == 0,
+                    reference::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? :baseline : :steady_state,
                     deviations_from::Symbol = DEFAULT_DEVIATIONS_FROM,
                     rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                     plot_attributes::Dict = Dict(),
