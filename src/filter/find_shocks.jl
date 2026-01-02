@@ -26,12 +26,15 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     # For underdetermined systems (more shocks than conditions), go straight to LM
     # as it handles these cases better
     if length(free_shock_idx) > length(cond_var_idx)
+        # Use fewer iterations for underdetermined systems as each iteration is expensive
+        max_iter_adjusted = min(max_iter, 100)  # Cap at 100 iterations
+        
         # Try LM directly for underdetermined systems
         x, converged = find_shocks_conditional_forecast_core(
             state_update, initial_state, all_shocks, conditions,
             cond_var_idx, free_shock_idx, pruning,
             𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
-            max_iter=max_iter, tol=tol, use_globalization=false, use_levenberg_marquardt=true, use_continuation=false)
+            max_iter=max_iter_adjusted, tol=tol, use_globalization=false, use_levenberg_marquardt=true, use_continuation=false)
         
         if !converged
             # Last resort: try with very relaxed tolerance
@@ -39,7 +42,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                 state_update, initial_state, all_shocks, conditions,
                 cond_var_idx, free_shock_idx, pruning,
                 𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
-                max_iter=max_iter*2, tol=tol*10, use_globalization=false, use_levenberg_marquardt=true, use_continuation=false)
+                max_iter=max_iter_adjusted, tol=tol*100, use_globalization=false, use_levenberg_marquardt=true, use_continuation=false)
         end
         
         return x, converged
@@ -121,28 +124,11 @@ function find_shocks_conditional_forecast_core(
         x = zeros(length(free_shock_idx))
     end
     
-    # For continuation method, try a homotopy approach
-    # Start with a smaller perturbation and gradually increase
+    # For continuation method - DISABLED: too slow with recursive calls
+    # Left as placeholder for future non-recursive implementation
     if use_continuation
-        # Scale down the target conditions
-        scale_factors = [0.1, 0.3, 0.6, 1.0]
-        x_prev = zeros(length(free_shock_idx))
-        
-        for scale in scale_factors
-            scaled_conditions = conditions * scale
-            x_scaled, conv_scaled = find_shocks_conditional_forecast_core(
-                state_update, initial_state, all_shocks, scaled_conditions,
-                cond_var_idx, free_shock_idx, pruning,
-                𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
-                max_iter=max_iter÷4, tol=tol*100, use_globalization=false,
-                use_levenberg_marquardt=true, use_continuation=false)
-            
-            if conv_scaled
-                x_prev = x_scaled
-            end
-        end
-        
-        x = x_prev  # Use result from homotopy
+        # Currently disabled - just use zero initialization
+        x = zeros(length(free_shock_idx))
     end
     
     # Lagrange multipliers for equality constraints
@@ -319,6 +305,9 @@ function find_shocks_conditional_forecast_core(
             else  # Reject step, increase damping
                 μ = min(μ * ν, 1e8)
                 if μ > 1e6  # Damping too large, algorithm stuck
+                    if debug
+                        println("  LM stopped: damping too large (μ = $μ)")
+                    end
                     break
                 end
                 continue  # Don't update x, λ, try again with larger damping
