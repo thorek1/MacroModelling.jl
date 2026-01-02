@@ -1504,37 +1504,15 @@ function get_irf(𝓂::ℳ;
                      isnan(solution_error) || 
                      any(isnan, SS_and_pars) || 
                      any(isinf, SS_and_pars)
-        
-        if ss_invalid
-            no_valid_steady_state = true
-        else
-            # Steady state found - check if model is explosive by doing one newton iteration
-            # First, ensure newton functions are generated
-            solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = :newton)
-            
-            # Use parse_algorithm_to_state_update to get the newton state update function
-            state_update_check, _ = parse_algorithm_to_state_update(:newton, 𝓂, false)
-            
-            # Get steady state values for variables only
-            SS_vars = SS_and_pars[1:𝓂.timings.nVars]
-            
-            # Do one iteration with no shocks starting from steady state (in deviations = zeros)
-            zero_shocks = zeros(𝓂.timings.nExo)
-            zero_state = zeros(𝓂.timings.nVars)
-            next_state = state_update_check(zero_state, zero_shocks)
-            
-            # If next state differs from zero (SS in deviations), model is explosive
-            is_explosive = !isapprox(next_state, zero_state, rtol = 1e-8)
-        end
     end
     
     # For backward looking models without valid steady state or explosive:
     # - algorithm must be :newton
     # - initial_state must be provided (in levels)
-    if is_backward_looking && no_valid_steady_state
-        @assert algorithm == :newton "Model is backward looking with no valid steady state (or is explosive). Use algorithm = :newton and provide initial_state in levels."
+    if is_backward_looking && ss_invalid
+        @assert algorithm == :newton "Model is backward looking with no valid steady state. Use algorithm = :newton and provide initial_state in levels."
         
-        @assert !unspecified_initial_state "Model is backward looking with no valid steady state (or is explosive). Provide initial_state in levels."
+        @assert !unspecified_initial_state "Model is backward looking with no valid steady state. Provide initial_state in levels."
     end
     
     # @timeit_debug timer "Solve model" begin
