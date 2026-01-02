@@ -17,7 +17,7 @@ import Showoff
 import DataStructures: OrderedSet
 import SparseArrays: SparseMatrixCSC
 import NLopt
-import Statistics: mean
+
 using DispatchDoctor
 
 import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs, get_irf
@@ -2152,7 +2152,8 @@ function standard_subplot(irf_data::AbstractVector{S},
     end
     
     finite_vals = filter(isfinite, plot_data)
-    ref_for_dual_axis = use_baseline ? mean(filter(isfinite, baseline_path)) : steady_state
+    finite_baseline_vals = filter(isfinite, baseline_path)
+    ref_for_dual_axis = use_baseline ? (sum(finite_baseline_vals) / length(finite_baseline_vals)) : steady_state
     can_dual_axis = gr_back && !isempty(finite_vals) && all(finite_vals .> eps(Float32)) && (ref_for_dual_axis > eps(Float32))
 
     xrotation = length(string(xvals[1])) > 5 ? 30 : 0
