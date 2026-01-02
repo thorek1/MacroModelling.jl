@@ -993,7 +993,110 @@ function get_conditional_forecast(𝓂::ℳ,
         # Use LagrangeNewton formulation to find minimum norm shocks that satisfy conditions
         # Solve: min ||e||² s.t. y[cond_var_idx] = conditions where y = state_update(past, e)
         
-        # Helper function to find shocks using Newton iterations with nonlinear jacobian
+        # Get analytical jacobian functions from backward_looking solution
+        residual_func = 𝓂.solution.backward_looking.residual_func
+        jacobian_func = 𝓂.solution.backward_looking.jacobian_func
+        jacobian_shock_func = 𝓂.solution.backward_looking.jacobian_shock_func
+        
+        # Get SS and parameter info for evaluating jacobians
+        SS_and_pars = 𝓂.solution.non_stochastic_steady_state
+        
+        dyn_var_present_list = collect(reduce(union, 𝓂.dyn_present_list))
+        dyn_var_past_list = collect(reduce(union, 𝓂.dyn_past_list))
+        dyn_exo_list = collect(reduce(union, 𝓂.dyn_exo_list))
+        dyn_ss_list = Symbol.(string.(collect(reduce(union, 𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+        
+        present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")), string.(dyn_var_present_list))
+        past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")), string.(dyn_var_past_list))
+        exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")), string.(dyn_exo_list))
+        stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")), string.(dyn_ss_list))
+        
+        n_present = length(present)
+        n_past = length(past)
+        n_exo = length(exo)
+        nVars = 𝓂.timings.nVars
+        
+        pars_ext = vcat(𝓂.parameters, 𝓂.calibration_equations_parameters)
+        SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+        
+        present_sorted = sort(present)
+        past_sorted = sort(past)
+        exo_sorted = sort(exo)
+        
+        present_idx_in_SS = indexin(present_sorted, SS_and_pars_names)
+        past_idx_in_SS = indexin(past_sorted, SS_and_pars_names)
+        
+        SS_present = SS_and_pars[present_idx_in_SS]
+        SS_past = SS_and_pars[past_idx_in_SS]
+        SS_vars = SS_and_pars[1:nVars]
+        
+        pars_values = 𝓂.parameter_values
+        ss_values = SS_and_pars[indexin(sort(stst), SS_and_pars_names)]
+        params_and_ss = vcat(pars_values, ss_values)
+        
+        past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+        
+        # Helper function to compute solution jacobian ∂y/∂e using implicit function theorem
+        # F(y, y_past, e) = 0 => ∂y/∂e = -(∂F/∂y)^{-1} * (∂F/∂e)
+        function compute_solution_shock_jacobian(past_state::Vector{Float64}, y_current::Vector{Float64}, e_current::Vector{Float64})
+            # Build vars vector in levels: [present; past; shocks]
+            past_from_state = zeros(n_past)
+            for (i, p) in enumerate(past_sorted)
+                idx_in_state = findfirst(x -> x == p, 𝓂.timings.past_not_future_and_mixed)
+                if idx_in_state !== nothing
+                    past_from_state[i] = past_state[past_not_future_and_mixed_idx][idx_in_state] + SS_past[i]
+                end
+            end
+            
+            # Get present values in levels from y_current (deviations) + SS
+            present_levels = zeros(n_present)
+            for (i, p) in enumerate(present_sorted)
+                idx = findfirst(x -> x == p, 𝓂.timings.var)
+                if idx !== nothing
+                    present_levels[i] = y_current[idx] + SS_present[i]
+                end
+            end
+            
+            # Reorder shocks to match sorted order
+            shock_values = zeros(n_exo)
+            for (i, e) in enumerate(exo_sorted)
+                idx_in_shock = findfirst(x -> x == e, 𝓂.timings.exo)
+                if idx_in_shock !== nothing
+                    shock_values[i] = e_current[idx_in_shock]
+                end
+            end
+            
+            vars = vcat(present_levels, past_from_state, shock_values)
+            
+            # Evaluate analytical jacobians
+            J_y = zeros(n_present, n_present)
+            J_e = zeros(n_present, n_exo)
+            jacobian_func(J_y, params_and_ss, vars)
+            jacobian_shock_func(J_e, params_and_ss, vars)
+            
+            # ∂y/∂e = -(∂F/∂y)^{-1} * (∂F/∂e)
+            # This gives derivatives in the sorted order; we need to map back to model order
+            dydt_sorted = -(J_y \ J_e)
+            
+            # Map from sorted present vars to model's var order
+            # and from sorted exo to model's exo order
+            dydt = zeros(nVars, length(𝓂.timings.exo))
+            for (i, p) in enumerate(present_sorted)
+                var_idx = findfirst(x -> x == p, 𝓂.timings.var)
+                if var_idx !== nothing
+                    for (j, e) in enumerate(exo_sorted)
+                        exo_idx = findfirst(x -> x == e, 𝓂.timings.exo)
+                        if exo_idx !== nothing
+                            dydt[var_idx, exo_idx] = dydt_sorted[i, j]
+                        end
+                    end
+                end
+            end
+            
+            return dydt
+        end
+        
+        # Helper function to find shocks using Newton iterations with analytical jacobian
         function find_newton_shocks(past_state::Vector{Float64}, 
                                    target::Vector{Float64}, 
                                    cond_idx::Vector{Int}, 
@@ -1024,16 +1127,11 @@ function get_conditional_forecast(𝓂::ℳ,
                     break
                 end
                 
-                # Get shock jacobian ∂y/∂e using finite differences
-                # (since jacobian_shock_func gives ∂F/∂e not ∂y/∂e directly)
-                ε = 1e-7
-                J = zeros(n_cond, n_free)
-                for j in 1:n_free
-                    e_plus = copy(e_full)
-                    e_plus[free_idx[j]] += ε
-                    y_plus = state_update(past_state, e_plus)
-                    J[:, j] = (y_plus[cond_idx] - y[cond_idx]) / ε
-                end
+                # Get shock jacobian ∂y/∂e using analytical formula via implicit function theorem
+                dydt_full = compute_solution_shock_jacobian(past_state, y, e_full)
+                
+                # Extract submatrix for conditioned vars and free shocks
+                J = dydt_full[cond_idx, free_idx]
                 
                 # Minimum norm update: Δe = J' * (J * J')^{-1} * r
                 if n_cond == n_free
