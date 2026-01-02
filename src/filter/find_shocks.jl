@@ -3,6 +3,105 @@
 # - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on optimality conditions (1e-7)
 # - SLSQP: relatively slow and not guaranteed to converge to global minimum
 
+# Generalized find_shocks for conditional forecasts
+# This function finds shocks that minimize their squared magnitude while satisfying 
+# conditional forecast constraints (only some variables match target values)
+@stable default_mode = "disable" begin
+function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
+                                         state_update::Function,
+                                         initial_state::Union{Vector{Float64}, Vector{Vector{Float64}}},
+                                         all_shocks::Vector{Float64},
+                                         conditions::Vector{Float64},
+                                         cond_var_idx::Vector{Int},
+                                         free_shock_idx::Vector{Int},
+                                         pruning::Bool;
+                                         max_iter::Int = 1000,
+                                         tol::Float64 = 1e-13)
+    # Initialize free shocks to zero
+    x = zeros(length(free_shock_idx))
+    
+    # Lagrange multipliers for equality constraints
+    λ = zeros(length(cond_var_idx))
+    
+    xλ = vcat(x, λ)
+    Δxλ = copy(xλ)
+    
+    norm1 = ℒ.norm(conditions)
+    norm2 = 1.0
+    
+    # Pre-allocate buffers
+    residual = zeros(length(cond_var_idx))
+    jacobian = zeros(length(cond_var_idx), length(free_shock_idx))
+    fxλ = zeros(length(xλ))
+    fxλp = zeros(length(xλ), length(xλ))
+    
+    lI = -2.0 * ℒ.I(length(free_shock_idx))
+    
+    # Define constraint function for ForwardDiff
+    function constraint_func(free_shocks::AbstractVector{T}) where T
+        shocks_copy = convert(Vector{T}, all_shocks)
+        shocks_copy[free_shock_idx] .= free_shocks
+        new_state = state_update(initial_state, shocks_copy)
+        cond_vars = pruning ? sum(new_state) : new_state
+        return cond_vars[cond_var_idx] - conditions
+    end
+    
+    @inbounds for iter in 1:max_iter
+        # Update all shocks with current free shock values
+        all_shocks[free_shock_idx] .= x
+        
+        # Compute residual
+        residual .= constraint_func(x)
+        
+        # Compute Jacobian using ForwardDiff
+        jacobian .= ℱ.jacobian(constraint_func, x)
+        
+        # Build KKT system
+        # First order optimality: gradient of Lagrangian wrt x
+        fxλ[1:length(x)] .= 2.0 * x + jacobian' * λ
+        
+        # Equality constraints
+        fxλ[length(x)+1:end] .= residual
+        
+        # Build Jacobian of KKT system
+        fxλp[1:length(x), 1:length(x)] .= lI
+        fxλp[1:length(x), length(x)+1:end] .= jacobian'
+        fxλp[length(x)+1:end, 1:length(x)] .= jacobian
+        fxλp[length(x)+1:end, length(x)+1:end] .= 0.0
+        
+        # Solve Newton step
+        try
+            f̂xλp = ℒ.factorize(fxλp)
+            ℒ.ldiv!(Δxλ, f̂xλp, fxλ)
+        catch
+            return x, false
+        end
+        
+        if !all(isfinite, Δxλ)
+            break
+        end
+        
+        # Update
+        xλ .-= Δxλ
+        x .= xλ[1:length(free_shock_idx)]
+        λ .= xλ[length(free_shock_idx)+1:end]
+        
+        # Check convergence
+        all_shocks[free_shock_idx] .= x
+        new_state = state_update(initial_state, all_shocks)
+        cond_vars = pruning ? sum(new_state) : new_state
+        norm2 = ℒ.norm(cond_vars[cond_var_idx])
+        
+        if ℒ.norm(residual) / max(norm1, norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+            return x, true
+        end
+    end
+    
+    return x, false
+end
+end # dispatch_doctor
+
+
 @stable default_mode = "disable" begin
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
