@@ -23,11 +23,14 @@
 
     fnj = MacroModelling.function_and_jacobian(f!, func_buffer, jac!, jac_buffer, chol_cache, lu_cache)
 
-    params = MacroModelling.solver_parameters(1.0, 0.9, 1.0, 1.0, 1.0, 1.0,
-                                                0.5, 0.5, 0.5, 0.5, 0.5,
-                                                0.5, 0.5, 0.5, 0.5, 0.5,
-                                                0.5, 0.5, 0.5,
-                                                1.0, 0, 0.0, 2)
+    # Neutral solver parameter placeholders (values are not used by the Traub step)
+    neutral = 1.0
+    damping = 0.5
+    n_damping_params = 13
+    param_values = vcat([neutral, 0.9, neutral, neutral, neutral, neutral],
+                        fill(damping, n_damping_params),
+                        [neutral, 0, 0.0, 2])
+    params = MacroModelling.solver_parameters(param_values...)
 
     initial_guess = [1.2]
     lbs = fill(-Inf, 1)

@@ -404,6 +404,34 @@ function has_nonfinite(A::AbstractArray)
     return false
 end
 
+"""
+    solve_step!(rhs, ∇, sol_cache, fact = nothing)
+
+Solve the linear system for a Newton-style step. Returns `(fact, success)` where `fact`
+is the reusable factorization for dense Jacobians (or `nothing` when `∇` is sparse).
+"""
+function solve_step!(rhs::Vector{T}, ∇::AbstractMatrix{T}, sol_cache::𝒮.LinearCache, fact = nothing) where {T <: AbstractFloat}
+    if ∇ isa SparseMatrixCSC
+        sol_cache.A = ∇
+        sol_cache.b = rhs
+        𝒮.solve!(sol_cache)
+        rhs .= sol_cache.u
+        return nothing, true
+    else
+        isnew = fact === nothing
+        f = isnew ? ℒ.lu!(∇, check = false) : fact
+        if isnew && !ℒ.issuccess(f)
+            f = ℒ.qr(∇, ℒ.ColumnNorm())
+        end
+        try
+            ℒ.ldiv!(f, rhs)
+            return f, true
+        catch
+            return f, false
+        end
+    end
+end
+
 
 function newton(
     # f::Function, 
@@ -413,7 +441,8 @@ function newton(
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1},
     parameters::solver_parameters;
-    tol::Tolerances = Tolerances()
+    tol::Tolerances = Tolerances(),
+    traub::Bool = false
     )::Tuple{Vector{T}, Tuple{Int, Int, T, T}} where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
@@ -445,8 +474,9 @@ function newton(
     guess_update_norm = 1.0
     
     iters = [0,0]
-    
+
     for iter in 1:iterations
+        fact∇ = nothing
     
         if ∇ isa SparseMatrixCSC
             ∇.nzval .= 0
@@ -475,58 +505,36 @@ function newton(
 
             new_residuals_norm = ℒ.norm(new_residuals)
 
-        if ∇ isa SparseMatrixCSC
-            sol_cache.A = ∇
-            sol_cache.b = new_residuals
-            𝒮.solve!(sol_cache)
-            guess_update .= sol_cache.u
-            new_residuals .= guess_update
-        else
-            fact∇ = ℒ.lu!(∇, check = false)
-            try
-                if !ℒ.issuccess(fact∇)
-                    fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
-                end
-                ℒ.ldiv!(fact∇, new_residuals)
-            catch
+            fact∇, success = solve_step!(new_residuals, ∇, sol_cache, fact∇)
+            if !success
                 rel_xtol_reached = typemax(T)
                 new_residuals_norm = typemax(T)
                 break
             end
-        end
 
-        guess_update_norm = ℒ.norm(new_residuals)
+            guess_update_norm = ℒ.norm(new_residuals)
 
-        ℒ.axpy!(-1, new_residuals, new_guess)
+            ℒ.axpy!(-1, new_residuals, new_guess)
 
-        if traub
-            fnj.func(new_residuals, new_guess, parameters_and_solved_vars)
+            if traub && guess_update_norm > xtol
+                fnj.func(new_residuals, new_guess, parameters_and_solved_vars)
 
-            if ∇ isa SparseMatrixCSC
-                sol_cache.A = ∇
-                sol_cache.b = new_residuals
-                𝒮.solve!(sol_cache)
-                guess_update .= sol_cache.u
-                new_residuals .= guess_update
-            else
-                try
-                    ℒ.ldiv!(fact∇, new_residuals)
-                catch
+                fact∇, success = solve_step!(new_residuals, ∇, sol_cache, fact∇)
+                if !success
                     rel_xtol_reached = typemax(T)
                     new_residuals_norm = typemax(T)
                     break
                 end
+
+                guess_update_norm = max(guess_update_norm, ℒ.norm(new_residuals))
+                ℒ.axpy!(-1, new_residuals, new_guess)
             end
 
-            guess_update_norm = max(guess_update_norm, ℒ.norm(new_residuals))
-            ℒ.axpy!(-1, new_residuals, new_guess)
-        end
+            # guess_update_norm = ℒ.norm(sol_cache.u)
 
-        # guess_update_norm = ℒ.norm(sol_cache.u)
+            # ℒ.axpy!(-1, sol_cache.u, new_guess)
 
-        # ℒ.axpy!(-1, sol_cache.u, new_guess)
-
-        iters[1] += 1
+            iters[1] += 1
             iters[2] += 1
 
             # println("GN worked with $(iter+1) iterations - xtol ($xtol): $guess_update_norm; ftol ($ftol): $new_residuals_norm; rel_xtol ($rel_xtol): $rel_xtol_reached")# rel_ftol: $rel_ftol_reached")
@@ -553,24 +561,11 @@ function newton(
         # 𝒮.solve!(sol_cache)
         # copy!(guess_update, sol_cache.u)
 
-        if ∇ isa SparseMatrixCSC
-            sol_cache.A = ∇
-            sol_cache.b = new_residuals
-            𝒮.solve!(sol_cache)
-            guess_update .= sol_cache.u
-            new_residuals .= guess_update
-        else
-            fact∇ = ℒ.lu!(∇, check = false)
-            try
-                if !ℒ.issuccess(fact∇)
-                    fact∇ = ℒ.qr(∇, ℒ.ColumnNorm())
-                end
-                ℒ.ldiv!(fact∇, new_residuals)
-            catch
-                rel_xtol_reached = typemax(T)
-                new_residuals_norm = typemax(T)
-                break
-            end
+        fact∇, success = solve_step!(new_residuals, ∇, sol_cache, fact∇)
+        if !success
+            rel_xtol_reached = typemax(T)
+            new_residuals_norm = typemax(T)
+            break
         end
 
         guess_update_norm = ℒ.norm(new_residuals)
@@ -622,6 +617,7 @@ function traub(
     parameters::solver_parameters;
     tol::Tolerances = Tolerances()
     ) where {T <: AbstractFloat}
+    # Traub iteration: apply a second Newton-style correction using the same Jacobian factorization
     return newton(fnj, initial_guess, parameters_and_solved_vars, lower_bounds, upper_bounds, parameters; tol = tol, traub = true)
 end
 
