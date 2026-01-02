@@ -2146,14 +2146,15 @@ function standard_subplot(irf_data::AbstractVector{S},
         reference_line = baseline_path
         # irf_data is in deviations from baseline, so we add baseline_path to get levels
         plot_data = irf_data .+ baseline_path
+        finite_baseline_vals = filter(isfinite, baseline_path)
+        ref_for_dual_axis = (sum(finite_baseline_vals) / length(finite_baseline_vals))
     else
         reference_line = fill(steady_state, length(irf_data))
         plot_data = irf_data .+ steady_state
+    ref_for_dual_axis = steady_state
     end
     
     finite_vals = filter(isfinite, plot_data)
-    finite_baseline_vals = filter(isfinite, baseline_path)
-    ref_for_dual_axis = use_baseline ? (sum(finite_baseline_vals) / length(finite_baseline_vals)) : steady_state
     can_dual_axis = gr_back && !isempty(finite_vals) && all(finite_vals .> eps(Float32)) && (ref_for_dual_axis > eps(Float32))
 
     xrotation = length(string(xvals[1])) > 5 ? 30 : 0
