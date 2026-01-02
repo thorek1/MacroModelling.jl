@@ -200,6 +200,54 @@
         @test y_values[1] ≈ initial_y * (1 + 0.02) rtol=1e-6  # y_1 = (1+g) * y_0
         @test y_values[2] > y_values[1]  # Continues growing
         
+        # Test the key identity: levels=false deviation + baseline_levels = levels=true
+        # This verifies that baseline path deviations work correctly for explosive models
+        
+        # Get IRF with shocks in deviations mode (levels=false is default)
+        irf_dev = get_irf(UnstableButValidSS,
+                        algorithm = :newton,
+                        initial_state = initial_state_levels,
+                        periods = 10)
+        
+        # Get IRF in levels mode
+        irf_lev = get_irf(UnstableButValidSS,
+                        algorithm = :newton,
+                        initial_state = initial_state_levels,
+                        levels = true,
+                        periods = 10)
+        
+        # Get baseline path (no shocks) in levels
+        baseline_lev = get_irf(UnstableButValidSS,
+                        algorithm = :newton,
+                        initial_state = initial_state_levels,
+                        shocks = :none,
+                        levels = true,
+                        periods = 10)
+        
+        # Identity: irf_dev + baseline_lev ≈ irf_lev
+        # (deviation from baseline + baseline in levels = simulation in levels)
+        @test isapprox(collect(irf_dev(:y, :, :eps_z)) .+ collect(baseline_lev(:y, :, :none)), 
+                       collect(irf_lev(:y, :, :eps_z)), rtol=1e-10)
+        @test isapprox(collect(irf_dev(:z, :, :eps_z)) .+ collect(baseline_lev(:z, :, :none)), 
+                       collect(irf_lev(:z, :, :eps_z)), rtol=1e-10)
+        
+        # Test conditional forecasting with non-trivial starting point
+        conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(nothing, 2, 2), 
+                                Variables = UnstableButValidSS.var, 
+                                Periods = 1:2)
+        conditions[:y, 1] = initial_y * 1.1  # Condition y to be 10% above initial in period 1
+        conditions[:z, 2] = 0.05  # Condition z in period 2
+        
+        cf_result = get_conditional_forecast(UnstableButValidSS, 
+                        conditions, 
+                        algorithm = :newton, 
+                        initial_state = initial_state_levels,
+                        periods = 5)
+        
+        # Check that conditions are satisfied
+        @test isapprox(cf_result(:y, 1), initial_y * 1.1, rtol=1e-4)
+        @test isapprox(cf_result(:z, 2), 0.05, rtol=1e-4)
+        
         UnstableButValidSS = nothing
     end
     

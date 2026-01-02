@@ -9029,9 +9029,10 @@ function irf(state_update::Function,
             Y[:,t+1,1] = pruning ? sum(initial_state) : initial_state
         end
 
-        # Use baseline_path if provided, otherwise use constant level
+        # Use baseline_path if provided: return (Y - baseline_path + level) = shock effect + level offset
+        # baseline_path is in deviations, so Y - baseline_path gives pure shock effect
         if baseline_path !== nothing
-            return KeyedArray(Y[var_idx,:,:] .+ baseline_path[var_idx,:];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
+            return KeyedArray(Y[var_idx,:,:] .- baseline_path[var_idx,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
         else
             return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
         end
@@ -9068,9 +9069,10 @@ function irf(state_update::Function,
             axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
         end
     
-        # Use baseline_path if provided, otherwise use constant level
+        # Use baseline_path if provided: return (Y - baseline_path + level) = shock effect + level offset
+        # baseline_path is in deviations, so Y - baseline_path gives pure shock effect
         if baseline_path !== nothing
-            return KeyedArray(Y[var_idx,:,:] .+ baseline_path[var_idx,:];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+            return KeyedArray(Y[var_idx,:,:] .- baseline_path[var_idx,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
         else
             return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
         end
@@ -9256,9 +9258,10 @@ function girf(state_update::Function,
         axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
     end
 
-    # Use baseline_path if provided, otherwise use constant level
+    # Use baseline_path if provided: return (Y - baseline_path + level) = shock effect + level offset
+    # baseline_path is in deviations, so Y - baseline_path gives pure shock effect
     if baseline_path !== nothing
-        return KeyedArray(Y[var_idx,2:end,:] .+ baseline_path[var_idx,:];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+        return KeyedArray(Y[var_idx,2:end,:] .- baseline_path[var_idx,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
     else
         return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
     end

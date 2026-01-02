@@ -1561,10 +1561,11 @@ function get_irf(𝓂::ℳ;
     
     # For backward looking models with initial_state provided, compute baseline path
     # The baseline path is the no-shock forward iteration from initial_state
-    # This will be used for computing deviations instead of a constant SS level
+    # When levels=false: IRFs will show deviations from this baseline (shock effect)
+    # When levels=true: baseline_path is not used (return simulation in levels)
     baseline_path = nothing
-    if is_backward_looking && !unspecified_initial_state && algorithm == :newton
-        # Compute the no-shock baseline path in deviations
+    if is_backward_looking && !unspecified_initial_state && algorithm == :newton && !levels
+        # Compute the no-shock baseline path in deviations from NSSS
         nVars = 𝓂.timings.nVars
         baseline_path = zeros(nVars, periods)
         zero_shocks = zeros(length(𝓂.timings.exo))
@@ -1575,9 +1576,9 @@ function get_irf(𝓂::ℳ;
             baseline_state = state_update(baseline_state, zero_shocks)
             baseline_path[:, t] = baseline_state
         end
-        
-        # Add the level offset (SSS_delta for deviations mode, full level for levels mode)
-        baseline_path .+= level
+        # baseline_path is now in deviations from NSSS
+        # In irf(), we compute: Y - baseline_path + level
+        # which gives: simulation_deviations - baseline_deviations + SSS_delta = shock_effect
     end
 
     responses = compute_irf_responses(𝓂,
