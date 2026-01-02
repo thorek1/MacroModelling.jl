@@ -23,6 +23,29 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          T::timings;
                                          max_iter::Int = 1000,
                                          tol::Float64 = 1e-13)
+    # For underdetermined systems (more shocks than conditions), go straight to LM
+    # as it handles these cases better
+    if length(free_shock_idx) > length(cond_var_idx)
+        # Try LM directly for underdetermined systems
+        x, converged = find_shocks_conditional_forecast_core(
+            state_update, initial_state, all_shocks, conditions,
+            cond_var_idx, free_shock_idx, pruning,
+            𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
+            max_iter=max_iter, tol=tol, use_globalization=false, use_levenberg_marquardt=true, use_continuation=false)
+        
+        if !converged
+            # Last resort: try with very relaxed tolerance
+            x, converged = find_shocks_conditional_forecast_core(
+                state_update, initial_state, all_shocks, conditions,
+                cond_var_idx, free_shock_idx, pruning,
+                𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
+                max_iter=max_iter*2, tol=tol*10, use_globalization=false, use_levenberg_marquardt=true, use_continuation=false)
+        end
+        
+        return x, converged
+    end
+    
+    # For determined/overdetermined systems, use standard cascading strategy
     # First try without globalization (faster)
     x, converged = find_shocks_conditional_forecast_core(
         state_update, initial_state, all_shocks, conditions,
@@ -46,15 +69,6 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             cond_var_idx, free_shock_idx, pruning,
             𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
             max_iter=max_iter, tol=tol, use_globalization=false, use_levenberg_marquardt=true, use_continuation=false)
-    end
-    
-    # Last resort: continuation method for highly nonlinear problems
-    if !converged && (!isnothing(𝐒²ᵉ) || !isnothing(𝐒³ᵉ))
-        x, converged = find_shocks_conditional_forecast_core(
-            state_update, initial_state, all_shocks, conditions,
-            cond_var_idx, free_shock_idx, pruning,
-            𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
-            max_iter=max_iter, tol=tol, use_globalization=false, use_levenberg_marquardt=true, use_continuation=true)
     end
     
     return x, converged
@@ -96,27 +110,39 @@ function find_shocks_conditional_forecast_core(
         try
             x = ℒ.pinv(jacobian_init) * residual_init
             # Limit initial guess to reasonable range
-            x = clamp.(x, -10.0, 10.0)
+            x = clamp.(x, -5.0, 5.0)  # Tighter bounds for better stability
         catch
             x = zeros(length(free_shock_idx))
         end
+    elseif use_levenberg_marquardt || use_continuation
+        # For LM and continuation, use smaller initial shocks for stability
+        x = zeros(length(free_shock_idx))
     else
         x = zeros(length(free_shock_idx))
     end
     
-    # For continuation method, start by solving easier linear problem first
+    # For continuation method, try a homotopy approach
+    # Start with a smaller perturbation and gradually increase
     if use_continuation
-        # First solve with only first-order (linear) approximation
-        x_linear, conv_linear = find_shocks_conditional_forecast_core(
-            state_update, initial_state, all_shocks, conditions,
-            cond_var_idx, free_shock_idx, pruning,
-            𝐒¹ᵉ, nothing, nothing, T;  # Only first-order
-            max_iter=max_iter, tol=tol*10, use_globalization=false, 
-            use_levenberg_marquardt=true, use_continuation=false)
+        # Scale down the target conditions
+        scale_factors = [0.1, 0.3, 0.6, 1.0]
+        x_prev = zeros(length(free_shock_idx))
         
-        if conv_linear
-            x = x_linear  # Use linear solution as starting point
+        for scale in scale_factors
+            scaled_conditions = conditions * scale
+            x_scaled, conv_scaled = find_shocks_conditional_forecast_core(
+                state_update, initial_state, all_shocks, scaled_conditions,
+                cond_var_idx, free_shock_idx, pruning,
+                𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T;
+                max_iter=max_iter÷4, tol=tol*100, use_globalization=false,
+                use_levenberg_marquardt=true, use_continuation=false)
+            
+            if conv_scaled
+                x_prev = x_scaled
+            end
         end
+        
+        x = x_prev  # Use result from homotopy
     end
     
     # Lagrange multipliers for equality constraints
@@ -151,10 +177,18 @@ function find_shocks_conditional_forecast_core(
     
     # Levenberg-Marquardt damping parameter
     # Start with moderate damping for underdetermined systems
-    μ = length(free_shock_idx) > length(cond_var_idx) ? 0.1 : 0.01
-    ν = 2.0  # Scaling factor for damping updates
+    # Larger initial damping for better robustness
+    μ = length(free_shock_idx) > length(cond_var_idx) ? 1.0 : 0.1
+    ν = 3.0  # Scaling factor for damping updates
+    
+    # Debug flag
+    debug = length(free_shock_idx) > length(cond_var_idx) && use_levenberg_marquardt
     
     @inbounds for iter in 1:max_iter
+        if debug && iter <= 5
+            println("  LM iter $iter: ||x|| = $(ℒ.norm(x)), μ = $μ")
+        end
+        
         # Update all shocks with current free shock values
         all_shocks[free_shock_idx] .= x
         
@@ -259,24 +293,32 @@ function find_shocks_conditional_forecast_core(
             predicted_reduction = -ℒ.dot(fxλ, Δxλ) - 0.5 * μ * ℒ.dot(Δxλ[1:length(x)], Δxλ[1:length(x)])
             
             # Compute gain ratio
-            ρ = actual_reduction / max(abs(predicted_reduction), 1e-20)
+            # Avoid division by very small numbers
+            if abs(predicted_reduction) < 1e-20
+                ρ = actual_reduction > 0 ? 1.0 : -1.0
+            else
+                ρ = actual_reduction / predicted_reduction
+            end
             
-            if ρ > 0.001  # Accept step if we get any reasonable improvement
+            # More lenient acceptance criterion and better damping strategy
+            if ρ > 0.0  # Accept any improvement
                 xλ .= xλ_trial
                 x .= x_trial
                 λ .= λ_trial
                 
                 # Update damping parameter based on gain ratio
-                if ρ > 0.75
+                if ρ > 0.75  # Very good agreement with model
                     μ = max(μ / ν, 1e-12)  # Reduce damping (getting closer to Newton)
-                elseif ρ < 0.25
-                    μ = min(μ * ν, 1e8)    # Increase damping (more gradient descent)
+                elseif ρ > 0.25  # Reasonable agreement
+                    μ = max(μ / 2, 1e-12)  # Moderately reduce damping
+                elseif ρ < 0.1  # Poor agreement  
+                    μ = min(μ * ν, 1e8)    # Increase damping
                 end
                 # else: keep μ unchanged for moderate progress
                 
             else  # Reject step, increase damping
                 μ = min(μ * ν, 1e8)
-                if μ > 1e7  # Damping too large, algorithm stuck
+                if μ > 1e6  # Damping too large, algorithm stuck
                     break
                 end
                 continue  # Don't update x, λ, try again with larger damping
@@ -337,10 +379,23 @@ function find_shocks_conditional_forecast_core(
         
         # Check convergence
         norm2 = ℒ.norm(cond_vars[cond_var_idx])
+        residual_norm = ℒ.norm(residual) / max(norm1, norm2)
+        step_norm = ℒ.norm(Δxλ) / max(ℒ.norm(xλ), 1.0)
         
-        if ℒ.norm(residual) / max(norm1, norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+        if debug && iter <= 5
+            println("    residual_norm = $residual_norm, step_norm = $step_norm, tol = $tol")
+        end
+        
+        if residual_norm < tol && step_norm < sqrt(tol)
+            if debug
+                println("  LM converged in $iter iterations!")
+            end
             return x, true
         end
+    end
+    
+    if debug
+        println("  LM did NOT converge after $max_iter iterations")
     end
     
     return x, false
