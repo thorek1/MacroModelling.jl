@@ -100,7 +100,7 @@
         @test size(irf_first, 3) == 1  # 1 shock
         
         # Test simulation with newton
-        sim_newton = simulate(SolowGrowth, algorithm = :newton)
+        sim_newton = simulate(SolowGrowth)
         @test size(sim_newton, 1) == 2  # 2 variables
         
         # Test conditional forecasting with newton
@@ -111,7 +111,7 @@
         conditions[z_idx, 1] = 0.02  # Condition z in period 1
         conditions[z_idx, 2] = 0.01  # Condition z in period 2
         
-        cf_newton = get_conditional_forecast(SolowGrowth, conditions, algorithm = :newton)
+        cf_newton = get_conditional_forecast(SolowGrowth, conditions)
         
         # Check that conditions are met
         @test isapprox(cf_newton(:z, 1), 0.02, rtol=1e-4)
@@ -146,7 +146,7 @@
         # For backward looking models with newton algorithm, initial_state is in levels
         # shocks = :none returns result with 3rd dimension as [:none]
         result = get_irf(SolowGrowth2, 
-                        algorithm = :newton, 
+                        # algorithm = :newton, 
                         initial_state = initial_state_solow, 
                         shocks = :none,
                         levels = true,  # Request levels output
@@ -205,7 +205,7 @@
         initial_state_levels = [initial_y, 0.0]  # [y, z]
         
         result = get_irf(UnstableButValidSS,
-                        algorithm = :newton,
+                        # algorithm = :newton,
                         initial_state = initial_state_levels,
                         shocks = :none,
                         levels = true,  # Request levels output
@@ -220,24 +220,24 @@
         @test y_values[1] ≈ initial_y * (1 + 0.02) rtol=1e-6  # y_1 = (1+g) * y_0
         @test y_values[2] > y_values[1]  # Continues growing
         
-        # Test deviations_from = :baseline
+        # Test reference = :baseline
         # Get IRF with shocks in deviations from baseline mode
         irf_baseline = get_irf(UnstableButValidSS,
-                        algorithm = :newton,
+                        # algorithm = :newton,
                         initial_state = initial_state_levels,
-                        deviations_from = :baseline,
+                        reference = :baseline,
                         periods = 10)
         
         # Get IRF in levels mode
         irf_lev = get_irf(UnstableButValidSS,
-                        algorithm = :newton,
+                        # algorithm = :newton,
                         initial_state = initial_state_levels,
                         levels = true,
                         periods = 10)
         
         # Get baseline path (no shocks) in levels
         baseline_lev = get_irf(UnstableButValidSS,
-                        algorithm = :newton,
+                        # algorithm = :newton,
                         initial_state = initial_state_levels,
                         shocks = :none,
                         levels = true,
@@ -262,7 +262,7 @@
         
         cf_result = get_conditional_forecast(UnstableButValidSS, 
                         conditions, 
-                        algorithm = :newton, 
+                        # algorithm = :newton, 
                         initial_state = initial_state_levels,
                         periods = 5)
         

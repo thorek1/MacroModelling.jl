@@ -7,7 +7,7 @@ const DEFAULT_ALGORITHM_SELECTOR = stochastic -> stochastic ? :second_order : :f
 const DEFAULT_ALGORITHM_BACKWARD_LOOKING = :newton
 
 # Deviations mode for IRF output
-const DEFAULT_DEVIATIONS_FROM = :steady_state  # :steady_state or :baseline
+const DEFAULT_REFERENCE = :steady_state  # :steady_state or :baseline
 const DEFAULT_FILTER_SELECTOR = algorithm -> algorithm == :first_order ? :kalman : :inversion
 const DEFAULT_SHOCK_DECOMPOSITION_SELECTOR = algorithm -> algorithm ∉ (:second_order, :third_order)
 const DEFAULT_SMOOTH_SELECTOR = filter -> filter == :kalman
