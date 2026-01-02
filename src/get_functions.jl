@@ -1386,6 +1386,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $PARAMETERS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $SHOCKS®
+- $DEVIATIONS_FROM®
 - $NEGATIVE_SHOCK®
 - $GENERALISED_IRF®
 - $GENERALISED_IRF_WARMUP_ITERATIONS®

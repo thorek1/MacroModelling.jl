@@ -1750,6 +1750,8 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $GENERALISED_IRF_DRAWS®
 - $INITIAL_STATE®
 - $IGNORE_OBC®
+- `plot_baseline` [Default: `true` for backward looking models, `false` otherwise, Type: `Bool`]: plot the baseline path (no-shock trajectory from `initial_state`) as a solid black line instead of the reference steady state. Useful for backward looking models with explosive dynamics.
+- `deviations_from` [Default: `:steady_state`, Type: `Symbol`]: reference point for deviations when not in levels mode. Options: `:steady_state` (deviations from relevant steady state) or `:baseline` (deviations from no-shock path starting from `initial_state`).
 - `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
