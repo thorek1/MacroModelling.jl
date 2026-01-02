@@ -933,23 +933,28 @@ function get_conditional_forecast(𝓂::ℳ,
     
             @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
     
-            # Use Lagrange-Newton algorithm to find shocks
-            x, matched = find_shocks_conditional_forecast(Val(:LagrangeNewton),
-                                                          state_update,
-                                                          pruning ? initial_state : Y[:,i-1],
-                                                          Float64[shocks[:,i]...],
-                                                          Float64[conditions[cond_var_idx,i]...],
-                                                          cond_var_idx,
-                                                          free_shock_idx,
-                                                          pruning,
-                                                          𝐒¹ᵉ,
-                                                          𝐒²ᵉ,
-                                                          𝐒³ᵉ,
-                                                          𝓂.timings)
+            if length(cond_var_idx) == 0
+                # No conditions this period: set free shocks to zero
+                shocks[free_shock_idx,i] .= 0
+            else
+                # Use Lagrange-Newton algorithm to find shocks
+                x, matched = find_shocks_conditional_forecast(Val(:LagrangeNewton),
+                                                              state_update,
+                                                              pruning ? initial_state : Y[:,i-1],
+                                                              Float64[shocks[:,i]...],
+                                                              Float64[conditions[cond_var_idx,i]...],
+                                                              cond_var_idx,
+                                                              free_shock_idx,
+                                                              pruning,
+                                                              𝐒¹ᵉ,
+                                                              𝐒²ᵉ,
+                                                              𝐒³ᵉ,
+                                                              𝓂.timings)
 
-            @assert matched "Numerical stabiltiy issues for restrictions in period $i."
+                @assert matched "Numerical stabiltiy issues for restrictions in period $i."
 
-            shocks[free_shock_idx,i] .= x
+                shocks[free_shock_idx,i] .= x
+            end
 
             initial_state = state_update(initial_state, Float64[shocks[:,i]...])
 
