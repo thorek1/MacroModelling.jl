@@ -848,7 +848,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
-    Y = zeros(size(𝓂.solution.perturbation.first_order.solution_matrix,1),periods)
+    Y = zeros(𝓂.timings.nVars, periods)
 
     cond_var_idx = findall(conditions[:,1] .!= nothing)
     
