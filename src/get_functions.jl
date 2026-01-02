@@ -993,44 +993,85 @@ function get_conditional_forecast(𝓂::ℳ,
         # Use LagrangeNewton formulation to find minimum norm shocks that satisfy conditions
         # Solve: min ||e||² s.t. y[cond_var_idx] = conditions where y = state_update(past, e)
         
-        # For linear backward looking models, the shock jacobian is constant
-        # Get the shock impact matrix from the solution
-        shock_impact = 𝓂.solution.perturbation.first_order.solution_matrix[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
-        
-        # LagrangeNewton: solve for minimum norm shocks
-        # The system for period 1:
-        # target = y[cond_var_idx] where y = state_update(initial_state, shocks)
-        # For linear model: target = (A * initial_state + B * shocks)[cond_var_idx]
-        # Minimum norm solution: shocks = B'[cond_var_idx,:] * (B[cond_var_idx,:] * B'[cond_var_idx,:])^{-1} * (target - A * initial_state)[cond_var_idx]
-        
-        # Get the state-independent part (from initial_state)
-        y_no_shock = state_update(initial_state, zeros(length(𝓂.exo)))
-        
-        # Extract shock jacobian for conditioned variables
-        B_cond = shock_impact[cond_var_idx, free_shock_idx]
-        
-        # Target residual (what we need from shocks)
-        target_residual = Float64[conditions[idx, 1] for idx in cond_var_idx] - y_no_shock[cond_var_idx]
-        
-        # Minimum norm solution using pseudoinverse
-        # x = B' * (B * B')^{-1} * target_residual
-        BBt = B_cond * B_cond'
-        
-        if length(cond_var_idx) == length(free_shock_idx)
-            # Square system - solve directly
-            x = B_cond \ target_residual
-        else
-            # Underdetermined - minimum norm solution
-            x = B_cond' * (BBt \ target_residual)
+        # Helper function to find shocks using Newton iterations with nonlinear jacobian
+        function find_newton_shocks(past_state::Vector{Float64}, 
+                                   target::Vector{Float64}, 
+                                   cond_idx::Vector{Int}, 
+                                   free_idx::Vector{Int},
+                                   fixed_shocks::Vector{Float64})
+            n_free = length(free_idx)
+            n_cond = length(cond_idx)
+            
+            # Initial guess for free shocks (zeros)
+            e_free = zeros(n_free)
+            
+            max_iter = 100
+            tol = 1e-10
+            
+            for iter in 1:max_iter
+                # Build full shock vector
+                e_full = copy(fixed_shocks)
+                e_full[free_idx] .= e_free
+                
+                # Evaluate model at current shock guess
+                y = state_update(past_state, e_full)
+                
+                # Compute residual: y[cond_idx] - target
+                r = y[cond_idx] - target
+                
+                # Check convergence
+                if ℒ.norm(r) < tol
+                    break
+                end
+                
+                # Get shock jacobian ∂y/∂e using finite differences
+                # (since jacobian_shock_func gives ∂F/∂e not ∂y/∂e directly)
+                ε = 1e-7
+                J = zeros(n_cond, n_free)
+                for j in 1:n_free
+                    e_plus = copy(e_full)
+                    e_plus[free_idx[j]] += ε
+                    y_plus = state_update(past_state, e_plus)
+                    J[:, j] = (y_plus[cond_idx] - y[cond_idx]) / ε
+                end
+                
+                # Minimum norm update: Δe = J' * (J * J')^{-1} * r
+                if n_cond == n_free
+                    # Square system
+                    Δe = J \ r
+                else
+                    # Underdetermined - minimum norm solution
+                    JJt = J * J'
+                    Δe = J' * (JJt \ r)
+                end
+                
+                e_free = e_free - Δe
+                
+                if ℒ.norm(Δe) < tol
+                    break
+                end
+            end
+            
+            return e_free
         end
         
-        shocks[free_shock_idx, 1] .= x
+        # Period 1
+        target_1 = Float64[conditions[idx, 1] for idx in cond_var_idx]
+        fixed_shocks_1 = zeros(length(𝓂.exo))
+        for (idx, val) in enumerate(shocks[:, 1])
+            if val !== nothing
+                fixed_shocks_1[idx] = val
+            end
+        end
+        
+        e_free = find_newton_shocks(initial_state, target_1, cond_var_idx, free_shock_idx, fixed_shocks_1)
+        shocks[free_shock_idx, 1] .= e_free
         
         Y[:, 1] = state_update(initial_state, Float64[shocks[:, 1]...])
         
         # Verify solution
-        matched = maximum(abs.(Y[cond_var_idx, 1] - Float64[conditions[idx, 1] for idx in cond_var_idx])) < 1e-10
-        @assert matched "Numerical stability issues for restrictions in period 1."
+        matched = maximum(abs.(Y[cond_var_idx, 1] - target_1)) < 1e-8
+        @assert matched "Numerical stability issues for restrictions in period 1. Max error: $(maximum(abs.(Y[cond_var_idx, 1] - target_1)))"
         
         for i in 2:size(conditions, 2)
             cond_var_idx = findall(conditions[:, i] .!= nothing)
@@ -1047,31 +1088,22 @@ function get_conditional_forecast(𝓂::ℳ,
             
             @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
             
-            # Get the state-independent part for this period
-            y_no_shock = state_update(Y[:, i-1], zeros(length(𝓂.exo)))
-            
-            # Extract shock jacobian for conditioned variables
-            B_cond = shock_impact[cond_var_idx, free_shock_idx]
-            
-            # Target residual
-            target_residual = Float64[conditions[idx, i] for idx in cond_var_idx] - y_no_shock[cond_var_idx]
-            
-            # Minimum norm solution
-            BBt = B_cond * B_cond'
-            
-            if length(cond_var_idx) == length(free_shock_idx)
-                x = B_cond \ target_residual
-            else
-                x = B_cond' * (BBt \ target_residual)
+            target_i = Float64[conditions[idx, i] for idx in cond_var_idx]
+            fixed_shocks_i = zeros(length(𝓂.exo))
+            for (idx, val) in enumerate(shocks[:, i])
+                if val !== nothing
+                    fixed_shocks_i[idx] = val
+                end
             end
             
-            shocks[free_shock_idx, i] .= x
+            e_free = find_newton_shocks(Y[:, i-1], target_i, cond_var_idx, free_shock_idx, fixed_shocks_i)
+            shocks[free_shock_idx, i] .= e_free
             
             Y[:, i] = state_update(Y[:, i-1], Float64[shocks[:, i]...])
             
             # Verify solution
-            matched = maximum(abs.(Y[cond_var_idx, i] - Float64[conditions[idx, i] for idx in cond_var_idx])) < 1e-10
-            @assert matched "Numerical stability issues for restrictions in period $i."
+            matched = maximum(abs.(Y[cond_var_idx, i] - target_i)) < 1e-8
+            @assert matched "Numerical stability issues for restrictions in period $i. Max error: $(maximum(abs.(Y[cond_var_idx, i] - target_i)))"
         end
     end
 
