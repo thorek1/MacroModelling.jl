@@ -869,13 +869,31 @@ function get_conditional_forecast(𝓂::ℳ,
         # Extract shock columns from first-order solution (for linear part)
         𝐒¹ᵉ = 𝓂.solution.perturbation.first_order.solution_matrix[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
         
+        # Compute indices for extracting shock-only columns from higher-order matrices
+        # Following the same approach as the inversion filter
+        # e_in_s⁺ is a BitVector selecting only shocks (not states)
+        e_in_s⁺ = BitVector(vcat(zeros(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), ones(Bool, 𝓂.timings.nExo)))
+        
         # Get second-order and third-order matrices if needed
         if algorithm ∈ [:second_order, :pruned_second_order]
-            𝐒²ᵉ = 𝓂.solution.perturbation.second_order_solution
+            # For second-order: get full matrix and extract columns for shock × shock interactions
+            # The full second-order matrix is second_order_solution * 𝐔₂
+            𝐒²_full = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+            tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+            shock²_idxs = tmp.nzind
+            𝐒²ᵉ = 𝐒²_full[:, shock²_idxs]
             𝐒³ᵉ = nothing
         else # third_order or pruned_third_order
-            𝐒²ᵉ = 𝓂.solution.perturbation.second_order_solution
-            𝐒³ᵉ = 𝓂.solution.perturbation.third_order_solution
+            # For third-order: extract columns for both second and third-order
+            𝐒²_full = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+            tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+            shock²_idxs = tmp.nzind
+            𝐒²ᵉ = 𝐒²_full[:, shock²_idxs]
+            
+            𝐒³_full = 𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
+            tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
+            shock³_idxs = tmp.nzind
+            𝐒³ᵉ = 𝐒³_full[:, shock³_idxs]
         end
         
         # Use Lagrange-Newton algorithm to find shocks
