@@ -988,6 +988,82 @@ function get_conditional_forecast(𝓂::ℳ,
     
             Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
         end
+    elseif algorithm == :newton
+        # For backward looking models with newton algorithm
+        # Use optimization to find minimum norm shocks that satisfy conditions
+        precision_factor = 1.0
+        
+        p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state, false, precision_factor)
+
+        res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                            zeros(length(free_shock_idx)), 
+                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                            autodiff = :forward) end
+
+        matched = Optim.minimum(res) < 1e-12
+
+        if !matched
+            res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                                zeros(length(free_shock_idx)), 
+                                Optim.LBFGS(), 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward) end
+
+            matched = Optim.minimum(res) < 1e-12
+        end
+
+        @assert matched "Numerical stabiltiy issues for restrictions in period 1."
+    
+        x = Optim.minimizer(res)
+
+        shocks[free_shock_idx,1] .= x
+                
+        Y[:,1] = state_update(initial_state, Float64[shocks[:,1]...])
+
+        for i in 2:size(conditions,2)
+            cond_var_idx = findall(conditions[:,i] .!= nothing)
+            
+            if conditions_in_levels
+                conditions[cond_var_idx,i] .-= reference_steady_state[cond_var_idx] + SSS_delta[cond_var_idx]
+            else
+                conditions[cond_var_idx,i] .-= SSS_delta[cond_var_idx]
+            end
+    
+            free_shock_idx = findall(shocks[:,i] .== nothing)
+
+            shocks[free_shock_idx,i] .= 0
+    
+            @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
+    
+            p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, Y[:,i-1], false, precision_factor)
+
+            res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                                zeros(length(free_shock_idx)), 
+                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward) end
+
+            matched = Optim.minimum(res) < 1e-12
+
+            if !matched
+                res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+                                zeros(length(free_shock_idx)), 
+                                Optim.LBFGS(), 
+                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                                autodiff = :forward) end
+
+                matched = Optim.minimum(res) < 1e-12
+            end
+
+            @assert matched "Numerical stabiltiy issues for restrictions in period $i."
+
+            x = Optim.minimizer(res)
+
+            shocks[free_shock_idx,i] .= x
+
+            Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
+        end
     end
 
     axis1 = [𝓂.timings.var[var_idx]; 𝓂.timings.exo]

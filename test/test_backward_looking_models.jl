@@ -251,5 +251,49 @@
         UnitRootAR1 = nothing
     end
     
+    @testset "Conditional forecasting with newton algorithm" begin
+        # Test conditional forecasting for backward looking models with newton
+        @model VAR_cond begin
+            y[0] = a11 * y[-1] + a12 * x[-1] + sigma_y * eps_y[x]
+            x[0] = a21 * y[-1] + a22 * x[-1] + sigma_x * eps_x[x]
+        end
+
+        @parameters VAR_cond begin
+            a11 = 0.5
+            a12 = 0.3
+            a21 = 0.2
+            a22 = 0.4
+            sigma_y = 0.1
+            sigma_x = 0.1
+        end
+        
+        # Verify it's a backward looking model
+        @test VAR_cond.timings.nFuture_not_past_and_mixed == 0
+        
+        # Test conditional forecast with newton - condition y to be 0.05 in period 1
+        conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(nothing, 2, 2), 
+                                Variables = VAR_cond.var, 
+                                Periods = 1:2)
+        conditions[:y, 1] = 0.05  # Condition y in period 1
+        conditions[:x, 2] = 0.02  # Condition x in period 2
+        
+        # Use newton algorithm for conditional forecast
+        cf_newton = get_conditional_forecast(VAR_cond, conditions, algorithm = :newton)
+        
+        # Check that conditions are met
+        @test isapprox(cf_newton(:y, 1), 0.05, rtol=1e-6)
+        @test isapprox(cf_newton(:x, 2), 0.02, rtol=1e-6)
+        
+        # Compare with first_order conditional forecast - should give similar results for linear model
+        cf_first = get_conditional_forecast(VAR_cond, conditions, algorithm = :first_order)
+        @test isapprox(cf_first(:y, 1), 0.05, rtol=1e-6)
+        @test isapprox(cf_first(:x, 2), 0.02, rtol=1e-6)
+        
+        # Shocks should be similar for linear models
+        @test isapprox(cf_newton(:eps_y₍ₓ₎, 1), cf_first(:eps_y₍ₓ₎, 1), rtol=1e-4)
+        
+        VAR_cond = nothing
+    end
+    
     GC.gc()
 end

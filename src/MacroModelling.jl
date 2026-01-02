@@ -845,9 +845,11 @@ end
 function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
     Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
 
-    Shocks[Free_shock_idx] .= X
+    # Create a copy of Shocks with the correct element type to support ForwardDiff
+    Shocks_typed = convert(Vector{S}, copy(Shocks))
+    Shocks_typed[Free_shock_idx] .= X
 
-    new_State = State_update(State, convert(typeof(X), Shocks))
+    new_State = State_update(State, Shocks_typed)
 
     cond_vars = Pruning ? sum(new_State) : new_State
 
@@ -9779,7 +9781,9 @@ function create_newton_state_update(𝓂::ℳ; levels::Bool = false)
         end
         
         # Get shock values - reorder to match sorted order
-        shock_values = zeros(n_exo)
+        # Use similar type as shock to support ForwardDiff dual numbers
+        shock_values = similar(shock, n_exo)
+        fill!(shock_values, zero(eltype(shock)))
         for (i, e) in enumerate(exo_sorted)
             idx_in_shock = findfirst(x -> x == e, 𝓂.timings.exo)
             if idx_in_shock !== nothing
@@ -9788,14 +9792,16 @@ function create_newton_state_update(𝓂::ℳ; levels::Bool = false)
         end
         
         # Combine: 𝔙 = [present; past; shocks] (all in levels for present/past)
-        vars = vcat(present_guess, past_from_state, shock_values)
+        # Convert present_guess and past_from_state to match shock type for ForwardDiff
+        ShockType = eltype(shock)
+        vars = vcat(convert(Vector{ShockType}, present_guess), convert(Vector{ShockType}, past_from_state), shock_values)
         
         # Newton iterations
         max_iter = 50
         tol = 1e-10
         
-        residual = zeros(length(present_guess))
-        jacobian = zeros(length(present_guess), n_present)
+        residual = zeros(ShockType, length(present_guess))
+        jacobian = zeros(ShockType, length(present_guess), n_present)
         
         for iter in 1:max_iter
             # Update vars with current present guess (in levels)
@@ -9822,9 +9828,9 @@ function create_newton_state_update(𝓂::ℳ; levels::Bool = false)
         
         # Construct full state vector in the correct order (in levels)
         if levels
-            result_levels = zeros(nVars)
+            result_levels = zeros(ShockType, nVars)
         else
-            result_levels = copy(SS_vars)
+            result_levels = convert(Vector{ShockType}, copy(SS_vars))
         end
         
         # Fill in the present values we just computed (in levels)
