@@ -6,6 +6,8 @@
 # Generalized find_shocks for conditional forecasts
 # This function finds shocks that minimize their squared magnitude while satisfying 
 # conditional forecast constraints (only some variables match target values)
+# Uses analytical derivatives from perturbation solution matrices (like find_shocks)
+
 @stable default_mode = "disable" begin
 function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          state_update::Function,
@@ -14,7 +16,11 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          conditions::Vector{Float64},
                                          cond_var_idx::Vector{Int},
                                          free_shock_idx::Vector{Int},
-                                         pruning::Bool;
+                                         pruning::Bool,
+                                         𝐒¹ᵉ::AbstractMatrix{Float64},  # Shock columns from first-order solution
+                                         𝐒²ᵉ::Union{AbstractMatrix{Float64}, Nothing},  # Second-order solution matrix
+                                         𝐒³ᵉ::Union{AbstractMatrix{Float64}, Nothing},  # Third-order solution matrix
+                                         T::timings;
                                          max_iter::Int = 1000,
                                          tol::Float64 = 1e-13)
     # Initialize free shocks to zero
@@ -37,8 +43,10 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     
     lI = -2.0 * ℒ.I(length(free_shock_idx))
     
-    # Buffers for Jacobian computation
-    all_shocks_perturbed = copy(all_shocks)
+    # Buffers for analytical derivative computation  
+    J = ℒ.Diagonal(ones(Bool, length(all_shocks)))
+    kron_buffer2 = zeros(size(𝐒¹ᵉ, 1), length(all_shocks))
+    ∂x = zero(𝐒¹ᵉ)
     
     @inbounds for iter in 1:max_iter
         # Update all shocks with current free shock values
@@ -51,18 +59,22 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
         # Compute residual: target - actual
         residual .= conditions - cond_vars[cond_var_idx]
         
-        # Compute Jacobian using analytical finite differences
-        # ∂(cond_vars)/∂(free_shocks)
-        h = 1e-7  # Finite difference step size
-        for j in 1:length(free_shock_idx)
-            all_shocks_perturbed .= all_shocks
-            all_shocks_perturbed[free_shock_idx[j]] += h
+        # Compute Jacobian analytically using perturbation matrices
+        # Following the same pattern as find_shocks
+        # ∂y/∂ε = 𝐒¹ᵉ + 2*𝐒²ᵉ*kron(I, ε) for second-order
+        
+        if !isnothing(𝐒²ᵉ)
+            # Second-order or higher: analytical Jacobian
+            # ∂x = 𝐒¹ᵉ + 2 * 𝐒²ᵉ * kron(I, all_shocks)
+            ℒ.kron!(kron_buffer2, J, all_shocks)
+            ℒ.mul!(∂x, 𝐒²ᵉ, kron_buffer2)
+            ℒ.axpby!(1, 𝐒¹ᵉ, 2, ∂x)
             
-            new_state_perturbed = state_update(initial_state, all_shocks_perturbed)
-            cond_vars_perturbed = pruning ? sum(new_state_perturbed) : new_state_perturbed
-            
-            # Compute derivative: (f(x+h) - f(x)) / h
-            jacobian[:, j] .= -(cond_vars_perturbed[cond_var_idx] - cond_vars[cond_var_idx]) / h
+            # Extract rows for conditioned variables and columns for free shocks
+            jacobian .= -∂x[cond_var_idx, free_shock_idx]
+        else
+            # First-order: just use 𝐒¹ᵉ
+            jacobian .= -𝐒¹ᵉ[cond_var_idx, free_shock_idx]
         end
         
         # Build KKT system

@@ -865,6 +865,19 @@ function get_conditional_forecast(𝓂::ℳ,
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
+        # Get perturbation solution matrices for analytical derivatives
+        # Extract shock columns from first-order solution (for linear part)
+        𝐒¹ᵉ = 𝓂.solution.perturbation.first_order.solution_matrix[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
+        
+        # Get second-order and third-order matrices if needed
+        if algorithm ∈ [:second_order, :pruned_second_order]
+            𝐒²ᵉ = 𝓂.solution.perturbation.second_order_solution
+            𝐒³ᵉ = nothing
+        else # third_order or pruned_third_order
+            𝐒²ᵉ = 𝓂.solution.perturbation.second_order_solution
+            𝐒³ᵉ = 𝓂.solution.perturbation.third_order_solution
+        end
+        
         # Use Lagrange-Newton algorithm to find shocks
         x, matched = find_shocks_conditional_forecast(Val(:LagrangeNewton),
                                                       state_update,
@@ -873,7 +886,11 @@ function get_conditional_forecast(𝓂::ℳ,
                                                       conditions[cond_var_idx,1],
                                                       cond_var_idx,
                                                       free_shock_idx,
-                                                      pruning)
+                                                      pruning,
+                                                      𝐒¹ᵉ,
+                                                      𝐒²ᵉ,
+                                                      𝐒³ᵉ,
+                                                      𝓂.timings)
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
     
@@ -906,7 +923,11 @@ function get_conditional_forecast(𝓂::ℳ,
                                                           conditions[cond_var_idx,i],
                                                           cond_var_idx,
                                                           free_shock_idx,
-                                                          pruning)
+                                                          pruning,
+                                                          𝐒¹ᵉ,
+                                                          𝐒²ᵉ,
+                                                          𝐒³ᵉ,
+                                                          𝓂.timings)
 
             @assert matched "Numerical stabiltiy issues for restrictions in period $i."
 
