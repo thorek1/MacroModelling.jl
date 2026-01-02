@@ -6795,8 +6795,7 @@ function solve!(𝓂::ℳ;
             ((:second_order        == algorithm) && ((:second_order        ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:pruned_second_order == algorithm) && ((:pruned_second_order ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
             ((:third_order         == algorithm) && ((:third_order         ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
-            ((:newton              == algorithm) && ((:newton              ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
+            ((:pruned_third_order  == algorithm) && ((:pruned_third_order  ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved)))
 
             # @timeit_debug timer "Solve for NSSS (if necessary)" begin
 
