@@ -998,6 +998,12 @@ function get_conditional_forecast(𝓂::ℳ,
         jacobian_state_func = 𝓂.solution.backward_looking.jacobian_state_func
         jacobian_shock_func = 𝓂.solution.backward_looking.jacobian_shock_func
         
+        # Get buffers and caches from backward_looking solution
+        jac_state_buffer = 𝓂.solution.backward_looking.jac_state_buffer
+        jac_shock_buffer = 𝓂.solution.backward_looking.jac_shock_buffer
+        dydt_buffer = 𝓂.solution.backward_looking.dydt_buffer
+        lu_jac_state_cache = 𝓂.solution.backward_looking.lu_jac_state_cache
+        
         # Get SS and parameter info for evaluating jacobians
         SS_and_pars = 𝓂.solution.non_stochastic_steady_state
         
@@ -1069,11 +1075,11 @@ function get_conditional_forecast(𝓂::ℳ,
             
             vars = vcat(present_levels, past_from_state, shock_values)
             
-            # Evaluate analytical jacobians
-            J_y_full = zeros(n_present, n_present)
-            J_e_full = zeros(n_present, n_exo)
-            jacobian_state_func(J_y_full, params_and_ss, vars)
-            jacobian_shock_func(J_e_full, params_and_ss, vars)
+            # Evaluate analytical jacobians using buffers
+            fill!(jac_state_buffer, 0.0)
+            fill!(jac_shock_buffer, 0.0)
+            jacobian_state_func(jac_state_buffer, params_and_ss, vars)
+            jacobian_shock_func(jac_shock_buffer, params_and_ss, vars)
             
             # Build index maps: cond_idx (model order) -> sorted order for present vars
             # free_idx (model order) -> sorted order for exo vars
@@ -1098,32 +1104,26 @@ function get_conditional_forecast(𝓂::ℳ,
             n_cond = length(cond_idx)
             n_free = length(free_idx)
             
-            # Extract submatrices
-            J_y = J_y_full[cond_idx_sorted, :]  # n_cond x n_present
-            J_e = J_e_full[:, free_idx_sorted]   # n_present x n_free
+            # Compute J = -(J_y_full \ J_e_full)[cond_idx_sorted, free_idx_sorted] using LinearSolve cache
+            # Solve J_y_full * X = J_e_full for X (store in dydt_buffer)
+            lu_jac_state_cache.A = jac_state_buffer
+            lu_jac_state_cache.b = jac_shock_buffer
+            𝒮.solve!(lu_jac_state_cache)
+            dydt_buffer .= -lu_jac_state_cache.u
             
-            # Algebraic simplification: instead of J = -(J_y_full \ J_e_full)[cond_sorted, free_sorted]
-            # and then Δe = J \ r or J' * (J*J')^{-1} * r
-            #
-            # For square case (n_cond == n_free == n_present):
-            #   J \ r where J = -(J_y_full \ J_e_full) 
-            #   => solve J_y_full * J * J_e_full^{-1} = -I for J, then J \ r
-            #   => Δe = -J_e_full \ (J_y_full \ r) when system is square
-            #
-            # For general case:
-            #   We need the full J matrix to compute minimum norm solution
-            
-            # Compute J = -(J_y_full \ J_e_full)[cond_idx_sorted, free_idx_sorted]
-            dydt_sorted = -(J_y_full \ J_e_full)
-            J = dydt_sorted[cond_idx_sorted, free_idx_sorted]
+            J = dydt_buffer[cond_idx_sorted, free_idx_sorted]
             
             if n_cond == n_free
-                # Square system
-                Δe = J \ r
+                # Square system - use direct linear solve
+                J_prob = 𝒮.LinearProblem(J, r)
+                J_sol = 𝒮.solve(J_prob, 𝒮.LUFactorization())
+                Δe = J_sol.u
             else
                 # Underdetermined - minimum norm solution: Δe = J' * (J * J')^{-1} * r
                 JJt = J * J'
-                Δe = J' * (JJt \ r)
+                JJt_prob = 𝒮.LinearProblem(JJt, r)
+                JJt_sol = 𝒮.solve(JJt_prob, 𝒮.LUFactorization())
+                Δe = J' * JJt_sol.u
             end
             
             return Δe
@@ -1486,18 +1486,27 @@ function get_irf(𝓂::ℳ;
 
     # end # timeit_debug
     
-    # Check if model is backward looking and has no valid steady state or is explosive
+    # Check if model is backward looking
     is_backward_looking = 𝓂.timings.nFuture_not_past_and_mixed == 0
     unspecified_initial_state = initial_state == [0.0]
     
-    # For backward looking models, check steady state validity and if model is explosive
-    no_valid_steady_state = false
-    is_explosive = false
+    # @timeit_debug timer "Solve model" begin
+
+    solve!(𝓂, 
+            parameters = parameters, 
+            opts = opts,
+            dynamics = true, 
+            algorithm = algorithm,
+            # timer = timer, 
+            obc = occasionally_binding_constraints || obc_shocks_included)
     
+    # end # timeit_debug
+    
+    # For backward looking models, check steady state validity after solve! has processed parameters
+    ss_invalid = false
     if is_backward_looking
-        # Try to get steady state and check if it's valid
-        param_vals = isnothing(parameters) ? 𝓂.parameter_values : parameters isa AbstractDict ? [parameters[k] for k in 𝓂.parameters] : parameters
-        SS_and_pars, (solution_error, _) = get_NSSS_and_parameters(𝓂, Float64.(param_vals), opts = opts)
+        # Get steady state using already-updated parameters
+        SS_and_pars, (solution_error, _) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
         
         # Check if steady state solution failed or contains invalid values
         ss_invalid = solution_error > tol.NSSS_acceptance_tol || 
@@ -1514,18 +1523,6 @@ function get_irf(𝓂::ℳ;
         
         @assert !unspecified_initial_state "Model is backward looking with no valid steady state. Provide initial_state in levels."
     end
-    
-    # @timeit_debug timer "Solve model" begin
-
-    solve!(𝓂, 
-            parameters = parameters, 
-            opts = opts,
-            dynamics = true, 
-            algorithm = algorithm,
-            # timer = timer, 
-            obc = occasionally_binding_constraints || obc_shocks_included)
-    
-    # end # timeit_debug
 
     # @timeit_debug timer "Get relevant steady state" begin
 

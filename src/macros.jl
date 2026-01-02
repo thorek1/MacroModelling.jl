@@ -974,7 +974,7 @@ macro model(𝓂,ex...)
                                             second_order_auxiliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
                                             third_order_auxiliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
                             ),
-                            backward_looking_solution((x,y)->nothing, (x,y,z)->nothing, (x,y,z)->nothing, (x,y,z)->nothing, Float64[], zeros(0,0), zeros(0,0), 𝒮.init(𝒮.LinearProblem(zeros(1,1), zeros(1)), 𝒮.LUFactorization())),
+                            backward_looking_solution((x,y)->nothing, (x,y,z)->nothing, (x,y,z)->nothing, (x,y,z)->nothing, Float64[], zeros(0,0), zeros(0,0), 𝒮.init(𝒮.LinearProblem(zeros(1,1), zeros(1)), 𝒮.LUFactorization()), zeros(0,0), zeros(0,0), zeros(0,0), 𝒮.init(𝒮.LinearProblem(zeros(1,1), zeros(1)), 𝒮.LUFactorization())),
                             Float64[], 
                             # Set([:first_order]),
                             Set(all_available_algorithms),
