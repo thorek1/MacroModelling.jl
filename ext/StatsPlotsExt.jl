@@ -1897,11 +1897,15 @@ function plot_irf(𝓂::ℳ;
     # Compute baseline path when reference = :baseline for backward looking models
     is_backward_looking = 𝓂.timings.nFuture_not_past_and_mixed == 0
     baseline_path_for_plot = nothing
+    initial_state_levels = nothing  # Store initial state in levels for dual axis reference
     
     if reference == :baseline && is_backward_looking && algorithm == :newton
         nVars = 𝓂.timings.nVars
         baseline_path_for_plot = zeros(nVars, periods_extended)
         zero_shocks = zeros(length(𝓂.timings.exo))
+        
+        # Store initial state in levels for dual axis reference
+        initial_state_levels = initial_state .+ NSSS[1:nVars]
         
         # Compute baseline in deviations from NSSS
         baseline_state = copy(initial_state)
@@ -2050,11 +2054,13 @@ function plot_irf(𝓂::ℳ;
             
             # Get baseline path for this variable if using baseline reference
             var_baseline_path = isnothing(baseline_path_for_plot) ? nothing : baseline_path_for_plot[v, :]
+            # Get initial state value for this variable (in levels) for dual axis reference
+            var_initial_value = isnothing(initial_state_levels) ? nothing : initial_state_levels[v]
 
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
                 variable_name = variable_names_display[i]
 
-                push!(pp, standard_subplot(Y[i,:,shock], SS, variable_name, gr_back, pal = pal, baseline_path = var_baseline_path))
+                push!(pp, standard_subplot(Y[i,:,shock], SS, variable_name, gr_back, pal = pal, baseline_path = var_baseline_path, initial_value = var_initial_value))
 
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
@@ -2137,7 +2143,8 @@ function standard_subplot(irf_data::AbstractVector{S},
                             gr_back::Bool;
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
                             xvals = 1:length(irf_data),
-                            baseline_path::Union{Nothing, AbstractVector{S}} = nothing) where {S <: AbstractFloat, R <: Union{String, Symbol}}
+                            baseline_path::Union{Nothing, AbstractVector{S}} = nothing,
+                            initial_value::Union{Nothing, S} = nothing) where {S <: AbstractFloat, R <: Union{String, Symbol}}
     # If baseline_path is provided, use it; otherwise use steady_state for reference line
     use_baseline = !isnothing(baseline_path)
     
@@ -2146,12 +2153,12 @@ function standard_subplot(irf_data::AbstractVector{S},
         reference_line = baseline_path
         # irf_data is in deviations from baseline, so we add baseline_path to get levels
         plot_data = irf_data # .+ baseline_path
-        finite_baseline_vals = filter(isfinite, baseline_path)
-        ref_for_dual_axis = first(finite_baseline_vals)
+        # Use initial_value as reference for dual axis if provided, otherwise use steady_state
+        ref_for_dual_axis = isnothing(initial_value) ? steady_state : initial_value
     else
         reference_line = fill(steady_state, length(irf_data))
         plot_data = irf_data .+ steady_state
-    ref_for_dual_axis = steady_state
+        ref_for_dual_axis = steady_state
     end
     
     finite_vals = filter(isfinite, plot_data)
