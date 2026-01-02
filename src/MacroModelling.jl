@@ -6859,12 +6859,12 @@ function solve!(𝓂::ℳ;
 
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
             𝓂.solution.outdated_NSSS = solution_error > opts.tol.NSSS_acceptance_tol
-            
-            # Generate newton simulation functions for backward looking models
-            if 𝓂.timings.nFuture_not_past_and_mixed == 0
-                write_newton_simulation_functions!(𝓂)
-                𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:newton])
-            end
+        end
+        
+        # Generate newton simulation functions for backward looking models
+        if (algorithm == :newton) && (:newton ∈ 𝓂.solution.outdated_algorithms) && (𝓂.timings.nFuture_not_past_and_mixed == 0)
+            write_newton_simulation_functions!(𝓂)
+            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:newton])
         end
 
         obc_not_solved = isnothing(𝓂.solution.perturbation.second_order.state_update_obc(zeros(𝓂.timings.nVars), zeros(𝓂.timings.nExo)))
@@ -8108,7 +8108,7 @@ function write_newton_simulation_functions!(𝓂::ℳ;
     ∇_present_mat = convert(Matrix, ∇_present)
     
     # Build jacobian function
-    _, jacobian_func = Symbolics.build_function(∇_present_mat, 𝔓, 𝔙,
+    _, jacobian_state_func = Symbolics.build_function(∇_present_mat, 𝔓, 𝔙,
                                                 cse = cse,
                                                 skipzeros = skipzeros,
                                                 expression_module = @__MODULE__,
@@ -8132,13 +8132,13 @@ function write_newton_simulation_functions!(𝓂::ℳ;
     jacobian_shock_buffer = zeros(Float64, size(∇_shocks_mat))
     
     # Create newton state update function
-    state_update = create_newton_state_update(𝓂, residual_func, jacobian_func, residual_buffer, jacobian_buffer)
+    state_update = create_newton_state_update(𝓂, residual_func, jacobian_state_func, residual_buffer, jacobian_buffer)
     
     # Store in model's solution.backward_looking struct
     𝓂.solution.backward_looking = backward_looking_solution(
         state_update,
         residual_func,
-        jacobian_func,
+        jacobian_state_func,
         jacobian_shock_func,
         residual_buffer,
         jacobian_buffer,
@@ -9700,14 +9700,14 @@ end
 
 
 """
-    create_newton_state_update(𝓂::ℳ, residual_func, jacobian_func, residual_buffer, jacobian_buffer)
+    create_newton_state_update(𝓂::ℳ, residual_func, jacobian_state_func, residual_buffer, jacobian_buffer)
 
 Create a state update function that uses Newton's method to solve for present values
 given past values and shocks. Only for backward looking models.
 
 Works in deviations from SS: Input state is in deviations from SS, output is in deviations.
 """
-function create_newton_state_update(𝓂::ℳ, residual_func::Function, jacobian_func::Function, 
+function create_newton_state_update(𝓂::ℳ, residual_func::Function, jacobian_state_func::Function, 
                                     residual_buffer::Vector{Float64}, jacobian_buffer::Matrix{Float64})
     # Get steady state and parameters
     SS_and_pars = 𝓂.solution.non_stochastic_steady_state
@@ -9801,7 +9801,7 @@ function create_newton_state_update(𝓂::ℳ, residual_func::Function, jacobian
             
             # Evaluate residual and jacobian (with values in levels)
             residual_func(residual, params_and_ss, vars)
-            jacobian_func(jacobian, params_and_ss, vars)
+            jacobian_state_func(jacobian, params_and_ss, vars)
             
             # Check convergence
             if ℒ.norm(residual) < tol

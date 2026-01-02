@@ -995,7 +995,7 @@ function get_conditional_forecast(𝓂::ℳ,
         
         # Get analytical jacobian functions from backward_looking solution
         residual_func = 𝓂.solution.backward_looking.residual_func
-        jacobian_func = 𝓂.solution.backward_looking.jacobian_func
+        jacobian_state_func = 𝓂.solution.backward_looking.jacobian_state_func
         jacobian_shock_func = 𝓂.solution.backward_looking.jacobian_shock_func
         
         # Get SS and parameter info for evaluating jacobians
@@ -1036,9 +1036,10 @@ function get_conditional_forecast(𝓂::ℳ,
         
         past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
         
-        # Helper function to compute solution jacobian ∂y/∂e using implicit function theorem
+        # Helper function to compute Jacobian J = ∂y[cond]/∂e[free] directly using implicit function theorem
         # F(y, y_past, e) = 0 => ∂y/∂e = -(∂F/∂y)^{-1} * (∂F/∂e)
-        function compute_solution_shock_jacobian(past_state::Vector{Float64}, y_current::Vector{Float64}, e_current::Vector{Float64})
+        # Returns J and also J_y (for algebraic simplification in underdetermined case)
+        function compute_jacobian_and_update(past_state::Vector{Float64}, y_current::Vector{Float64}, e_current::Vector{Float64}, r::Vector{Float64}, cond_idx::Vector{Int}, free_idx::Vector{Int})
             # Build vars vector in levels: [present; past; shocks]
             past_from_state = zeros(n_past)
             for (i, p) in enumerate(past_sorted)
@@ -1069,31 +1070,63 @@ function get_conditional_forecast(𝓂::ℳ,
             vars = vcat(present_levels, past_from_state, shock_values)
             
             # Evaluate analytical jacobians
-            J_y = zeros(n_present, n_present)
-            J_e = zeros(n_present, n_exo)
-            jacobian_func(J_y, params_and_ss, vars)
-            jacobian_shock_func(J_e, params_and_ss, vars)
+            J_y_full = zeros(n_present, n_present)
+            J_e_full = zeros(n_present, n_exo)
+            jacobian_state_func(J_y_full, params_and_ss, vars)
+            jacobian_shock_func(J_e_full, params_and_ss, vars)
             
-            # ∂y/∂e = -(∂F/∂y)^{-1} * (∂F/∂e)
-            # This gives derivatives in the sorted order; we need to map back to model order
-            dydt_sorted = -(J_y \ J_e)
-            
-            # Map from sorted present vars to model's var order
-            # and from sorted exo to model's exo order
-            dydt = zeros(nVars, length(𝓂.timings.exo))
-            for (i, p) in enumerate(present_sorted)
-                var_idx = findfirst(x -> x == p, 𝓂.timings.var)
-                if var_idx !== nothing
-                    for (j, e) in enumerate(exo_sorted)
-                        exo_idx = findfirst(x -> x == e, 𝓂.timings.exo)
-                        if exo_idx !== nothing
-                            dydt[var_idx, exo_idx] = dydt_sorted[i, j]
-                        end
-                    end
+            # Build index maps: cond_idx (model order) -> sorted order for present vars
+            # free_idx (model order) -> sorted order for exo vars
+            cond_idx_sorted = Int[]
+            for c in cond_idx
+                var_name = 𝓂.timings.var[c]
+                sorted_idx = findfirst(x -> x == var_name, present_sorted)
+                if sorted_idx !== nothing
+                    push!(cond_idx_sorted, sorted_idx)
                 end
             end
             
-            return dydt
+            free_idx_sorted = Int[]
+            for f in free_idx
+                exo_name = 𝓂.timings.exo[f]
+                sorted_idx = findfirst(x -> x == exo_name, exo_sorted)
+                if sorted_idx !== nothing
+                    push!(free_idx_sorted, sorted_idx)
+                end
+            end
+            
+            n_cond = length(cond_idx)
+            n_free = length(free_idx)
+            
+            # Extract submatrices
+            J_y = J_y_full[cond_idx_sorted, :]  # n_cond x n_present
+            J_e = J_e_full[:, free_idx_sorted]   # n_present x n_free
+            
+            # Algebraic simplification: instead of J = -(J_y_full \ J_e_full)[cond_sorted, free_sorted]
+            # and then Δe = J \ r or J' * (J*J')^{-1} * r
+            #
+            # For square case (n_cond == n_free == n_present):
+            #   J \ r where J = -(J_y_full \ J_e_full) 
+            #   => solve J_y_full * J * J_e_full^{-1} = -I for J, then J \ r
+            #   => Δe = -J_e_full \ (J_y_full \ r) when system is square
+            #
+            # For general case:
+            #   We need the full J matrix to compute minimum norm solution
+            
+            # Compute J = -(J_y_full \ J_e_full)[cond_idx_sorted, free_idx_sorted]
+            dydt_sorted = -(J_y_full \ J_e_full)
+            J = dydt_sorted[cond_idx_sorted, free_idx_sorted]
+            
+            if n_cond == n_free
+                # Square system
+                Δe = J \ r
+            else
+                # Underdetermined - minimum norm solution: Δe = J' * (J * J')^{-1} * r
+                JJt = J * J'
+                Δe = J' * (JJt \ r)
+            end
+            
+            return Δe
         end
         
         # Helper function to find shocks using Newton iterations with analytical jacobian
@@ -1103,7 +1136,6 @@ function get_conditional_forecast(𝓂::ℳ,
                                    free_idx::Vector{Int},
                                    fixed_shocks::Vector{Float64})
             n_free = length(free_idx)
-            n_cond = length(cond_idx)
             
             # Initial guess for free shocks (zeros)
             e_free = zeros(n_free)
@@ -1127,21 +1159,8 @@ function get_conditional_forecast(𝓂::ℳ,
                     break
                 end
                 
-                # Get shock jacobian ∂y/∂e using analytical formula via implicit function theorem
-                dydt_full = compute_solution_shock_jacobian(past_state, y, e_full)
-                
-                # Extract submatrix for conditioned vars and free shocks
-                J = dydt_full[cond_idx, free_idx]
-                
-                # Minimum norm update: Δe = J' * (J * J')^{-1} * r
-                if n_cond == n_free
-                    # Square system
-                    Δe = J \ r
-                else
-                    # Underdetermined - minimum norm solution
-                    JJt = J * J'
-                    Δe = J' * (JJt \ r)
-                end
+                # Compute Newton update using analytical jacobian and implicit function theorem
+                Δe = compute_jacobian_and_update(past_state, y, e_full, r, cond_idx, free_idx)
                 
                 e_free = e_free - Δe
                 

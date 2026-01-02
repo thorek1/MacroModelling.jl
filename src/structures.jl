@@ -243,7 +243,7 @@ end
 struct backward_looking_solution
     state_update::Function
     residual_func::Function
-    jacobian_func::Function
+    jacobian_state_func::Function
     jacobian_shock_func::Function  # Jacobian w.r.t. shocks for conditional forecasting
     residual_buffer::Vector{Float64}
     jacobian_buffer::Matrix{Float64}
