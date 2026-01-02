@@ -8117,6 +8117,10 @@ function write_newton_simulation_functions!(𝓂::ℳ;
     residual_buffer = zeros(Float64, length(dyn_equations))
     jacobian_buffer = zeros(Float64, size(∇_present_mat))
     
+    # Create LinearSolve cache for Newton iterations
+    prob = 𝒮.LinearProblem(jacobian_buffer, residual_buffer)
+    lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+    
     # Compute jacobian w.r.t. shocks for conditional forecasting
     shock_vars = 𝔙[n_present + n_past + 1 : n_present + n_past + n_exo]
     ∇_shocks = Symbolics.sparsejacobian(dyn_equations_vec, collect(shock_vars))
@@ -8131,7 +8135,7 @@ function write_newton_simulation_functions!(𝓂::ℳ;
     jacobian_shock_buffer = zeros(Float64, size(∇_shocks_mat))
     
     # Create newton state update function
-    state_update = create_newton_state_update(𝓂, residual_func, jacobian_state_func, residual_buffer, jacobian_buffer)
+    state_update = create_newton_state_update(𝓂, residual_func, jacobian_state_func, residual_buffer, jacobian_buffer, lu_buffer)
     
     # Store in model's solution.backward_looking struct
     𝓂.solution.backward_looking = backward_looking_solution(
@@ -8141,7 +8145,8 @@ function write_newton_simulation_functions!(𝓂::ℳ;
         jacobian_shock_func,
         residual_buffer,
         jacobian_buffer,
-        jacobian_shock_buffer
+        jacobian_shock_buffer,
+        lu_buffer
     )
     
     return nothing
@@ -9699,7 +9704,7 @@ end
 
 
 """
-    create_newton_state_update(𝓂::ℳ, residual_func, jacobian_state_func, residual_buffer, jacobian_buffer)
+    create_newton_state_update(𝓂::ℳ, residual_func, jacobian_state_func, residual_buffer, jacobian_buffer, lu_buffer)
 
 Create a state update function that uses Newton's method to solve for present values
 given past values and shocks. Only for backward looking models.
@@ -9707,7 +9712,8 @@ given past values and shocks. Only for backward looking models.
 Works in deviations from SS: Input state is in deviations from SS, output is in deviations.
 """
 function create_newton_state_update(𝓂::ℳ, residual_func::Function, jacobian_state_func::Function, 
-                                    residual_buffer::Vector{Float64}, jacobian_buffer::Matrix{Float64})
+                                    residual_buffer::Vector{Float64}, jacobian_buffer::Matrix{Float64},
+                                    lu_buffer::𝒮.LinearCache)
     # Get steady state and parameters
     SS_and_pars = 𝓂.solution.non_stochastic_steady_state
     parameters = 𝓂.parameter_values
@@ -9807,14 +9813,17 @@ function create_newton_state_update(𝓂::ℳ, residual_func::Function, jacobian
                 break
             end
             
-            # Newton step: present_new = present_old - J^{-1} * F
-            try
-                Δ = jacobian \ residual
-                present_guess = present_guess - Δ
-            catch
-                # If jacobian is singular, break
+            # Newton step using LinearSolve: present_new = present_old - J^{-1} * F
+            lu_buffer.A = jacobian
+            lu_buffer.b = residual
+            𝒮.solve!(lu_buffer)
+            
+            if !isfinite(sum(lu_buffer.u))
+                # If solution is not finite (singular jacobian), break
                 break
             end
+            
+            present_guess = present_guess - lu_buffer.u
         end
         
         # Construct full state vector in the correct order (in levels)

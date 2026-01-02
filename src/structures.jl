@@ -248,6 +248,7 @@ struct backward_looking_solution
     residual_buffer::Vector{Float64}
     jacobian_buffer::Matrix{Float64}
     jacobian_shock_buffer::Matrix{Float64}
+    lu_buffer::𝒮.LinearCache
 end
 
 mutable struct solution

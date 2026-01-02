@@ -1193,6 +1193,14 @@ function get_conditional_forecast(𝓂::ℳ,
         for i in 2:size(conditions, 2)
             cond_var_idx = findall(conditions[:, i] .!= nothing)
             
+            # Skip find_newton_shocks if no conditions in this period - propagate state with zero shocks
+            if isempty(cond_var_idx)
+                free_shock_idx = findall(shocks[:, i] .== nothing)
+                shocks[free_shock_idx, i] .= 0
+                Y[:, i] = state_update(Y[:, i-1], Float64[shocks[:, i]...])
+                continue
+            end
+            
             if conditions_in_levels
                 conditions[cond_var_idx, i] .-= reference_steady_state[cond_var_idx] + SSS_delta[cond_var_idx]
             else
