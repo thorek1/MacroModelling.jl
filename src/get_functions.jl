@@ -1558,6 +1558,27 @@ function get_irf(𝓂::ℳ;
     end
     
     level = levels ? reference_steady_state + SSS_delta : SSS_delta
+    
+    # For backward looking models with initial_state provided, compute baseline path
+    # The baseline path is the no-shock forward iteration from initial_state
+    # This will be used for computing deviations instead of a constant SS level
+    baseline_path = nothing
+    if is_backward_looking && !unspecified_initial_state && algorithm == :newton
+        # Compute the no-shock baseline path in deviations
+        nVars = 𝓂.timings.nVars
+        baseline_path = zeros(nVars, periods)
+        zero_shocks = zeros(length(𝓂.timings.exo))
+        
+        # Start from the initial_state (already converted to deviations above)
+        baseline_state = copy(initial_state)
+        for t in 1:periods
+            baseline_state = state_update(baseline_state, zero_shocks)
+            baseline_path[:, t] = baseline_state
+        end
+        
+        # Add the level offset (SSS_delta for deviations mode, full level for levels mode)
+        baseline_path .+= level
+    end
 
     responses = compute_irf_responses(𝓂,
                                         state_update,
@@ -1572,7 +1593,8 @@ function get_irf(𝓂::ℳ;
                                         generalised_irf_warmup_iterations = generalised_irf_warmup_iterations,
                                         generalised_irf_draws = generalised_irf_draws,
                                         enforce_obc = occasionally_binding_constraints,
-                                        algorithm = algorithm)
+                                        algorithm = algorithm,
+                                        baseline_path = baseline_path)
 
     return responses
 

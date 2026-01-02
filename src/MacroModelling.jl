@@ -8699,7 +8699,8 @@ function compute_irf_responses(𝓂::ℳ,
                                 generalised_irf_warmup_iterations::Int,
                                 generalised_irf_draws::Int,
                                 enforce_obc::Bool,
-                                algorithm::Symbol)
+                                algorithm::Symbol,
+                                baseline_path::Union{Nothing, Matrix{Float64}} = nothing)
 
     if enforce_obc
         function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
@@ -8783,7 +8784,8 @@ function compute_irf_responses(𝓂::ℳ,
                         variables = variables,
                         negative_shock = negative_shock,
                         warmup_periods = generalised_irf_warmup_iterations,
-                        draws = generalised_irf_draws)
+                        draws = generalised_irf_draws,
+                        baseline_path = baseline_path)
         else
             return irf(state_update,
                         initial_state,
@@ -8793,7 +8795,8 @@ function compute_irf_responses(𝓂::ℳ,
                         shocks = shocks,
                         shock_size = shock_size,
                         variables = variables,
-                        negative_shock = negative_shock)
+                        negative_shock = negative_shock,
+                        baseline_path = baseline_path)
         end
     end
 end
@@ -8949,7 +8952,8 @@ function irf(state_update::Function,
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
-    negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    negative_shock::Bool = false,
+    baseline_path::Union{Nothing, Matrix{Float64}} = nothing)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9025,7 +9029,12 @@ function irf(state_update::Function,
             Y[:,t+1,1] = pruning ? sum(initial_state) : initial_state
         end
 
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
+        # Use baseline_path if provided, otherwise use constant level
+        if baseline_path !== nothing
+            return KeyedArray(Y[var_idx,:,:] .+ baseline_path[var_idx,:];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
+        else
+            return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
+        end
     else
         Y = zeros(T.nVars,periods,length(shock_idx))
 
@@ -9059,7 +9068,12 @@ function irf(state_update::Function,
             axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
         end
     
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+        # Use baseline_path if provided, otherwise use constant level
+        if baseline_path !== nothing
+            return KeyedArray(Y[var_idx,:,:] .+ baseline_path[var_idx,:];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+        else
+            return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+        end
     end
 end
 
@@ -9075,7 +9089,8 @@ function girf(state_update::Function,
     shock_size::Real = 1,
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
-    draws::Int = 50)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    draws::Int = 50,
+    baseline_path::Union{Nothing, Matrix{Float64}} = nothing)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9241,7 +9256,12 @@ function girf(state_update::Function,
         axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
     end
 
-    return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+    # Use baseline_path if provided, otherwise use constant level
+    if baseline_path !== nothing
+        return KeyedArray(Y[var_idx,2:end,:] .+ baseline_path[var_idx,:];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+    else
+        return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+    end
 end
 
 
