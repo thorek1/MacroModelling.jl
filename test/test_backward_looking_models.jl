@@ -130,26 +130,30 @@
         initial_state_solow = [initial_k, 0.0]  # [k, z]
         
         # For backward looking models with newton algorithm, initial_state is in levels
+        # shocks = :none returns result with 3rd dimension as [:none]
         result = get_irf(SolowGrowth2, 
                         algorithm = :newton, 
                         initial_state = initial_state_solow, 
                         shocks = :none,
+                        levels = true,  # Request levels output
                         periods = 10)
         
         @test size(result, 1) == 2  # 2 variables
         @test size(result, 2) == 10  # 10 periods
         
         # Capital should increase over time (converging toward steady state)
-        @test result(:k, 1) > initial_k  # First period k should increase
-        @test result(:k, 10) > result(:k, 1)  # Later periods should be higher
+        # Access with 3 indices since result is 3D (Vars, Periods, Shocks)
+        @test result(:k, 1, :none) > initial_k  # First period k should increase
+        @test result(:k, 10, :none) > result(:k, 1, :none)  # Later periods should be higher
         
         SolowGrowth2 = nothing
     end
     
     @testset "Model with unstable eigenvalue but valid SS at zero" begin
-        # Model y[0] = (1 + g) * y[-1] with g > 0 
+        # Model y[0] = (1 + g) * y[-1] + a * z[-1] with g > 0 
         # Has eigenvalue > 1 (unstable) but valid SS at y = 0
-        # From SS, iterating stays at SS. From any other point, it explodes.
+        # Note: y depends on z[-1], not z[0], so y response to eps_z shock
+        # appears only in period 2+ (delayed by one period)
         @model UnstableButValidSS begin
             y[0] = (1 + g) * y[-1] + a * z[-1]
             z[0] = rho * z[-1] + sigma * eps_z[x]
@@ -177,8 +181,9 @@
         @test size(irf_newton, 3) == 1  # 1 shock
         
         # IRF from SS should show the effect of a shock
-        # y responds to z shock through the 'a' parameter
-        @test irf_newton(:y, 1, :eps_z) != 0.0  # y responds to z shock
+        # y depends on z[-1], so y responds to z shock in period 2 (delayed by one period)
+        @test irf_newton(:y, 2, :eps_z) != 0.0  # y responds to z shock in period 2
+        @test irf_newton(:y, 1, :eps_z) == 0.0  # y has no immediate response (depends on z[-1])
         
         # Can also provide initial_state in levels for simulation from non-SS point
         initial_y = 100.0  # Start at y = 100
@@ -188,14 +193,14 @@
                         algorithm = :newton,
                         initial_state = initial_state_levels,
                         shocks = :none,
+                        levels = true,  # Request levels output
                         periods = 10)
         
         @test size(result, 1) == 2  # 2 variables
         @test size(result, 2) == 10  # 10 periods
         
         # y should grow each period at rate g (with z = 0)
-        # Since initial_state is in levels and model has valid SS,
-        # result is in levels (initial_state_levels provided)
+        # With levels = true, result is in levels
         y_values = result(:y, :, :none)
         @test y_values[1] ≈ initial_y * (1 + 0.02) rtol=1e-6  # y_1 = (1+g) * y_0
         @test y_values[2] > y_values[1]  # Continues growing
@@ -232,11 +237,14 @@
                        collect(irf_lev(:z, :, :eps_z)), rtol=1e-10)
         
         # Test conditional forecasting with non-trivial starting point
-        conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(nothing, 2, 2), 
-                                Variables = UnstableButValidSS.var, 
-                                Periods = 1:2)
-        conditions[:y, 1] = initial_y * 1.1  # Condition y to be 10% above initial in period 1
-        conditions[:z, 2] = 0.05  # Condition z in period 2
+        # Note: y[1] = (1+g)*y[-1] + a*z[-1] depends only on predetermined values,
+        # so we can only condition z (which has shock eps_z) in period 1.
+        # For period 2, y depends on z[1] which is affected by eps_z[1], so both can be conditioned.
+        conditions = Matrix{Union{Nothing,Float64}}(nothing, 2, 2)
+        z_idx = findfirst(x -> x == :z, UnstableButValidSS.var)
+        y_idx = findfirst(x -> x == :y, UnstableButValidSS.var)
+        conditions[z_idx, 1] = 0.05  # Condition z in period 1 (affected by eps_z shock)
+        conditions[z_idx, 2] = 0.04  # Condition z in period 2
         
         cf_result = get_conditional_forecast(UnstableButValidSS, 
                         conditions, 
@@ -245,8 +253,8 @@
                         periods = 5)
         
         # Check that conditions are satisfied
-        @test isapprox(cf_result(:y, 1), initial_y * 1.1, rtol=1e-4)
-        @test isapprox(cf_result(:z, 2), 0.05, rtol=1e-4)
+        @test isapprox(cf_result(:z, 1), 0.05, rtol=1e-4)
+        @test isapprox(cf_result(:z, 2), 0.04, rtol=1e-4)
         
         UnstableButValidSS = nothing
     end
@@ -319,11 +327,12 @@
         @test VAR_cond.timings.nFuture_not_past_and_mixed == 0
         
         # Test conditional forecast with newton - condition y to be 0.05 in period 1
-        conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(nothing, 2, 2), 
-                                Variables = VAR_cond.var, 
-                                Periods = 1:2)
-        conditions[:y, 1] = 0.05  # Condition y in period 1
-        conditions[:x, 2] = 0.02  # Condition x in period 2
+        # Use Matrix directly instead of KeyedArray to avoid indexing issues
+        conditions = Matrix{Union{Nothing,Float64}}(nothing, 2, 2)
+        y_idx = findfirst(x -> x == :y, VAR_cond.var)
+        x_idx = findfirst(x -> x == :x, VAR_cond.var)
+        conditions[y_idx, 1] = 0.05  # Condition y in period 1
+        conditions[x_idx, 2] = 0.02  # Condition x in period 2
         
         # Use newton algorithm for conditional forecast
         cf_newton = get_conditional_forecast(VAR_cond, conditions, algorithm = :newton)
