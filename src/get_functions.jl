@@ -1324,6 +1324,10 @@ function get_irf(𝓂::ℳ;
     is_backward_looking = 𝓂.timings.nFuture_not_past_and_mixed == 0
     unspecified_initial_state = initial_state == [0.0]
     
+    # Determine if we should use levels mode for newton
+    # - Use levels mode when algorithm is newton AND initial_state is provided AND model is backward looking
+    use_levels_mode = is_backward_looking && algorithm == :newton && !unspecified_initial_state
+    
     # For backward looking models, check steady state validity and if model is explosive
     no_valid_steady_state = false
     is_explosive = false
@@ -1346,18 +1350,19 @@ function get_irf(𝓂::ℳ;
             # First, ensure newton functions are generated
             solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = :newton)
             
-            # Create newton state update function
-            state_update_check = create_newton_state_update(𝓂, levels = true)
+            # Use parse_algorithm_to_state_update to get the newton state update function
+            state_update_check, _ = parse_algorithm_to_state_update(:newton, 𝓂, false, levels = false)
             
             # Get steady state values for variables only
             SS_vars = SS_and_pars[1:𝓂.timings.nVars]
             
-            # Do one iteration with no shocks starting from steady state
+            # Do one iteration with no shocks starting from steady state (in deviations = zeros)
             zero_shocks = zeros(𝓂.timings.nExo)
-            next_state = state_update_check(SS_vars, zero_shocks)
+            zero_state = zeros(𝓂.timings.nVars)
+            next_state = state_update_check(zero_state, zero_shocks)
             
-            # If next state differs from SS, model is explosive
-            is_explosive = !isapprox(next_state, SS_vars, rtol = 1e-8)
+            # If next state differs from zero (SS in deviations), model is explosive
+            is_explosive = !isapprox(next_state, zero_state, rtol = 1e-8)
         end
     end
     
