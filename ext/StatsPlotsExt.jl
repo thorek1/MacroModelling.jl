@@ -17,6 +17,7 @@ import Showoff
 import DataStructures: OrderedSet
 import SparseArrays: SparseMatrixCSC
 import NLopt
+import Statistics: mean
 using DispatchDoctor
 
 import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs, get_irf
@@ -1893,6 +1894,25 @@ function plot_irf(𝓂::ℳ;
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
     end
 
+    # Compute baseline path when reference = :baseline for backward looking models
+    is_backward_looking = 𝓂.timings.nFuture_not_past_and_mixed == 0
+    baseline_path_for_plot = nothing
+    
+    if reference == :baseline && is_backward_looking && algorithm == :newton
+        nVars = 𝓂.timings.nVars
+        baseline_path_for_plot = zeros(nVars, periods_extended)
+        zero_shocks = zeros(length(𝓂.timings.exo))
+        
+        # Compute baseline in deviations from NSSS
+        baseline_state = copy(initial_state)
+        for t in 1:periods_extended
+            baseline_state = state_update(baseline_state, zero_shocks)
+            baseline_path_for_plot[:, t] = baseline_state
+        end
+        # Convert to levels for plotting: baseline_path_for_plot + NSSS
+        baseline_path_for_plot = baseline_path_for_plot .+ NSSS[1:nVars]
+    end
+
     level = zeros(𝓂.timings.nVars)
 
     Y = compute_irf_responses(𝓂,
@@ -2027,11 +2047,14 @@ function plot_irf(𝓂::ℳ;
 
         for (i,v) in enumerate(var_idx)
             SS = reference_steady_state[v]
+            
+            # Get baseline path for this variable if using baseline reference
+            var_baseline_path = isnothing(baseline_path_for_plot) ? nothing : baseline_path_for_plot[v, :]
 
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
                 variable_name = variable_names_display[i]
 
-                push!(pp, standard_subplot(Y[i,:,shock], SS, variable_name, gr_back, pal = pal))
+                push!(pp, standard_subplot(Y[i,:,shock], SS, variable_name, gr_back, pal = pal, baseline_path = var_baseline_path))
 
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
@@ -2113,43 +2136,51 @@ function standard_subplot(irf_data::AbstractVector{S},
                             variable_name::R, 
                             gr_back::Bool;
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
-                            xvals = 1:length(irf_data)) where {S <: AbstractFloat, R <: Union{String, Symbol}}
-    finite_vals = filter(isfinite, irf_data)
-    can_dual_axis = gr_back && !isempty(finite_vals) && all((finite_vals .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
+                            xvals = 1:length(irf_data),
+                            baseline_path::Union{Nothing, AbstractVector{S}} = nothing) where {S <: AbstractFloat, R <: Union{String, Symbol}}
+    # If baseline_path is provided, use it; otherwise use steady_state for reference line
+    use_baseline = !isnothing(baseline_path)
+    
+    if use_baseline
+        # baseline_path is in levels - use it for reference
+        reference_line = baseline_path
+        # irf_data is in deviations from baseline, so we add baseline_path to get levels
+        plot_data = irf_data .+ baseline_path
+    else
+        reference_line = fill(steady_state, length(irf_data))
+        plot_data = irf_data .+ steady_state
+    end
+    
+    finite_vals = filter(isfinite, plot_data)
+    ref_for_dual_axis = use_baseline ? mean(filter(isfinite, baseline_path)) : steady_state
+    can_dual_axis = gr_back && !isempty(finite_vals) && all(finite_vals .> eps(Float32)) && (ref_for_dual_axis > eps(Float32))
 
     xrotation = length(string(xvals[1])) > 5 ? 30 : 0
 
     p = StatsPlots.plot(xvals,
-                        irf_data .+ steady_state,
+                        plot_data,
                         title = variable_name,
                         ylabel = "Level",
                         xrotation = xrotation,
                         color = pal[1],
                         label = "")
-                        
-    StatsPlots.hline!([steady_state], 
+    
+    # Plot reference line (either baseline path or horizontal steady state)
+    if use_baseline
+        StatsPlots.plot!(p, xvals, reference_line, 
                         color = :black, 
                         label = "")
+    else
+        StatsPlots.hline!([steady_state], 
+                            color = :black, 
+                            label = "")
+    end
 
     lo, hi = StatsPlots.ylims(p)
 
-    # if !(xvals isa UnitRange)
-        # low = 1
-        # high = length(irf_data)
-
-        # # Compute nice ticks on the shifted range
-        # ticks_shifted, _ = StatsPlots.optimize_ticks(low, high, k_min = 4, k_max = 6)
-
-        # ticks_shifted = Int.(ceil.(ticks_shifted))
-
-        # labels = xvals[ticks_shifted]
-
-        # StatsPlots.plot!(xticks = (ticks_shifted, labels))
-    # end
-
     if can_dual_axis
         StatsPlots.plot!(StatsPlots.twinx(), 
-                         ylims = (100 * (lo / steady_state - 1), 100 * (hi / steady_state - 1)),
+                         ylims = (100 * (lo / ref_for_dual_axis - 1), 100 * (hi / ref_for_dual_axis - 1)),
                          xrotation = xrotation,
                          ylabel = LaTeXStrings.L"\% \Delta")                            
     end
@@ -2496,6 +2527,7 @@ function plot_irf!(𝓂::ℳ;
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                     plot_type::Symbol = DEFAULT_PLOT_TYPE,
+                    reference::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? :baseline : :steady_state,
                     rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                     plot_attributes::Dict = Dict(),
                     transparency::Float64 = DEFAULT_TRANSPARENCY,
@@ -4801,6 +4833,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
                                     algorithm::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? DEFAULT_ALGORITHM_BACKWARD_LOOKING : DEFAULT_ALGORITHM,
                                     label::Union{Real, String, Symbol} = DEFAULT_LABEL,
+                                    reference::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? :baseline : :steady_state,
                                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
@@ -5257,6 +5290,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
                                     algorithm::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? DEFAULT_ALGORITHM_BACKWARD_LOOKING : DEFAULT_ALGORITHM,
                                     label::Union{Real, String, Symbol} = length(conditional_forecast_active_plot_container) + 1,
+                                    reference::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? :baseline : :steady_state,
                                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
