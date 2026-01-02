@@ -252,8 +252,6 @@ struct backward_looking_solution
     # Buffers for conditional forecasting
     jac_state_buffer::Matrix{Float64}   # For J_y_full in conditional forecasting
     jac_shock_buffer::Matrix{Float64}   # For J_e_full in conditional forecasting  
-    dydt_buffer::Matrix{Float64}        # For J_y_full \ J_e_full result
-    lu_jac_state_cache::𝒮.LinearCache   # Cache for J_y_full \ b operations
 end
 
 mutable struct solution

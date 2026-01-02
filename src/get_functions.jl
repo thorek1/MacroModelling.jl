@@ -998,11 +998,9 @@ function get_conditional_forecast(𝓂::ℳ,
         jacobian_state_func = 𝓂.solution.backward_looking.jacobian_state_func
         jacobian_shock_func = 𝓂.solution.backward_looking.jacobian_shock_func
         
-        # Get buffers and caches from backward_looking solution
+        # Get buffers from backward_looking solution
         jac_state_buffer = 𝓂.solution.backward_looking.jac_state_buffer
         jac_shock_buffer = 𝓂.solution.backward_looking.jac_shock_buffer
-        dydt_buffer = 𝓂.solution.backward_looking.dydt_buffer
-        lu_jac_state_cache = 𝓂.solution.backward_looking.lu_jac_state_cache
         
         # Get SS and parameter info for evaluating jacobians
         SS_and_pars = 𝓂.solution.non_stochastic_steady_state
@@ -1104,26 +1102,19 @@ function get_conditional_forecast(𝓂::ℳ,
             n_cond = length(cond_idx)
             n_free = length(free_idx)
             
-            # Compute J = -(J_y_full \ J_e_full)[cond_idx_sorted, free_idx_sorted] using LinearSolve cache
-            # Solve J_y_full * X = J_e_full for X (store in dydt_buffer)
-            lu_jac_state_cache.A = jac_state_buffer
-            lu_jac_state_cache.b = jac_shock_buffer
-            𝒮.solve!(lu_jac_state_cache)
-            dydt_buffer .= -lu_jac_state_cache.u
+            # Compute J = -(J_y_full \ J_e_full)[cond_idx_sorted, free_idx_sorted] using standard \ operator
+            # Solve J_y_full * X = J_e_full for X
+            dydt = -(jac_state_buffer \ jac_shock_buffer)
             
-            J = dydt_buffer[cond_idx_sorted, free_idx_sorted]
+            J = dydt[cond_idx_sorted, free_idx_sorted]
             
             if n_cond == n_free
                 # Square system - use direct linear solve
-                J_prob = 𝒮.LinearProblem(J, r)
-                J_sol = 𝒮.solve(J_prob, 𝒮.LUFactorization())
-                Δe = J_sol.u
+                Δe = J \ r
             else
                 # Underdetermined - minimum norm solution: Δe = J' * (J * J')^{-1} * r
                 JJt = J * J'
-                JJt_prob = 𝒮.LinearProblem(JJt, r)
-                JJt_sol = 𝒮.solve(JJt_prob, 𝒮.LUFactorization())
-                Δe = J' * JJt_sol.u
+                Δe = J' * (JJt \ r)
             end
             
             return Δe

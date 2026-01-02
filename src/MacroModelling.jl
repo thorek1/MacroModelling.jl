@@ -8138,12 +8138,7 @@ function write_newton_simulation_functions!(𝓂::ℳ;
     n_present = length(present_vars)
     n_exo = length(shock_vars)
     jac_state_buffer = zeros(Float64, n_present, n_present)
-    jac_shock_buffer = zeros(Float64, n_present, n_exo)
-    dydt_buffer = zeros(Float64, n_present, n_exo)
-    
-    # Create LinearSolve cache for J_y_full \ J_e_full operations in conditional forecasting
-    jac_state_prob = 𝒮.LinearProblem(jac_state_buffer, jac_shock_buffer)
-    lu_jac_state_cache = 𝒮.init(jac_state_prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+    jac_shock_buffer_cond = zeros(Float64, n_present, n_exo)
     
     # Create newton state update function
     state_update = create_newton_state_update(𝓂, residual_func, jacobian_state_func, residual_buffer, jacobian_buffer, lu_buffer)
@@ -8159,9 +8154,7 @@ function write_newton_simulation_functions!(𝓂::ℳ;
         jacobian_shock_buffer,
         lu_buffer,
         jac_state_buffer,
-        jac_shock_buffer,
-        dydt_buffer,
-        lu_jac_state_cache
+        jac_shock_buffer_cond
     )
     
     return nothing
