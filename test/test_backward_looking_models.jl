@@ -160,9 +160,6 @@
         @test result(:k, 1, :none) > initial_k  # First period k should increase
         @test result(:k, 10, :none) > result(:k, 1, :none)  # Later periods should be higher
         
-        # Test plot_irf works (just check it doesn't error)
-        # plot_irf(SolowGrowth2, algorithm = :newton, show_plots = false)
-        
         SolowGrowth2 = nothing
     end
     
