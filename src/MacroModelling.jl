@@ -842,6 +842,171 @@ function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
 end
 
 
+# SQP solver for OBC problems with inequality constraints
+# Solves: min ||x||² subject to g(x) ≤ 0
+# Uses L1 exact penalty merit function and active-set QP subproblems
+function solve_obc_sqp(n::Int, p, 𝓂;
+                       max_iter::Int = 500,
+                       tol::Float64 = Float64(eps(Float32)),
+                       ftol::Float64 = Float64(eps(Float32)))
+    
+    x = zeros(n)
+    
+    # Get initial constraint values
+    g = 𝓂.obc_violation_function(x, p)
+    m = length(g)
+    
+    if m == 0
+        return x, true
+    end
+    
+    # Preallocate
+    ∇f = zeros(n)
+    A = zeros(m, n)  # Constraint Jacobian
+    
+    # Merit function parameter
+    μ = 1.0
+    
+    # Working set for active constraints
+    λ = zeros(m)  # Lagrange multipliers for inequality constraints
+    
+    for iter in 1:max_iter
+        # Compute objective gradient: ∇f = 2x
+        ∇f .= 2.0 .* x
+        
+        # Compute constraint values
+        g = 𝓂.obc_violation_function(x, p)
+        
+        # Check for convergence (feasibility)
+        max_violation = maximum(max.(g, 0.0))
+        if max_violation ≤ tol
+            return x, true
+        end
+        
+        # Compute constraint Jacobian using ForwardDiff via DifferentiationInterface
+        A .= 𝒟.jacobian(xx -> 𝓂.obc_violation_function(xx, p), backend, x)
+        
+        # Identify active set (constraints that are violated or nearly active)
+        active = g .> -tol
+        n_active = sum(active)
+        
+        if n_active == 0
+            # No active constraints - unconstrained minimum is at x = 0
+            # But we need to check feasibility
+            d = -x  # Move towards origin
+        else
+            # Extract active constraints
+            A_active = A[active, :]
+            g_active = g[active]
+            
+            # Solve QP subproblem using KKT conditions
+            # min 0.5*d'*H*d + ∇f'*d  subject to  A_active*d + g_active ≤ 0
+            # where H = 2I (Hessian of objective)
+            #
+            # For active constraints treated as equality:
+            # KKT: [H  A'] [d]   = [-∇f]
+            #      [A  0 ] [λ]     [-g ]
+            
+            # Build KKT system for active constraints
+            KKT = zeros(n + n_active, n + n_active)
+            KKT[1:n, 1:n] .= 2.0 * ℒ.I(n)  # H = 2I
+            KKT[1:n, n+1:end] .= A_active'
+            KKT[n+1:end, 1:n] .= A_active
+            
+            rhs = zeros(n + n_active)
+            rhs[1:n] .= -∇f
+            rhs[n+1:end] .= -g_active
+            
+            # Solve KKT system
+            sol = try
+                KKT \ rhs
+            catch
+                # If KKT system is singular, try regularization
+                KKT_reg = KKT + 1e-8 * ℒ.I(n + n_active)
+                try
+                    KKT_reg \ rhs
+                catch
+                    return x, false
+                end
+            end
+            
+            d = sol[1:n]
+            λ_active = sol[n+1:end]
+            
+            # Check for negative multipliers (constraint should be dropped from active set)
+            # For inequality constraints, multipliers should be non-negative
+            if any(λ_active .< -tol)
+                # Drop constraint with most negative multiplier
+                drop_idx = findall(active)[argmin(λ_active)]
+                active[drop_idx] = false
+                continue  # Re-solve with updated active set
+            end
+            
+            # Update full multiplier vector
+            λ .= 0.0
+            λ[active] .= λ_active
+        end
+        
+        if !all(isfinite, d)
+            return x, false
+        end
+        
+        # Update penalty parameter
+        if n_active > 0
+            μ = max(μ, maximum(abs.(λ[active])) + 0.1)
+        end
+        
+        # Merit function: φ(x) = f(x) + μ * sum(max(g(x), 0))
+        f_curr = sum(abs2, x)
+        merit_curr = f_curr + μ * sum(max.(g, 0.0))
+        
+        # Directional derivative of merit function
+        directional_deriv = ℒ.dot(∇f, d) - μ * sum(max.(g, 0.0))
+        
+        # Backtracking line search
+        α = 1.0
+        β = 0.5
+        c_armijo = 1e-4
+        
+        line_search_success = false
+        for ls_iter in 1:20
+            x_trial = x .+ α .* d
+            
+            g_trial = 𝓂.obc_violation_function(x_trial, p)
+            f_trial = sum(abs2, x_trial)
+            merit_trial = f_trial + μ * sum(max.(g_trial, 0.0))
+            
+            if merit_trial ≤ merit_curr + c_armijo * α * directional_deriv
+                line_search_success = true
+                x .= x_trial
+                break
+            end
+            
+            α *= β
+        end
+        
+        if !line_search_success
+            # Accept step anyway if it's very small
+            if ℒ.norm(d) < sqrt(tol)
+                x .+= α .* d
+            else
+                # Try gradient descent on merit function
+                x .-= 0.01 .* ∇f
+            end
+        end
+        
+        # Check convergence
+        if ℒ.norm(d) < sqrt(tol) && max_violation ≤ tol
+            return x, true
+        end
+    end
+    
+    # Final feasibility check
+    g = 𝓂.obc_violation_function(x, p)
+    return x, maximum(max.(g, 0.0)) ≤ tol
+end
+
+
 function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
     Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
 
@@ -8550,19 +8715,8 @@ function compute_irf_responses(𝓂::ℳ,
             constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
 
             if constraints_violated
-                opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
-
-                opt.min_objective = obc_objective_optim_fun
-
-                opt.xtol_abs = eps(Float32)
-                opt.ftol_abs = eps(Float32)
-                opt.maxeval = 500
-
-                upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
-
-                NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
-
-                (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
+                # Use custom SQP solver (analytical derivatives, no external dependencies)
+                x, solved = solve_obc_sqp(num_shocks*periods_per_shock, p, 𝓂)
 
                 present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
 
