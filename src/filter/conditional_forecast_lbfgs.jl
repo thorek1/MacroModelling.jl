@@ -64,9 +64,10 @@ function find_shocks_conditional_forecast(::Val{:LBFGS},
                                          cond_var_idx::Vector{Int},
                                          free_shock_idx::Vector{Int},
                                          state_update::Function,
-                                         pruning::Bool,
+                                        #  pruning::Bool,
                                          S₁, S₂, S₃, timings)
-    
+                                         
+    pruning = typeof(initial_state) <: Vector{Vector{Float64}}
     precision_factor = 1.0
     
     # Pack parameters for objective function

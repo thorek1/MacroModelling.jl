@@ -16,7 +16,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          cond_var_idx::Vector{Int},
                                          free_shock_idx::Vector{Int},
                                          state_update::Function,
-                                         pruning_arg::Bool,
+                                        #  pruning_arg::Bool,
                                          𝐒₁::AbstractMatrix{Float64},
                                          𝐒₂::Union{AbstractMatrix{Float64}, Nothing},
                                          𝐒₃::Union{AbstractMatrix{Float64}, Nothing},
@@ -28,7 +28,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     # but not used. We infer pruning from initial_state type and compute states
     # directly using perturbation matrices.
     pruning = initial_state isa Vector{Vector{Float64}}
-    
+
     n_past = T.nPast_not_future_and_mixed
     n_exo = T.nExo
     third_order = !isnothing(𝐒₃)
