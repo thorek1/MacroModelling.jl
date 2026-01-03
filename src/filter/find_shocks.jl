@@ -15,7 +15,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          conditions::Vector{Float64},
                                          cond_var_idx::Vector{Int},
                                          free_shock_idx::Vector{Int},
-                                         pruning::Bool,
+                                        #  pruning::Bool,
                                          𝐒₁::AbstractMatrix{Float64},
                                          𝐒₂::Union{AbstractMatrix{Float64}, Nothing},
                                          𝐒₃::Union{AbstractMatrix{Float64}, Nothing},
@@ -23,6 +23,8 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          max_iter::Int = 1000,
                                          tol::Float64 = 1e-13)
 
+    pruning = initial_state isa Vector{Vector{Float64}}
+    
     n_past = T.nPast_not_future_and_mixed
     n_exo = T.nExo
     third_order = !isnothing(𝐒₃)
