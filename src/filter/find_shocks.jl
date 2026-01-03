@@ -8,9 +8,24 @@
 # conditional forecast constraints (only some variables match target values)
 # Uses analytical derivatives from perturbation solution matrices (like find_shocks)
 
-function conditional_forecast_indices(T::timings; third_order::Bool = false)
+@stable default_mode = "disable" begin
+function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
+                                         initial_state::Union{Vector{Float64}, Vector{Vector{Float64}}},
+                                         all_shocks::Vector{Float64},
+                                         conditions::Vector{Float64},
+                                         cond_var_idx::Vector{Int},
+                                         free_shock_idx::Vector{Int},
+                                         pruning::Bool,
+                                         𝐒₁::AbstractMatrix{Float64},
+                                         𝐒₂::Union{AbstractMatrix{Float64}, Nothing},
+                                         𝐒₃::Union{AbstractMatrix{Float64}, Nothing},
+                                         T::timings;
+                                         max_iter::Int = 1000,
+                                         tol::Float64 = 1e-13)
+
     n_past = T.nPast_not_future_and_mixed
     n_exo = T.nExo
+    third_order = !isnothing(𝐒₃)
 
     s_in_s⁺ = BitVector(vcat(ones(Bool, n_past), zeros(Bool, n_exo + 1)))
     sv_in_s⁺ = BitVector(vcat(ones(Bool, n_past + 1), zeros(Bool, n_exo)))
@@ -33,79 +48,32 @@ function conditional_forecast_indices(T::timings; third_order::Bool = false)
     tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
     shockvar_idxs = tmp.nzind
 
-    if !third_order
-        return (s_in_s⁺ = s_in_s⁺,
-                sv_in_s⁺ = sv_in_s⁺,
-                e_in_s⁺ = e_in_s⁺,
-                shock_idxs = shock_idxs,
-                shock²_idxs = shock²_idxs,
-                shockvar²_idxs = shockvar²_idxs,
-                shockvar_idxs = shockvar_idxs,
-                var_vol²_idxs = var_vol²_idxs,
-                var²_idxs = var²_idxs)
+    if third_order
+        tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
+        var_vol³_idxs = tmp.nzind
+
+        tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
+        shock_idxs2 = tmp.nzind
+
+        tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse
+        shock_idxs3 = tmp.nzind
+
+        tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
+        shock³_idxs = tmp.nzind
+
+        tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
+        shockvar1_idxs = tmp.nzind
+
+        tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
+        shockvar2_idxs = tmp.nzind
+
+        tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
+        shockvar3_idxs = tmp.nzind
+
+        shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+        shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)
     end
 
-    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
-    var_vol³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs3 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shock³_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-    shockvar1_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
-    shockvar2_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
-    shockvar3_idxs = tmp.nzind
-
-    shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-    shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)
-
-    return (s_in_s⁺ = s_in_s⁺,
-            sv_in_s⁺ = sv_in_s⁺,
-            e_in_s⁺ = e_in_s⁺,
-            shock_idxs = shock_idxs,
-            shock²_idxs = shock²_idxs,
-            shockvar²_idxs = shockvar²_idxs,
-            shockvar_idxs = shockvar_idxs,
-            var_vol²_idxs = var_vol²_idxs,
-            var²_idxs = var²_idxs,
-            var_vol³_idxs = var_vol³_idxs,
-            shock_idxs2 = shock_idxs2,
-            shock_idxs3 = shock_idxs3,
-            shock³_idxs = shock³_idxs,
-            shockvar1_idxs = shockvar1_idxs,
-            shockvar2_idxs = shockvar2_idxs,
-            shockvar3_idxs = shockvar3_idxs,
-            shockvar³2_idxs = shockvar³2_idxs,
-            shockvar³_idxs = shockvar³_idxs)
-end
-
-@stable default_mode = "disable" begin
-function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
-                                         initial_state::Union{Vector{Float64}, Vector{Vector{Float64}}},
-                                         all_shocks::Vector{Float64},
-                                         conditions::Vector{Float64},
-                                         cond_var_idx::Vector{Int},
-                                         free_shock_idx::Vector{Int},
-                                         pruning::Bool,
-                                         𝐒₁::AbstractMatrix{Float64},
-                                         𝐒₂::Union{AbstractMatrix{Float64}, Nothing},
-                                         𝐒₃::Union{AbstractMatrix{Float64}, Nothing},
-                                         idxs::NamedTuple,
-                                         T::timings;
-                                         max_iter::Int = 1000,
-                                         tol::Float64 = 1e-13)
-
-    n_exo = T.nExo
     fixed_shock_idx = setdiff(1:n_exo, free_shock_idx)
 
     if isempty(cond_var_idx) && isempty(fixed_shock_idx)
@@ -133,9 +101,9 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                 𝐒ⁱ = copy(𝐒¹ᵉ)
                 𝐒ⁱ²ᵉ = zeros(size(𝐒¹ᵉ, 1), n_exo^2)
             else
-                𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, idxs.var_vol²_idxs]
-                𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, idxs.shockvar²_idxs]
-                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, idxs.shock²_idxs]
+                𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
+                𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
+                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
 
                 kron_state_vol = ℒ.kron(state_vol, state_vol)
                 ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
@@ -158,9 +126,9 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                 𝐒ⁱ = copy(𝐒¹ᵉ)
                 𝐒ⁱ²ᵉ = zeros(size(𝐒¹ᵉ, 1), n_exo^2)
             else
-                𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, idxs.var_vol²_idxs]
-                𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, idxs.shockvar²_idxs]
-                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, idxs.shock²_idxs]
+                𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
+                𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
+                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
 
                 kron_state_vol = ℒ.kron(state_vol, state_vol)
                 ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
@@ -186,16 +154,16 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             𝐒¹⁻ᵛ = @views 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
             𝐒¹ᵉ = @views 𝐒₁[cond_var_idx, end-n_exo+1:end]
 
-            𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, idxs.var_vol²_idxs]
-            𝐒²⁻ = @views 𝐒₂[cond_var_idx, idxs.var²_idxs]
-            𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, idxs.shockvar²_idxs]
-            𝐒²⁻ᵛᵉ = @views 𝐒₂[cond_var_idx, idxs.shockvar_idxs]
-            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, idxs.shock²_idxs]
+            𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
+            𝐒²⁻ = @views 𝐒₂[cond_var_idx, var²_idxs]
+            𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
+            𝐒²⁻ᵛᵉ = @views 𝐒₂[cond_var_idx, shockvar_idxs]
+            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
 
-            𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, idxs.var_vol³_idxs]
-            𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, idxs.shockvar³2_idxs]
-            𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, idxs.shockvar³_idxs]
-            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, idxs.shock³_idxs]
+            𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, var_vol³_idxs]
+            𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, shockvar³2_idxs]
+            𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, shockvar³_idxs]
+            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, shock³_idxs]
 
             shock_independent = copy(conditions)
             ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)
@@ -229,14 +197,14 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             𝐒¹⁻ᵛ = @views 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
             𝐒¹ᵉ = @views 𝐒₁[cond_var_idx, end-n_exo+1:end]
 
-            𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, idxs.var_vol²_idxs]
-            𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, idxs.shockvar²_idxs]
-            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, idxs.shock²_idxs]
+            𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
+            𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
+            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
 
-            𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, idxs.var_vol³_idxs]
-            𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, idxs.shockvar³2_idxs]
-            𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, idxs.shockvar³_idxs]
-            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, idxs.shock³_idxs]
+            𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, var_vol³_idxs]
+            𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, shockvar³2_idxs]
+            𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, shockvar³_idxs]
+            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, shock³_idxs]
 
             shock_independent = copy(conditions)
             ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)

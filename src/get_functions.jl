@@ -878,8 +878,6 @@ function get_conditional_forecast(𝓂::ℳ,
             S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
         end
 
-        cf_idxs = conditional_forecast_indices(𝓂.timings; third_order = !isnothing(S₃))
-
         # Use Lagrange-Newton algorithm to find shocks
         x, matched = find_shocks_conditional_forecast(Val(:LagrangeNewton),
                                                       initial_state,
@@ -891,7 +889,6 @@ function get_conditional_forecast(𝓂::ℳ,
                                                       S₁,
                                                       S₂,
                                                       S₃,
-                                                      cf_idxs,
                                                       𝓂.timings)
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
@@ -932,7 +929,6 @@ function get_conditional_forecast(𝓂::ℳ,
                                                               S₁,
                                                               S₂,
                                                               S₃,
-                                                              cf_idxs,
                                                               𝓂.timings)
 
                 @assert matched "Numerical stabiltiy issues for restrictions in period $i."
