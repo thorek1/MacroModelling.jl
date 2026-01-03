@@ -990,8 +990,9 @@ function solve_obc_sqp(n::Int, p, 𝓂;
             if ℒ.norm(d) < sqrt(tol)
                 x .+= α .* d
             else
-                # Try gradient descent on merit function
-                x .-= 0.01 .* ∇f
+                # Try small gradient descent step on merit function
+                gradient_step = 0.01  # Small step size for fallback gradient descent
+                x .-= gradient_step .* ∇f
             end
         end
         
