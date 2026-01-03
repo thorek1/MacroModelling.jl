@@ -87,8 +87,7 @@ function get_shock_decomposition(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
-                                conditional_forecast_solver::Symbol = :LagrangeNewton)::KeyedArray
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
     # @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -229,8 +228,7 @@ function get_estimated_shocks(𝓂::ℳ,
                             tol::Tolerances = Tolerances(),
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
-                                conditional_forecast_solver::Symbol = :LagrangeNewton)::KeyedArray
+                            lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
     # @nospecialize # reduce compile time
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -358,8 +356,7 @@ function get_estimated_variables(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
-                                conditional_forecast_solver::Symbol = :LagrangeNewton)::KeyedArray
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
     # @nospecialize # reduce compile time                         
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -485,8 +482,7 @@ function get_model_estimates(𝓂::ℳ,
                              tol::Tolerances = Tolerances(),
                              quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                              sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
-                                conditional_forecast_solver::Symbol = :LagrangeNewton)::KeyedArray
+                             lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray
 
     vars = get_estimated_variables(𝓂, data;
                                    parameters = parameters,
@@ -587,8 +583,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                     verbose::Bool = DEFAULT_VERBOSE,
                                                     tol::Tolerances = Tolerances(),
                                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
-                                conditional_forecast_solver::Symbol = :LagrangeNewton)
+                                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                                               
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -1227,8 +1222,7 @@ function get_irf(𝓂::ℳ;
                 tol::Tolerances = Tolerances(),
                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
-                                conditional_forecast_solver::Symbol = :LagrangeNewton)::KeyedArray where R <: Real
+                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)::KeyedArray where R <: Real
     # @nospecialize # reduce compile time            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -2105,8 +2099,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                 verbose::Bool = DEFAULT_VERBOSE,
                                                 tol::Tolerances = Tolerances(),
                                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
-                                conditional_forecast_solver::Symbol = :LagrangeNewton)
+                                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time                                            
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -2266,8 +2259,7 @@ function get_variance_decomposition(𝓂::ℳ;
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
-                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
-                                conditional_forecast_solver::Symbol = :LagrangeNewton)
+                                    lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
     # @nospecialize # reduce compile time
                                     
     opts = merge_calculation_options(tol = tol, verbose = verbose,
