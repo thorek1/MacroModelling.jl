@@ -97,6 +97,14 @@ function find_shocks_conditional_forecast_core(
                                          use_globalization::Bool = false,
                                          use_levenberg_marquardt::Bool = false,
                                          use_continuation::Bool = false)
+    
+    # Pure Lagrange-Newton: when no globalization methods are enabled
+    pure_newton = !use_globalization && !use_levenberg_marquardt && !use_continuation
+    
+    # Track improvement for pure Newton
+    last_residual_norm = Inf
+    stalled_count = 0
+    
     # Initialize free shocks
     # For underdetermined systems (more shocks than conditions), use pseudoinverse for better initial guess
     if length(free_shock_idx) > length(cond_var_idx) && !use_levenberg_marquardt && !use_continuation
@@ -421,19 +429,250 @@ function find_shocks_conditional_forecast_core(
             println("    residual_norm = $residual_norm, step_norm = $step_norm, tol = $tol")
         end
         
+        # For pure Newton: detect stalling
+        if pure_newton
+            improvement = last_residual_norm - residual_norm
+            if improvement < tol * 0.01  # Not making meaningful progress
+                stalled_count += 1
+            else
+                stalled_count = 0  # Reset if made progress
+            end
+            last_residual_norm = residual_norm
+            
+            # If stalled for 3 consecutive iterations, apply iterative refinement
+            if stalled_count >= 3 || iter == max_iter
+                if debug
+                    if stalled_count >= 3
+                        println("  Pure Newton stalled after $iter iterations")
+                    else
+                        println("  Pure Newton reached max_iter")
+                    end
+                    println("  Applying iterative refinement...")
+                end
+                
+                # Apply iterative refinement
+                x_refined, improved = iterative_refinement(
+                    x, state_update, initial_state, all_shocks, conditions,
+                    cond_var_idx, free_shock_idx, pruning,
+                    𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T, jacobian, ∂x, kron_buffer2, kron_buffer3, J;
+                    max_refine_iter=10, tol=tol, debug=debug)
+                
+                # Check if refinement achieved convergence
+                all_shocks[free_shock_idx] .= x_refined
+                new_state_final = state_update(initial_state, all_shocks)
+                cond_vars_final = pruning ? sum(new_state_final) : new_state_final
+                residual_final = conditions - cond_vars_final[cond_var_idx]
+                norm2_final = ℒ.norm(cond_vars_final[cond_var_idx])
+                residual_norm_final = ℒ.norm(residual_final) / max(norm1, norm2_final)
+                
+                converged_after_refinement = residual_norm_final < tol
+                
+                if converged_after_refinement && debug
+                    println("  ✓ Converged after iterative refinement! (residual_norm = $residual_norm_final)")
+                elseif improved && debug
+                    println("  Iterative refinement improved solution (residual_norm: $residual_norm → $residual_norm_final)")
+                end
+                
+                return x_refined, converged_after_refinement
+            end
+        end
+        
         if residual_norm < tol && step_norm < sqrt(tol)
             if debug
-                println("  LM converged in $iter iterations!")
+                println("  Converged in $iter iterations!")
             end
             return x, true
         end
     end
     
     if debug
-        println("  LM did NOT converge after $max_iter iterations")
+        println("  Did NOT converge after $max_iter iterations")
+    end
+    
+    # For non-pure Newton methods, also try iterative refinement as final attempt
+    if !pure_newton
+        if debug
+            println("  Attempting iterative refinement as final polish...")
+        end
+        
+        x_refined, improved = iterative_refinement(
+            x, state_update, initial_state, all_shocks, conditions,
+            cond_var_idx, free_shock_idx, pruning,
+            𝐒¹ᵉ, 𝐒²ᵉ, 𝐒³ᵉ, T, jacobian, ∂x, kron_buffer2, kron_buffer3, J;
+            max_refine_iter=10, tol=tol, debug=debug)
+        
+        if improved && debug
+            println("  Iterative refinement improved solution")
+        end
+        
+        # Check if refinement achieved convergence
+        all_shocks[free_shock_idx] .= x_refined
+        new_state_final = state_update(initial_state, all_shocks)
+        cond_vars_final = pruning ? sum(new_state_final) : new_state_final
+        residual_final = conditions - cond_vars_final[cond_var_idx]
+        norm2_final = ℒ.norm(cond_vars_final[cond_var_idx])
+        residual_norm_final = ℒ.norm(residual_final) / max(norm1, norm2_final)
+        
+        converged_after_refinement = residual_norm_final < tol
+        
+        if converged_after_refinement && debug
+            println("  Converged after iterative refinement!")
+        end
+        
+        return x_refined, converged_after_refinement
     end
     
     return x, false
+end
+end # dispatch_doctor
+
+
+# Iterative refinement: polish the solution by solving for the residual
+# This can improve precision when the main algorithm has stalled
+@stable default_mode = "disable" begin
+function iterative_refinement(
+    x::Vector{Float64},
+    state_update::Function,
+    initial_state::Union{Vector{Float64}, Vector{Vector{Float64}}},
+    all_shocks::Vector{Float64},
+    conditions::Vector{Float64},
+    cond_var_idx::Vector{Int},
+    free_shock_idx::Vector{Int},
+    pruning::Bool,
+    𝐒¹ᵉ::AbstractMatrix{Float64},
+    𝐒²ᵉ::Union{AbstractMatrix{Float64}, Nothing},
+    𝐒³ᵉ::Union{AbstractMatrix{Float64}, Nothing},
+    T::timings,
+    jacobian::Matrix{Float64},
+    ∂x::Matrix{Float64},
+    kron_buffer2::Matrix{Float64},
+    kron_buffer3::Matrix{Float64},
+    J::ℒ.Diagonal{Bool, Vector{Bool}};
+    max_refine_iter::Int = 5,
+    tol::Float64 = 1e-13,
+    debug::Bool = false)
+    
+    x_current = copy(x)
+    best_residual_norm = Inf
+    improved = false
+    
+    # Compute initial residual
+    all_shocks[free_shock_idx] .= x_current
+    new_state = state_update(initial_state, all_shocks)
+    cond_vars = pruning ? sum(new_state) : new_state
+    residual = conditions - cond_vars[cond_var_idx]
+    norm1 = ℒ.norm(conditions)
+    norm2 = ℒ.norm(cond_vars[cond_var_idx])
+    initial_residual_norm = ℒ.norm(residual) / max(norm1, norm2)
+    best_residual_norm = initial_residual_norm
+    
+    if debug
+        println("  Iterative refinement starting with residual_norm = $initial_residual_norm")
+    end
+    
+    # Iterative refinement loop
+    for refine_iter in 1:max_refine_iter
+        # Compute Jacobian at current point
+        if !isnothing(𝐒³ᵉ)
+            # Third-order
+            kron_buffer = zeros(length(all_shocks) * length(all_shocks))
+            ℒ.kron!(kron_buffer, all_shocks, all_shocks)
+            ℒ.kron!(kron_buffer2, J, all_shocks)
+            ℒ.kron!(kron_buffer3, J, kron_buffer)
+            
+            copy!(∂x, 𝐒¹ᵉ)
+            ℒ.mul!(∂x, 𝐒²ᵉ, kron_buffer2, 2, 1)
+            ℒ.mul!(∂x, 𝐒³ᵉ, kron_buffer3, 3, 1)
+            
+            jacobian .= -∂x[cond_var_idx, free_shock_idx]
+        elseif !isnothing(𝐒²ᵉ)
+            # Second-order
+            ℒ.kron!(kron_buffer2, J, all_shocks)
+            ℒ.mul!(∂x, 𝐒²ᵉ, kron_buffer2)
+            ℒ.axpby!(1, 𝐒¹ᵉ, 2, ∂x)
+            
+            jacobian .= -∂x[cond_var_idx, free_shock_idx]
+        else
+            # First-order
+            jacobian .= -𝐒¹ᵉ[cond_var_idx, free_shock_idx]
+        end
+        
+        # Solve for correction: J * δx = residual
+        # Use least-squares for robustness
+        δx = try
+            # Try direct solve first
+            jacobian \ residual
+        catch
+            # Fall back to pseudoinverse if singular
+            ℒ.pinv(jacobian) * residual
+        end
+        
+        # Apply damped correction to avoid overshooting
+        # Start with full step, reduce if it doesn't improve
+        accepted_damping = 0.0
+        for damping_factor in [1.0, 0.5, 0.25, 0.1]
+            x_trial = x_current + damping_factor * δx
+            
+            # Clamp to reasonable bounds
+            x_trial .= clamp.(x_trial, -10.0, 10.0)
+            
+            # Evaluate residual at trial point
+            all_shocks[free_shock_idx] .= x_trial
+            new_state_trial = state_update(initial_state, all_shocks)
+            cond_vars_trial = pruning ? sum(new_state_trial) : new_state_trial
+            residual_trial = conditions - cond_vars_trial[cond_var_idx]
+            
+            norm2_trial = ℒ.norm(cond_vars_trial[cond_var_idx])
+            residual_norm_trial = ℒ.norm(residual_trial) / max(norm1, norm2_trial)
+            
+            # Accept if improved
+            if residual_norm_trial < best_residual_norm
+                x_current .= x_trial
+                residual .= residual_trial
+                cond_vars .= cond_vars_trial
+                best_residual_norm = residual_norm_trial
+                improved = true
+                accepted_damping = damping_factor
+                break
+            end
+        end
+        
+        if debug && accepted_damping > 0
+            println("    Refine iter $refine_iter: residual_norm = $best_residual_norm (damping = $accepted_damping)")
+        end
+        
+        # Check if we've achieved target tolerance
+        if best_residual_norm < tol
+            if debug
+                println("  Iterative refinement converged to target tolerance!")
+            end
+            break
+        end
+        
+        # Check if making progress
+        if refine_iter > 1 && best_residual_norm > 0.99 * initial_residual_norm
+            # Not making meaningful progress, stop
+            if debug
+                println("  Iterative refinement stopped (no progress)")
+            end
+            break
+        end
+        
+        # No accepted step, stop
+        if accepted_damping == 0.0
+            if debug
+                println("  Iterative refinement stopped (no acceptable step)")
+            end
+            break
+        end
+    end
+    
+    if debug && improved
+        improvement_factor = initial_residual_norm / best_residual_norm
+        println("  Iterative refinement improved residual by factor of $improvement_factor")
+    end
+    
+    return x_current, improved
 end
 end # dispatch_doctor
 
