@@ -632,6 +632,459 @@ end
 
 
 """
+Internal function for finding minimum-norm shocks for conditional forecasting with higher order perturbation solutions.
+Uses the LagrangeNewton algorithm from the filtering code.
+
+For second order: Solves min ||x||² s.t. 𝐒ⁱ * x + 𝐒ⁱ²ᵉ * kron(x,x) = shock_independent
+"""
+function find_shocks_conditional_forecast(::Val{:second_order},
+                                          conditions::Vector{Float64},
+                                          state::Vector{Float64},
+                                          fixed_shocks::Vector{Float64},
+                                          cond_var_idx::Vector{Int},
+                                          free_shock_idx::Vector{Int},
+                                          𝐒::Vector,
+                                          T::timings;
+                                          tol::Float64 = 1e-12)
+    nᵉ = T.nExo
+    n₋ = T.nPast_not_future_and_mixed
+    nᶠ = length(free_shock_idx)
+    nᶜ = length(cond_var_idx)
+    
+    # Build index vectors for the augmented state [state; 1; shocks]
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, n₋ + 1), zeros(Bool, nᵉ)))
+    
+    # Build free shock index in augmented state
+    e_free_in_s⁺ = zeros(Bool, n₋ + 1 + nᵉ)
+    e_free_in_s⁺[n₋ + 1 .+ free_shock_idx] .= true
+    e_free_in_s⁺ = BitVector(e_free_in_s⁺)
+    
+    # Kron indices for shock² terms (free shock ⊗ free shock)
+    tmp = ℒ.kron(e_free_in_s⁺, e_free_in_s⁺) |> sparse
+    shock²_free_idxs = tmp.nzind
+    
+    # Kron indices for shock-state interaction (state_vol ⊗ free shock)
+    tmp = ℒ.kron(e_free_in_s⁺, sv_in_s⁺) |> sparse
+    shockvar_free_idxs = tmp.nzind
+    
+    # Kron indices for state_vol² (state_vol ⊗ state_vol) 
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
+    var_vol²_idxs = tmp.nzind
+    
+    # Extract solution matrices for conditioned variables and free shocks
+    𝐒¹ᵉ_free = collect(𝐒[1][cond_var_idx, n₋ + 1 .+ free_shock_idx])  # First order: cond vars × free shocks
+    𝐒²ᵉ_free = collect(𝐒[2][cond_var_idx, shock²_free_idxs])          # Second order: cond vars × (free shock ⊗ free shock)
+    𝐒²⁻ᵉ_free = collect(𝐒[2][cond_var_idx, shockvar_free_idxs])       # Second order: cond vars × (free shock ⊗ state_vol)
+    𝐒²⁻ᵛ = collect(𝐒[2][cond_var_idx, var_vol²_idxs])                 # Second order: cond vars × (state_vol ⊗ state_vol)
+    𝐒¹⁻ᵛ = collect(𝐒[1][cond_var_idx, 1:n₋+1])                        # First order: cond vars × state_vol
+    
+    # Build state_vol = [state; 1]
+    state_vol = vcat(state[T.past_not_future_and_mixed_idx], 1.0)
+    
+    # Compute shock_independent part: target - state contributions
+    shock_independent = copy(conditions)
+    shock_independent .-= 𝐒¹⁻ᵛ * state_vol
+    shock_independent .-= 𝐒²⁻ᵛ * ℒ.kron(state_vol, state_vol) / 2
+    
+    # Account for fixed shocks contribution  
+    fixed_shock_idx = setdiff(1:nᵉ, free_shock_idx)
+    if !isempty(fixed_shock_idx) && any(fixed_shocks[fixed_shock_idx] .!= 0)
+        # First order fixed shocks contribution
+        𝐒¹ᵉ_fixed = 𝐒[1][cond_var_idx, n₋ + 1 .+ fixed_shock_idx]
+        shock_independent .-= 𝐒¹ᵉ_fixed * fixed_shocks[fixed_shock_idx]
+        
+        # Second order: (fixed_shock ⊗ fixed_shock) contribution
+        e_fixed_in_s⁺ = zeros(Bool, n₋ + 1 + nᵉ)
+        e_fixed_in_s⁺[n₋ + 1 .+ fixed_shock_idx] .= true
+        e_fixed_in_s⁺ = BitVector(e_fixed_in_s⁺)
+        
+        tmp = ℒ.kron(e_fixed_in_s⁺, e_fixed_in_s⁺) |> sparse
+        shock²_fixed_idxs = tmp.nzind
+        if !isempty(shock²_fixed_idxs)
+            𝐒²ᵉ_fixed = 𝐒[2][cond_var_idx, shock²_fixed_idxs]
+            shock_independent .-= 𝐒²ᵉ_fixed * ℒ.kron(fixed_shocks[fixed_shock_idx], fixed_shocks[fixed_shock_idx]) / 2
+        end
+        
+        # Second order: (fixed_shock ⊗ state_vol) contribution
+        tmp = ℒ.kron(e_fixed_in_s⁺, sv_in_s⁺) |> sparse
+        shockvar_fixed_idxs = tmp.nzind
+        if !isempty(shockvar_fixed_idxs)
+            𝐒²⁻ᵉ_fixed = 𝐒[2][cond_var_idx, shockvar_fixed_idxs]
+            shock_independent .-= 𝐒²⁻ᵉ_fixed * ℒ.kron(fixed_shocks[fixed_shock_idx], state_vol) / 2
+        end
+    end
+    
+    # Build 𝐒ⁱ = 𝐒¹ᵉ_free + 𝐒²⁻ᵉ_free * kron(I(nᶠ), state_vol)
+    J = ℒ.Diagonal(ones(Bool, nᶠ))
+    kron_buffer3 = ℒ.kron(J, state_vol)
+    𝐒ⁱ = 𝐒¹ᵉ_free + 𝐒²⁻ᵉ_free * kron_buffer3
+    
+    # 𝐒ⁱ²ᵉ for the quadratic term
+    𝐒ⁱ²ᵉ = 𝐒²ᵉ_free / 2
+    
+    # Prepare buffers for find_shocks
+    kron_buffer = zeros(nᶠ^2)
+    kron_buffer2 = ℒ.kron(J, zeros(nᶠ))
+    init_guess = zeros(nᶠ)
+    
+    # Call find_shocks with LagrangeNewton algorithm
+    x, matched = find_shocks(Val(:LagrangeNewton),
+                             init_guess,
+                             kron_buffer,
+                             kron_buffer2,
+                             J,
+                             𝐒ⁱ,
+                             𝐒ⁱ²ᵉ,
+                             shock_independent,
+                             tol = tol)
+    
+    return x, matched
+end
+
+
+function find_shocks_conditional_forecast(::Val{:pruned_second_order},
+                                          conditions::Vector{Float64},
+                                          state::Vector{Vector{Float64}},
+                                          fixed_shocks::Vector{Float64},
+                                          cond_var_idx::Vector{Int},
+                                          free_shock_idx::Vector{Int},
+                                          𝐒::Vector,
+                                          T::timings;
+                                          tol::Float64 = 1e-12)
+    nᵉ = T.nExo
+    n₋ = T.nPast_not_future_and_mixed
+    nᶠ = length(free_shock_idx)
+    nᶜ = length(cond_var_idx)
+    
+    # For pruned second order: state[1] is first order state, state[2] is second order correction
+    state₁ = state[1]
+    state₂ = state[2]
+    
+    # Build index vectors
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, n₋ + 1), zeros(Bool, nᵉ)))
+    s_in_s⁺  = BitVector(vcat(ones(Bool, n₋), zeros(Bool, 1 + nᵉ)))
+    
+    e_free_in_s⁺ = zeros(Bool, n₋ + 1 + nᵉ)
+    e_free_in_s⁺[n₋ + 1 .+ free_shock_idx] .= true
+    e_free_in_s⁺ = BitVector(e_free_in_s⁺)
+    
+    # Kron indices
+    tmp = ℒ.kron(e_free_in_s⁺, e_free_in_s⁺) |> sparse
+    shock²_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_free_in_s⁺, sv_in_s⁺) |> sparse
+    shockvar_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
+    var_vol²_idxs = tmp.nzind
+    
+    # Extract solution matrices
+    𝐒¹ᵉ_free = collect(𝐒[1][cond_var_idx, n₋ + 1 .+ free_shock_idx])
+    𝐒²ᵉ_free = collect(𝐒[2][cond_var_idx, shock²_free_idxs])
+    𝐒²⁻ᵉ_free = collect(𝐒[2][cond_var_idx, shockvar_free_idxs])
+    𝐒²⁻ᵛ = collect(𝐒[2][cond_var_idx, var_vol²_idxs])
+    𝐒¹⁻ᵛ = collect(𝐒[1][cond_var_idx, 1:n₋+1])
+    𝐒¹⁻ = collect(𝐒[1][cond_var_idx, 1:n₋])
+    
+    # Build state vectors
+    state₁_past = state₁[T.past_not_future_and_mixed_idx]
+    state₂_past = state₂[T.past_not_future_and_mixed_idx]
+    state_vol = vcat(state₁_past, 1.0)
+    
+    # Compute shock_independent part for pruned second order
+    # y = 𝐒₁ * [state₁; shocks] + 𝐒₁ * [state₂; 0] + 𝐒₂ * kron([state₁;1;shocks], [state₁;1;shocks]) / 2
+    shock_independent = copy(conditions)
+    shock_independent .-= 𝐒¹⁻ * state₁_past         # First order contribution from state₁
+    shock_independent .-= 𝐒¹⁻ * state₂_past         # First order contribution from state₂
+    shock_independent .-= 𝐒²⁻ᵛ * ℒ.kron(state_vol, state_vol) / 2  # Second order state contribution
+    
+    # Account for fixed shocks
+    fixed_shock_idx = setdiff(1:nᵉ, free_shock_idx)
+    if !isempty(fixed_shock_idx) && any(fixed_shocks[fixed_shock_idx] .!= 0)
+        𝐒¹ᵉ_fixed = 𝐒[1][cond_var_idx, n₋ + 1 .+ fixed_shock_idx]
+        shock_independent .-= 𝐒¹ᵉ_fixed * fixed_shocks[fixed_shock_idx]
+        
+        e_fixed_in_s⁺ = zeros(Bool, n₋ + 1 + nᵉ)
+        e_fixed_in_s⁺[n₋ + 1 .+ fixed_shock_idx] .= true
+        e_fixed_in_s⁺ = BitVector(e_fixed_in_s⁺)
+        
+        tmp = ℒ.kron(e_fixed_in_s⁺, e_fixed_in_s⁺) |> sparse
+        shock²_fixed_idxs = tmp.nzind
+        if !isempty(shock²_fixed_idxs)
+            𝐒²ᵉ_fixed = 𝐒[2][cond_var_idx, shock²_fixed_idxs]
+            shock_independent .-= 𝐒²ᵉ_fixed * ℒ.kron(fixed_shocks[fixed_shock_idx], fixed_shocks[fixed_shock_idx]) / 2
+        end
+        
+        tmp = ℒ.kron(e_fixed_in_s⁺, sv_in_s⁺) |> sparse
+        shockvar_fixed_idxs = tmp.nzind
+        if !isempty(shockvar_fixed_idxs)
+            𝐒²⁻ᵉ_fixed = 𝐒[2][cond_var_idx, shockvar_fixed_idxs]
+            shock_independent .-= 𝐒²⁻ᵉ_fixed * ℒ.kron(fixed_shocks[fixed_shock_idx], state_vol) / 2
+        end
+    end
+    
+    # Build 𝐒ⁱ
+    J = ℒ.Diagonal(ones(Bool, nᶠ))
+    kron_buffer3 = ℒ.kron(J, state_vol)
+    𝐒ⁱ = 𝐒¹ᵉ_free + 𝐒²⁻ᵉ_free * kron_buffer3
+    
+    𝐒ⁱ²ᵉ = 𝐒²ᵉ_free / 2
+    
+    # Prepare buffers
+    kron_buffer = zeros(nᶠ^2)
+    kron_buffer2 = ℒ.kron(J, zeros(nᶠ))
+    init_guess = zeros(nᶠ)
+    
+    x, matched = find_shocks(Val(:LagrangeNewton),
+                             init_guess,
+                             kron_buffer,
+                             kron_buffer2,
+                             J,
+                             𝐒ⁱ,
+                             𝐒ⁱ²ᵉ,
+                             shock_independent,
+                             tol = tol)
+    
+    return x, matched
+end
+
+
+function find_shocks_conditional_forecast(::Val{:third_order},
+                                          conditions::Vector{Float64},
+                                          state::Vector{Float64},
+                                          fixed_shocks::Vector{Float64},
+                                          cond_var_idx::Vector{Int},
+                                          free_shock_idx::Vector{Int},
+                                          𝐒::Vector,
+                                          T::timings;
+                                          tol::Float64 = 1e-12)
+    nᵉ = T.nExo
+    n₋ = T.nPast_not_future_and_mixed
+    nᶠ = length(free_shock_idx)
+    
+    # Build index vectors
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, n₋ + 1), zeros(Bool, nᵉ)))
+    
+    e_free_in_s⁺ = zeros(Bool, n₋ + 1 + nᵉ)
+    e_free_in_s⁺[n₋ + 1 .+ free_shock_idx] .= true
+    e_free_in_s⁺ = BitVector(e_free_in_s⁺)
+    
+    # Kron indices for second order
+    tmp = ℒ.kron(e_free_in_s⁺, e_free_in_s⁺) |> sparse
+    shock²_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_free_in_s⁺, sv_in_s⁺) |> sparse
+    shockvar_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
+    var_vol²_idxs = tmp.nzind
+    
+    # Kron indices for third order  
+    tmp = ℒ.kron(e_free_in_s⁺, ℒ.kron(e_free_in_s⁺, e_free_in_s⁺)) |> sparse
+    shock³_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_free_in_s⁺, ℒ.kron(e_free_in_s⁺, sv_in_s⁺)) |> sparse
+    shock²var_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_free_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
+    shockvar²_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
+    var_vol³_idxs = tmp.nzind
+    
+    # Extract solution matrices
+    𝐒¹ᵉ_free = collect(𝐒[1][cond_var_idx, n₋ + 1 .+ free_shock_idx])
+    𝐒²ᵉ_free = collect(𝐒[2][cond_var_idx, shock²_free_idxs])
+    𝐒²⁻ᵉ_free = collect(𝐒[2][cond_var_idx, shockvar_free_idxs])
+    𝐒²⁻ᵛ = collect(𝐒[2][cond_var_idx, var_vol²_idxs])
+    𝐒¹⁻ᵛ = collect(𝐒[1][cond_var_idx, 1:n₋+1])
+    
+    𝐒³ᵉ_free = collect(𝐒[3][cond_var_idx, shock³_free_idxs])
+    𝐒³⁻ᵉ²_free = collect(𝐒[3][cond_var_idx, shock²var_free_idxs])
+    𝐒³⁻²ᵉ_free = collect(𝐒[3][cond_var_idx, shockvar²_free_idxs])
+    𝐒³⁻ᵛ = collect(𝐒[3][cond_var_idx, var_vol³_idxs])
+    
+    # Build state_vol
+    state_vol = vcat(state[T.past_not_future_and_mixed_idx], 1.0)
+    kron_state_vol = ℒ.kron(state_vol, state_vol)
+    
+    # Compute shock_independent part
+    shock_independent = copy(conditions)
+    shock_independent .-= 𝐒¹⁻ᵛ * state_vol
+    shock_independent .-= 𝐒²⁻ᵛ * kron_state_vol / 2
+    shock_independent .-= 𝐒³⁻ᵛ * ℒ.kron(state_vol, kron_state_vol) / 6
+    
+    # Account for fixed shocks (first order contribution)
+    fixed_shock_idx = setdiff(1:nᵉ, free_shock_idx)
+    if !isempty(fixed_shock_idx) && any(fixed_shocks[fixed_shock_idx] .!= 0)
+        𝐒¹ᵉ_fixed = 𝐒[1][cond_var_idx, n₋ + 1 .+ fixed_shock_idx]
+        shock_independent .-= 𝐒¹ᵉ_fixed * fixed_shocks[fixed_shock_idx]
+    end
+    
+    # Build 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * kron(I, state_vol) + 𝐒³⁻²ᵉ * kron(I, kron(state_vol, state_vol)) / 2
+    J = ℒ.Diagonal(ones(Bool, nᶠ))
+    kron_J_state = ℒ.kron(J, state_vol)
+    kron_J_state² = ℒ.kron(J, kron_state_vol)
+    
+    𝐒ⁱ = 𝐒¹ᵉ_free + 𝐒²⁻ᵉ_free * kron_J_state + 𝐒³⁻²ᵉ_free * kron_J_state² / 2
+    
+    # 𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ² * kron(I², state_vol) / 2
+    II = sparse(ℒ.I(nᶠ^2))
+    kron_II_state = ℒ.kron(II, state_vol)
+    𝐒ⁱ²ᵉ = 𝐒²ᵉ_free / 2 + 𝐒³⁻ᵉ²_free * kron_II_state / 2
+    
+    # 𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
+    𝐒ⁱ³ᵉ = 𝐒³ᵉ_free / 6
+    
+    # Prepare buffers for third order find_shocks
+    # Note: kron_buffer4 must be (nᶠ³, nᶠ²) for x_kron_II! to work correctly
+    kron_buffer = zeros(nᶠ^2)
+    kron_buffer² = zeros(nᶠ^3)
+    kron_buffer2 = ℒ.kron(J, zeros(nᶠ))
+    kron_buffer3 = ℒ.kron(J, zeros(nᶠ^2))
+    kron_buffer4 = zeros(nᶠ^3, nᶠ^2)
+    init_guess = zeros(nᶠ)
+    
+    x, matched = find_shocks(Val(:LagrangeNewton),
+                             init_guess,
+                             kron_buffer,
+                             kron_buffer²,
+                             kron_buffer2,
+                             kron_buffer3,
+                             kron_buffer4,
+                             J,
+                             𝐒ⁱ,
+                             𝐒ⁱ²ᵉ,
+                             𝐒ⁱ³ᵉ,
+                             shock_independent,
+                             tol = tol)
+    
+    return x, matched
+end
+
+
+function find_shocks_conditional_forecast(::Val{:pruned_third_order},
+                                          conditions::Vector{Float64},
+                                          state::Vector{Vector{Float64}},
+                                          fixed_shocks::Vector{Float64},
+                                          cond_var_idx::Vector{Int},
+                                          free_shock_idx::Vector{Int},
+                                          𝐒::Vector,
+                                          T::timings;
+                                          tol::Float64 = 1e-12)
+    nᵉ = T.nExo
+    n₋ = T.nPast_not_future_and_mixed
+    nᶠ = length(free_shock_idx)
+    
+    state₁ = state[1]
+    state₂ = state[2]
+    state₃ = state[3]
+    
+    # Build index vectors
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, n₋ + 1), zeros(Bool, nᵉ)))
+    
+    e_free_in_s⁺ = zeros(Bool, n₋ + 1 + nᵉ)
+    e_free_in_s⁺[n₋ + 1 .+ free_shock_idx] .= true
+    e_free_in_s⁺ = BitVector(e_free_in_s⁺)
+    
+    # Kron indices
+    tmp = ℒ.kron(e_free_in_s⁺, e_free_in_s⁺) |> sparse
+    shock²_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_free_in_s⁺, sv_in_s⁺) |> sparse
+    shockvar_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
+    var_vol²_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_free_in_s⁺, ℒ.kron(e_free_in_s⁺, e_free_in_s⁺)) |> sparse
+    shock³_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_free_in_s⁺, ℒ.kron(e_free_in_s⁺, sv_in_s⁺)) |> sparse
+    shock²var_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_free_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
+    shockvar²_free_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
+    var_vol³_idxs = tmp.nzind
+    
+    # Extract solution matrices
+    𝐒¹ᵉ_free = collect(𝐒[1][cond_var_idx, n₋ + 1 .+ free_shock_idx])
+    𝐒²ᵉ_free = collect(𝐒[2][cond_var_idx, shock²_free_idxs])
+    𝐒²⁻ᵉ_free = collect(𝐒[2][cond_var_idx, shockvar_free_idxs])
+    𝐒²⁻ᵛ = collect(𝐒[2][cond_var_idx, var_vol²_idxs])
+    𝐒¹⁻ᵛ = collect(𝐒[1][cond_var_idx, 1:n₋+1])
+    𝐒¹⁻ = collect(𝐒[1][cond_var_idx, 1:n₋])
+    
+    𝐒³ᵉ_free = collect(𝐒[3][cond_var_idx, shock³_free_idxs])
+    𝐒³⁻ᵉ²_free = collect(𝐒[3][cond_var_idx, shock²var_free_idxs])
+    𝐒³⁻²ᵉ_free = collect(𝐒[3][cond_var_idx, shockvar²_free_idxs])
+    𝐒³⁻ᵛ = collect(𝐒[3][cond_var_idx, var_vol³_idxs])
+    
+    # Build state vectors
+    state₁_past = state₁[T.past_not_future_and_mixed_idx]
+    state₂_past = state₂[T.past_not_future_and_mixed_idx]
+    state₃_past = state₃[T.past_not_future_and_mixed_idx]
+    state_vol = vcat(state₁_past, 1.0)
+    kron_state_vol = ℒ.kron(state_vol, state_vol)
+    
+    # Compute shock_independent part for pruned third order
+    shock_independent = copy(conditions)
+    shock_independent .-= 𝐒¹⁻ * state₁_past
+    shock_independent .-= 𝐒¹⁻ * state₂_past
+    shock_independent .-= 𝐒¹⁻ * state₃_past
+    shock_independent .-= 𝐒²⁻ᵛ * kron_state_vol / 2
+    shock_independent .-= 𝐒³⁻ᵛ * ℒ.kron(state_vol, kron_state_vol) / 6
+    
+    # Account for fixed shocks
+    fixed_shock_idx = setdiff(1:nᵉ, free_shock_idx)
+    if !isempty(fixed_shock_idx) && any(fixed_shocks[fixed_shock_idx] .!= 0)
+        𝐒¹ᵉ_fixed = 𝐒[1][cond_var_idx, n₋ + 1 .+ fixed_shock_idx]
+        shock_independent .-= 𝐒¹ᵉ_fixed * fixed_shocks[fixed_shock_idx]
+    end
+    
+    # Build 𝐒ⁱ
+    J = ℒ.Diagonal(ones(Bool, nᶠ))
+    kron_J_state = ℒ.kron(J, state_vol)
+    kron_J_state² = ℒ.kron(J, kron_state_vol)
+    
+    𝐒ⁱ = 𝐒¹ᵉ_free + 𝐒²⁻ᵉ_free * kron_J_state + 𝐒³⁻²ᵉ_free * kron_J_state² / 2
+    
+    II = sparse(ℒ.I(nᶠ^2))
+    kron_II_state = ℒ.kron(II, state_vol)
+    𝐒ⁱ²ᵉ = 𝐒²ᵉ_free / 2 + 𝐒³⁻ᵉ²_free * kron_II_state / 2
+    
+    𝐒ⁱ³ᵉ = 𝐒³ᵉ_free / 6
+    
+    # Prepare buffers
+    # Note: kron_buffer4 must be (nᶠ³, nᶠ²) for x_kron_II! to work correctly
+    kron_buffer = zeros(nᶠ^2)
+    kron_buffer² = zeros(nᶠ^3)
+    kron_buffer2 = ℒ.kron(J, zeros(nᶠ))
+    kron_buffer3 = ℒ.kron(J, zeros(nᶠ^2))
+    kron_buffer4 = zeros(nᶠ^3, nᶠ^2)
+    init_guess = zeros(nᶠ)
+    
+    x, matched = find_shocks(Val(:LagrangeNewton),
+                             init_guess,
+                             kron_buffer,
+                             kron_buffer²,
+                             kron_buffer2,
+                             kron_buffer3,
+                             kron_buffer4,
+                             J,
+                             𝐒ⁱ,
+                             𝐒ⁱ²ᵉ,
+                             𝐒ⁱ³ᵉ,
+                             shock_independent,
+                             tol = tol)
+    
+    return x, matched
+end
+
+
+"""
 $(SIGNATURES)
 Return the conditional forecast given restrictions on endogenous variables and shocks (optional). By default, the values represent absolute deviations from the relevant steady state (see `levels` for details). The non-stochastic steady state (NSSS) is relevant for first order solutions and the stochastic steady state for higher order solutions. A constrained minimisation problem is solved to find the combination of shocks with the smallest squared magnitude fulfilling the conditions.
 
@@ -865,31 +1318,24 @@ function get_conditional_forecast(𝓂::ℳ,
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
-        precision_factor = 1.0
-
-        p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state, pruning, precision_factor)
-
-        res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                            zeros(length(free_shock_idx)), 
-                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward) end
-
-        matched = Optim.minimum(res) < 1e-12
-
-        if !matched
-            res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zeros(length(free_shock_idx)), 
-                                Optim.LBFGS(), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
-
-            matched = Optim.minimum(res) < 1e-12
-        end
-
+        # Get solution matrices for find_shocks approach
+        TT, SS_and_pars, 𝐒, state_ref, converged = get_relevant_steady_state_and_state_update(Val(algorithm), 𝓂.parameter_values, 𝓂, opts = opts)
+        
+        # Prepare conditions and fixed shocks vectors
+        conditions_vec = Float64[conditions[j,1] for j in cond_var_idx]
+        fixed_shocks_vec = Float64[shocks[j,1] === nothing ? 0.0 : shocks[j,1] for j in 1:𝓂.timings.nExo]
+        
+        # Use find_shocks_conditional_forecast with LagrangeNewton algorithm
+        x, matched = find_shocks_conditional_forecast(Val(algorithm),
+                                                       conditions_vec,
+                                                       initial_state,
+                                                       fixed_shocks_vec,
+                                                       cond_var_idx,
+                                                       free_shock_idx,
+                                                       𝐒,
+                                                       𝓂.timings)
+        
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
-    
-        x = Optim.minimizer(res)
 
         shocks[free_shock_idx,1] .= x
                 
@@ -912,35 +1358,35 @@ function get_conditional_forecast(𝓂::ℳ,
     
             @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
     
-            p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, precision_factor)
+            current_state = pruning ? initial_state : Y[:,i-1]
+            
+            # If there are no conditions, just propagate the state with zero shocks
+            if isempty(cond_var_idx)
+                initial_state = state_update(initial_state, Float64[shocks[:,i]...])
+                Y[:,i] = pruning ? sum(initial_state) : initial_state
+            else
+                # Prepare conditions and fixed shocks vectors
+                conditions_vec = Float64[conditions[j,i] for j in cond_var_idx]
+                fixed_shocks_vec = Float64[shocks[j,i] === nothing ? 0.0 : shocks[j,i] for j in 1:𝓂.timings.nExo]
+                
+                # Use find_shocks_conditional_forecast
+                x, matched = find_shocks_conditional_forecast(Val(algorithm),
+                                                               conditions_vec,
+                                                               current_state,
+                                                               fixed_shocks_vec,
+                                                               cond_var_idx,
+                                                               free_shock_idx,
+                                                               𝐒,
+                                                               𝓂.timings)
 
-            res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zeros(length(free_shock_idx)), 
-                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
+                @assert matched "Numerical stabiltiy issues for restrictions in period $i."
 
-            matched = Optim.minimum(res) < 1e-12
+                shocks[free_shock_idx,i] .= x
 
-            if !matched
-                res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zeros(length(free_shock_idx)), 
-                                Optim.LBFGS(), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
+                initial_state = state_update(initial_state, Float64[shocks[:,i]...])
 
-                matched = Optim.minimum(res) < 1e-12
+                Y[:,i] = pruning ? sum(initial_state) : initial_state
             end
-
-            @assert matched "Numerical stabiltiy issues for restrictions in period $i."
-
-            x = Optim.minimizer(res)
-
-            shocks[free_shock_idx,i] .= x
-
-            initial_state = state_update(initial_state, Float64[shocks[:,i]...])
-
-            Y[:,i] = pruning ? sum(initial_state) : initial_state
         end
     elseif algorithm == :first_order
         C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
