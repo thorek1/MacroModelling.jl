@@ -315,48 +315,94 @@ function find_shocks_conditional_forecast_core(
             
         # Update with line search globalization if enabled
         elseif use_globalization
-            # Compute merit function: ||x||^2 + penalty * ||residual||^2
-            penalty = 100.0
-            current_merit = ℒ.dot(x, x) + penalty * ℒ.dot(residual, residual)
+            # Try multiple merit function formulations
+            # Merit 1: Standard L2 penalty ||x||^2 + penalty * ||residual||^2
+            # Merit 2: L1 penalty ||x||_1 + penalty * ||residual||_1  (more robust to outliers)
+            # Merit 3: Fletcher penalty with adaptive weight
             
-            # Line search: try step sizes α = 1, 0.5, 0.25, 0.125, ...
-            α = 1.0
-            xλ_temp .= xλ
-            best_merit = current_merit
+            # Adaptive penalty based on problem conditioning
+            # Higher penalty for underdetermined systems to emphasize constraint satisfaction
+            base_penalty = length(free_shock_idx) > length(cond_var_idx) ? 500.0 : 100.0
+            
+            # Try different merit functions
             best_α = 0.0
+            best_merit = Inf
+            best_x = copy(x)
             
-            for _ in 1:10  # Try up to 10 backtracking steps
-                xλ_temp .= xλ - α * Δxλ
-                x_temp = xλ_temp[1:length(free_shock_idx)]
-                
-                # Evaluate merit at trial point
-                all_shocks[free_shock_idx] .= x_temp
-                new_state_temp = state_update(initial_state, all_shocks)
-                cond_vars_temp = pruning ? sum(new_state_temp) : new_state_temp
-                residual_temp = conditions - cond_vars_temp[cond_var_idx]
-                
-                trial_merit = ℒ.dot(x_temp, x_temp) + penalty * ℒ.dot(residual_temp, residual_temp)
-                
-                # Accept if merit improved
-                if trial_merit < best_merit
-                    best_merit = trial_merit
-                    best_α = α
+            for merit_type in [:l2_quadratic, :l1_robust, :adaptive_fletcher]
+                # Compute current merit
+                if merit_type == :l2_quadratic
+                    penalty = base_penalty
+                    current_merit = ℒ.dot(x, x) + penalty * ℒ.dot(residual, residual)
+                elseif merit_type == :l1_robust
+                    penalty = base_penalty
+                    current_merit = ℒ.norm(x, 1) + penalty * ℒ.norm(residual, 1)
+                else  # adaptive_fletcher
+                    # Fletcher's merit: ||x||^2 + λ'*residual + 0.5*penalty*||residual||^2
+                    penalty = base_penalty * (1.0 + iter / max_iter)  # Increase penalty over time
+                    current_merit = ℒ.dot(x, x) + ℒ.dot(λ, residual) + 0.5 * penalty * ℒ.dot(residual, residual)
                 end
                 
-                # Sufficient decrease condition (Armijo rule)
-                if trial_merit < current_merit - 1e-4 * α * ℒ.dot(Δxλ, Δxλ)
-                    break
-                end
+                # Line search: try step sizes α = 1, 0.5, 0.25, 0.125, ...
+                α = 1.0
+                xλ_temp .= xλ
                 
-                α *= 0.5
+                for ls_iter in 1:12  # Try up to 12 backtracking steps
+                    xλ_temp .= xλ - α * Δxλ
+                    x_temp = xλ_temp[1:length(free_shock_idx)]
+                    λ_temp = xλ_temp[length(free_shock_idx)+1:end]
+                    
+                    # Evaluate merit at trial point
+                    all_shocks[free_shock_idx] .= x_temp
+                    new_state_temp = state_update(initial_state, all_shocks)
+                    cond_vars_temp = pruning ? sum(new_state_temp) : new_state_temp
+                    residual_temp = conditions - cond_vars_temp[cond_var_idx]
+                    
+                    if merit_type == :l2_quadratic
+                        trial_merit = ℒ.dot(x_temp, x_temp) + penalty * ℒ.dot(residual_temp, residual_temp)
+                    elseif merit_type == :l1_robust
+                        trial_merit = ℒ.norm(x_temp, 1) + penalty * ℒ.norm(residual_temp, 1)
+                    else  # adaptive_fletcher
+                        trial_merit = ℒ.dot(x_temp, x_temp) + ℒ.dot(λ_temp, residual_temp) + 0.5 * penalty * ℒ.dot(residual_temp, residual_temp)
+                    end
+                    
+                    # Track best across all merit functions and step sizes
+                    if trial_merit < best_merit
+                        best_merit = trial_merit
+                        best_α = α
+                        best_x .= x_temp
+                    end
+                    
+                    # Sufficient decrease condition (Armijo rule with adaptive c)
+                    c = merit_type == :l1_robust ? 1e-3 : 1e-4  # More lenient for L1
+                    if trial_merit < current_merit - c * α * ℒ.dot(Δxλ, Δxλ)
+                        # Found acceptable step for this merit function
+                        if best_α == 0.0 || α > best_α
+                            best_α = α
+                            best_x .= x_temp
+                        end
+                        break
+                    end
+                    
+                    α *= 0.5
+                end
             end
             
-            # Use best step found
+            # Use best step found across all merit functions
             if best_α > 0.0
-                xλ .-= best_α * Δxλ
+                x .= best_x
+                # Update full xλ vector
+                xλ[1:length(free_shock_idx)] .= x
+                # Recompute λ with current x
+                all_shocks[free_shock_idx] .= x
+                new_state = state_update(initial_state, all_shocks)
+                cond_vars = pruning ? sum(new_state) : new_state
+                residual .= conditions - cond_vars[cond_var_idx]
+                # Don't update λ here - will be updated in next Newton step
             else
-                # No improvement found, take small step anyway
-                xλ .-= 0.01 * Δxλ
+                # No improvement found with any merit function, take very small step
+                xλ .-= 0.005 * Δxλ
+                x .= xλ[1:length(free_shock_idx)]
             end
         else
             # Standard Newton update without globalization
