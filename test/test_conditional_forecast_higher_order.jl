@@ -112,7 +112,10 @@ end
             @test fulfilled
             
             # Verify the fixed shock is respected
-            delta_eps_idx = findfirst(x -> occursin("delta_eps", string(x)), axiskeys(forecast, 1))
+            # The shock in output is named with subscript: delta_eps₍ₓ₎
+            delta_eps_sym = Symbol("delta_eps₍ₓ₎")
+            delta_eps_idx = findfirst(==(delta_eps_sym), axiskeys(forecast, 1))
+            @test !isnothing(delta_eps_idx)
             @test forecast[delta_eps_idx, 1] ≈ 0.0 atol=1e-10
         end
     end
@@ -174,12 +177,16 @@ end
             conditions[c_idx, 1] = 0.008
             
             # Fix 5 shocks to 0 in period 1, leaving only 2 free (equal to number of conditions)
+            # Use shock indices based on model's exo vector
+            sw_shocks = Smets_Wouters_2007.exo
+            @test length(sw_shocks) == 7  # Expected 7 shocks in SW07 model
+            
             shocks = Matrix{Union{Nothing,Float64}}(nothing, 7, 1)
-            shocks[1, 1] = 0.0  # ea
-            shocks[2, 1] = 0.0  # eb
-            shocks[3, 1] = 0.0  # eg
-            shocks[4, 1] = 0.0  # em
-            shocks[5, 1] = 0.0  # epinf - 5 fixed, 2 free (eqs, ew)
+            # Fix the first 5 shocks (ea, eb, eg, em, epinf)
+            for i in 1:5
+                shocks[findfirst(==(sw_shocks[i]), sw_shocks), 1] = 0.0
+            end
+            # Leave eqs and ew free (2 free shocks = 2 conditions)
             
             forecast = get_conditional_forecast(Smets_Wouters_2007, conditions, 
                                                 shocks = shocks,
