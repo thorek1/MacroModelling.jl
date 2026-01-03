@@ -63,25 +63,11 @@ function find_shocks_conditional_forecast(::Val{:LBFGS},
                                          conditions::Vector{Float64},
                                          cond_var_idx::Vector{Int},
                                          free_shock_idx::Vector{Int},
+                                         state_update::Function,
                                          pruning::Bool,
                                          S₁, S₂, S₃, timings)
     
     precision_factor = 1.0
-    
-    # Reconstruct state_update function from first-order solution matrix
-    # S₁ is [past_not_future_and_mixed states; shocks] → new_state
-    state_update = function(state::Vector, shock::Vector)
-        if pruning
-            # For pruning, state is a vector of vectors
-            # We need to extract the past_not_future_and_mixed part
-            past_state = state[1][timings.past_not_future_and_mixed_idx]
-            return S₁ * [past_state; shock]
-        else
-            # For non-pruning, state is a simple vector
-            past_state = state[timings.past_not_future_and_mixed_idx]
-            return S₁ * [past_state; shock]
-        end
-    end
     
     # Pack parameters for objective function
     p = (conditions, state_update, shocks, cond_var_idx, free_shock_idx, initial_state, pruning, precision_factor)
