@@ -865,63 +865,33 @@ function get_conditional_forecast(𝓂::ℳ,
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
-        # Get perturbation solution matrices for analytical derivatives
-        # Extract shock columns from first-order solution (for linear part)
-        𝐒¹ᵉ = 𝓂.solution.perturbation.first_order.solution_matrix[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
-        
-        # Compute indices for extracting shock-only columns from higher-order matrices
-        # Following the same approach as the inversion filter
-        # e_in_s⁺ is a BitVector selecting only shocks (not states)
-        e_in_s⁺ = BitVector(vcat(zeros(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), ones(Bool, 𝓂.timings.nExo)))
-        
-        # Get second-order and third-order matrices if needed
-        if algorithm ∈ [:second_order, :pruned_second_order]
-            # For second-order: get full matrix and extract columns for shock × shock interactions
-            # The full second-order matrix is second_order_solution * 𝐔₂
-            # Check if second_order_solution is non-empty
-            if size(𝓂.solution.perturbation.second_order_solution, 2) > 0
-                𝐒²_full = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
-                tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-                shock²_idxs = tmp.nzind
-                𝐒²ᵉ = 𝐒²_full[:, shock²_idxs]
-            else
-                # Second-order solution is empty/not computed - use nothing (will fall back to first-order derivatives)
-                𝐒²ᵉ = nothing
-            end
-            𝐒³ᵉ = nothing
-        else # third_order or pruned_third_order
-            # For third-order: extract columns for both second and third-order
-            if size(𝓂.solution.perturbation.second_order_solution, 2) > 0
-                𝐒²_full = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
-                tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-                shock²_idxs = tmp.nzind
-                𝐒²ᵉ = 𝐒²_full[:, shock²_idxs]
-            else
-                𝐒²ᵉ = nothing
-            end
-            
-            if size(𝓂.solution.perturbation.third_order_solution, 2) > 0
-                𝐒³_full = 𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
-                tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-                shock³_idxs = tmp.nzind
-                𝐒³ᵉ = 𝐒³_full[:, shock³_idxs]
-            else
-                𝐒³ᵉ = nothing
-            end
+        S₁ = 𝓂.solution.perturbation.first_order.solution_matrix
+        S₁ = [S₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) S₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
+
+        S₂ = nothing
+        if size(𝓂.solution.perturbation.second_order_solution, 2) > 0
+            S₂ = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
         end
-        
+
+        S₃ = nothing
+        if algorithm ∈ [:third_order, :pruned_third_order] && size(𝓂.solution.perturbation.third_order_solution, 2) > 0
+            S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
+        end
+
+        cf_idxs = conditional_forecast_indices(𝓂.timings; third_order = !isnothing(S₃))
+
         # Use Lagrange-Newton algorithm to find shocks
         x, matched = find_shocks_conditional_forecast(Val(:LagrangeNewton),
-                                                      state_update,
                                                       initial_state,
                                                       Float64[shocks[:,1]...],
                                                       Float64[conditions[cond_var_idx,1]...],
                                                       cond_var_idx,
                                                       free_shock_idx,
                                                       pruning,
-                                                      𝐒¹ᵉ,
-                                                      𝐒²ᵉ,
-                                                      𝐒³ᵉ,
+                                                      S₁,
+                                                      S₂,
+                                                      S₃,
+                                                      cf_idxs,
                                                       𝓂.timings)
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
@@ -953,16 +923,16 @@ function get_conditional_forecast(𝓂::ℳ,
             else
                 # Use Lagrange-Newton algorithm to find shocks
                 x, matched = find_shocks_conditional_forecast(Val(:LagrangeNewton),
-                                                              state_update,
                                                               pruning ? initial_state : Y[:,i-1],
                                                               Float64[shocks[:,i]...],
                                                               Float64[conditions[cond_var_idx,i]...],
                                                               cond_var_idx,
                                                               free_shock_idx,
                                                               pruning,
-                                                              𝐒¹ᵉ,
-                                                              𝐒²ᵉ,
-                                                              𝐒³ᵉ,
+                                                              S₁,
+                                                              S₂,
+                                                              S₃,
+                                                              cf_idxs,
                                                               𝓂.timings)
 
                 @assert matched "Numerical stabiltiy issues for restrictions in period $i."
