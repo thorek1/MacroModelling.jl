@@ -173,6 +173,7 @@ include("./algorithms/nonlinear_solver.jl")
 include("./algorithms/quadratic_matrix_equation.jl")
 
 include("./filter/find_shocks.jl")
+include("./filter/conditional_forecast_lbfgs.jl")
 include("./filter/inversion.jl")
 include("./filter/kalman.jl")
 
