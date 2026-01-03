@@ -841,6 +841,186 @@ function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
     sum(abs2, X)
 end
 
+function obc_sqp_solve(initial_guess::Vector{Float64},
+                        p;
+                        max_iter::Int = 500,
+                        tol::Float64 = eps(Float32),
+                        active_tol::Float64 = tol,
+                        lambda_tol::Float64 = tol,
+                        step_tol::Float64 = 1e-12,
+                        ls_max::Int = 20)
+    x = copy(initial_guess)
+    n = length(x)
+
+    𝓂 = p[4]
+    res = 𝓂.obc_violation_function(x, p)
+    m = length(res)
+    if m == 0
+        return x, true
+    end
+
+    jac = zeros(n, m)
+    λ = zeros(m)
+    g = similar(x)
+    dx = similar(x)
+    x_trial = similar(x)
+    tmp = similar(x)
+
+    for _ in 1:max_iter
+        obc_constraint_optim_fun(res, x, jac, p)
+
+        copy!(g, x)
+        ℒ.rmul!(g, 2.0)
+
+        max_viol = 0.0
+        @inbounds for v in res
+            if v > max_viol
+                max_viol = v
+            end
+        end
+
+        active = (res .> active_tol) .| (λ .> 0.0)
+        active_idx = findall(active)
+
+        if isempty(active_idx)
+            copy!(dx, x)
+            ℒ.rmul!(dx, -1.0)
+            λ .= 0.0
+        else
+            # Active-set SQP step: solve the KKT system for current active constraints.
+            while true
+                J_A = view(jac, :, active_idx)'
+                c_A = res[active_idx]
+                kkt_dim = n + length(active_idx)
+                K = zeros(kkt_dim, kkt_dim)
+                rhs = zeros(kkt_dim)
+
+                @inbounds for i in 1:n
+                    K[i, i] = 2.0
+                end
+                K[1:n, n+1:end] .= J_A'
+                K[n+1:end, 1:n] .= J_A
+                rhs[1:n] .= -g
+                rhs[n+1:end] .= -c_A
+
+                sol = zeros(kkt_dim)
+                try
+                    fact = ℒ.factorize(K)
+                    ℒ.ldiv!(sol, fact, rhs)
+                catch
+                    return x, false
+                end
+
+                copyto!(dx, 1, sol, 1, n)
+                λ_A = @view sol[n+1:end]
+
+                neg = findall(<(-lambda_tol), λ_A)
+                if isempty(neg)
+                    λ .= 0.0
+                    λ[active_idx] = λ_A
+                    break
+                end
+
+                active[active_idx[neg]] .= false
+                active_idx = findall(active)
+                if isempty(active_idx)
+                    copy!(dx, x)
+                    ℒ.rmul!(dx, -1.0)
+                    λ .= 0.0
+                    break
+                end
+            end
+        end
+
+        if ℒ.norm(dx) <= step_tol
+            if max_viol <= tol
+                ℒ.mul!(tmp, jac, λ)
+                ℒ.axpy!(1.0, g, tmp)
+                stationarity = ℒ.norm(tmp) / max(1.0, ℒ.norm(g))
+
+                max_comp = 0.0
+                @inbounds for i in eachindex(res, λ)
+                    comp = abs(res[i] * λ[i])
+                    if comp > max_comp
+                        max_comp = comp
+                    end
+                end
+
+                if stationarity <= sqrt(tol) && max_comp <= sqrt(tol)
+                    return x, true
+                end
+            end
+        end
+
+        f = ℒ.dot(x, x)
+        accepted = false
+        α = 1.0
+        for _ in 1:ls_max
+            @inbounds for i in 1:n
+                x_trial[i] = x[i] + α * dx[i]
+            end
+
+            res_trial = 𝓂.obc_violation_function(x_trial, p)
+            max_viol_trial = 0.0
+            @inbounds for v in res_trial
+                if v > max_viol_trial
+                    max_viol_trial = v
+                end
+            end
+
+            if max_viol <= tol
+                f_trial = ℒ.dot(x_trial, x_trial)
+                if max_viol_trial <= tol && f_trial <= f + tol
+                    accepted = true
+                    break
+                end
+            else
+                if max_viol_trial <= max_viol
+                    accepted = true
+                    break
+                end
+            end
+            α *= 0.5
+        end
+
+        if accepted
+            copy!(x, x_trial)
+        else
+            ℒ.axpy!(α, dx, x)
+        end
+
+        obc_constraint_optim_fun(res, x, jac, p)
+        max_viol = 0.0
+        @inbounds for v in res
+            if v > max_viol
+                max_viol = v
+            end
+        end
+
+        if max_viol <= tol
+            copy!(g, x)
+            ℒ.rmul!(g, 2.0)
+            ℒ.mul!(tmp, jac, λ)
+            ℒ.axpy!(1.0, g, tmp)
+            stationarity = ℒ.norm(tmp) / max(1.0, ℒ.norm(g))
+
+            max_comp = 0.0
+            @inbounds for i in eachindex(res, λ)
+                comp = abs(res[i] * λ[i])
+                if comp > max_comp
+                    max_comp = comp
+                end
+            end
+
+            if stationarity <= sqrt(tol) && max_comp <= sqrt(tol)
+                return x, true
+            end
+        end
+    end
+
+    return x, false
+end
+
 function set_up_obc_violation_function!(𝓂)
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
 
@@ -8536,25 +8716,14 @@ function compute_irf_responses(𝓂::ℳ,
             constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
 
             if constraints_violated
-                opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
-
-                opt.min_objective = obc_objective_optim_fun
-
-                opt.xtol_abs = eps(Float32)
-                opt.ftol_abs = eps(Float32)
-                opt.maxeval = 500
-
-                upper_bounds = fill(eps(), 1 + 2*(max(num_shocks*periods_per_shock-1, 1)))
-
-                NLopt.inequality_constraint!(opt, (res, x, jac) -> obc_constraint_optim_fun(res, x, jac, p), upper_bounds)
-
-                (minf,x,ret) = NLopt.optimize(opt, zeros(num_shocks*periods_per_shock))
+                x0 = zeros(num_shocks*periods_per_shock)
+                x, solved = obc_sqp_solve(x0, p; max_iter = 500, tol = eps(Float32))
 
                 present_shocks[contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")] .= x
 
                 constraints_violated = any(𝓂.obc_violation_function(x, p) .> eps(Float32))
 
-                solved = !constraints_violated
+                solved = solved && !constraints_violated
             else
                 solved = true
             end
