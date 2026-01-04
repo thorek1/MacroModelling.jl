@@ -5920,7 +5920,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
             start_vals = (fail_fast_solvers_only ? [false] : Any[false,p.starting_value, 1.206, 1.5, 0.7688, 2.0, 0.897])
             for s in start_vals #, .9, .75, 1.5, -.5, 2, .25] # try first the guess and then different starting values
                 # for ext in [false, true] # try first the system where only values can vary, next try the system where values and parameters can vary
-                for algo in [newton, levenberg_marquardt]
+                for algo in [newton, traub, levenberg_marquardt]
                     if !isfinite(sol_minimum) || sol_minimum > tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol
                         if solved_yet continue end
                         # println("Block: $n_block pre GN - $ext - $sol_minimum - $rel_sol_minimum")
