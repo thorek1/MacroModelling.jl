@@ -5104,7 +5104,7 @@ function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120,
     opt.xtol_abs = eps(Float32)
     opt.ftol_abs = eps(Float32)
 
-    opt.maxeval = maxiter
+    # opt.maxeval = maxiter
     opt.maxtime = maxtime
 
     (minf,x,ret) = NLopt.optimize(opt, pars)
@@ -5123,11 +5123,6 @@ function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120,
     else 
         return false
     end
-end
-
-
-function find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
-    error("SAMIN solver requires Optim.jl extension. Install it with: using Pkg; Pkg.add(\"Optim\")")
 end
 
 
