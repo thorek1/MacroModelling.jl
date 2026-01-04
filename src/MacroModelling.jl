@@ -820,19 +820,6 @@ function transform_obc(ex::Expr; avoid_solve::Bool = false)
 end
 
 
-function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
-    𝓂 = p[4]
-
-    if length(jac) > 0
-        # jac .= 𝒜.jacobian(𝒷(), xx -> 𝓂.obc_violation_function(xx, p), X)[1]'
-        jac .= 𝒟.jacobian(xx -> 𝓂.obc_violation_function(xx, p), backend, X)'
-    end
-
-    res .= 𝓂.obc_violation_function(X, p)
-
-	return nothing
-end
-
 function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
     if length(grad) > 0
         grad .= 2 .* X
@@ -853,21 +840,497 @@ function obc_sqp_solve(initial_guess::Vector{Float64},
     n = length(x)
 
     𝓂 = p[4]
+    state_update = p[2]
+    algorithm = p[5]
+    periods = max(p[6], 1)
+    T = 𝓂.timings
     res = 𝓂.obc_violation_function(x, p)
     m = length(res)
     if m == 0
         return x, true
     end
 
-    jac = zeros(n, m)
+    jac = zeros(m, n)
     λ = zeros(m)
     g = similar(x)
     dx = similar(x)
     x_trial = similar(x)
     tmp = similar(x)
 
+    obc_shock_idx = findall(contains.(string.(T.exo), "ᵒᵇᶜ"))
+    @assert length(obc_shock_idx) == n "OBC shock vector length mismatch."
+
+    base_shocks = p[7]
+    shock = similar(base_shocks)
+    zero_shock = zero(base_shocks)
+
+    n_vars = T.nVars
+    n_past = T.nPast_not_future_and_mixed
+    n_exo = T.nExo
+    past_idx = T.past_not_future_and_mixed_idx
+
+    J_shock0 = zeros(n_exo, n)
+    for (col, idx) in enumerate(obc_shock_idx)
+        J_shock0[idx, col] = 1.0
+    end
+    J_shock_zero = zeros(n_exo, n)
+
+    pruning = algorithm ∈ [:pruned_second_order, :pruned_third_order]
+
+    S₂ = nothing
+    S₃ = nothing
+    if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order]
+        S₂ = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+    end
+    if algorithm ∈ [:third_order, :pruned_third_order]
+        S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
+    end
+
+    function parse_obc_variable(name::String)
+        match_obj = match(r"^χᵒᵇᶜ([⁺⁻])ꜝ(.+)ꜝ([ˡʳ])$", name)
+        if match_obj === nothing
+            return nothing
+        end
+        sign_char = only(match_obj.captures[1])
+        idx_chars = match_obj.captures[2]
+        side_char = only(match_obj.captures[3])
+
+        sup_map = Dict('⁰' => 0, '¹' => 1, '²' => 2, '³' => 3, '⁴' => 4,
+                       '⁵' => 5, '⁶' => 6, '⁷' => 7, '⁸' => 8, '⁹' => 9)
+        idx_val = 0
+        for ch in idx_chars
+            digit = get(sup_map, ch, nothing)
+            digit === nothing && return nothing
+            idx_val = idx_val * 10 + digit
+        end
+        return (idx_val, sign_char, side_char)
+    end
+
+    left_idx = Dict{Int, Int}()
+    right_idx = Dict{Int, Int}()
+    sign_map = Dict{Int, Float64}()
+    for (i, var) in enumerate(T.var)
+        parsed = parse_obc_variable(string(var))
+        parsed === nothing && continue
+        idx_val, sign_char, side_char = parsed
+        sign = sign_char == '⁺' ? 1.0 : -1.0
+        sign_map[idx_val] = sign
+        if side_char == 'ˡ'
+            left_idx[idx_val] = i
+        else
+            right_idx[idx_val] = i
+        end
+    end
+
+    constraint_ids = sort(collect(keys(sign_map)))
+    constraint_count = length(constraint_ids)
+    expected_m = constraint_count * (1 + 2 * periods)
+    @assert expected_m == m "OBC constraint size mismatch."
+
+    Ŝ₁ = let
+        state_tmp = zeros(n_vars)
+        shock_tmp = zeros(n_exo)
+        S = zeros(n_vars, n_past + n_exo)
+        aug_n = n_past + 1 + n_exo
+        aug_state = zeros(aug_n)
+        kron_buf2 = algorithm ∈ [:second_order, :third_order] ? zeros(aug_n^2) : zeros(0)
+        kron_buf3 = algorithm == :third_order ? zeros(aug_n^3) : zeros(0)
+        tmp_state = zeros(n_vars)
+        tmp_state2 = zeros(n_vars)
+
+        pruned_state = pruning ? [zeros(n_vars) for _ in 1:(algorithm == :pruned_second_order ? 2 : 3)] : Vector{Vector{Float64}}()
+
+        function eval_state_update(state_vec::Vector{Float64}, shock_vec::Vector{Float64})
+            if pruning
+                copyto!(pruned_state[1], state_vec)
+                for j in 2:length(pruned_state)
+                    fill!(pruned_state[j], 0.0)
+                end
+                return state_update(pruned_state, shock_vec)[1]
+            else
+                return state_update(state_vec, shock_vec)
+            end
+        end
+
+        for i in 1:n_past
+            fill!(state_tmp, 0.0)
+            fill!(shock_tmp, 0.0)
+            state_tmp[past_idx[i]] = 1.0
+            y = eval_state_update(state_tmp, shock_tmp)
+            if algorithm ∈ [:second_order, :third_order]
+                copyto!(aug_state, 1, state_tmp[past_idx], 1, n_past)
+                aug_state[n_past + 1] = 1.0
+                copyto!(aug_state, n_past + 2, shock_tmp, 1, n_exo)
+                ℒ.kron!(kron_buf2, aug_state, aug_state)
+                ℒ.mul!(tmp_state, S₂, kron_buf2)
+                ℒ.rdiv!(tmp_state, 2)
+                if algorithm == :third_order
+                    ℒ.kron!(kron_buf3, kron_buf2, aug_state)
+                    ℒ.mul!(tmp_state2, S₃, kron_buf3)
+                    ℒ.rdiv!(tmp_state2, 6)
+                    ℒ.axpy!(-1.0, tmp_state2, tmp_state)
+                end
+                ℒ.axpy!(-1.0, tmp_state, y)
+            end
+            copyto!(view(S, :, i), y)
+        end
+
+        for j in 1:n_exo
+            fill!(state_tmp, 0.0)
+            fill!(shock_tmp, 0.0)
+            shock_tmp[j] = 1.0
+            y = eval_state_update(state_tmp, shock_tmp)
+            if algorithm ∈ [:second_order, :third_order]
+                copyto!(aug_state, 1, state_tmp[past_idx], 1, n_past)
+                aug_state[n_past + 1] = 1.0
+                copyto!(aug_state, n_past + 2, shock_tmp, 1, n_exo)
+                ℒ.kron!(kron_buf2, aug_state, aug_state)
+                ℒ.mul!(tmp_state, S₂, kron_buf2)
+                ℒ.rdiv!(tmp_state, 2)
+                if algorithm == :third_order
+                    ℒ.kron!(kron_buf3, kron_buf2, aug_state)
+                    ℒ.mul!(tmp_state2, S₃, kron_buf3)
+                    ℒ.rdiv!(tmp_state2, 6)
+                    ℒ.axpy!(-1.0, tmp_state2, tmp_state)
+                end
+                ℒ.axpy!(-1.0, tmp_state, y)
+            end
+            copyto!(view(S, :, n_past + j), y)
+        end
+
+        S
+    end
+
+    Ŝ₁̂ = nothing
+    if algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order]
+        Ŝ₁̂ = zeros(n_vars, n_past + 1 + n_exo)
+        Ŝ₁̂[:, 1:n_past] .= Ŝ₁[:, 1:n_past]
+        Ŝ₁̂[:, n_past + 2:end] .= Ŝ₁[:, n_past + 1:end]
+    end
+
+    Y = zeros(n_vars, periods)
+    dY = zeros(n_vars, periods, n)
+    state = zeros(n_vars)
+    state_next = zeros(n_vars)
+    J_state = zeros(n_vars, n)
+    J_next = zeros(n_vars, n)
+
+    state_pruned = pruning ? [zeros(n_vars) for _ in 1:(algorithm == :pruned_second_order ? 2 : 3)] : Vector{Vector{Float64}}()
+    state_pruned_next = pruning ? [zeros(n_vars) for _ in 1:length(state_pruned)] : Vector{Vector{Float64}}()
+    J_pruned = pruning ? [zeros(n_vars, n) for _ in 1:length(state_pruned)] : Vector{Matrix{Float64}}()
+    J_pruned_next = pruning ? [zeros(n_vars, n) for _ in 1:length(state_pruned)] : Vector{Matrix{Float64}}()
+
+    aug_n = n_past + 1 + n_exo
+    aug_state = zeros(aug_n)
+    aug_state_hat = zeros(aug_n)
+    aug_state2 = zeros(aug_n)
+    aug_state3 = zeros(aug_n)
+    J_aug = zeros(aug_n, n)
+    J_aug_hat = zeros(aug_n, n)
+    J_aug2 = zeros(aug_n, n)
+    J_aug3 = zeros(aug_n, n)
+    kron_buf2 = algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order] ? zeros(aug_n^2) : zeros(0)
+    kron_buf2b = algorithm ∈ [:second_order, :pruned_second_order, :third_order, :pruned_third_order] ? zeros(aug_n^2) : zeros(0)
+    kron_buf3 = algorithm ∈ [:third_order, :pruned_third_order] ? zeros(aug_n^3) : zeros(0)
+    kron_buf3b = algorithm ∈ [:third_order, :pruned_third_order] ? zeros(aug_n^3) : zeros(0)
+    kron_buf3c = algorithm ∈ [:third_order, :pruned_third_order] ? zeros(aug_n^3) : zeros(0)
+    tmp_state = zeros(n_vars)
+    tmp_state2 = zeros(n_vars)
+    tmp_vec = zeros(n)
+    tmp_vec2 = zeros(n)
+
+    function update_state_and_jac!(state_out::Vector{Float64},
+                                  J_out::Matrix{Float64},
+                                  state_in::Vector{Float64},
+                                  J_in::Matrix{Float64},
+                                  shock_in::Vector{Float64},
+                                  J_shock::Matrix{Float64})
+        if algorithm == :first_order
+            aug_state = [state_in[past_idx]; shock_in]
+            ℒ.mul!(state_out, Ŝ₁, aug_state)
+            @views ℒ.mul!(J_out, Ŝ₁[:, 1:n_past], J_in[past_idx, :])
+            ℒ.mul!(J_out, Ŝ₁[:, n_past + 1:end], J_shock, 1, 1)
+        elseif algorithm == :second_order
+            copyto!(aug_state, 1, state_in[past_idx], 1, n_past)
+            aug_state[n_past + 1] = 1.0
+            copyto!(aug_state, n_past + 2, shock_in, 1, n_exo)
+            ℒ.kron!(kron_buf2, aug_state, aug_state)
+            ℒ.mul!(state_out, Ŝ₁̂, aug_state)
+            ℒ.mul!(tmp_state, S₂, kron_buf2)
+            ℒ.axpy!(0.5, tmp_state, state_out)
+
+            @views J_aug[1:n_past, :] .= J_in[past_idx, :]
+            fill!(view(J_aug, n_past + 1, :), 0.0)
+            @views J_aug[n_past + 2:aug_n, :] .= J_shock
+
+            for k in 1:n
+                v = view(J_aug, :, k)
+                ℒ.mul!(view(J_out, :, k), Ŝ₁̂, v)
+                ℒ.kron!(kron_buf2, v, aug_state)
+                ℒ.kron!(kron_buf2b, aug_state, v)
+                ℒ.axpy!(1.0, kron_buf2b, kron_buf2)
+                ℒ.mul!(tmp_state, S₂, kron_buf2)
+                ℒ.axpy!(0.5, tmp_state, view(J_out, :, k))
+            end
+        elseif algorithm == :third_order
+            copyto!(aug_state, 1, state_in[past_idx], 1, n_past)
+            aug_state[n_past + 1] = 1.0
+            copyto!(aug_state, n_past + 2, shock_in, 1, n_exo)
+            ℒ.kron!(kron_buf2, aug_state, aug_state)
+            ℒ.kron!(kron_buf3, kron_buf2, aug_state)
+            ℒ.mul!(state_out, Ŝ₁̂, aug_state)
+            ℒ.mul!(tmp_state, S₂, kron_buf2)
+            ℒ.axpy!(0.5, tmp_state, state_out)
+            ℒ.mul!(tmp_state, S₃, kron_buf3)
+            ℒ.axpy!(1/6, tmp_state, state_out)
+
+            @views J_aug[1:n_past, :] .= J_in[past_idx, :]
+            fill!(view(J_aug, n_past + 1, :), 0.0)
+            @views J_aug[n_past + 2:aug_n, :] .= J_shock
+
+            for k in 1:n
+                v = view(J_aug, :, k)
+                ℒ.mul!(view(J_out, :, k), Ŝ₁̂, v)
+                ℒ.kron!(kron_buf2, v, aug_state)
+                ℒ.kron!(kron_buf2b, aug_state, v)
+                ℒ.axpy!(1.0, kron_buf2b, kron_buf2)
+                ℒ.mul!(tmp_state, S₂, kron_buf2)
+                ℒ.axpy!(0.5, tmp_state, view(J_out, :, k))
+
+                ℒ.kron!(kron_buf2, v, aug_state)
+                ℒ.kron!(kron_buf3, kron_buf2, aug_state)
+                ℒ.kron!(kron_buf2, aug_state, v)
+                ℒ.kron!(kron_buf3b, kron_buf2, aug_state)
+                ℒ.kron!(kron_buf2, aug_state, aug_state)
+                ℒ.kron!(kron_buf3c, kron_buf2, v)
+                ℒ.axpy!(1.0, kron_buf3b, kron_buf3)
+                ℒ.axpy!(1.0, kron_buf3c, kron_buf3)
+                ℒ.mul!(tmp_state, S₃, kron_buf3)
+                ℒ.axpy!(1/6, tmp_state, view(J_out, :, k))
+            end
+        end
+        return nothing
+    end
+
+    function update_pruned_and_jac!(state_out::Vector{Vector{Float64}},
+                                   J_out::Vector{Matrix{Float64}},
+                                   state_in::Vector{Vector{Float64}},
+                                   J_in::Vector{Matrix{Float64}},
+                                   shock_in::Vector{Float64},
+                                   J_shock::Matrix{Float64})
+        if algorithm == :pruned_second_order
+            copyto!(aug_state, 1, state_in[1][past_idx], 1, n_past)
+            aug_state[n_past + 1] = 1.0
+            copyto!(aug_state, n_past + 2, shock_in, 1, n_exo)
+            copyto!(aug_state2, 1, state_in[2][past_idx], 1, n_past)
+            aug_state2[n_past + 1] = 0.0
+            fill!(view(aug_state2, n_past + 2:aug_n), 0.0)
+
+            ℒ.kron!(kron_buf2, aug_state, aug_state)
+            ℒ.mul!(state_out[1], Ŝ₁̂, aug_state)
+            ℒ.mul!(tmp_state, S₂, kron_buf2)
+
+            ℒ.mul!(state_out[2], Ŝ₁̂, aug_state2)
+            ℒ.axpy!(0.5, tmp_state, state_out[2])
+
+            @views J_aug[1:n_past, :] .= J_in[1][past_idx, :]
+            fill!(view(J_aug, n_past + 1, :), 0.0)
+            @views J_aug[n_past + 2:aug_n, :] .= J_shock
+            @views J_aug2[1:n_past, :] .= J_in[2][past_idx, :]
+            fill!(view(J_aug2, n_past + 1, :), 0.0)
+            fill!(view(J_aug2, n_past + 2:aug_n, :), 0.0)
+
+            for k in 1:n
+                v = view(J_aug, :, k)
+                ℒ.mul!(view(J_out[1], :, k), Ŝ₁̂, v)
+                ℒ.kron!(kron_buf2, v, aug_state)
+                ℒ.kron!(kron_buf2b, aug_state, v)
+                ℒ.axpy!(1.0, kron_buf2b, kron_buf2)
+                ℒ.mul!(tmp_state, S₂, kron_buf2)
+
+                ℒ.mul!(view(J_out[2], :, k), Ŝ₁̂, view(J_aug2, :, k))
+                ℒ.axpy!(0.5, tmp_state, view(J_out[2], :, k))
+            end
+        elseif algorithm == :pruned_third_order
+            copyto!(aug_state, 1, state_in[1][past_idx], 1, n_past)
+            aug_state[n_past + 1] = 1.0
+            copyto!(aug_state, n_past + 2, shock_in, 1, n_exo)
+            copyto!(aug_state_hat, 1, state_in[1][past_idx], 1, n_past)
+            aug_state_hat[n_past + 1] = 0.0
+            copyto!(aug_state_hat, n_past + 2, shock_in, 1, n_exo)
+            copyto!(aug_state2, 1, state_in[2][past_idx], 1, n_past)
+            aug_state2[n_past + 1] = 0.0
+            fill!(view(aug_state2, n_past + 2:aug_n), 0.0)
+            copyto!(aug_state3, 1, state_in[3][past_idx], 1, n_past)
+            aug_state3[n_past + 1] = 0.0
+            fill!(view(aug_state3, n_past + 2:aug_n), 0.0)
+
+            ℒ.mul!(state_out[1], Ŝ₁̂, aug_state)
+            ℒ.kron!(kron_buf2, aug_state, aug_state)
+            ℒ.mul!(tmp_state, S₂, kron_buf2)
+            ℒ.mul!(state_out[2], Ŝ₁̂, aug_state2)
+            ℒ.axpy!(0.5, tmp_state, state_out[2])
+
+            ℒ.kron!(kron_buf2b, aug_state_hat, aug_state2)
+            ℒ.mul!(state_out[3], Ŝ₁̂, aug_state3)
+            ℒ.mul!(tmp_state2, S₂, kron_buf2b)
+            ℒ.axpy!(1.0, tmp_state2, state_out[3])
+
+            ℒ.kron!(kron_buf3, kron_buf2, aug_state)
+            ℒ.mul!(tmp_state2, S₃, kron_buf3)
+            ℒ.axpy!(1/6, tmp_state2, state_out[3])
+
+            @views J_aug[1:n_past, :] .= J_in[1][past_idx, :]
+            fill!(view(J_aug, n_past + 1, :), 0.0)
+            @views J_aug[n_past + 2:aug_n, :] .= J_shock
+            @views J_aug_hat[1:n_past, :] .= J_in[1][past_idx, :]
+            fill!(view(J_aug_hat, n_past + 1, :), 0.0)
+            @views J_aug_hat[n_past + 2:aug_n, :] .= J_shock
+            @views J_aug2[1:n_past, :] .= J_in[2][past_idx, :]
+            fill!(view(J_aug2, n_past + 1, :), 0.0)
+            fill!(view(J_aug2, n_past + 2:aug_n, :), 0.0)
+            @views J_aug3[1:n_past, :] .= J_in[3][past_idx, :]
+            fill!(view(J_aug3, n_past + 1, :), 0.0)
+            fill!(view(J_aug3, n_past + 2:aug_n, :), 0.0)
+
+            for k in 1:n
+                v = view(J_aug, :, k)
+                ℒ.mul!(view(J_out[1], :, k), Ŝ₁̂, v)
+
+                ℒ.kron!(kron_buf2, v, aug_state)
+                ℒ.kron!(kron_buf2b, aug_state, v)
+                ℒ.axpy!(1.0, kron_buf2b, kron_buf2)
+                ℒ.mul!(tmp_state, S₂, kron_buf2)
+                ℒ.mul!(view(J_out[2], :, k), Ŝ₁̂, view(J_aug2, :, k))
+                ℒ.axpy!(0.5, tmp_state, view(J_out[2], :, k))
+
+                ℒ.kron!(kron_buf2, view(J_aug_hat, :, k), aug_state2)
+                ℒ.kron!(kron_buf2b, aug_state_hat, view(J_aug2, :, k))
+                ℒ.axpy!(1.0, kron_buf2b, kron_buf2)
+                ℒ.mul!(tmp_state2, S₂, kron_buf2)
+                ℒ.mul!(view(J_out[3], :, k), Ŝ₁̂, view(J_aug3, :, k))
+                ℒ.axpy!(1.0, tmp_state2, view(J_out[3], :, k))
+
+                ℒ.kron!(kron_buf2, v, aug_state)
+                ℒ.kron!(kron_buf3, kron_buf2, aug_state)
+                ℒ.kron!(kron_buf2, aug_state, v)
+                ℒ.kron!(kron_buf3b, kron_buf2, aug_state)
+                ℒ.kron!(kron_buf2, aug_state, aug_state)
+                ℒ.kron!(kron_buf3c, kron_buf2, v)
+                ℒ.axpy!(1.0, kron_buf3b, kron_buf3)
+                ℒ.axpy!(1.0, kron_buf3c, kron_buf3)
+                ℒ.mul!(tmp_state2, S₃, kron_buf3)
+                ℒ.axpy!(1/6, tmp_state2, view(J_out[3], :, k))
+            end
+        end
+        return nothing
+    end
+
+    function fill_obc_constraints!(res::Vector{Float64}, jac::Matrix{Float64}, x::Vector{Float64})
+        copy!(shock, base_shocks)
+        shock[obc_shock_idx] .= x
+
+        fill!(Y, 0.0)
+        fill!(dY, 0.0)
+
+        if pruning
+            copyto!(state_pruned[1], p[1][1])
+            for i in 2:length(state_pruned)
+                copyto!(state_pruned[i], p[1][i])
+            end
+            for i in 1:length(J_pruned)
+                fill!(J_pruned[i], 0.0)
+            end
+
+            n_pruned = length(state_pruned_next)
+            for t in 1:periods
+                if t == 1
+                    update_pruned_and_jac!(state_pruned_next, J_pruned_next, state_pruned, J_pruned, shock, J_shock0)
+                else
+                    update_pruned_and_jac!(state_pruned_next, J_pruned_next, state_pruned, J_pruned, zero_shock, J_shock_zero)
+                end
+
+                @inbounds for i in 1:n_vars
+                    acc = 0.0
+                    for j in 1:n_pruned
+                        acc += state_pruned_next[j][i]
+                    end
+                    Y[i, t] = acc
+                end
+
+                @inbounds for k in 1:n
+                    for i in 1:n_vars
+                        acc = 0.0
+                        for j in 1:n_pruned
+                            acc += J_pruned_next[j][i, k]
+                        end
+                        dY[i, t, k] = acc
+                    end
+                end
+
+                for i in 1:length(state_pruned)
+                    copyto!(state_pruned[i], state_pruned_next[i])
+                    copyto!(J_pruned[i], J_pruned_next[i])
+                end
+            end
+        else
+            copyto!(state, p[1])
+            fill!(J_state, 0.0)
+            for t in 1:periods
+                if t == 1
+                    update_state_and_jac!(state_next, J_next, state, J_state, shock, J_shock0)
+                else
+                    update_state_and_jac!(state_next, J_next, state, J_state, zero_shock, J_shock_zero)
+                end
+
+                @views Y[:, t] .= state_next
+                @views dY[:, t, :] .= J_next
+
+                copyto!(state, state_next)
+                copyto!(J_state, J_next)
+            end
+        end
+
+        @views Y .+= p[3][1:n_vars]
+
+        fill!(jac, 0.0)
+        offset = 0
+        for idx in constraint_ids
+            lidx = left_idx[idx]
+            ridx = right_idx[idx]
+            sign = sign_map[idx]
+
+            left_vals = view(Y, lidx, 1:periods)
+            right_vals = view(Y, ridx, 1:periods)
+            dleft = view(dY, lidx, 1:periods, :)
+            dright = view(dY, ridx, 1:periods, :)
+
+            offset += 1
+            res[offset] = sum(left_vals .* right_vals)
+            ℒ.mul!(tmp_vec, dleft', right_vals)
+            ℒ.mul!(tmp_vec2, dright', left_vals)
+            @inbounds for k in 1:n
+                jac[offset, k] = tmp_vec[k] + tmp_vec2[k]
+            end
+
+            for t in 1:periods
+                offset += 1
+                res[offset] = sign * left_vals[t]
+                @views jac[offset, :] .= sign .* dleft[t, :]
+            end
+
+            for t in 1:periods
+                offset += 1
+                res[offset] = sign * right_vals[t]
+                @views jac[offset, :] .= sign .* dright[t, :]
+            end
+        end
+
+        return nothing
+    end
+
     for _ in 1:max_iter
-        obc_constraint_optim_fun(res, x, jac, p)
+        fill_obc_constraints!(res, jac, x)
 
         copy!(g, x)
         ℒ.rmul!(g, 2.0)
@@ -889,7 +1352,7 @@ function obc_sqp_solve(initial_guess::Vector{Float64},
         else
             # Active-set SQP step: solve the KKT system for current active constraints.
             while true
-                J_A = view(jac, :, active_idx)'
+                J_A = view(jac, active_idx, :)
                 c_A = res[active_idx]
                 kkt_dim = n + length(active_idx)
                 K = zeros(kkt_dim, kkt_dim)
@@ -934,7 +1397,7 @@ function obc_sqp_solve(initial_guess::Vector{Float64},
 
         if ℒ.norm(dx) <= step_tol
             if max_viol <= tol
-                ℒ.mul!(tmp, jac, λ)
+                ℒ.mul!(tmp, jac', λ)
                 ℒ.axpy!(1.0, g, tmp)
                 stationarity = ℒ.norm(tmp) / max(1.0, ℒ.norm(g))
 
@@ -989,7 +1452,7 @@ function obc_sqp_solve(initial_guess::Vector{Float64},
             ℒ.axpy!(α, dx, x)
         end
 
-        obc_constraint_optim_fun(res, x, jac, p)
+        fill_obc_constraints!(res, jac, x)
         max_viol = 0.0
         @inbounds for v in res
             if v > max_viol
@@ -1000,7 +1463,7 @@ function obc_sqp_solve(initial_guess::Vector{Float64},
         if max_viol <= tol
             copy!(g, x)
             ℒ.rmul!(g, 2.0)
-            ℒ.mul!(tmp, jac, λ)
+            ℒ.mul!(tmp, jac', λ)
             ℒ.axpy!(1.0, g, tmp)
             stationarity = ℒ.norm(tmp) / max(1.0, ℒ.norm(g))
 
