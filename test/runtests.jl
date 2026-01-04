@@ -3868,4 +3868,7 @@ if test_set == "basic"
         RBC_CME = nothing
     end
     GC.gc()
+    
+    # Test solver comparison between LBFGS and Lagrange-Newton
+    include("test_solver_comparison.jl")
 end
