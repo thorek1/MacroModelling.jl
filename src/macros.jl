@@ -1104,24 +1104,24 @@ macro parameters(𝓂,ex...)
         postwalk(x -> 
             x isa Expr ?
                 x.head == :(=) ?  
-                    x.args[1] == :symbolic && x.args[2] isa Bool ?
+                    (x.args[1] == :symbolic && x.args[2] isa Bool) ?
                         symbolic = x.args[2] :
-                    x.args[1] == :verbose && x.args[2] isa Bool ?
+                    (x.args[1] == :verbose && x.args[2] isa Bool) ?
                         verbose = x.args[2] :
-                    x.args[1] == :silent && x.args[2] isa Bool ?
+                    (x.args[1] == :silent && x.args[2] isa Bool) ?
                         silent = x.args[2] :
-                    x.args[1] == :report_missing_parameters && x.args[2] isa Bool ?
+                    (x.args[1] == :report_missing_parameters && x.args[2] isa Bool) ?
                         report_missing_parameters = x.args[2] :
-                    x.args[1] == :precompile && x.args[2] isa Bool ?
+                    (x.args[1] == :precompile && x.args[2] isa Bool) ?
                         precompile = x.args[2] :
-                    x.args[1] == :perturbation_order && x.args[2] isa Int ?
+                    (x.args[1] == :perturbation_order && x.args[2] isa Int) ?
                         perturbation_order = x.args[2] :
-                    x.args[1] == :guess && (isa(eval(x.args[2]), Dict{Symbol, <:Real}) || isa(eval(x.args[2]), Dict{String, <:Real})) ?
+                    (x.args[1] == :guess && (isa(eval(x.args[2]), Dict{Symbol, <:Real}) || isa(eval(x.args[2]), Dict{String, <:Real}))) ?
                         guess = x.args[2] :
-                    x.args[1] == :simplify && x.args[2] isa Bool ?
+                    (x.args[1] == :ss_solver_parameters_algorithm && (x.args[2] isa Symbol || (x.args[2] isa QuoteNode && x.args[2].value isa Symbol))) ?
+                        ss_solver_parameters_algorithm = x.args[2] isa QuoteNode ? x.args[2].value : x.args[2] :
+                    (x.args[1] == :simplify && x.args[2] isa Bool) ?
                         simplify = x.args[2] :
-                    x.args[1] == :ss_solver_parameters_algorithm && x.args[2] isa Symbol ?
-                        (x.args[2] ∈ [:ESCH, :SAMIN] ? ss_solver_parameters_algorithm = x.args[2] : (ss_solver_parameters_algorithm; @warn "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $(x.args[2]). Using default :ESCH.")) :
                     begin
                         @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@parameters` for valid options."
                         x
@@ -1131,6 +1131,10 @@ macro parameters(𝓂,ex...)
         exp)
     end
 
+    if ss_solver_parameters_algorithm ∉ [:ESCH, :SAMIN]
+        @warn "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $ss_solver_parameters_algorithm. Using default :ESCH."
+    end
+    
     parameter_definitions = replace_indices(ex[end])
 
     # parse parameter inputs
@@ -1633,7 +1637,8 @@ macro parameters(𝓂,ex...)
 
                 if solution_error > opts.tol.NSSS_acceptance_tol
                     # start_time = time()
-                    found_solution = find_SS_solver_parameters!(Val($ss_solver_parameters_algorithm), mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
+                    
+                    found_solution = find_SS_solver_parameters!($(Val(ss_solver_parameters_algorithm)), mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 1000000000)
                     # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
                     if found_solution
                         SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
