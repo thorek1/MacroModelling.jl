@@ -6054,6 +6054,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                     opts = opts)
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
+
     update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
@@ -6358,7 +6359,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
-    
+
     update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
     if !solved
@@ -6376,13 +6377,14 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                     # timer = timer,
                                                     opts = opts)
 
+    update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
+
     if !solved2
         if opts.verbose println("2nd order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
     
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
-    update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
 
     𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
 

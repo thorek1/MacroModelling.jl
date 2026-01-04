@@ -64,7 +64,7 @@ function calculate_mean(parameters::Vector{T},
                                                             opts = opts)
         
         update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
-        
+
         if !solved 
             mean_of_variables = SS_and_pars[1:𝓂.timings.nVars]
         else
@@ -77,6 +77,8 @@ function calculate_mean(parameters::Vector{T},
                                                         𝓂.caches; 
                                                         T = 𝓂.timings, 
                                                         opts = opts)
+
+            update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 2)
 
             if !solved 
                 mean_of_variables = SS_and_pars[1:𝓂.timings.nVars]
@@ -187,6 +189,8 @@ function calculate_second_order_moments(parameters::Vector{R},
                                                     𝓂.caches; 
                                                     T = 𝓂.timings, 
                                                     opts = opts)
+        
+        update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
 
         if solved2
             if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
@@ -325,6 +329,9 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                                                     𝓂.caches; 
                                                     T = 𝓂.timings, 
                                                     opts = opts)
+
+        update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
+        
         if solved2
             if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 

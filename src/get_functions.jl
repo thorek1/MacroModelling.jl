@@ -1961,6 +1961,8 @@ function get_solution(𝓂::ℳ,
                                                     T = 𝓂.timings, 
                                                     opts = opts)
 
+        update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
+
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
         𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
@@ -1980,6 +1982,8 @@ function get_solution(𝓂::ℳ,
                                                     T = 𝓂.timings, 
                                                     opts = opts)
     
+        update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
+
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
         𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
