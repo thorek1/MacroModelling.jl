@@ -503,6 +503,8 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 opts = opts)
 
+    update_perturbation_counter!(𝓂, solved3, estimation = opts.estimation, order = 3)
+
     if !solved3
         return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
     end
@@ -768,6 +770,8 @@ function calculate_third_order_moments(parameters::Vector{T},
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 opts = opts)
 
+    update_perturbation_counter!(𝓂, solved3, estimation = opts.estimation, order = 3)
+    
     if !solved3
         return zeros(T,0,0), zeros(T,0), zeros(T,0), false
     end

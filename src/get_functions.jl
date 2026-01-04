@@ -2002,6 +2002,8 @@ function get_solution(𝓂::ℳ,
                                                     initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                     T = 𝓂.timings, 
                                                     opts = opts)
+                                                    
+        update_perturbation_counter!(𝓂, solved3, estimation = opts.estimation, order = 3)
 
         if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
         

@@ -6402,13 +6402,14 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                 # timer = timer, 
                                                 opts = opts)
 
+    update_perturbation_counter!(𝓂, solved3, estimation = opts.estimation, order = 3)
+    
     if !solved3
         if opts.verbose println("3rd order solution not found") end
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
-    update_perturbation_counter!(𝓂, solved3, estimation = opts.estimation, order = 3)
 
     if length(𝓂.caches.third_order_caches.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.caches.third_order_caches.Ŝ))
         𝓂.caches.third_order_caches.Ŝ = 𝐒₃ * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
