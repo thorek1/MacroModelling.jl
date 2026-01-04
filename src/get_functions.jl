@@ -890,7 +890,8 @@ function get_conditional_forecast(𝓂::ℳ,
                                                       S₁,
                                                       S₂,
                                                       S₃,
-                                                      𝓂.timings)
+                                                      𝓂.timings;
+                                                      verbose = verbose)
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
     
@@ -930,7 +931,8 @@ function get_conditional_forecast(𝓂::ℳ,
                                                               S₁,
                                                               S₂,
                                                               S₃,
-                                                              𝓂.timings)
+                                                              𝓂.timings;
+                                                              verbose = verbose)
 
                 @assert matched "Numerical stabiltiy issues for restrictions in period $i."
 

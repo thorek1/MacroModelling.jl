@@ -22,7 +22,8 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          𝐒₃::Union{AbstractMatrix{Float64}, Nothing},
                                          T::timings;
                                          max_iter::Int = 1000,
-                                         tol::Float64 = 1e-13)
+                                         tol::Float64 = 1e-13,
+                                         verbose::Bool = false)
 
     # Note: state_update and pruning_arg are accepted for interface consistency
     # but not used. We infer pruning from initial_state type and compute states
@@ -274,7 +275,8 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                  𝐒ⁱ²ᵉ,
                                  shock_independent;
                                  max_iter = max_iter,
-                                 tol = tol)
+                                 tol = tol,
+                                 verbose = verbose)
     else
         kron_buffer = zeros(n_exo^2)
         kron_buffer² = zeros(n_exo^3)
@@ -295,7 +297,8 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                  𝐒ⁱ³ᵉ,
                                  shock_independent;
                                  max_iter = max_iter,
-                                 tol = tol)
+                                 tol = tol,
+                                 verbose = verbose)
     end
 
     return x[free_shock_idx], matched
@@ -314,7 +317,8 @@ function find_shocks(::Val{:LagrangeNewton},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 1000,
-                    tol::Float64 = 1e-13) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13,
+                    verbose::Bool = false) # will fail for higher or lower precision
     x = copy(initial_guess)
     
     λ = zeros(size(𝐒ⁱ, 1))
@@ -344,7 +348,9 @@ function find_shocks(::Val{:LagrangeNewton},
 
     lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
 
+    iter = 0
     @inbounds for i in 1:max_iter
+        iter = i
         ℒ.kron!(kron_buffer2, J, x)
 
         ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2)
@@ -431,7 +437,11 @@ function find_shocks(::Val{:LagrangeNewton},
     #     println("Find shocks failed. Norm 1: $(ℒ.norm(x̂) / max(norm1,norm2)); Norm 2: $(ℒ.norm(Δxλ) / ℒ.norm(xλ))")
     # end
 
-    return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+    residual = ℒ.norm(x̂) / max(norm1,norm2)
+    step_norm = ℒ.norm(Δxλ) / ℒ.norm(xλ)
+    matched = residual < tol && step_norm < sqrt(tol)
+    verbose && @info "LagrangeNewton solve (2nd order)" iterations = iter residual = residual step_norm = step_norm matched = matched
+    return x, matched
 end
 
 end # dispatch_doctor
@@ -512,7 +522,8 @@ function find_shocks(::Val{:LagrangeNewton},
                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 1000,
-                    tol::Float64 = 1e-13) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13,
+                    verbose::Bool = false) # will fail for higher or lower precision
     x = copy(initial_guess)
 
     λ = zeros(size(𝐒ⁱ, 1))
@@ -548,7 +559,9 @@ function find_shocks(::Val{:LagrangeNewton},
 
     lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
     
+    iter = 0
     @inbounds for i in 1:max_iter
+        iter = i
         ℒ.kron!(kron_buffer2, J, x)
         ℒ.kron!(kron_buffer3, J, kron_buffer)
 
@@ -655,7 +668,11 @@ function find_shocks(::Val{:LagrangeNewton},
     #     println("Find shocks failed. Norm 1: $(ℒ.norm(x̂) / max(norm1,norm2)); Norm 2: $(ℒ.norm(Δxλ) / ℒ.norm(xλ))")
     # end
 
-    return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+    residual = ℒ.norm(x̂) / max(norm1,norm2)
+    step_norm = ℒ.norm(Δxλ) / ℒ.norm(xλ)
+    matched = residual < tol && step_norm < sqrt(tol)
+    verbose && @info "LagrangeNewton solve (3rd order)" iterations = iter residual = residual step_norm = step_norm matched = matched
+    return x, matched
 end
 
 

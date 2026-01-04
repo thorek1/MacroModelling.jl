@@ -36,7 +36,7 @@ end
                                     cond_var_idx::Vector{Int},
                                     free_shock_idx::Vector{Int},
                                     pruning::Bool,
-                                    S₁, S₂, S₃, timings)
+                                    S₁, S₂, S₃, timings; verbose::Bool = false)
 
 Find shocks that satisfy conditional forecast constraints using LBFGS optimizer.
 
@@ -57,6 +57,7 @@ from the first-order solution matrix S₁.
 # Returns
 - `x`: Vector of optimal shock values
 - `matched`: Boolean indicating if optimization converged successfully
+- Set `verbose = true` to show optimizer traces and fallback attempts
 """
 function find_shocks_conditional_forecast(::Val{:LBFGS},
                                          initial_state::Union{Vector{Float64}, Vector{Vector{Float64}}},
@@ -66,38 +67,39 @@ function find_shocks_conditional_forecast(::Val{:LBFGS},
                                          free_shock_idx::Vector{Int},
                                          state_update::Function,
                                         #  pruning::Bool,
-                                         S₁, S₂, S₃, timings)
+                                         S₁, S₂, S₃, timings; verbose::Bool = false)
                                          
     pruning = typeof(initial_state) <: Vector{Vector{Float64}}
     precision_factor = 1.0
     
     # Pack parameters for objective function
     p = (conditions, state_update, shocks, cond_var_idx, free_shock_idx, initial_state, pruning, precision_factor)
+
+    options = Optim.Options(f_abstol = eps(), g_tol = 1e-30, show_trace = verbose, store_trace = verbose)
+    verbose && @info "LBFGS line-search attempt" free_shocks = length(free_shock_idx) conditioned = length(cond_var_idx)
     
     # First attempt: LBFGS with line search
-    res = @suppress begin 
-        Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+    res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                       zeros(length(free_shock_idx)), 
                       Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                      Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                      options; 
                       autodiff = :forward) 
-    end
     
     matched = Optim.minimum(res) < 1e-12
     
     # Second attempt: LBFGS without line search if first failed
     if !matched
-        res = @suppress begin 
-            Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
+        verbose && @info "LBFGS retry without line search" objective = Optim.minimum(res)
+        res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                           zeros(length(free_shock_idx)), 
                           Optim.LBFGS(), 
-                          Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
+                          options; 
                           autodiff = :forward) 
-        end
         
         matched = Optim.minimum(res) < 1e-12
     end
     
+    verbose && @info "LBFGS finished" objective = Optim.minimum(res) matched = matched iterations = Optim.iterations(res)
     x = Optim.minimizer(res)
     
     return x, matched
