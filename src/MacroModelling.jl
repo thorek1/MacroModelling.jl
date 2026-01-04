@@ -6028,6 +6028,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+
     update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
     # end # timeit_debug
@@ -6357,6 +6358,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+    
     update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
     if !solved
@@ -9990,6 +9992,7 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                         opts = opts)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
+
     update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
     if !solved

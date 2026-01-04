@@ -1095,6 +1095,8 @@ function get_irf(𝓂::ℳ,
                                                             opts = opts,
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution)
     
+    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+
     if solved 
         𝓂.solution.perturbation.qme_solution = qme_sol
     else
@@ -1935,6 +1937,8 @@ function get_solution(𝓂::ℳ,
                                                         opts = opts,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
+    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     if !solved
@@ -2120,6 +2124,8 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                         opts = opts,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
+    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     A = @views 𝑺₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[indexin(𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nVars),:]
@@ -2275,8 +2281,10 @@ function get_variance_decomposition(𝓂::ℳ;
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                             T = 𝓂.timings, 
-            opts = opts, 
+                                                            opts = opts, 
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution)
+
+    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 

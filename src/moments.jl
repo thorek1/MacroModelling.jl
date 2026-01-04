@@ -16,6 +16,8 @@ function calculate_covariance(parameters::Vector{R},
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                             opts = opts)
 
+    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
     A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
@@ -60,6 +62,8 @@ function calculate_mean(parameters::Vector{T},
                                                             T = 𝓂.timings, 
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                             opts = opts)
+        
+        update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
         
         if !solved 
             mean_of_variables = SS_and_pars[1:𝓂.timings.nVars]
