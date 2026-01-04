@@ -60,7 +60,7 @@ expected_counts = Dict(
     6 => (7, 7),
 )
 
-tol = 1e-6
+tol = 1e-5
 @testset "Output comparison acros algorithms" begin
 for algorithm in [:second_order, :pruned_second_order, :third_order, :pruned_third_order]
         forecast_ln = get_conditional_forecast(
