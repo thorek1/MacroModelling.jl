@@ -48,7 +48,7 @@ import Subscripts: super, sub
 import Krylov
 import Krylov: GmresWorkspace, DqgmresWorkspace, BicgstabWorkspace
 import LinearOperators
-import DataStructures: CircularBuffer
+import DataStructures: CircularBuffer, OrderedDict
 import MacroTools: unblock, postwalk, prewalk, @capture, flatten
 
 # import SpeedMapping: speedmapping
@@ -121,26 +121,27 @@ const SYMPYWORKSPACE_RESERVED_NAMES = Set([
 
 # Type definitions
 const Symbol_input = Union{Symbol,Vector{Symbol},Matrix{Symbol},Tuple{Symbol,Vararg{Symbol}}}
-const String_input = Union{String,Vector{String},Matrix{String},Tuple{String,Vararg{String}}}
+const String_input = Union{S,Vector{S},Matrix{S},Tuple{S,Vararg{S}}} where S <: AbstractString
 const ParameterType = Union{Nothing,
                             Pair{Symbol, Float64},
-                            Pair{String, Float64},
+                            Pair{S, Float64},
                             Tuple{Pair{Symbol, Float64}, Vararg{Pair{Symbol, Float64}}},
-                            Tuple{Pair{String, Float64}, Vararg{Pair{String, Float64}}},
+                            Tuple{Pair{S, Float64}, Vararg{Pair{S, Float64}}},
                             Vector{Pair{Symbol, Float64}},
-                            Vector{Pair{String, Float64}},
+                            Vector{Pair{S, Float64}},
                             Pair{Symbol, Int},
-                            Pair{String, Int},
+                            Pair{S, Int},
                             Tuple{Pair{Symbol, Int}, Vararg{Pair{Symbol, Int}}},
-                            Tuple{Pair{String, Int}, Vararg{Pair{String, Int}}},
+                            Tuple{Pair{S, Int}, Vararg{Pair{S, Int}}},
                             Vector{Pair{Symbol, Int}},
-                            Vector{Pair{String, Int}},
+                            Vector{Pair{S, Int}},
                             Pair{Symbol, Real},
-                            Pair{String, Real},
+                            Pair{S, Real},
                             Tuple{Pair{Symbol, Real}, Vararg{Pair{Symbol, Real}}},
-                            Tuple{Pair{String, Real}, Vararg{Pair{String, Real}}},
+                            Tuple{Pair{S, Real}, Vararg{Pair{S, Real}}},
                             Vector{Pair{Symbol, Real}},
-                            Vector{Pair{String, Real}},
+                            Vector{Pair{S, Real}},
+                            Dict{S, Float64},
                             Dict{Symbol, Float64},
                             Tuple{Int, Vararg{Int}},
                             Matrix{Int},
@@ -148,7 +149,7 @@ const ParameterType = Union{Nothing,
                             Matrix{Float64},
                             Tuple{Real, Vararg{Real}},
                             Matrix{Real},
-                            Vector{Float64} }
+                            Vector{Float64} } where S <: AbstractString
 
 
 using DispatchDoctor
@@ -204,7 +205,7 @@ export Tolerances
 export translate_mod_file, translate_dynare_file, import_model, import_dynare
 export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare, export_dynare, export_to_dynare, export_mod_file, export_model
 
-export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables
+export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables, get_missing_parameters, has_missing_parameters
 # Internal
 export irf, girf
 
@@ -351,6 +352,11 @@ Base.show(io::IO, 𝓂::ℳ) = println(io,
                 "\n  Auxiliary:  ", length(intersect(𝓂.timings.future_not_past_and_mixed, union(𝓂.aux_present, 𝓂.aux_future))),
                 "\nShocks:       ", 𝓂.timings.nExo,
                 "\nParameters:   ", length(𝓂.parameters_in_equations),
+                if isempty(𝓂.missing_parameters)
+                    ""
+                else
+                    "\n Missing:     " * repr(length(𝓂.missing_parameters))
+                end,
                 if 𝓂.calibration_equations == Expr[]
                     ""
                 else
@@ -3408,7 +3414,14 @@ function expand_calibration_equations(calibration_equation_parameters::Vector{Sy
                         push!(expanded_ss_var,Symbol(string(ss) * "◖" * string(i) * "◗"))
                     else
                         push!(expanded_ss_var,ss)
-                        push!(expanded_par_var,par_calib_list[u])
+                    end
+                end
+                # Handle parameters from par_calib_list - expand indexed ones, keep non-indexed
+                for p in par_calib_list[u]
+                    if p ∈ indexed_names
+                        push!(expanded_par_var, Symbol(string(p) * "◖" * string(i) * "◗"))
+                    else
+                        push!(expanded_par_var, p)
                     end
                 end
                 push!(expanded_ss_var_list, expanded_ss_var)
@@ -3468,13 +3481,18 @@ end
 
 function create_symbols_eqs!(𝓂::ℳ)::symbolics
     # create symbols in SymPyWorkspace to avoid polluting MacroModelling namespace
-    symbols_in_dynamic_equations = reduce(union,get_symbols.(𝓂.dyn_equations))
+    symbols_in_dynamic_equations = reduce(union, get_symbols.(𝓂.dyn_equations))
 
-    symbols_in_dynamic_equations_wo_subscripts = Symbol.(replace.(string.(symbols_in_dynamic_equations),r"₍₋?(₀|₁|ₛₛ|ₓ)₎$"=>""))
+    symbols_in_dynamic_equations_wo_subscripts = Symbol.(replace.(string.(symbols_in_dynamic_equations), r"₍₋?(₀|₁|ₛₛ|ₓ)₎$"=>""))
 
     symbols_in_ss_equations = reduce(union,get_symbols.(𝓂.ss_aux_equations))
 
-    symbols_in_equation = union(𝓂.parameters_in_equations,𝓂.parameters,𝓂.parameters_as_function_of_parameters,symbols_in_dynamic_equations,symbols_in_dynamic_equations_wo_subscripts,symbols_in_ss_equations)#,𝓂.dynamic_variables_future)
+    symbols_in_equation = union(𝓂.parameters_in_equations, 
+                                𝓂.parameters, 
+                                𝓂.parameters_as_function_of_parameters,
+                                symbols_in_dynamic_equations,
+                                symbols_in_dynamic_equations_wo_subscripts,
+                                symbols_in_ss_equations) #, 𝓂.dynamic_variables_future)
 
     symbols_pos = []
     symbols_neg = []
@@ -3499,10 +3517,12 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
         sym_value = SPyPyC.symbols(string(pos), real = true, finite = true, positive = true)
         Core.eval(SymPyWorkspace, :($pos = $sym_value))
     end
+
     for neg in symbols_neg
         sym_value = SPyPyC.symbols(string(neg), real = true, finite = true, negative = true)
         Core.eval(SymPyWorkspace, :($neg = $sym_value))
     end
+
     for none in symbols_none
         sym_value = SPyPyC.symbols(string(none), real = true, finite = true)
         Core.eval(SymPyWorkspace, :($none = $sym_value))
@@ -3571,12 +3591,12 @@ function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve:
     # check variables which appear in two time periods. they might be redundant in steady state
     redundant_vars = intersect.(
         union.(
-            intersect.(Symbolics.var_future_list,Symbolics.var_present_list),
-            intersect.(Symbolics.var_future_list,Symbolics.var_past_list),
-            intersect.(Symbolics.var_present_list,Symbolics.var_past_list),
-            intersect.(Symbolics.ss_list,Symbolics.var_present_list),
-            intersect.(Symbolics.ss_list,Symbolics.var_past_list),
-            intersect.(Symbolics.ss_list,Symbolics.var_future_list)
+            intersect.(Symbolics.var_future_list, Symbolics.var_present_list),
+            intersect.(Symbolics.var_future_list, Symbolics.var_past_list),
+            intersect.(Symbolics.var_present_list, Symbolics.var_past_list),
+            intersect.(Symbolics.ss_list, Symbolics.var_present_list),
+            intersect.(Symbolics.ss_list, Symbolics.var_past_list),
+            intersect.(Symbolics.ss_list, Symbolics.var_future_list)
         ),
     Symbolics.var_list)
 
@@ -4786,7 +4806,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     parameters_only_in_par_defs = Set()
     # add parameters from parameter definitions
     if length(𝓂.calibration_equations_no_var) > 0
-		atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
+		atoms = reduce(union, get_symbols.(𝓂.calibration_equations_no_var))
 	    [push!(atoms_in_equations, a) for a in atoms]
 	    [push!(parameters_only_in_par_defs, a) for a in atoms]
 	end
@@ -4797,23 +4817,23 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
 
     for (i, parss) in enumerate(𝓂.parameters) 
         if parss ∈ union(atoms_in_equations, relevant_pars_across)
-            push!(parameters_in_equations,:($parss = parameters[$i]))
+            push!(parameters_in_equations, :($parss = parameters[$i]))
         end
     end
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies,𝓂.solved_vars[i] => intersect(a, union(𝓂.var,𝓂.parameters)))
+        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
     end
 
-    push!(dependencies,:SS_relevant_calibration_parameters => intersect(reduce(union,atoms_in_equations_list),𝓂.parameters))
+    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
 
     𝓂.SS_dependencies = dependencies
     
 
     
     dyn_exos = []
-    for dex in union(𝓂.exo_past,𝓂.exo_future)
+    for dex in union(𝓂.exo_past, 𝓂.exo_future)
         push!(dyn_exos,:($dex = 0))
     end
 
@@ -4822,7 +4842,7 @@ function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbo
     push!(SS_solve_func, min_max_errors...)
     # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
     
-    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp...,copy(params_flt)] end))
+    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., copy(params_flt)] end))
     
 
     # push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
@@ -5411,7 +5431,7 @@ function solve_steady_state!(𝓂::ℳ;
     parameters_only_in_par_defs = Set()
     # add parameters from parameter definitions
     if length(𝓂.calibration_equations_no_var) > 0
-		atoms = reduce(union,get_symbols.(𝓂.calibration_equations_no_var))
+		atoms = reduce(union, get_symbols.(𝓂.calibration_equations_no_var))
 	    [push!(atoms_in_equations, a) for a in atoms]
 	    [push!(parameters_only_in_par_defs, a) for a in atoms]
 	end
@@ -5422,16 +5442,16 @@ function solve_steady_state!(𝓂::ℳ;
 
     for (i, parss) in enumerate(𝓂.parameters) 
         if parss ∈ union(atoms_in_equations, relevant_pars_across)
-            push!(parameters_in_equations,:($parss = parameters[$i]))
+            push!(parameters_in_equations, :($parss = parameters[$i]))
         end
     end
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies,𝓂.solved_vars[i] => intersect(a, union(𝓂.var,𝓂.parameters)))
+        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
     end
 
-    push!(dependencies,:SS_relevant_calibration_parameters => intersect(reduce(union,atoms_in_equations_list),𝓂.parameters))
+    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
 
     𝓂.SS_dependencies = dependencies
 
@@ -6678,6 +6698,81 @@ function solve!(𝓂::ℳ;
     # @timeit_debug timer "Write parameter inputs" begin
 
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
+    
+    if !𝓂.solution.functions_written
+        verbose = opts.verbose
+        
+        perturbation_order = 1
+        
+        if !𝓂.precompile
+            start_time = time()
+
+            if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
+
+            symbolics = create_symbols_eqs!(𝓂)
+
+            remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = false) 
+
+            if !silent println(round(time() - start_time, digits = 3), " seconds") end
+
+
+            start_time = time()
+
+            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+            solve_steady_state!(𝓂, false, symbolics, verbose = verbose, avoid_solve = false) # 2nd argument is SS_symbolic
+
+            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+            
+            set_up_obc_violation_function!(𝓂)
+
+            if !silent println(round(time() - start_time, digits = 3), " seconds") end
+        else
+            start_time = time()
+
+            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+            solve_steady_state!(𝓂, verbose = verbose)
+
+            if !silent println(round(time() - start_time, digits = 3), " seconds") end
+        end
+    
+        start_time = time()
+
+        opts = merge_calculation_options(verbose = verbose)
+
+        start_time = time()
+
+        if !silent
+            if perturbation_order == 1
+                print("Take symbolic derivatives up to first order:\t\t\t\t")
+            elseif perturbation_order == 2
+                print("Take symbolic derivatives up to second order:\t\t\t\t")
+            elseif perturbation_order == 3
+                print("Take symbolic derivatives up to third order:\t\t\t\t")
+            end
+
+            𝓂.solution.functions_written = true
+        end
+
+        write_auxiliary_indices!(𝓂)
+
+        # time_dynamic_derivs = @elapsed 
+        write_functions_mapping!(𝓂, perturbation_order)
+
+        # @assert false "stop here"
+
+        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+
+        if !silent
+            println(round(time() - start_time, digits = 3), " seconds")
+        end
+    end
+
+    # Check for missing parameters after processing input
+    if !isempty(𝓂.missing_parameters)
+        error("Cannot solve model: missing parameter values for $(𝓂.missing_parameters). Provide them via the `parameters` keyword argument (e.g., `parameters = [:α => 0.3, :β => 0.99]`).")
+    end
 
     # end # timeit_debug
 
@@ -7061,9 +7156,10 @@ function take_nth_order_derivatives(
     max_perturbation_order::Int = 1,
     output_compressed::Bool = true # Controls compression for X derivatives (order >= 2)
 )::Vector{Tuple{SparseMatrixCSC{T, Int}, SparseMatrixCSC{T, Int}}} where T <: Symbolics.Num#, Tuple{Symbolics.Arr{Symbolics.Num, 1}, Symbolics.Arr{Symbolics.Num, 1}}}
-    nx = length(𝔙)
-    np = length(𝔓)
-    nϵ = length(dyn_equations)
+    
+    nx = BigInt(length(𝔙)::Int)
+    # np = length(𝔓)::BigInt
+    nϵ = length(dyn_equations)::Int
 
     if max_perturbation_order < 1
         throw(ArgumentError("max_perturbation_order must be at least 1"))
@@ -7252,7 +7348,7 @@ function take_nth_order_derivatives(
                 sparse_vals_n_uncomp = Symbolics.Num[]
 
                 # Total number of uncompressed columns
-                X_ncols_n = Int(BigInt(nx)^n) # Use BigInt for the power calculation, cast to Int
+                X_ncols_n = nx^n # Use BigInt for the power calculation, cast to Int
 
                 # Iterate through the non-zero entries of the current flat Jacobian (sp_flat_curr_X)
                 k_flat_curr = 1 # linear index counter for nzval of sp_flat_curr_X
@@ -7269,7 +7365,7 @@ function take_nth_order_derivatives(
                         # This maps the tuple (v1, ..., vn) to a unique index from 1 to nx^n
                         # Formula: 1 + (v1-1)*nx^(n-1) + (v2-1)*nx^(n-2) + ... + (vn-1)*nx^0
                         uncompressed_col_idx = 1 # 1-based
-                        power_of_nx = BigInt(nx)^(n-1) # Start with nx^(n-1) for v1 term
+                        power_of_nx = nx^(n-1) # Start with nx^(n-1) for v1 term
                         for i = 1:n
                             uncompressed_col_col_idx_term = (var_indices_full[i] - 1) * power_of_nx
                             # Check for overflow before adding
@@ -7342,7 +7438,7 @@ function take_nth_order_derivatives(
                     else # output_compressed == false
                         # Calculate the uncompressed column index
                         uncompressed_col_idx = 1
-                        power_of_nx = BigInt(nx)^(n-1)
+                        power_of_nx = nx^(n-1)
                         for i = 1:n
                             uncompressed_col_idx += (var_indices_full[i] - 1) * power_of_nx
                             if i < n
@@ -7906,41 +8002,90 @@ function write_auxiliary_indices!(𝓂::ℳ)
 end
 
 write_parameters_input!(𝓂::ℳ, parameters::Nothing; verbose::Bool = true) = return parameters
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Pair{String,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters[1] |> Meta.parse |> replace_indices => parameters[2]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Float64}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}(parameters[1] |> Meta.parse |> replace_indices => parameters[2]), verbose = verbose)
 
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Float64},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-# write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Union{Symbol,String},Union{Float64,Int}},Vararg{Pair{Union{Symbol,String},Union{Float64,Int}}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-# write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{String,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{String,Float64},Vararg{Pair{String,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters])
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Float64},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict(parameters), verbose = verbose)
+# write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Union{Symbol,AbstractString},Union{Float64,Int}},Vararg{Pair{Union{Symbol,AbstractString},Union{Float64,Int}}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+# write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{AbstractString,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{S,Float64},Vararg{Pair{S,Float64}}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters])
 , verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{String, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol, Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Float64}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol, Float64}([replace_indices(string(i[1])) => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Float64}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol, Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Dict{S,Float64}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}((keys(parameters) .|> Meta.parse .|> replace_indices) .=> values(parameters)), verbose = verbose)
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Int}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Pair{String,Int}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{Symbol,Int}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{String,Int},Vararg{Pair{String,Int}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Int}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{String, Int}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Int}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(parameters[1])) => parameters[2]]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Int}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Int},Vararg{Pair{Symbol,Int}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(i[1])) => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{S,Int},Vararg{Pair{S,Int}}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Int}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(i[1])) => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Int}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Dict{S,Int}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}((keys(parameters) .|> Meta.parse .|> replace_indices) .=> values(parameters)), verbose = verbose)
 
 
-write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Pair{String,Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Real},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{String,Real},Vararg{Pair{String,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}(parameters), verbose = verbose)
-write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{String, Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, Dict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Real}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(parameters[1])) => parameters[2]]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Real}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}((parameters[1] |> Meta.parse |> replace_indices) => parameters[2]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Dict{S,Real}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}((keys(parameters) .|> Meta.parse .|> replace_indices) .=> values(parameters)), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{Symbol,Real},Vararg{Pair{Symbol,Float64}}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(i[1])) => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Tuple{Pair{S,Real},Vararg{Pair{S,Float64}}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{Symbol, Real}}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([replace_indices(string(i[1])) => i[2] for i in parameters]), verbose = verbose)
+write_parameters_input!(𝓂::ℳ, parameters::Vector{Pair{S, Real}}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}([i[1] |> Meta.parse |> replace_indices => i[2] for i in parameters]), verbose = verbose)
 
 
 
-function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; verbose::Bool = true)
-    if length(setdiff(collect(keys(parameters)),𝓂.parameters))>0
-        println("Parameters not part of the model: ",setdiff(collect(keys(parameters)),𝓂.parameters))
-        for kk in setdiff(collect(keys(parameters)),𝓂.parameters)
+function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true) where D <: AbstractDict{Symbol,Float64}
+    # Handle missing parameters - add them if they are in the missing_parameters list
+    missing_params_provided = intersect(collect(keys(parameters)), 𝓂.missing_parameters)
+    
+    if !isempty(missing_params_provided)
+        
+        # Remove the provided missing params from the missing list
+        setdiff!(𝓂.missing_parameters, missing_params_provided)
+        
+        # Mark that solution needs to be recomputed
+        𝓂.solution.outdated_NSSS = true
+        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        
+        # If all missing parameters are now provided, print a message
+        if !isempty(𝓂.missing_parameters)
+            @info "Remaining missing parameters: ", 𝓂.missing_parameters
+        end
+
+        # Amend parameter order by provided missing params
+        # declared_params = parameters that were never missing (have non-NaN values)
+        # We identify them as parameters that are not in the union of missing_params_provided and still-missing params
+        all_missing = union(missing_params_provided, 𝓂.missing_parameters)
+        declared_params = setdiff(𝓂.parameters, all_missing)
+        
+        # Get the current parameter values for declared params
+        declared_param_indices = indexin(declared_params, 𝓂.parameters)
+        declared_values = 𝓂.parameter_values[declared_param_indices]
+        
+        # Get values for the newly provided missing params (currently NaN in parameter_values)
+        # We'll set them later after the bounds check
+        missing_values = fill(NaN, length(missing_params_provided))
+        
+        # Get values for the remaining missing params (still NaN)
+        remaining_missing_values = fill(NaN, length(𝓂.missing_parameters))
+        
+        # Reorder both parameters and parameter_values arrays
+        𝓂.parameters = vcat(declared_params, collect(missing_params_provided), 𝓂.missing_parameters)
+        𝓂.parameter_values = vcat(declared_values, missing_values, remaining_missing_values)
+        
+        # Clear the NSSS_solver_cache since parameter order/count has changed
+        # It will be rebuilt when solve_steady_state! is called with correct parameter count
+        while length(𝓂.NSSS_solver_cache) > 0
+            pop!(𝓂.NSSS_solver_cache)
+        end
+    end
+    
+    # Handle remaining parameters (not missing ones)
+    if length(setdiff(collect(keys(parameters)), 𝓂.parameters))>0
+        @warn("Parameters not part of the model are ignored: $(setdiff(collect(keys(parameters)),𝓂.parameters))")
+        for kk in setdiff(collect(keys(parameters)), 𝓂.parameters)
             delete!(parameters,kk)
         end
     end
@@ -7950,12 +8095,12 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
     for (par,val) in parameters
         if haskey(𝓂.bounds,par)
             if val > 𝓂.bounds[par][2]
-                println("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
+                @warn("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
             if val < 𝓂.bounds[par][1]
-                println("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
+                @warn("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
@@ -7963,9 +8108,10 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
     end
 
     if bounds_broken
-        println("Parameters unchanged.")
+        @warn("Parameters unchanged.")
     else
-        ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1],collect(keys(parameters)))
+        ntrsct_idx = map(x-> getindex(1:length(𝓂.parameter_values),𝓂.parameters .== x)[1], collect(keys(parameters)))
+        # ntrsct_idx = indexin(collect(keys(parameters)), 𝓂.parameters)
         
         if !all(𝓂.parameter_values[ntrsct_idx] .== collect(values(parameters))) && !(𝓂.parameters[ntrsct_idx] == [:activeᵒᵇᶜshocks])
             if verbose println("Parameter changes: ") end
@@ -7974,7 +8120,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::Dict{Symbol,Float64}; ve
             
         for i in 1:length(parameters)
             if 𝓂.parameter_values[ntrsct_idx[i]] != collect(values(parameters))[i]
-                if collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
+                if isnothing(𝓂.SS_dependencies) || (collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false)
+                # if !isnothing(𝓂.SS_dependencies) && collect(keys(parameters))[i] ∈ 𝓂.SS_dependencies[end][2] && 𝓂.solution.outdated_NSSS == false
                     𝓂.solution.outdated_NSSS = true
                 end
                 
@@ -8004,7 +8151,7 @@ write_parameters_input!(𝓂::ℳ, parameters::Matrix{Real}; verbose::Bool = tru
 
 function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose::Bool = true)
     if length(parameters) > length(𝓂.parameter_values)
-        println("Model has $(length(𝓂.parameter_values)) parameters. $(length(parameters)) were provided. The following will be ignored: $(join(parameters[length(𝓂.parameter_values)+1:end], " "))")
+        @warn "Model has $(length(𝓂.parameter_values)) parameters. $(length(parameters)) were provided. The following will be ignored: $(join(parameters[length(𝓂.parameter_values)+1:end], " "))"
 
         parameters = parameters[1:length(𝓂.parameter_values)]
     end
@@ -8014,12 +8161,12 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
     for (par,val) in Dict(𝓂.parameters .=> parameters)
         if haskey(𝓂.bounds,par)
             if val > 𝓂.bounds[par][2]
-                println("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
+                @warn("Calibration is out of bounds for $par < $(𝓂.bounds[par][2])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
             if val < 𝓂.bounds[par][1]
-                println("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
+                @warn("Calibration is out of bounds for $par > $(𝓂.bounds[par][1])\t parameter value: $val")
                 bounds_broken = true
                 continue
             end
@@ -8027,7 +8174,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
     end
 
     if bounds_broken
-        println("Parameters unchanged.")
+        @warn("Parameters unchanged.")
     else
         if !all(parameters .== 𝓂.parameter_values[1:length(parameters)])
             𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
@@ -8059,6 +8206,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::Vector{Float64}; verbose
             𝓂.parameter_values[match_idx] = parameters[match_idx]
         end
     end
+
     if 𝓂.solution.outdated_NSSS == true && verbose println("New parameters changed the steady state.") end
 
     return nothing
