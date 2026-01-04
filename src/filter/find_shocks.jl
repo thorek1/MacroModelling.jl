@@ -3,6 +3,310 @@
 # - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on optimality conditions (1e-7)
 # - SLSQP: relatively slow and not guaranteed to converge to global minimum
 
+# Generalized find_shocks for conditional forecasts
+# This function finds shocks that minimize their squared magnitude while satisfying 
+# conditional forecast constraints (only some variables match target values)
+# Uses analytical derivatives from perturbation solution matrices (like find_shocks)
+
+@stable default_mode = "disable" begin
+function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
+                                         initial_state::Union{Vector{Float64}, Vector{Vector{Float64}}},
+                                         all_shocks::Vector{Float64},
+                                         conditions::Vector{Float64},
+                                         cond_var_idx::Vector{Int},
+                                         free_shock_idx::Vector{Int},
+                                         state_update::Function,
+                                        #  pruning_arg::Bool,
+                                         𝐒₁::AbstractMatrix{Float64},
+                                         𝐒₂::Union{AbstractMatrix{Float64}, Nothing},
+                                         𝐒₃::Union{AbstractMatrix{Float64}, Nothing},
+                                         T::timings;
+                                         max_iter::Int = 1000,
+                                         tol::Float64 = 1e-13,
+                                         verbose::Bool = false)
+
+    # Note: state_update and pruning_arg are accepted for interface consistency
+    # but not used. We infer pruning from initial_state type and compute states
+    # directly using perturbation matrices.
+    pruning = initial_state isa Vector{Vector{Float64}}
+
+    n_past = T.nPast_not_future_and_mixed
+    n_exo = T.nExo
+    third_order = !isnothing(𝐒₃)
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, n_past), zeros(Bool, n_exo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, n_past + 1), zeros(Bool, n_exo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, n_past + 1), ones(Bool, n_exo)))
+
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs = tmp.nzind
+
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+    shock²_idxs = tmp.nzind
+
+    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
+
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
+    var_vol²_idxs = tmp.nzind
+
+    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
+    var²_idxs = tmp.nzind
+
+    tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
+    shockvar_idxs = tmp.nzind
+
+    if third_order
+        tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
+        var_vol³_idxs = tmp.nzind
+
+        tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
+        shock_idxs2 = tmp.nzind
+
+        tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse
+        shock_idxs3 = tmp.nzind
+
+        tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
+        shock³_idxs = tmp.nzind
+
+        tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
+        shockvar1_idxs = tmp.nzind
+
+        tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
+        shockvar2_idxs = tmp.nzind
+
+        tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
+        shockvar3_idxs = tmp.nzind
+
+        shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+        shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)
+    end
+
+    fixed_shock_idx = setdiff(1:n_exo, free_shock_idx)
+
+    if isempty(cond_var_idx) && isempty(fixed_shock_idx)
+        return zeros(length(free_shock_idx)), true
+    end
+
+    J = ℒ.I(n_exo)
+
+    if isnothing(𝐒₃)
+        # Second order (pruned or non-pruned)
+        if pruning
+            state₁ = initial_state[1][T.past_not_future_and_mixed_idx]
+            state₂ = initial_state[2][T.past_not_future_and_mixed_idx]
+            state_vol = vcat(state₁, 1)
+
+            𝐒¹⁻ = @views 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed]
+            𝐒¹⁻ᵛ = @views 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
+            𝐒¹ᵉ = @views 𝐒₁[cond_var_idx, end-n_exo+1:end]
+
+            shock_independent = copy(conditions)
+            ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)
+            ℒ.mul!(shock_independent, 𝐒¹⁻, state₂, -1, 1)
+
+            if isnothing(𝐒₂)
+                𝐒ⁱ = copy(𝐒¹ᵉ)
+                𝐒ⁱ²ᵉ = zeros(size(𝐒¹ᵉ, 1), n_exo^2)
+            else
+                𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
+                𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
+                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
+
+                kron_state_vol = ℒ.kron(state_vol, state_vol)
+                ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
+
+                kron_I_state = ℒ.kron(J, state_vol)
+                𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * kron_I_state
+                𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2
+            end
+        else
+            state = initial_state[T.past_not_future_and_mixed_idx]
+            state_vol = vcat(state, 1)
+
+            𝐒¹⁻ᵛ = @views 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
+            𝐒¹ᵉ = @views 𝐒₁[cond_var_idx, end-n_exo+1:end]
+
+            shock_independent = copy(conditions)
+            ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)
+
+            if isnothing(𝐒₂)
+                𝐒ⁱ = copy(𝐒¹ᵉ)
+                𝐒ⁱ²ᵉ = zeros(size(𝐒¹ᵉ, 1), n_exo^2)
+            else
+                𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
+                𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
+                𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
+
+                kron_state_vol = ℒ.kron(state_vol, state_vol)
+                ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
+
+                kron_I_state = ℒ.kron(J, state_vol)
+                𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * kron_I_state
+                𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2
+            end
+        end
+
+        𝐒ⁱ³ᵉ = nothing
+    else
+        # Third order (pruned or non-pruned)
+        II = sparse(ℒ.I(n_exo^2))
+
+        if pruning
+            state₁ = initial_state[1][T.past_not_future_and_mixed_idx]
+            state₂ = initial_state[2][T.past_not_future_and_mixed_idx]
+            state₃ = initial_state[3][T.past_not_future_and_mixed_idx]
+            state_vol = vcat(state₁, 1)
+
+            𝐒¹⁻ = @views 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed]
+            𝐒¹⁻ᵛ = @views 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
+            𝐒¹ᵉ = @views 𝐒₁[cond_var_idx, end-n_exo+1:end]
+
+            𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
+            𝐒²⁻ = @views 𝐒₂[cond_var_idx, var²_idxs]
+            𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
+            𝐒²⁻ᵛᵉ = @views 𝐒₂[cond_var_idx, shockvar_idxs]
+            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
+
+            𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, var_vol³_idxs]
+            𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, shockvar³2_idxs]
+            𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, shockvar³_idxs]
+            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, shock³_idxs]
+
+            shock_independent = copy(conditions)
+            ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)
+            ℒ.mul!(shock_independent, 𝐒¹⁻, state₂, -1, 1)
+            ℒ.mul!(shock_independent, 𝐒¹⁻, state₃, -1, 1)
+
+            kron_state_vol = ℒ.kron(state_vol, state_vol)
+            ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
+
+            kron_state₁₂ = ℒ.kron(state₁, state₂)
+            ℒ.mul!(shock_independent, 𝐒²⁻, kron_state₁₂, -1, 1)
+
+            kron_state_vol3 = ℒ.kron(state_vol, kron_state_vol)
+            ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kron_state_vol3, -1/6, 1)
+
+            kron_I_state = ℒ.kron(J, state_vol)
+            kron_I_state₂ = ℒ.kron(J, state₂)
+            kron_I_state_state = ℒ.kron(J, kron_state_vol)
+
+            𝐒ⁱ = 𝐒¹ᵉ +
+                 𝐒²⁻ᵉ * kron_I_state +
+                 𝐒²⁻ᵛᵉ * kron_I_state₂ +
+                 𝐒³⁻ᵉ² * kron_I_state_state / 2
+
+            𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state_vol) / 2
+            𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
+        else
+            state = initial_state[T.past_not_future_and_mixed_idx]
+            state_vol = vcat(state, 1)
+
+            𝐒¹⁻ᵛ = @views 𝐒₁[cond_var_idx, 1:T.nPast_not_future_and_mixed+1]
+            𝐒¹ᵉ = @views 𝐒₁[cond_var_idx, end-n_exo+1:end]
+
+            𝐒²⁻ᵛ = @views 𝐒₂[cond_var_idx, var_vol²_idxs]
+            𝐒²⁻ᵉ = @views 𝐒₂[cond_var_idx, shockvar²_idxs]
+            𝐒²ᵉ = @views 𝐒₂[cond_var_idx, shock²_idxs]
+
+            𝐒³⁻ᵛ = @views 𝐒₃[cond_var_idx, var_vol³_idxs]
+            𝐒³⁻ᵉ² = @views 𝐒₃[cond_var_idx, shockvar³2_idxs]
+            𝐒³⁻ᵉ = @views 𝐒₃[cond_var_idx, shockvar³_idxs]
+            𝐒³ᵉ = @views 𝐒₃[cond_var_idx, shock³_idxs]
+
+            shock_independent = copy(conditions)
+            ℒ.mul!(shock_independent, 𝐒¹⁻ᵛ, state_vol, -1, 1)
+
+            kron_state_vol = ℒ.kron(state_vol, state_vol)
+            ℒ.mul!(shock_independent, 𝐒²⁻ᵛ, kron_state_vol, -1/2, 1)
+
+            kron_state_vol3 = ℒ.kron(state_vol, kron_state_vol)
+            ℒ.mul!(shock_independent, 𝐒³⁻ᵛ, kron_state_vol3, -1/6, 1)
+
+            kron_I_state = ℒ.kron(J, state_vol)
+            kron_I_state_state = ℒ.kron(J, kron_state_vol)
+
+            𝐒ⁱ = 𝐒¹ᵉ +
+                 𝐒²⁻ᵉ * kron_I_state +
+                 𝐒³⁻ᵉ² * kron_I_state_state / 2
+
+            𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state_vol) / 2
+            𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
+        end
+    end
+
+    if !isempty(fixed_shock_idx)
+        n_cond = length(cond_var_idx)
+        n_fixed = length(fixed_shock_idx)
+
+        𝐒ⁱ_aug = zeros(n_cond + n_fixed, n_exo)
+        𝐒ⁱ_aug[1:n_cond, :] = 𝐒ⁱ
+        for (row, idx) in enumerate(fixed_shock_idx)
+            𝐒ⁱ_aug[n_cond + row, idx] = 1.0
+        end
+
+        𝐒ⁱ²ᵉ_aug = zeros(n_cond + n_fixed, size(𝐒ⁱ²ᵉ, 2))
+        𝐒ⁱ²ᵉ_aug[1:n_cond, :] = 𝐒ⁱ²ᵉ
+
+        if isnothing(𝐒ⁱ³ᵉ)
+            𝐒ⁱ³ᵉ_aug = nothing
+        else
+            𝐒ⁱ³ᵉ_aug = zeros(n_cond + n_fixed, size(𝐒ⁱ³ᵉ, 2))
+            𝐒ⁱ³ᵉ_aug[1:n_cond, :] = 𝐒ⁱ³ᵉ
+        end
+
+        shock_independent = vcat(shock_independent, all_shocks[fixed_shock_idx])
+        𝐒ⁱ = 𝐒ⁱ_aug
+        𝐒ⁱ²ᵉ = 𝐒ⁱ²ᵉ_aug
+        𝐒ⁱ³ᵉ = 𝐒ⁱ³ᵉ_aug
+    end
+
+    initial_guess = copy(all_shocks)
+
+    if isnothing(𝐒ⁱ³ᵉ)
+        kron_buffer = zeros(n_exo^2)
+        kron_buffer2 = ℒ.kron(J, zeros(n_exo))
+
+        x, matched = find_shocks(Val(:LagrangeNewton),
+                                 initial_guess,
+                                 kron_buffer,
+                                 kron_buffer2,
+                                 J,
+                                 𝐒ⁱ,
+                                 𝐒ⁱ²ᵉ,
+                                 shock_independent;
+                                 max_iter = max_iter,
+                                 tol = tol,
+                                 verbose = verbose)
+    else
+        kron_buffer = zeros(n_exo^2)
+        kron_buffer² = zeros(n_exo^3)
+        kron_buffer2 = ℒ.kron(J, zeros(n_exo))
+        kron_buffer3 = ℒ.kron(J, kron_buffer)
+        kron_buffer4 = ℒ.kron(ℒ.kron(J, J), zeros(n_exo))
+
+        x, matched = find_shocks(Val(:LagrangeNewton),
+                                 initial_guess,
+                                 kron_buffer,
+                                 kron_buffer²,
+                                 kron_buffer2,
+                                 kron_buffer3,
+                                 kron_buffer4,
+                                 J,
+                                 𝐒ⁱ,
+                                 𝐒ⁱ²ᵉ,
+                                 𝐒ⁱ³ᵉ,
+                                 shock_independent;
+                                 max_iter = max_iter,
+                                 tol = tol,
+                                 verbose = verbose)
+    end
+
+    return x[free_shock_idx], matched
+end
+end # dispatch_doctor
+
+
+
 @stable default_mode = "disable" begin
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
@@ -13,7 +317,8 @@ function find_shocks(::Val{:LagrangeNewton},
                     𝐒ⁱ²ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 1000,
-                    tol::Float64 = 1e-13) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13,
+                    verbose::Bool = false) # will fail for higher or lower precision
     x = copy(initial_guess)
     
     λ = zeros(size(𝐒ⁱ, 1))
@@ -43,7 +348,9 @@ function find_shocks(::Val{:LagrangeNewton},
 
     lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
 
+    iter = 0
     @inbounds for i in 1:max_iter
+        iter = i
         ℒ.kron!(kron_buffer2, J, x)
 
         ℒ.mul!(∂x, 𝐒ⁱ²ᵉ, kron_buffer2)
@@ -130,7 +437,11 @@ function find_shocks(::Val{:LagrangeNewton},
     #     println("Find shocks failed. Norm 1: $(ℒ.norm(x̂) / max(norm1,norm2)); Norm 2: $(ℒ.norm(Δxλ) / ℒ.norm(xλ))")
     # end
 
-    return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+    residual = ℒ.norm(x̂) / max(norm1,norm2)
+    step_norm = ℒ.norm(Δxλ) / ℒ.norm(xλ)
+    matched = residual < tol && step_norm < sqrt(tol)
+    verbose && @info "LagrangeNewton solve (2nd order)" iterations = iter residual = residual step_norm = step_norm matched = matched
+    return x, matched
 end
 
 end # dispatch_doctor
@@ -211,7 +522,8 @@ function find_shocks(::Val{:LagrangeNewton},
                     𝐒ⁱ³ᵉ::AbstractMatrix{Float64},
                     shock_independent::Vector{Float64};
                     max_iter::Int = 1000,
-                    tol::Float64 = 1e-13) # will fail for higher or lower precision
+                    tol::Float64 = 1e-13,
+                    verbose::Bool = false) # will fail for higher or lower precision
     x = copy(initial_guess)
 
     λ = zeros(size(𝐒ⁱ, 1))
@@ -247,7 +559,9 @@ function find_shocks(::Val{:LagrangeNewton},
 
     lI = -2 * vec(ℒ.I(size(𝐒ⁱ, 2)))
     
+    iter = 0
     @inbounds for i in 1:max_iter
+        iter = i
         ℒ.kron!(kron_buffer2, J, x)
         ℒ.kron!(kron_buffer3, J, kron_buffer)
 
@@ -354,7 +668,11 @@ function find_shocks(::Val{:LagrangeNewton},
     #     println("Find shocks failed. Norm 1: $(ℒ.norm(x̂) / max(norm1,norm2)); Norm 2: $(ℒ.norm(Δxλ) / ℒ.norm(xλ))")
     # end
 
-    return x, ℒ.norm(x̂) / max(norm1,norm2) < tol && ℒ.norm(Δxλ) / ℒ.norm(xλ) < sqrt(tol)
+    residual = ℒ.norm(x̂) / max(norm1,norm2)
+    step_norm = ℒ.norm(Δxλ) / ℒ.norm(xλ)
+    matched = residual < tol && step_norm < sqrt(tol)
+    verbose && @info "LagrangeNewton solve (3rd order)" iterations = iter residual = residual step_norm = step_norm matched = matched
+    return x, matched
 end
 
 

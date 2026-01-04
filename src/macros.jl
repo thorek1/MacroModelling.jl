@@ -836,6 +836,9 @@ macro model(𝓂,ex...)
                         $parameters,
                         $parameters,
                         $parameter_values,
+                        
+                        Symbol[], # missing_parameters - to be filled by @parameters
+                        false, # precompile - to be set by @parameters
 
                         Dict{Symbol, Float64}(), # guess
 
@@ -1013,7 +1016,10 @@ Parameters can be defined in either of the following ways:
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. When working with higher order perturbation later on, respective derivatives will be taken at that stage.
 - `simplify` [Default: `true`, Type: `Bool`]: whether to eliminate redundant variables and simplify the non-stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
 
+# Delayed parameter definition
+Not all parameters need to be defined in the `@parameters` macro. Calibration equations using the `|` syntax and parameters defined as functions of other parameters must be declared here, but simple parameter value assignments (e.g., `α = 0.5`) can be deferred and provided later by passing them to any function that accepts the `parameters` argument (e.g., [`get_irf`](@ref), [`get_steady_state`](@ref), [`simulate`](@ref)). 
 
+**Parameter ordering:** When some parameters are not defined in `@parameters`, the final parameter vector follows a specific order: first come the parameters defined in `@parameters` (in their declaration order), followed by any missing parameters (in alphabetical order). This ordering is important when passing parameter values by position rather than by name in subsequent function calls.
 
 # Examples
 ```julia
@@ -1074,6 +1080,7 @@ macro parameters(𝓂,ex...)
     
     ss_no_var_calib_list = []
     par_no_var_calib_list = []
+    par_no_var_calib_rhs_list = []
     
     calib_parameters = Symbol[]
     calib_values = Float64[]
@@ -1087,6 +1094,7 @@ macro parameters(𝓂,ex...)
     silent = false
     symbolic = false
     precompile = false
+    report_missing_parameters = true
     perturbation_order = 1
     guess = Dict{Symbol,Float64}()
     simplify = true
@@ -1101,6 +1109,8 @@ macro parameters(𝓂,ex...)
                         verbose = x.args[2] :
                     x.args[1] == :silent && x.args[2] isa Bool ?
                         silent = x.args[2] :
+                    x.args[1] == :report_missing_parameters && x.args[2] isa Bool ?
+                        report_missing_parameters = x.args[2] :
                     x.args[1] == :precompile && x.args[2] isa Bool ?
                         precompile = x.args[2] :
                     x.args[1] == :perturbation_order && x.args[2] isa Int ?
@@ -1197,8 +1207,8 @@ macro parameters(𝓂,ex...)
                             x :
                     begin # this is calibration by targeting SS values (conditional parameter at the end)
                         if x.args[2].args[end] ∈ union(union(calib_parameters,calib_parameters_no_var),calib_eq_parameters) push!(par_defined_more_than_once, x.args[2].args[end]) end
-                        push!(calib_eq_parameters,x.args[2].args[end])
-                        push!(calib_equations,Expr(:(=),x.args[1], unblock(x.args[2].args[2])))
+                        push!(calib_eq_parameters, x.args[2].args[end])
+                        push!(calib_equations, Expr(:(=),x.args[1], unblock(x.args[2].args[2])))
                     end :
                 x :
             x :
@@ -1212,7 +1222,7 @@ macro parameters(𝓂,ex...)
     reserved_conflicts_params = intersect(all_params, SYMPYWORKSPACE_RESERVED_NAMES)
     @assert length(reserved_conflicts_params) == 0 "The following parameter names are reserved and cannot be used: " * repr(sort([reserved_conflicts_params...]))
     
-    # evaluate inputs where they are of the type: log(1/3) (no variables but need evaluation to becoe a Float64)
+    # evaluate inputs where they are of the type: log(1/3) (no variables but need evaluation to become a Float64)
     for (i, v) in enumerate(calib_values_no_var)
         out = try eval(v) catch e end
         if out isa Float64
@@ -1223,7 +1233,7 @@ macro parameters(𝓂,ex...)
         end
     end
     
-    calib_parameters_no_var = setdiff(calib_parameters_no_var,calib_parameters)
+    calib_parameters_no_var = setdiff(calib_parameters_no_var, calib_parameters)
     
     for (i, cal_eq) in enumerate(calib_equations)
         ss_tmp = Set{Symbol}()
@@ -1311,7 +1321,8 @@ macro parameters(𝓂,ex...)
         cal_eq)
     
         push!(ss_no_var_calib_list,ss_tmp)
-        push!(par_no_var_calib_list,setdiff(par_tmp,calib_parameters))
+        push!(par_no_var_calib_list, setdiff(par_tmp,calib_parameters))
+        push!(par_no_var_calib_rhs_list, intersect(par_tmp,calib_parameters))
         
         # write down calibration equations
         prs_ex = postwalk(x -> 
@@ -1462,7 +1473,45 @@ macro parameters(𝓂,ex...)
         calib_eq_parameters, calib_equations_list, ss_calib_list, par_calib_list = expand_calibration_equations($calib_eq_parameters, $calib_equations_list, $ss_calib_list, $par_calib_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         calib_parameters_no_var, calib_equations_no_var_list = expand_indices($calib_parameters_no_var, $calib_equations_no_var_list, [mod.$𝓂.parameters_in_equations; mod.$𝓂.var])
         
-        @assert length(setdiff(setdiff(setdiff(union(reduce(union, par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)) == 0 "Undefined parameters: " * repr([setdiff(setdiff(setdiff(union(reduce(union,par_calib_list,init = []),mod.$𝓂.parameters_in_equations),calib_parameters),calib_parameters_no_var),calib_eq_parameters)...])
+        # Calculate missing parameters instead of asserting
+        # Include parameters from:
+        # 1. par_calib_list - parameters used in calibration equations (e.g., K_ss in "K[ss] = K_ss | beta")
+        # 2. parameters_in_equations - parameters used in model equations
+        # 3. par_no_var_calib_list - parameters used in parameter definitions (e.g., rho{H}{H} in "rho{F}{F} = rho{H}{H}")
+        # Subtract:
+        # 1. calib_parameters - parameters with explicit values (e.g., "α = 0.5")
+        # 2. calib_parameters_no_var - parameters defined as functions of other parameters (e.g., "α = alpha_param")
+        # 3. calib_eq_parameters - parameters determined by calibration equations (e.g., "beta" in "K[ss] = K_ss | beta")
+        # Start with directly required parameters
+        all_required_params = union(
+            reduce(union, par_calib_list, init = Set{Symbol}()),
+            reduce(union, $par_no_var_calib_rhs_list, init = Set{Symbol}()),
+            Set{Symbol}(mod.$𝓂.parameters_in_equations)
+        )
+        
+        # Add parameters from parameter definitions, but only if the target parameter is needed
+        # This handles the case where parameter X = f(Y, Z) but X is not used in the model.
+        # In that case, Y and Z should not be required either.
+        # We need to check if target is in all_required_params OR in calib_eq_parameters (parameters used in calibration equations)
+        par_no_var_calib_filtered = mapreduce(i -> $par_no_var_calib_list[i], union, findall(target_param -> target_param ∈ all_required_params, calib_parameters_no_var), init = Set{Symbol}())
+        
+        all_required_params = union(all_required_params, par_no_var_calib_filtered)
+        
+        defined_params = union(
+            Set{Symbol}(calib_parameters),
+            Set{Symbol}(calib_parameters_no_var),
+            Set{Symbol}(calib_eq_parameters)
+        )
+
+        ignored_params = collect(setdiff(defined_params, all_required_params))
+
+        if !isempty(ignored_params) @warn "Parameters not part of the model are ignored: $ignored_params" end
+
+        missing_params_unsorted = collect(setdiff(all_required_params, defined_params))
+        missing_params = sort(missing_params_unsorted)
+        mod.$𝓂.missing_parameters = missing_params
+        
+        has_missing_parameters = length(missing_params) > 0
 
         for (k,v) in $bounds
             mod.$𝓂.bounds[k] = haskey(mod.$𝓂.bounds, k) ? (max(mod.$𝓂.bounds[k][1], v[1]), min(mod.$𝓂.bounds[k][2], v[2])) : (v[1], v[2])
@@ -1484,8 +1533,15 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.ss_no_var_calib_list = $ss_no_var_calib_list
         mod.$𝓂.par_no_var_calib_list = $par_no_var_calib_list
     
-        mod.$𝓂.parameters = calib_parameters
-        mod.$𝓂.parameter_values = calib_values
+        # Keep calib_parameters in declaration order, append missing_params at end
+        # This preserves declaration order for estimation and method of moments
+        all_params = vcat(calib_parameters, missing_params)
+        all_values = vcat(calib_values, fill(NaN, length(missing_params)))
+
+        defined_params_idx = indexin(setdiff(intersect(all_params, defined_params), ignored_params), collect(all_params))
+
+        mod.$𝓂.parameters = all_params[defined_params_idx]
+        mod.$𝓂.parameter_values = all_values[defined_params_idx]
         mod.$𝓂.calibration_equations = calib_equations_list
         mod.$𝓂.parameters_as_function_of_parameters = calib_parameters_no_var
         mod.$𝓂.calibration_equations_no_var = calib_equations_no_var_list
@@ -1506,30 +1562,33 @@ macro parameters(𝓂,ex...)
 
         mod.$𝓂.guess = guess_dict
         
+        # Store precompile flag in model container
+        mod.$𝓂.precompile = $precompile
+        
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed 
         # Use symbolic solving only if SymPy extension is loaded and precompile is false
         if !$precompile && sympy_available()
             start_time = time()
 
-            if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
+                if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
 
-            symbolics = create_symbols_eqs!(mod.$𝓂)
+                symbolics = create_symbols_eqs!(mod.$𝓂)
 
-            remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
+                remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
 
-            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
 
 
-            start_time = time()
-    
-            if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+                start_time = time()
+        
+                if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
-            solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
+                solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
 
-            mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
-            
-            set_up_obc_violation_function!(mod.$𝓂)
+                mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
+                
+                set_up_obc_violation_function!(mod.$𝓂)
 
             if !$silent println(round(time() - start_time, digits = 3), " seconds") end
         else
@@ -1538,7 +1597,7 @@ macro parameters(𝓂,ex...)
         
             if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
-            solve_steady_state!(mod.$𝓂, verbose = $verbose)
+                solve_steady_state!(mod.$𝓂, verbose = $verbose)
 
             mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
             
@@ -1546,70 +1605,79 @@ macro parameters(𝓂,ex...)
 
             if !$silent println(round(time() - start_time, digits = 3), " seconds") end
         end
+        
+        mod.$𝓂.solution.functions_written = false
+        
+        if !has_missing_parameters
+            # Mark functions as written even if we skipped SS setup due to missing parameters
+            # This prevents solve! from re-running @parameters with nothing
+            mod.$𝓂.solution.functions_written = true
 
-        start_time = time()
+            start_time = time()
+    
+            opts = merge_calculation_options(verbose = $verbose)
 
-        mod.$𝓂.solution.functions_written = true
-
-        opts = merge_calculation_options(verbose = $verbose)
-
-        if !$precompile
-            if !$silent 
-                print("Find non-stochastic steady state:\t\t\t\t\t") 
-            end
-            # time_SS_real_solve = @elapsed 
-            SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
-
-            select_fastest_SS_solver_parameters!(mod.$𝓂, tol = opts.tol)
-
-            found_solution = true
-
-            if solution_error > opts.tol.NSSS_acceptance_tol
-                # start_time = time()
-                found_solution = find_SS_solver_parameters!(mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
-                # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
-                if found_solution
-                    SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
+            if !$precompile 
+                if !$silent 
+                    print("Find non-stochastic steady state:\t\t\t\t\t") 
                 end
+                # time_SS_real_solve = @elapsed 
+                SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
+
+                select_fastest_SS_solver_parameters!(mod.$𝓂, tol = opts.tol)
+
+                found_solution = true
+
+                if solution_error > opts.tol.NSSS_acceptance_tol
+                    # start_time = time()
+                    found_solution = find_SS_solver_parameters!(mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
+                    # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
+                    if found_solution
+                        SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
+                    end
+                end
+                
+                if !$silent 
+                    println(round(time() - start_time, digits = 3), " seconds") 
+                end
+
+                if !found_solution
+                    @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
+                end
+
+                mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
+                mod.$𝓂.solution.outdated_NSSS = false
             end
             
-            if !$silent 
-                println(round(time() - start_time, digits = 3), " seconds") 
+            start_time = time()
+
+            if !$silent
+                if $perturbation_order == 1
+                    print("Take symbolic derivatives up to first order:\t\t\t\t")
+                elseif $perturbation_order == 2
+                    print("Take symbolic derivatives up to second order:\t\t\t\t")
+                elseif $perturbation_order == 3
+                    print("Take symbolic derivatives up to third order:\t\t\t\t")
+                end
             end
 
-            if !found_solution
-                @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
-            end
+            write_auxiliary_indices!(mod.$𝓂)
 
-            mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
-            mod.$𝓂.solution.outdated_NSSS = false
-        end
+            # time_dynamic_derivs = @elapsed 
+            write_functions_mapping!(mod.$𝓂, $perturbation_order)
 
-
-        start_time = time()
-
-        if !$silent
-            if $perturbation_order == 1
-                print("Take symbolic derivatives up to first order:\t\t\t\t")
-            elseif $perturbation_order == 2
-                print("Take symbolic derivatives up to second order:\t\t\t\t")
-            elseif $perturbation_order == 3
-                print("Take symbolic derivatives up to third order:\t\t\t\t")
+            mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+    
+            if !$silent
+                println(round(time() - start_time, digits = 3), " seconds")
             end
         end
 
-        write_auxiliary_indices!(mod.$𝓂)
-
-        # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(mod.$𝓂, $perturbation_order)
-
-        mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-        
-        if !$silent
-            println(round(time() - start_time, digits = 3), " seconds")
+        if has_missing_parameters && $report_missing_parameters
+            @warn "Model has been set up with incomplete parameter definitions. Missing parameters: $(missing_params). The non-stochastic steady state and perturbation solution cannot be computed until all parameters are defined. Provide missing parameter values via the `parameters` keyword argument in functions like `get_irf`, `get_SS`, `simulate`, etc."
         end
 
-        if !$silent Base.show(mod.$𝓂) end
+        if !$silent && $report_missing_parameters Base.show(mod.$𝓂) end
         nothing
     end
 end
