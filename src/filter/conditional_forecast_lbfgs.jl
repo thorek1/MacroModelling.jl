@@ -17,13 +17,14 @@ Computes the squared distance between conditions and model predictions.
 function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
     Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
 
-    Shocks[Free_shock_idx] .= X
+    S_shocks = convert(Vector{S}, Shocks)
+    S_shocks[Free_shock_idx] .= X
 
-    new_State = State_update(State, convert(typeof(X), Shocks))
+    new_State = State_update(State, S_shocks)
 
     cond_vars = Pruning ? sum(new_State) : new_State
 
-    return precision_factor * sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
+    return precision_factor * sum(abs2, Conditions - cond_vars[Cond_var_idx])
 end
 
 
