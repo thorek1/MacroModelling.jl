@@ -171,6 +171,7 @@ include("./algorithms/sylvester.jl")
 include("./algorithms/lyapunov.jl")
 include("./algorithms/nonlinear_solver.jl")
 include("./algorithms/quadratic_matrix_equation.jl")
+include("./algorithms/conditional_forecast_lbfgs.jl")
 
 include("./filter/find_shocks.jl")
 include("./filter/inversion.jl")
@@ -840,20 +841,6 @@ function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
     
     sum(abs2, X)
 end
-
-
-function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
-    Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
-
-    Shocks[Free_shock_idx] .= X
-
-    new_State = State_update(State, convert(typeof(X), Shocks))
-
-    cond_vars = Pruning ? sum(new_State) : new_State
-
-    return precision_factor * sum(abs2, Conditions[Cond_var_idx] - cond_vars[Cond_var_idx])
-end
-
 
 function set_up_obc_violation_function!(𝓂)
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))

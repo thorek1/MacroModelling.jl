@@ -793,6 +793,11 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
+    @testset "Solver comparison - LBFGS vs Lagrange-Newton" begin
+        # Test solver comparison between LBFGS and Lagrange-Newton
+        include("test_solver_comparison.jl")
+    end
+
     @testset verbose = true "Provide parameters later" begin
         include("models/Backus_Kehoe_Kydland_1992.jl")
 
@@ -3868,4 +3873,5 @@ if test_set == "basic"
         RBC_CME = nothing
     end
     GC.gc()
+    
 end

@@ -743,7 +743,8 @@ function get_conditional_forecast(𝓂::ℳ,
                                 tol::Tolerances = Tolerances(),
                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                                 sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
-                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM)
+                                lyapunov_algorithm::Symbol = DEFAULT_LYAPUNOV_ALGORITHM,
+                                conditional_forecast_solver::Symbol = :LagrangeNewton)
     # @nospecialize # reduce compile time                        
 
     opts = merge_calculation_options(tol = tol, verbose = verbose,
@@ -865,32 +866,35 @@ function get_conditional_forecast(𝓂::ℳ,
     @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period 1 has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
 
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
-        precision_factor = 1.0
+        S₁ = 𝓂.solution.perturbation.first_order.solution_matrix
+        S₁ = [S₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) S₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
-        p = (conditions[:,1], state_update, shocks[:,1], cond_var_idx, free_shock_idx, initial_state, pruning, precision_factor)
-
-        res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                            zeros(length(free_shock_idx)), 
-                            Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                            Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                            autodiff = :forward) end
-
-        matched = Optim.minimum(res) < 1e-12
-
-        if !matched
-            res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zeros(length(free_shock_idx)), 
-                                Optim.LBFGS(), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
-
-            matched = Optim.minimum(res) < 1e-12
+        S₂ = nothing
+        if size(𝓂.solution.perturbation.second_order_solution, 2) > 0
+            S₂ = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
         end
+
+        S₃ = nothing
+        if algorithm ∈ [:third_order, :pruned_third_order] && size(𝓂.solution.perturbation.third_order_solution, 2) > 0
+            S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
+        end
+
+        # Use Lagrange-Newton algorithm to find shocks
+        x, matched = find_shocks_conditional_forecast(Val(conditional_forecast_solver),
+                                                      initial_state,
+                                                      Float64[shocks[:,1]...],
+                                                      Float64[conditions[cond_var_idx,1]...],
+                                                      cond_var_idx,
+                                                      free_shock_idx,
+                                                      state_update,
+                                                      S₁,
+                                                      S₂,
+                                                      S₃,
+                                                      𝓂.timings;
+                                                      verbose = verbose)
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
     
-        x = Optim.minimizer(res)
-
         shocks[free_shock_idx,1] .= x
                 
         initial_state = state_update(initial_state, Float64[shocks[:,1]...])
@@ -912,31 +916,28 @@ function get_conditional_forecast(𝓂::ℳ,
     
             @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
     
-            p = (conditions[:,i], state_update, shocks[:,i], cond_var_idx, free_shock_idx, pruning ? initial_state : Y[:,i-1], pruning, precision_factor)
+            if length(cond_var_idx) == 0
+                # No conditions this period: set free shocks to zero
+                shocks[free_shock_idx,i] .= 0
+            else
+                # Use Lagrange-Newton algorithm to find shocks
+                x, matched = find_shocks_conditional_forecast(Val(conditional_forecast_solver),
+                                                              pruning ? initial_state : Y[:,i-1],
+                                                              Float64[shocks[:,i]...],
+                                                              Float64[conditions[cond_var_idx,i]...],
+                                                              cond_var_idx,
+                                                              free_shock_idx,
+                                                              state_update,
+                                                              S₁,
+                                                              S₂,
+                                                              S₃,
+                                                              𝓂.timings;
+                                                              verbose = verbose)
 
-            res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zeros(length(free_shock_idx)), 
-                                Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3)), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
+                @assert matched "Numerical stabiltiy issues for restrictions in period $i."
 
-            matched = Optim.minimum(res) < 1e-12
-
-            if !matched
-                res = @suppress begin Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
-                                zeros(length(free_shock_idx)), 
-                                Optim.LBFGS(), 
-                                Optim.Options(f_abstol = eps(), g_tol= 1e-30); 
-                                autodiff = :forward) end
-
-                matched = Optim.minimum(res) < 1e-12
+                shocks[free_shock_idx,i] .= x
             end
-
-            @assert matched "Numerical stabiltiy issues for restrictions in period $i."
-
-            x = Optim.minimizer(res)
-
-            shocks[free_shock_idx,i] .= x
 
             initial_state = state_update(initial_state, Float64[shocks[:,i]...])
 
