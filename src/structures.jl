@@ -240,8 +240,23 @@ struct ss_solve_block
     extended_ss_problem::function_and_jacobian
 end
 
+struct backward_looking_solution
+    state_update::Function
+    residual_func::Function
+    jacobian_state_func::Function
+    jacobian_shock_func::Function  # Jacobian w.r.t. shocks for conditional forecasting
+    residual_buffer::Vector{Float64}
+    jacobian_buffer::Matrix{Float64}
+    jacobian_shock_buffer::Matrix{Float64}
+    lu_buffer::𝒮.LinearCache
+    # Buffers for conditional forecasting
+    jac_state_buffer::Matrix{Float64}   # For J_y_full in conditional forecasting
+    jac_shock_buffer::Matrix{Float64}   # For J_e_full in conditional forecasting  
+end
+
 mutable struct solution
     perturbation::perturbation
+    backward_looking::backward_looking_solution
     non_stochastic_steady_state::Vector{Float64}
     # algorithms::Set{Symbol}
     outdated_algorithms::Set{Symbol}

@@ -3,7 +3,7 @@ module StatsPlotsExt
 using MacroModelling
 
 import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, infer_step
-import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
+import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS, DEFAULT_ALGORITHM_BACKWARD_LOOKING, DEFAULT_REFERENCE
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
 
@@ -17,6 +17,7 @@ import Showoff
 import DataStructures: OrderedSet
 import SparseArrays: SparseMatrixCSC
 import NLopt
+
 using DispatchDoctor
 
 import MacroModelling: plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_simulation, plot_solution, plot_girf, plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition, plotlyjs_backend, gr_backend, compare_args_and_kwargs, get_irf
@@ -1750,6 +1751,8 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $GENERALISED_IRF_DRAWS®
 - $INITIAL_STATE®
 - $IGNORE_OBC®
+- `reference` [Default: `:baseline` for backward looking models, `:steady_state` otherwise, Type: `Symbol`]: reference path for plotting. Options: `:steady_state` (horizontal line at steady state) or `:baseline` (no-shock trajectory from `initial_state`). Useful for backward looking models with explosive dynamics.
+- `reference` [Default: `:steady_state`, Type: `Symbol`]: reference point for deviations when not in levels mode. Options: `:steady_state` (deviations from relevant steady state) or `:baseline` (deviations from no-shock path starting from `initial_state`).
 - `label` [Default: `1`, Type: `Union{Real, String, Symbol}`]: label to attribute to this function call in the plots.
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
@@ -1802,7 +1805,7 @@ function plot_irf(𝓂::ℳ;
                     save_plots_name::Union{String, Symbol} = "irf",
                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_LARGE, 
-                    algorithm::Symbol = DEFAULT_ALGORITHM,
+                    algorithm::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? DEFAULT_ALGORITHM_BACKWARD_LOOKING : DEFAULT_ALGORITHM,
                     shock_size::Real = DEFAULT_SHOCK_SIZE,
                     negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK,
                     generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
@@ -1810,6 +1813,7 @@ function plot_irf(𝓂::ℳ;
                     generalised_irf_draws::Int = DEFAULT_GENERALISED_IRF_DRAWS,
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
+                    reference::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? :baseline : :steady_state,
                     rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                     plot_attributes::Dict = Dict(),
                     verbose::Bool = DEFAULT_VERBOSE,
@@ -1888,6 +1892,29 @@ function plot_irf(𝓂::ℳ;
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, true)
     else
         state_update, pruning = parse_algorithm_to_state_update(algorithm, 𝓂, false)
+    end
+
+    # Compute baseline path when reference = :baseline for backward looking models
+    is_backward_looking = 𝓂.timings.nFuture_not_past_and_mixed == 0
+    baseline_path_for_plot = nothing
+    initial_state_levels = nothing  # Store initial state in levels for dual axis reference
+    
+    if reference == :baseline && is_backward_looking && algorithm == :newton
+        nVars = 𝓂.timings.nVars
+        baseline_path_for_plot = zeros(nVars, periods_extended)
+        zero_shocks = zeros(length(𝓂.timings.exo))
+        
+        # Store initial state in levels for dual axis reference
+        initial_state_levels = initial_state .+ NSSS[1:nVars]
+        
+        # Compute baseline in deviations from NSSS
+        baseline_state = copy(initial_state)
+        for t in 1:periods_extended
+            baseline_state = state_update(baseline_state, zero_shocks)
+            baseline_path_for_plot[:, t] = baseline_state
+        end
+        # Convert to levels for plotting: baseline_path_for_plot + NSSS
+        baseline_path_for_plot = baseline_path_for_plot .+ NSSS[1:nVars]
     end
 
     level = zeros(𝓂.timings.nVars)
@@ -2024,11 +2051,16 @@ function plot_irf(𝓂::ℳ;
 
         for (i,v) in enumerate(var_idx)
             SS = reference_steady_state[v]
+            
+            # Get baseline path for this variable if using baseline reference
+            var_baseline_path = isnothing(baseline_path_for_plot) ? nothing : baseline_path_for_plot[v, :]
+            # Get initial state value for this variable (in levels) for dual axis reference
+            var_initial_value = isnothing(initial_state_levels) ? nothing : initial_state_levels[v]
 
             if !(all(isapprox.(Y[i,:,shock],0,atol = eps(Float32))))
                 variable_name = variable_names_display[i]
 
-                push!(pp, standard_subplot(Y[i,:,shock], SS, variable_name, gr_back, pal = pal))
+                push!(pp, standard_subplot(Y[i,:,shock], SS, variable_name, gr_back, pal = pal, baseline_path = var_baseline_path, initial_value = var_initial_value))
 
                 if !(plot_count % plots_per_page == 0)
                     plot_count += 1
@@ -2110,43 +2142,54 @@ function standard_subplot(irf_data::AbstractVector{S},
                             variable_name::R, 
                             gr_back::Bool;
                             pal::StatsPlots.ColorPalette = StatsPlots.palette(:auto),
-                            xvals = 1:length(irf_data)) where {S <: AbstractFloat, R <: Union{String, Symbol}}
-    finite_vals = filter(isfinite, irf_data)
-    can_dual_axis = gr_back && !isempty(finite_vals) && all((finite_vals .+ steady_state) .> eps(Float32)) && (steady_state > eps(Float32))
+                            xvals = 1:length(irf_data),
+                            baseline_path::Union{Nothing, AbstractVector{S}} = nothing,
+                            initial_value::Union{Nothing, S} = nothing) where {S <: AbstractFloat, R <: Union{String, Symbol}}
+    # If baseline_path is provided, use it; otherwise use steady_state for reference line
+    use_baseline = !isnothing(baseline_path)
+    
+    if use_baseline
+        # baseline_path is in levels - use it for reference
+        reference_line = baseline_path
+        # irf_data is in deviations from baseline, so we add baseline_path to get levels
+        plot_data = irf_data # .+ baseline_path
+        # Use initial_value as reference for dual axis if provided, otherwise use steady_state
+        ref_for_dual_axis = isnothing(initial_value) ? steady_state : initial_value
+    else
+        reference_line = fill(steady_state, length(irf_data))
+        plot_data = irf_data .+ steady_state
+        ref_for_dual_axis = steady_state
+    end
+    
+    finite_vals = filter(isfinite, plot_data)
+    can_dual_axis = gr_back && !isempty(finite_vals) && all(finite_vals .> eps(Float32)) && (ref_for_dual_axis > eps(Float32))
 
     xrotation = length(string(xvals[1])) > 5 ? 30 : 0
 
     p = StatsPlots.plot(xvals,
-                        irf_data .+ steady_state,
+                        plot_data,
                         title = variable_name,
                         ylabel = "Level",
                         xrotation = xrotation,
                         color = pal[1],
                         label = "")
-                        
-    StatsPlots.hline!([steady_state], 
+    
+    # Plot reference line (either baseline path or horizontal steady state)
+    if use_baseline
+        StatsPlots.plot!(p, xvals, reference_line, 
                         color = :black, 
                         label = "")
+    else
+        StatsPlots.hline!([steady_state], 
+                            color = :black, 
+                            label = "")
+    end
 
     lo, hi = StatsPlots.ylims(p)
 
-    # if !(xvals isa UnitRange)
-        # low = 1
-        # high = length(irf_data)
-
-        # # Compute nice ticks on the shifted range
-        # ticks_shifted, _ = StatsPlots.optimize_ticks(low, high, k_min = 4, k_max = 6)
-
-        # ticks_shifted = Int.(ceil.(ticks_shifted))
-
-        # labels = xvals[ticks_shifted]
-
-        # StatsPlots.plot!(xticks = (ticks_shifted, labels))
-    # end
-
     if can_dual_axis
         StatsPlots.plot!(StatsPlots.twinx(), 
-                         ylims = (100 * (lo / steady_state - 1), 100 * (hi / steady_state - 1)),
+                         ylims = (100 * (lo / ref_for_dual_axis - 1), 100 * (hi / ref_for_dual_axis - 1)),
                          xrotation = xrotation,
                          ylabel = LaTeXStrings.L"\% \Delta")                            
     end
@@ -2484,7 +2527,7 @@ function plot_irf!(𝓂::ℳ;
                     save_plots_name::Union{String, Symbol} = "irf",
                     save_plots_path::String = DEFAULT_SAVE_PLOTS_PATH,
                     plots_per_page::Int = DEFAULT_PLOTS_PER_PAGE_SMALL, 
-                    algorithm::Symbol = DEFAULT_ALGORITHM,
+                    algorithm::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? DEFAULT_ALGORITHM_BACKWARD_LOOKING : DEFAULT_ALGORITHM,
                     shock_size::Real = DEFAULT_SHOCK_SIZE,
                     negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK,
                     generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
@@ -2493,6 +2536,7 @@ function plot_irf!(𝓂::ℳ;
                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                     ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                     plot_type::Symbol = DEFAULT_PLOT_TYPE,
+                    reference::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? :baseline : :steady_state,
                     rename_dictionary::AbstractDict{<:Union{Symbol, String}, <:Union{Symbol, String}} = Dict{Symbol, String}(),
                     plot_attributes::Dict = Dict(),
                     transparency::Float64 = DEFAULT_TRANSPARENCY,
@@ -4796,8 +4840,9 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     parameters::ParameterType = nothing,
                                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                     conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
-                                    algorithm::Symbol = DEFAULT_ALGORITHM,
+                                    algorithm::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? DEFAULT_ALGORITHM_BACKWARD_LOOKING : DEFAULT_ALGORITHM,
                                     label::Union{Real, String, Symbol} = DEFAULT_LABEL,
+                                    reference::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? :baseline : :steady_state,
                                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
@@ -5252,8 +5297,9 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     parameters::ParameterType = nothing,
                                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                     conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
-                                    algorithm::Symbol = DEFAULT_ALGORITHM,
+                                    algorithm::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? DEFAULT_ALGORITHM_BACKWARD_LOOKING : DEFAULT_ALGORITHM,
                                     label::Union{Real, String, Symbol} = length(conditional_forecast_active_plot_container) + 1,
+                                    reference::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? :baseline : :steady_state,
                                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                     save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,

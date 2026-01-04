@@ -2906,7 +2906,7 @@ function get_relevant_steady_states(𝓂::ℳ,
     end
 
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, 
-                                    stochastic = algorithm != :first_order,
+                                    stochastic = algorithm ∉ [:first_order, :newton],
                                     return_variables_only = true, 
                                     derivatives = false, 
                                     verbose = opts.verbose,
@@ -2936,6 +2936,11 @@ end
 Max = max
 Min = min
 
+# Simplify methods for non-Expr types (pass through)
+simplify(ex::Symbol)::Symbol = ex
+simplify(ex::Int)::Int = ex
+simplify(ex::Float64)::Float64 = ex
+
 function simplify(ex::Expr)::Union{Expr,Symbol,Int}
     ex_ss = convert_to_ss_equation(ex)
 
@@ -2953,7 +2958,7 @@ function simplify(ex::Expr)::Union{Expr,Symbol,Int}
                     x, parsed)
 end
 
-function convert_to_ss_equation(eq::Expr)::Expr
+function convert_to_ss_equation(eq::Expr)::Union{Expr, Symbol, Int}
     postwalk(x -> 
         x isa Expr ? 
             x.head == :(=) ? 
@@ -6854,6 +6859,12 @@ function solve!(𝓂::ℳ;
             𝓂.solution.non_stochastic_steady_state = SS_and_pars
             𝓂.solution.outdated_NSSS = solution_error > opts.tol.NSSS_acceptance_tol
         end
+        
+        # Generate newton simulation functions for backward looking models
+        if (algorithm == :newton) && (:newton ∈ 𝓂.solution.outdated_algorithms) && (𝓂.timings.nFuture_not_past_and_mixed == 0)
+            write_newton_simulation_functions!(𝓂)
+            𝓂.solution.outdated_algorithms = setdiff(𝓂.solution.outdated_algorithms,[:newton])
+        end
 
         obc_not_solved = isnothing(𝓂.solution.perturbation.second_order.state_update_obc(zeros(𝓂.timings.nVars), zeros(𝓂.timings.nExo)))
         if  ((:second_order  == algorithm) && ((:second_order   ∈ 𝓂.solution.outdated_algorithms) || (obc && obc_not_solved))) ||
@@ -7992,6 +8003,163 @@ function write_auxiliary_indices!(𝓂::ℳ)
     return nothing
 end
 
+
+"""
+    write_newton_simulation_functions!(𝓂::ℳ)
+
+Generate residual and jacobian functions for newton-based simulation of backward looking models.
+The residual function evaluates F(x_t, x_{t-1}, e_t) = 0 
+The jacobian function computes ∂F/∂x_t (derivatives w.r.t. present values)
+
+These functions are only generated for backward looking models (nFuture_not_past_and_mixed = 0).
+"""
+function write_newton_simulation_functions!(𝓂::ℳ;
+                                            cse = true,
+                                            skipzeros = true)
+    # Only generate for backward looking models
+    if 𝓂.timings.nFuture_not_past_and_mixed > 0
+        return nothing
+    end
+    
+    # Get all variable lists from dynamic equations
+    dyn_var_present_list = collect(reduce(union, 𝓂.dyn_present_list))
+    dyn_var_past_list = collect(reduce(union, 𝓂.dyn_past_list))
+    dyn_exo_list = collect(reduce(union, 𝓂.dyn_exo_list))
+    dyn_ss_list = Symbol.(string.(collect(reduce(union, 𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+    
+    present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")), string.(dyn_var_present_list))
+    past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")), string.(dyn_var_past_list))
+    exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")), string.(dyn_exo_list))
+    stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")), string.(dyn_ss_list))
+    
+    # Sort variables
+    vars_raw = vcat(dyn_var_present_list[indexin(sort(present), present)],
+                    dyn_var_past_list[indexin(sort(past), past)],
+                    dyn_exo_list[indexin(sort(exo), exo)])
+    
+    pars_ext = vcat(𝓂.parameters, 𝓂.calibration_equations_parameters)
+    parameters_and_SS = vcat(pars_ext, dyn_ss_list[indexin(sort(stst), stst)])
+    
+    np = length(parameters_and_SS)
+    nv = length(vars_raw)
+    nps = length(𝓂.parameters)
+    
+    # Number of present, past, and shock variables
+    n_present = length(dyn_var_present_list)
+    n_past = length(dyn_var_past_list)
+    n_exo = length(dyn_exo_list)
+    nVars = 𝓂.timings.nVars
+    
+    # Create symbolic variables: 𝔙 = [present; past; shocks]
+    Symbolics.@variables 𝔓[1:np] 𝔙[1:nv]
+    
+    parameter_dict = Dict{Symbol, Symbol}()
+    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
+    
+    for (i, v) in enumerate(parameters_and_SS)
+        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
+    end
+    
+    for (i, v) in enumerate(vars_raw)
+        push!(parameter_dict, v => :($(Symbol("𝔙_$i"))))
+        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔙_$i"))), @__MODULE__) => 𝔙[i])
+    end
+    
+    # Handle calibration equations
+    calib_vars = Symbol[]
+    calib_expr = []
+    for v in 𝓂.calibration_equations_no_var
+        push!(calib_vars, v.args[1])
+        push!(calib_expr, v.args[2])
+    end
+    
+    calib_replacements = Dict{Symbol, Any}()
+    for (i, x) in enumerate(calib_vars)
+        replacement = Dict(x => calib_expr[i])
+        for ii in i+1:length(calib_vars)
+            calib_expr[ii] = replace_symbols(calib_expr[ii], replacement)
+        end
+        push!(calib_replacements, x => calib_expr[i])
+    end
+    
+    # Parse dynamic equations
+    dyn_equations = 𝓂.dyn_equations |> 
+        x -> replace_symbols.(x, Ref(calib_replacements)) |> 
+        x -> replace_symbols.(x, Ref(parameter_dict)) |> 
+        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
+        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
+    
+    # Convert to vector for build_function
+    dyn_equations_vec = Symbolics.Num.(dyn_equations)
+    
+    # Build residual function: F(present, past, shocks; parameters) = 0
+    _, residual_func = Symbolics.build_function(dyn_equations_vec, 𝔓, 𝔙,
+                                                cse = cse,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    
+    # Compute jacobian w.r.t. present variables only (first n_present elements of 𝔙)
+    present_vars = 𝔙[1:n_present]
+    ∇_present = Symbolics.sparsejacobian(dyn_equations_vec, collect(present_vars))
+    
+    # Convert to matrix form
+    ∇_present_mat = convert(Matrix, ∇_present)
+    
+    # Build jacobian function
+    _, jacobian_state_func = Symbolics.build_function(∇_present_mat, 𝔓, 𝔙,
+                                                cse = cse,
+                                                skipzeros = skipzeros,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    
+    # Create buffers
+    residual_buffer = zeros(Float64, length(dyn_equations))
+    jacobian_buffer = zeros(Float64, size(∇_present_mat))
+    
+    # Create LinearSolve cache for Newton iterations
+    prob = 𝒮.LinearProblem(jacobian_buffer, residual_buffer)
+    lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
+    
+    # Compute jacobian w.r.t. shocks for conditional forecasting
+    shock_vars = 𝔙[n_present + n_past + 1 : n_present + n_past + n_exo]
+    ∇_shocks = Symbolics.sparsejacobian(dyn_equations_vec, collect(shock_vars))
+    ∇_shocks_mat = convert(Matrix, ∇_shocks)
+    
+    _, jacobian_shock_func = Symbolics.build_function(∇_shocks_mat, 𝔓, 𝔙,
+                                                cse = cse,
+                                                skipzeros = skipzeros,
+                                                expression_module = @__MODULE__,
+                                                expression = Val(false))::Tuple{<:Function, <:Function}
+    
+    jacobian_shock_buffer = zeros(Float64, size(∇_shocks_mat))
+    
+    # Create buffers for conditional forecasting (fixed size based on model dimensions)
+    n_present = length(present_vars)
+    n_exo = length(shock_vars)
+    jac_state_buffer = zeros(Float64, n_present, n_present)
+    jac_shock_buffer_cond = zeros(Float64, n_present, n_exo)
+    
+    # Create newton state update function
+    state_update = create_newton_state_update(𝓂, residual_func, jacobian_state_func, residual_buffer, jacobian_buffer, lu_buffer)
+    
+    # Store in model's solution.backward_looking struct
+    𝓂.solution.backward_looking = backward_looking_solution(
+        state_update,
+        residual_func,
+        jacobian_state_func,
+        jacobian_shock_func,
+        residual_buffer,
+        jacobian_buffer,
+        jacobian_shock_buffer,
+        lu_buffer,
+        jac_state_buffer,
+        jac_shock_buffer_cond
+    )
+    
+    return nothing
+end
+
 write_parameters_input!(𝓂::ℳ, parameters::Nothing; verbose::Bool = true) = return parameters
 write_parameters_input!(𝓂::ℳ, parameters::Pair{Symbol,Float64}; verbose::Bool = true) = write_parameters_input!(𝓂::ℳ, OrderedDict(parameters), verbose = verbose)
 write_parameters_input!(𝓂::ℳ, parameters::Pair{S,Float64}; verbose::Bool = true) where S <: AbstractString = write_parameters_input!(𝓂::ℳ, OrderedDict{Symbol,Float64}(parameters[1] |> Meta.parse |> replace_indices => parameters[2]), verbose = verbose)
@@ -8531,7 +8699,8 @@ function compute_irf_responses(𝓂::ℳ,
                                 generalised_irf_warmup_iterations::Int,
                                 generalised_irf_draws::Int,
                                 enforce_obc::Bool,
-                                algorithm::Symbol)
+                                algorithm::Symbol,
+                                baseline_path::Union{Nothing, Matrix{Float64}} = nothing)
 
     if enforce_obc
         function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
@@ -8615,7 +8784,8 @@ function compute_irf_responses(𝓂::ℳ,
                         variables = variables,
                         negative_shock = negative_shock,
                         warmup_periods = generalised_irf_warmup_iterations,
-                        draws = generalised_irf_draws)
+                        draws = generalised_irf_draws,
+                        baseline_path = baseline_path)
         else
             return irf(state_update,
                         initial_state,
@@ -8625,7 +8795,8 @@ function compute_irf_responses(𝓂::ℳ,
                         shocks = shocks,
                         shock_size = shock_size,
                         variables = variables,
-                        negative_shock = negative_shock)
+                        negative_shock = negative_shock,
+                        baseline_path = baseline_path)
         end
     end
 end
@@ -8781,7 +8952,8 @@ function irf(state_update::Function,
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
-    negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    negative_shock::Bool = false,
+    baseline_path::Union{Nothing, Matrix{Float64}} = nothing)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -8857,7 +9029,13 @@ function irf(state_update::Function,
             Y[:,t+1,1] = pruning ? sum(initial_state) : initial_state
         end
 
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
+        # Use baseline_path if provided: return (Y - baseline_path + level) = shock effect + level offset
+        # baseline_path is in deviations, so Y - baseline_path gives pure shock effect
+        if baseline_path !== nothing
+            return KeyedArray(Y[var_idx,:,:] .- baseline_path[var_idx,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
+        else
+            return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = [:none])
+        end
     else
         Y = zeros(T.nVars,periods,length(shock_idx))
 
@@ -8891,7 +9069,13 @@ function irf(state_update::Function,
             axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
         end
     
-        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+        # Use baseline_path if provided: return (Y - baseline_path + level) = shock effect + level offset
+        # baseline_path is in deviations, so Y - baseline_path gives pure shock effect
+        if baseline_path !== nothing
+            return KeyedArray(Y[var_idx,:,:] .- baseline_path[var_idx,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+        else
+            return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+        end
     end
 end
 
@@ -8907,7 +9091,8 @@ function girf(state_update::Function,
     shock_size::Real = 1,
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
-    draws::Int = 50)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    draws::Int = 50,
+    baseline_path::Union{Nothing, Matrix{Float64}} = nothing)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9073,7 +9258,13 @@ function girf(state_update::Function,
         axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
     end
 
-    return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+    # Use baseline_path if provided: return (Y - baseline_path + level) = shock effect + level offset
+    # baseline_path is in deviations, so Y - baseline_path gives pure shock effect
+    if baseline_path !== nothing
+        return KeyedArray(Y[var_idx,2:end,:] .- baseline_path[var_idx,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+    else
+        return KeyedArray(Y[var_idx,2:end,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+    end
 end
 
 
@@ -9501,6 +9692,11 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
         elseif :pruned_third_order == algorithm
             state_update = 𝓂.solution.perturbation.pruned_third_order.state_update_obc
             pruning = true
+        elseif :newton == algorithm
+            @assert 𝓂.timings.nFuture_not_past_and_mixed == 0 "Newton algorithm is only available for backward looking models (nFuture_not_past_and_mixed = 0)."
+            # For OBC, fall back to first order for now
+            state_update = 𝓂.solution.perturbation.first_order.state_update_obc
+            pruning = false
         else
             # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
             state_update = (x,y)->nothing
@@ -9522,6 +9718,11 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
         elseif :pruned_third_order == algorithm
             state_update = 𝓂.solution.perturbation.pruned_third_order.state_update
             pruning = true
+        elseif :newton == algorithm
+            @assert 𝓂.timings.nFuture_not_past_and_mixed == 0 "Newton algorithm is only available for backward looking models (nFuture_not_past_and_mixed = 0)."
+            # Use the stored backward_looking state update function
+            state_update = 𝓂.solution.backward_looking.state_update
+            pruning = false
         else
             # @assert false "Provided algorithm not valid. Valid algorithm: $all_available_algorithms"
             state_update = (x,y)->nothing
@@ -9530,6 +9731,148 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
     end
 
     return state_update, pruning
+end
+
+
+"""
+    create_newton_state_update(𝓂::ℳ, residual_func, jacobian_state_func, residual_buffer, jacobian_buffer, lu_buffer)
+
+Create a state update function that uses Newton's method to solve for present values
+given past values and shocks. Only for backward looking models.
+
+Works in deviations from SS: Input state is in deviations from SS, output is in deviations.
+"""
+function create_newton_state_update(𝓂::ℳ, residual_func::Function, jacobian_state_func::Function, 
+                                    residual_buffer::Vector{Float64}, jacobian_buffer::Matrix{Float64},
+                                    lu_buffer::𝒮.LinearCache)
+    # Get steady state and parameters
+    SS_and_pars = 𝓂.solution.non_stochastic_steady_state
+    parameters = 𝓂.parameter_values
+    
+    # Get variable indices
+    dyn_var_present_list = collect(reduce(union, 𝓂.dyn_present_list))
+    dyn_var_past_list = collect(reduce(union, 𝓂.dyn_past_list))
+    dyn_exo_list = collect(reduce(union, 𝓂.dyn_exo_list))
+    
+    present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")), string.(dyn_var_present_list))
+    past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")), string.(dyn_var_past_list))
+    exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")), string.(dyn_exo_list))
+    
+    n_present = length(present)
+    n_past = length(past)
+    n_exo = length(exo)
+    nVars = 𝓂.timings.nVars
+    
+    # Get SS and parameter info
+    dyn_ss_list = Symbol.(string.(collect(reduce(union, 𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+    stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")), string.(dyn_ss_list))
+    
+    pars_ext = vcat(𝓂.parameters, 𝓂.calibration_equations_parameters)
+    parameters_and_SS_syms = vcat(pars_ext, dyn_ss_list[indexin(sort(stst), stst)])
+    
+    SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+    
+    # Get indices for mapping
+    present_sorted = sort(present)
+    past_sorted = sort(past)
+    exo_sorted = sort(exo)
+    
+    present_idx_in_SS = indexin(present_sorted, SS_and_pars_names)
+    past_idx_in_SS = indexin(past_sorted, SS_and_pars_names)
+    
+    # Get indices for past_not_future_and_mixed (used in state vector)
+    past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+    
+    # Get steady state values for present and past variables
+    SS_present = SS_and_pars[present_idx_in_SS]
+    SS_past = SS_and_pars[past_idx_in_SS]
+    SS_vars = SS_and_pars[1:nVars]
+    
+    # Create the state update function
+    function state_update_newton(state::Vector{T}, shock::Vector{S}) where {T, S}
+        # Get steady state values for parameters and SS variables
+        # Parameters are in the first part, SS values come after
+        pars_values = 𝓂.parameter_values
+        ss_values = SS_and_pars[indexin(sort(stst), SS_and_pars_names)]
+        params_and_ss = vcat(pars_values, ss_values)
+        
+        # Get past values from state (state is in deviations, add SS to get levels)
+        past_from_state = zeros(n_past)
+        for (i, p) in enumerate(past_sorted)
+            idx_in_state = findfirst(x -> x == p, 𝓂.timings.past_not_future_and_mixed)
+            if idx_in_state !== nothing
+                past_from_state[i] = state[past_not_future_and_mixed_idx][idx_in_state] + SS_past[i]
+            end
+        end
+        
+        # Initial guess: use steady state values for present variables (in levels)
+        present_guess = copy(SS_present)
+        
+        # Get shock values - reorder to match sorted order
+        # Use similar type as shock to support ForwardDiff dual numbers
+        shock_values = similar(shock, n_exo)
+        fill!(shock_values, zero(eltype(shock)))
+        for (i, e) in enumerate(exo_sorted)
+            idx_in_shock = findfirst(x -> x == e, 𝓂.timings.exo)
+            if idx_in_shock !== nothing
+                shock_values[i] = shock[idx_in_shock]
+            end
+        end
+        
+        # Combine: 𝔙 = [present; past; shocks] (all in levels for present/past)
+        # Convert present_guess and past_from_state to match shock type for ForwardDiff
+        ShockType = eltype(shock)
+        vars = vcat(convert(Vector{ShockType}, present_guess), convert(Vector{ShockType}, past_from_state), shock_values)
+        
+        # Newton iterations
+        max_iter = 50
+        tol = 1e-10
+        
+        residual = zeros(ShockType, length(present_guess))
+        jacobian = zeros(ShockType, length(present_guess), n_present)
+        
+        for iter in 1:max_iter
+            # Update vars with current present guess (in levels)
+            vars[1:n_present] = present_guess
+            
+            # Evaluate residual and jacobian (with values in levels)
+            residual_func(residual, params_and_ss, vars)
+            jacobian_state_func(jacobian, params_and_ss, vars)
+            
+            # Check convergence
+            if ℒ.norm(residual) < tol
+                break
+            end
+            
+            # Newton step using LinearSolve: present_new = present_old - J^{-1} * F
+            lu_buffer.A = jacobian
+            lu_buffer.b = residual
+            𝒮.solve!(lu_buffer)
+            
+            if !isfinite(sum(lu_buffer.u))
+                # If solution is not finite (singular jacobian), break
+                break
+            end
+            
+            present_guess = present_guess - lu_buffer.u
+        end
+        
+        # Construct full state vector in the correct order (in levels)
+        result_levels = convert(Vector{ShockType}, copy(SS_vars))
+        
+        # Fill in the present values we just computed (in levels)
+        for (i, p) in enumerate(present_sorted)
+            idx = findfirst(x -> x == p, 𝓂.timings.var)
+            if idx !== nothing
+                result_levels[idx] = present_guess[i]
+            end
+        end
+        
+        # Subtract steady state to return deviations from SS
+        return result_levels - SS_vars
+    end
+    
+    return state_update_newton
 end
 
 @stable default_mode = "disable" begin

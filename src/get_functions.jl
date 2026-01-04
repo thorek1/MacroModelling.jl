@@ -737,7 +737,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                 parameters::ParameterType = nothing,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
-                                algorithm::Symbol = DEFAULT_ALGORITHM,
+                                algorithm::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? DEFAULT_ALGORITHM_BACKWARD_LOOKING : DEFAULT_ALGORITHM,
                                 levels::Bool = false,
                                 verbose::Bool = DEFAULT_VERBOSE,
                                 tol::Tolerances = Tolerances(),
@@ -848,7 +848,7 @@ function get_conditional_forecast(𝓂::ℳ,
 
     var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
-    Y = zeros(size(𝓂.solution.perturbation.first_order.solution_matrix,1),periods)
+    Y = zeros(𝓂.timings.nVars, periods)
 
     cond_var_idx = findall(conditions[:,1] .!= nothing)
     
@@ -987,6 +987,239 @@ function get_conditional_forecast(𝓂::ℳ,
             shocks[free_shock_idx,i] = CC \ (conditions[cond_var_idx,i] - state_update(Y[:,i-1], Float64[shocks[:,i]...])[cond_var_idx])
     
             Y[:,i] = state_update(Y[:,i-1], Float64[shocks[:,i]...])
+        end
+    elseif algorithm == :newton
+        # For backward looking models with newton algorithm
+        # Use LagrangeNewton formulation to find minimum norm shocks that satisfy conditions
+        # Solve: min ||e||² s.t. y[cond_var_idx] = conditions where y = state_update(past, e)
+        
+        # Get analytical jacobian functions from backward_looking solution
+        residual_func = 𝓂.solution.backward_looking.residual_func
+        jacobian_state_func = 𝓂.solution.backward_looking.jacobian_state_func
+        jacobian_shock_func = 𝓂.solution.backward_looking.jacobian_shock_func
+        
+        # Get buffers from backward_looking solution
+        jac_state_buffer = 𝓂.solution.backward_looking.jac_state_buffer
+        jac_shock_buffer = 𝓂.solution.backward_looking.jac_shock_buffer
+        
+        # Get SS and parameter info for evaluating jacobians
+        SS_and_pars = 𝓂.solution.non_stochastic_steady_state
+        
+        dyn_var_present_list = collect(reduce(union, 𝓂.dyn_present_list))
+        dyn_var_past_list = collect(reduce(union, 𝓂.dyn_past_list))
+        dyn_exo_list = collect(reduce(union, 𝓂.dyn_exo_list))
+        dyn_ss_list = Symbol.(string.(collect(reduce(union, 𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+        
+        present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")), string.(dyn_var_present_list))
+        past = map(x -> Symbol(replace(string(x), r"₍₋₁₎" => "")), string.(dyn_var_past_list))
+        exo = map(x -> Symbol(replace(string(x), r"₍ₓ₎" => "")), string.(dyn_exo_list))
+        stst = map(x -> Symbol(replace(string(x), r"₍ₛₛ₎" => "")), string.(dyn_ss_list))
+        
+        n_present = length(present)
+        n_past = length(past)
+        n_exo = length(exo)
+        nVars = 𝓂.timings.nVars
+        
+        pars_ext = vcat(𝓂.parameters, 𝓂.calibration_equations_parameters)
+        SS_and_pars_names = vcat(Symbol.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+        
+        present_sorted = sort(present)
+        past_sorted = sort(past)
+        exo_sorted = sort(exo)
+        
+        present_idx_in_SS = indexin(present_sorted, SS_and_pars_names)
+        past_idx_in_SS = indexin(past_sorted, SS_and_pars_names)
+        
+        SS_present = SS_and_pars[present_idx_in_SS]
+        SS_past = SS_and_pars[past_idx_in_SS]
+        SS_vars = SS_and_pars[1:nVars]
+        
+        pars_values = 𝓂.parameter_values
+        ss_values = SS_and_pars[indexin(sort(stst), SS_and_pars_names)]
+        params_and_ss = vcat(pars_values, ss_values)
+        
+        past_not_future_and_mixed_idx = 𝓂.timings.past_not_future_and_mixed_idx
+        
+        # Helper function to compute Jacobian J = ∂y[cond]/∂e[free] directly using implicit function theorem
+        # F(y, y_past, e) = 0 => ∂y/∂e = -(∂F/∂y)^{-1} * (∂F/∂e)
+        # Returns J and also J_y (for algebraic simplification in underdetermined case)
+        function compute_jacobian_and_update(past_state::Vector{Float64}, y_current::Vector{Float64}, e_current::Vector{Float64}, r::Vector{Float64}, cond_idx::Vector{Int}, free_idx::Vector{Int})
+            # Build vars vector in levels: [present; past; shocks]
+            past_from_state = zeros(n_past)
+            for (i, p) in enumerate(past_sorted)
+                idx_in_state = findfirst(x -> x == p, 𝓂.timings.past_not_future_and_mixed)
+                if idx_in_state !== nothing
+                    past_from_state[i] = past_state[past_not_future_and_mixed_idx][idx_in_state] + SS_past[i]
+                end
+            end
+            
+            # Get present values in levels from y_current (deviations) + SS
+            present_levels = zeros(n_present)
+            for (i, p) in enumerate(present_sorted)
+                idx = findfirst(x -> x == p, 𝓂.timings.var)
+                if idx !== nothing
+                    present_levels[i] = y_current[idx] + SS_present[i]
+                end
+            end
+            
+            # Reorder shocks to match sorted order
+            shock_values = zeros(n_exo)
+            for (i, e) in enumerate(exo_sorted)
+                idx_in_shock = findfirst(x -> x == e, 𝓂.timings.exo)
+                if idx_in_shock !== nothing
+                    shock_values[i] = e_current[idx_in_shock]
+                end
+            end
+            
+            vars = vcat(present_levels, past_from_state, shock_values)
+            
+            # Evaluate analytical jacobians using buffers
+            fill!(jac_state_buffer, 0.0)
+            fill!(jac_shock_buffer, 0.0)
+            jacobian_state_func(jac_state_buffer, params_and_ss, vars)
+            jacobian_shock_func(jac_shock_buffer, params_and_ss, vars)
+            
+            # Build index maps: cond_idx (model order) -> sorted order for present vars
+            # free_idx (model order) -> sorted order for exo vars
+            cond_idx_sorted = Int[]
+            for c in cond_idx
+                var_name = 𝓂.timings.var[c]
+                sorted_idx = findfirst(x -> x == var_name, present_sorted)
+                if sorted_idx !== nothing
+                    push!(cond_idx_sorted, sorted_idx)
+                end
+            end
+            
+            free_idx_sorted = Int[]
+            for f in free_idx
+                exo_name = 𝓂.timings.exo[f]
+                sorted_idx = findfirst(x -> x == exo_name, exo_sorted)
+                if sorted_idx !== nothing
+                    push!(free_idx_sorted, sorted_idx)
+                end
+            end
+            
+            n_cond = length(cond_idx)
+            n_free = length(free_idx)
+            
+            # Compute J = -(J_y_full \ J_e_full)[cond_idx_sorted, free_idx_sorted] using standard \ operator
+            # Solve J_y_full * X = J_e_full for X
+            dydt = -(jac_state_buffer \ jac_shock_buffer)
+            
+            J = dydt[cond_idx_sorted, free_idx_sorted]
+            
+            if n_cond == n_free
+                # Square system - use direct linear solve
+                Δe = J \ r
+            else
+                # Underdetermined - minimum norm solution: Δe = J' * (J * J')^{-1} * r
+                JJt = J * J'
+                Δe = J' * (JJt \ r)
+            end
+            
+            return Δe
+        end
+        
+        # Helper function to find shocks using Newton iterations with analytical jacobian
+        function find_newton_shocks(past_state::Vector{Float64}, 
+                                   target::Vector{Float64}, 
+                                   cond_idx::Vector{Int}, 
+                                   free_idx::Vector{Int},
+                                   fixed_shocks::Vector{Float64})
+            n_free = length(free_idx)
+            
+            # Initial guess for free shocks (zeros)
+            e_free = zeros(n_free)
+            
+            max_iter = 100
+            tol = 1e-10
+            
+            for iter in 1:max_iter
+                # Build full shock vector
+                e_full = copy(fixed_shocks)
+                e_full[free_idx] .= e_free
+                
+                # Evaluate model at current shock guess
+                y = state_update(past_state, e_full)
+                
+                # Compute residual: y[cond_idx] - target
+                r = y[cond_idx] - target
+                
+                # Check convergence
+                if ℒ.norm(r) < tol
+                    break
+                end
+                
+                # Compute Newton update using analytical jacobian and implicit function theorem
+                Δe = compute_jacobian_and_update(past_state, y, e_full, r, cond_idx, free_idx)
+                
+                e_free = e_free - Δe
+                
+                if ℒ.norm(Δe) < tol
+                    break
+                end
+            end
+            
+            return e_free
+        end
+        
+        # Period 1
+        target_1 = Float64[conditions[idx, 1] for idx in cond_var_idx]
+        fixed_shocks_1 = zeros(length(𝓂.exo))
+        for (idx, val) in enumerate(shocks[:, 1])
+            if val !== nothing
+                fixed_shocks_1[idx] = val
+            end
+        end
+        
+        e_free = find_newton_shocks(initial_state, target_1, cond_var_idx, free_shock_idx, fixed_shocks_1)
+        shocks[free_shock_idx, 1] .= e_free
+        
+        Y[:, 1] = state_update(initial_state, Float64[shocks[:, 1]...])
+        
+        # Verify solution
+        matched = maximum(abs.(Y[cond_var_idx, 1] - target_1)) < 1e-8
+        @assert matched "Numerical stability issues for restrictions in period 1. Max error: $(maximum(abs.(Y[cond_var_idx, 1] - target_1)))"
+        
+        for i in 2:size(conditions, 2)
+            cond_var_idx = findall(conditions[:, i] .!= nothing)
+            
+            # Skip find_newton_shocks if no conditions in this period - propagate state with zero shocks
+            if isempty(cond_var_idx)
+                free_shock_idx = findall(shocks[:, i] .== nothing)
+                shocks[free_shock_idx, i] .= 0
+                Y[:, i] = state_update(Y[:, i-1], Float64[shocks[:, i]...])
+                continue
+            end
+            
+            if conditions_in_levels
+                conditions[cond_var_idx, i] .-= reference_steady_state[cond_var_idx] + SSS_delta[cond_var_idx]
+            else
+                conditions[cond_var_idx, i] .-= SSS_delta[cond_var_idx]
+            end
+            
+            free_shock_idx = findall(shocks[:, i] .== nothing)
+            
+            shocks[free_shock_idx, i] .= 0
+            
+            @assert length(free_shock_idx) >= length(cond_var_idx) "Exact matching only possible with at least as many free shocks than conditioned variables. Period " * repr(i) * " has " * repr(length(free_shock_idx)) * " free shock(s) and " * repr(length(cond_var_idx)) * " conditioned variable(s)."
+            
+            target_i = Float64[conditions[idx, i] for idx in cond_var_idx]
+            fixed_shocks_i = zeros(length(𝓂.exo))
+            for (idx, val) in enumerate(shocks[:, i])
+                if val !== nothing
+                    fixed_shocks_i[idx] = val
+                end
+            end
+            
+            e_free = find_newton_shocks(Y[:, i-1], target_i, cond_var_idx, free_shock_idx, fixed_shocks_i)
+            shocks[free_shock_idx, i] .= e_free
+            
+            Y[:, i] = state_update(Y[:, i-1], Float64[shocks[:, i]...])
+            
+            # Verify solution
+            matched = maximum(abs.(Y[cond_var_idx, i] - target_i)) < 1e-8
+            @assert matched "Numerical stability issues for restrictions in period $i. Max error: $(maximum(abs.(Y[cond_var_idx, i] - target_i)))"
         end
     end
 
@@ -1153,6 +1386,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $PARAMETERS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $SHOCKS®
+- $REFERENCE®
 - $NEGATIVE_SHOCK®
 - $GENERALISED_IRF®
 - $GENERALISED_IRF_WARMUP_ITERATIONS®
@@ -1206,10 +1440,11 @@ And data, 4×40×1 Array{Float64, 3}:
 """
 function get_irf(𝓂::ℳ; 
                 periods::Int = DEFAULT_PERIODS, 
-                algorithm::Symbol = DEFAULT_ALGORITHM, 
+                algorithm::Symbol = 𝓂.timings.nFuture_not_past_and_mixed == 0 ? DEFAULT_ALGORITHM_BACKWARD_LOOKING : DEFAULT_ALGORITHM, 
                 parameters::ParameterType = nothing,
                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                 shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCKS_EXCLUDING_OBC,
+                reference::Symbol = DEFAULT_REFERENCE,
                 negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK, 
                 generalised_irf::Bool = DEFAULT_GENERALISED_IRF,
                 generalised_irf_warmup_iterations::Int = DEFAULT_GENERALISED_IRF_WARMUP,
@@ -1244,6 +1479,10 @@ function get_irf(𝓂::ℳ;
 
     # end # timeit_debug
     
+    # Check if model is backward looking
+    is_backward_looking = 𝓂.timings.nFuture_not_past_and_mixed == 0
+    unspecified_initial_state = initial_state == [0.0]
+    
     # @timeit_debug timer "Solve model" begin
 
     solve!(𝓂, 
@@ -1255,6 +1494,36 @@ function get_irf(𝓂::ℳ;
             obc = occasionally_binding_constraints || obc_shocks_included)
     
     # end # timeit_debug
+    
+    # For backward looking models, check steady state validity after solve! has processed parameters
+    ss_invalid = false
+    if is_backward_looking
+        # Get steady state using already-updated parameters
+        SS_and_pars, (solution_error, _) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
+        
+        # Check if steady state solution failed or contains invalid values
+        ss_invalid = solution_error > tol.NSSS_acceptance_tol || 
+                     isnan(solution_error) || 
+                     any(isnan, SS_and_pars) || 
+                     any(isinf, SS_and_pars)
+    end
+    
+    # For backward looking models without valid steady state or explosive:
+    # - algorithm must be :newton
+    # - initial_state must be provided (in levels)
+    if is_backward_looking && ss_invalid
+        @assert algorithm == :newton "Model is backward looking with no valid steady state. Use algorithm = :newton and provide initial_state in levels."
+        
+        @assert !unspecified_initial_state "Model is backward looking with no valid steady state. Provide initial_state in levels."
+    end
+    
+    # Validate reference parameter
+    @assert reference ∈ [:steady_state, :baseline] "reference must be either :steady_state or :baseline"
+    
+    # If levels = true, ignore reference (levels are levels)
+    if levels && reference == :baseline
+        @warn "reference = :baseline is ignored when levels = true (returning levels)"
+    end
 
     # @timeit_debug timer "Get relevant steady state" begin
 
@@ -1299,6 +1568,28 @@ function get_irf(𝓂::ℳ;
     end
     
     level = levels ? reference_steady_state + SSS_delta : SSS_delta
+    
+    # For backward looking models with reference = :baseline, compute baseline path
+    # The baseline path is the no-shock forward iteration from initial_state
+    # When reference = :baseline and levels = false: IRFs will show deviations from this baseline (shock effect)
+    # When levels = true: baseline_path is not used (return simulation in levels)
+    baseline_path = nothing
+    if !levels && reference == :baseline && is_backward_looking && algorithm == :newton
+        # Compute the no-shock baseline path in deviations from NSSS
+        nVars = 𝓂.timings.nVars
+        baseline_path = zeros(nVars, periods)
+        zero_shocks = zeros(length(𝓂.timings.exo))
+        
+        # Start from the initial_state (already converted to deviations above)
+        baseline_state = copy(initial_state)
+        for t in 1:periods
+            baseline_state = state_update(baseline_state, zero_shocks)
+            baseline_path[:, t] = baseline_state
+        end
+        # baseline_path is now in deviations from NSSS
+        # In irf(), we compute: Y - baseline_path + level
+        # which gives: simulation_deviations - baseline_deviations + SSS_delta = shock_effect
+    end
 
     responses = compute_irf_responses(𝓂,
                                         state_update,
@@ -1313,7 +1604,8 @@ function get_irf(𝓂::ℳ;
                                         generalised_irf_warmup_iterations = generalised_irf_warmup_iterations,
                                         generalised_irf_draws = generalised_irf_draws,
                                         enforce_obc = occasionally_binding_constraints,
-                                        algorithm = algorithm)
+                                        algorithm = algorithm,
+                                        baseline_path = baseline_path)
 
     return responses
 
@@ -1447,12 +1739,12 @@ function get_steady_state(𝓂::ℳ;
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
     
     if stochastic
-        if algorithm == :first_order
+        if algorithm ∈ [:first_order, :newton]
             @info "Stochastic steady state requested but algorithm is $algorithm. Setting `algorithm = :second_order`." maxlog = DEFAULT_MAXLOG
             algorithm = :second_order
         end
     else
-        if algorithm != :first_order
+        if algorithm ∉ [:first_order, :newton]
             @info "Non-stochastic steady state requested but algorithm is $algorithm. Setting `stochastic = true`." maxlog = DEFAULT_MAXLOG
             stochastic = true
         end
@@ -1741,7 +2033,7 @@ function get_solution(𝓂::ℳ;
             silent = silent, 
             algorithm = algorithm)
 
-    if algorithm == :first_order
+    if algorithm ∈ [:first_order, :newton]
         solution_matrix = 𝓂.solution.perturbation.first_order.solution_matrix
     end
 

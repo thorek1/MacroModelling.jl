@@ -793,6 +793,8 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
+    include("test_backward_looking_models.jl")
+
     @testset verbose = true "Provide parameters later" begin
         include("models/Backus_Kehoe_Kydland_1992.jl")
 

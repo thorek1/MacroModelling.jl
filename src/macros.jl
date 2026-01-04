@@ -1,4 +1,4 @@
-const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order, :newton]
 
 
 """
@@ -333,14 +333,14 @@ macro model(𝓂,ex...)
                                             bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
                                             x
                                         end :
-                                x.args[2].head == :ref ?
+                                x.args[2] isa Expr && x.args[2].head == :ref ?
                                     x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                         begin
                                             bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1e12)) : (eps(), 1e12)
                                             x
                                         end :
                                     x :
-                                x.args[2].head == :call ? # nonnegative expressions
+                                x.args[2] isa Expr && x.args[2].head == :call ? # nonnegative expressions
                                     begin
                                         if precompile
                                             replacement = x.args[2]
@@ -381,14 +381,14 @@ macro model(𝓂,ex...)
                                     bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
                                     x
                                 end :
-                            x.args[2].head == :ref ?
+                            x.args[2] isa Expr && x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
                                         bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1e12)) : (eps(), 1e12)
                                         x
                                     end :
                                 x :
-                            x.args[2].head == :call ? # nonnegative expressions
+                            x.args[2] isa Expr && x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
                                         replacement = x.args[2]
@@ -425,14 +425,14 @@ macro model(𝓂,ex...)
                                     bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1-eps())) : (eps(), 1-eps())
                                     x
                                 end :
-                            x.args[2].head == :ref ?
+                            x.args[2] isa Expr && x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
                                         bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 1-eps())) : (eps(), 1-eps())
                                         x
                                     end :
                                 x :
-                            x.args[2].head == :call ? # nonnegative expressions
+                            x.args[2] isa Expr && x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
                                         replacement = x.args[2]
@@ -469,14 +469,14 @@ macro model(𝓂,ex...)
                                     bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 600)) : (-1e12, 600)
                                     x
                                 end :
-                            x.args[2].head == :ref ?
+                            x.args[2] isa Expr && x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # have exp terms bound so they dont go to Inf
                                     begin
                                         bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], -1e12), min(bounds[x.args[2].args[1]][2], 600)) : (-1e12, 600)
                                         x
                                     end :
                                 x :
-                            x.args[2].head == :call ? # nonnegative expressions
+                            x.args[2] isa Expr && x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
                                         replacement = x.args[2]
@@ -513,14 +513,14 @@ macro model(𝓂,ex...)
                                     bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 2-eps())) : (eps(), 2-eps())
                                     x
                                 end :
-                            x.args[2].head == :ref ?
+                            x.args[2] isa Expr && x.args[2].head == :ref ?
                                 x.args[2].args[1] isa Symbol ? # nonnegative variables 
                                     begin
                                         bounds[x.args[2].args[1]] = haskey(bounds, x.args[2].args[1]) ? (max(bounds[x.args[2].args[1]][1], eps()), min(bounds[x.args[2].args[1]][2], 2-eps())) : (eps(), 2-eps())
                                         x
                                     end :
                                 x :
-                            x.args[2].head == :call ? # nonnegative expressions
+                            x.args[2] isa Expr && x.args[2].head == :call ? # nonnegative expressions
                                 begin
                                     if precompile
                                         replacement = x.args[2]
@@ -974,6 +974,7 @@ macro model(𝓂,ex...)
                                             second_order_auxiliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)),
                                             third_order_auxiliary_matrices(SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),Dict{Vector{Int}, Int}(),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0),SparseMatrixCSC{Int, Int64}(ℒ.I,0,0))
                             ),
+                            backward_looking_solution((x,y)->nothing, (x,y,z)->nothing, (x,y,z)->nothing, (x,y,z)->nothing, Float64[], zeros(0,0), zeros(0,0), 𝒮.init(𝒮.LinearProblem(zeros(1,1), zeros(1)), 𝒮.LUFactorization()), zeros(0,0), zeros(0,0)),
                             Float64[], 
                             # Set([:first_order]),
                             Set(all_available_algorithms),
