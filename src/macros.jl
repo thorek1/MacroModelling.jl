@@ -1098,6 +1098,7 @@ macro parameters(𝓂,ex...)
     perturbation_order = 1
     guess = Dict{Symbol,Float64}()
     simplify = true
+    ss_solver_parameters_algorithm = :ESCH
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -1119,6 +1120,8 @@ macro parameters(𝓂,ex...)
                         guess = x.args[2] :
                     x.args[1] == :simplify && x.args[2] isa Bool ?
                         simplify = x.args[2] :
+                    x.args[1] == :ss_solver_parameters_algorithm && x.args[2] isa Symbol ?
+                        (x.args[2] ∈ [:ESCH, :SAMIN] ? ss_solver_parameters_algorithm = x.args[2] : (ss_solver_parameters_algorithm; @warn "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $(x.args[2]). Using default :ESCH.")) :
                     begin
                         @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@parameters` for valid options."
                         x
@@ -1630,7 +1633,7 @@ macro parameters(𝓂,ex...)
 
                 if solution_error > opts.tol.NSSS_acceptance_tol
                     # start_time = time()
-                    found_solution = find_SS_solver_parameters!(mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
+                    found_solution = find_SS_solver_parameters!(Val($ss_solver_parameters_algorithm), mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
                     # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
                     if found_solution
                         SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)

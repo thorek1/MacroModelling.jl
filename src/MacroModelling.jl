@@ -5070,8 +5070,22 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
     return log_lik / 1e4 + runtime * 1e3
 end
 
+"""
+    find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
 
-function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
+Find optimal steady state solver parameters using NLopt's ESCH algorithm.
+
+This function optimizes solver parameters to minimize runtime while maintaining solver accuracy.
+It uses the ESCH global optimization algorithm from the NLopt package.
+
+# Arguments
+- `𝓂`: Model structure
+- `maxtime`: Maximum time in seconds for optimization
+- `maxiter`: Maximum number of iterations
+- `tol`: Tolerance structure
+- `verbosity`: Verbosity level for output
+"""
+function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
     pars = rand(20) .+ 1
     pars[20] -= 1
 
@@ -5112,34 +5126,8 @@ function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int 
 end
 
 
-"""
-    find_SS_solver_parameters_optim!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
-
-Find optimal steady state solver parameters using Optim's SAMIN algorithm when available.
-
-This is a stub function that will be extended by OptimExt when Optim.jl is installed.
-When Optim.jl is not available, this function will raise an error instructing the user to install it.
-
-# Arguments
-- `𝓂`: Model structure
-- `maxtime`: Maximum time in seconds for optimization
-- `maxiter`: Maximum number of iterations
-- `tol`: Tolerance structure
-- `verbosity`: Verbosity level for output
-
-# Note
-To use this function, install Optim.jl and LineSearches.jl:
-```julia
-using Pkg
-Pkg.add(["Optim", "LineSearches"])
-```
-"""
-function find_SS_solver_parameters_optim!(𝓂::ℳ; 
-                                          maxtime::Int = 120, 
-                                          maxiter::Int = 2500000, 
-                                          tol::Tolerances = Tolerances(), 
-                                          verbosity = 0)
-    error("Optim-based solver parameter optimization requires Optim.jl extension. Install it with: using Pkg; Pkg.add(\"Optim\")")
+function find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
+    error("SAMIN solver requires Optim.jl extension. Install it with: using Pkg; Pkg.add(\"Optim\")")
 end
 
 

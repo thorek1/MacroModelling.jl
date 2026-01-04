@@ -94,7 +94,7 @@ function MacroModelling.find_shocks_conditional_forecast(::Val{:LBFGS},
 end
 
 """
-    find_SS_solver_parameters_optim!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
+    find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
 
 Find optimal steady state solver parameters using Optim's SAMIN algorithm.
 
@@ -108,11 +108,11 @@ It uses Simulated Annealing with Metropolis acceptance (SAMIN) from Optim.jl.
 - `tol`: Tolerance structure
 - `verbosity`: Verbosity level for output
 """
-function find_SS_solver_parameters_optim!(𝓂::MacroModelling.ℳ; 
-                                          maxtime::Int = 120, 
-                                          maxiter::Int = 2500000, 
-                                          tol::MacroModelling.Tolerances = MacroModelling.Tolerances(), 
-                                          verbosity = 0)
+function MacroModelling.find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::MacroModelling.ℳ; 
+                                                    maxtime::Int = 120, 
+                                                    maxiter::Int = 2500000, 
+                                                    tol::MacroModelling.Tolerances = MacroModelling.Tolerances(), 
+                                                    verbosity = 0)
     pars = rand(20) .+ 1
     pars[20] -= 1
 

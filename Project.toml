@@ -42,6 +42,7 @@ ThreadedSparseArrays = "59d54670-b8ac-4d81-ab7a-bb56233e17ab"
 Unicode = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 
 [weakdeps]
+Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 SymPyPythonCall = "bc8888f7-b21e-4b7c-a06a-5d9c9496438c"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
