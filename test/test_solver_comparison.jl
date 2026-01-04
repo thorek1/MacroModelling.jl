@@ -1,8 +1,3 @@
-"""
-Test comparison between LBFGS and Lagrange-Newton solvers for conditional forecasts.
-Checks total output (y) across perturbation algorithms.
-"""
-
 include("../models/Smets_Wouters_2007.jl")
 
 sw_vars = Smets_Wouters_2007.var
