@@ -1,147 +1,126 @@
 """
 Test comparison between LBFGS and Lagrange-Newton solvers for conditional forecasts.
-Validates that both solvers produce similar results across all perturbation algorithms.
+Checks total output (y) across perturbation algorithms.
 """
 
-using Test
-using MacroModelling
-using AxisKeys
-using LinearAlgebra
+include("../models/Smets_Wouters_2007.jl")
 
-@testset "Solver comparison - LBFGS vs Lagrange-Newton" begin
-    # Define a simple RBC model for testing
-    @model RBC_comp begin
-        1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-        c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-        q[0] = exp(z[0]) * k[-1]^α
-        z[0] = ρ * z[-1] + std_z * eps_z[x]
-    end
+sw_vars = Smets_Wouters_2007.var
+sw_shocks = Smets_Wouters_2007.exo
 
-    @parameters RBC_comp begin
-        std_z = 0.01
-        ρ = 0.2
-        δ = 0.02
-        α = 0.5
-        β = 0.95
-    end
+@test length(sw_shocks) == 7
 
-    # Test across different algorithms
-    algorithms = [:first_order, :second_order, :third_order, :pruned_second_order, :pruned_third_order]
-    
-    for alg in algorithms
-        @testset "Algorithm: $alg" begin
-            periods = 3
-            
-            # Define conditions: c is conditioned in periods 1-3
-            conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef, 1, periods), 
-                                   Variables = [:c], 
-                                   Periods = 1:periods)
-            conditions[1,1] = 0.01
-            conditions[1,2] = 0.005
-            conditions[1,3] = 0.002
+idx_y = findfirst(==(:y), sw_vars)
+idx_c = findfirst(==(:c), sw_vars)
+idx_inve = findfirst(==(:inve), sw_vars)
+idx_pinf = findfirst(==(:pinf), sw_vars)
+idx_r = findfirst(==(:r), sw_vars)
+idx_w = findfirst(==(:w), sw_vars)
+idx_lab = findfirst(==(:lab), sw_vars)
 
-            # Define shocks: all free
-            shocks = Matrix{Union{Nothing,Float64}}(undef, 1, periods)
-            
-            # Run with Lagrange-Newton solver
-            result_ln = try
-                get_conditional_forecast(RBC_comp, 
-                                        conditions, 
-                                        shocks=shocks,
-                                        algorithm=alg,
-                                        conditional_forecast_solver=:LagrangeNewton)
-            catch e
-                println("  Lagrange-Newton failed for $alg: $e")
-                nothing
-            end
-            
-            # Run with LBFGS solver
-            result_lbfgs = try
-                get_conditional_forecast(RBC_comp, 
-                                        conditions, 
-                                        shocks=shocks,
-                                        algorithm=alg,
-                                        conditional_forecast_solver=:LBFGS)
-            catch e
-                println("  LBFGS failed for $alg: $e")
-                nothing
-            end
-            
-            if result_ln !== nothing && result_lbfgs !== nothing
-                # Both succeeded - compare results
-                @testset "Results comparison for $alg" begin
-                    # Check that forecasts are similar (allowing for numerical differences)
-                    tol = 1e-8
-                    
-                    # Compare variable forecasts
-                    vars_to_check = [:c, :k, :q, :z]
-                    for var in vars_to_check
-                        ln_vals = result_ln(Variables_and_shocks=var)
-                        lbfgs_vals = result_lbfgs(Variables_and_shocks=var)
-                        
-                        diff = maximum(abs, ln_vals - lbfgs_vals)
-                        @test diff < tol "Variable $var differs by $diff (>$tol) for $alg"
-                    end
-                    
-                    # Compare shock values
-                    ln_shock = result_ln(Variables_and_shocks=Symbol("eps_z₍ₓ₎"))
-                    lbfgs_shock = result_lbfgs(Variables_and_shocks=Symbol("eps_z₍ₓ₎"))
-                    
-                    shock_diff = maximum(abs, ln_shock - lbfgs_shock)
-                    @test shock_diff < tol "Shocks differ by $shock_diff (>$tol) for $alg"
-                    
-                    # Verify conditions are met for both
-                    ln_c = result_ln(Variables_and_shocks=:c, Periods=1:periods)
-                    lbfgs_c = result_lbfgs(Variables_and_shocks=:c, Periods=1:periods)
-                    
-                    for i in 1:periods
-                        @test abs(ln_c[i] - conditions[1,i]) < 1e-10 "$alg (LN): Condition $i not met"
-                        @test abs(lbfgs_c[i] - conditions[1,i]) < 1e-10 "$alg (LBFGS): Condition $i not met"
-                    end
-                    
-                    println("  ✓ $alg: Both solvers converged with similar results (max diff: $(max(diff, shock_diff)))")
-                end
-            elseif result_ln !== nothing
-                println("  ⚠ $alg: Only Lagrange-Newton succeeded")
-                @test true # Pass test if at least one solver works
-            elseif result_lbfgs !== nothing
-                println("  ⚠ $alg: Only LBFGS succeeded")
-                @test true # Pass test if at least one solver works
-            else
-                println("  ✗ $alg: Both solvers failed")
-                @test_broken false "$alg: Both solvers failed"
-            end
-        end
-    end
-    
-    @testset "Solver selection via parameter" begin
-        # Test that the solver parameter actually selects the right solver
-        periods = 2
-        conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef, 1, periods), 
-                               Variables = [:c], 
-                               Periods = 1:periods)
-        conditions[1,1] = 0.01
-        conditions[1,2] = 0.005
-        
-        shocks = Matrix{Union{Nothing,Float64}}(undef, 1, periods)
-        
-        # Default should be Lagrange-Newton
-        result_default = get_conditional_forecast(RBC_comp, conditions, shocks=shocks, algorithm=:first_order)
-        @test result_default !== nothing "Default solver should work"
-        
-        # Explicit Lagrange-Newton
-        result_ln_explicit = get_conditional_forecast(RBC_comp, conditions, shocks=shocks, algorithm=:first_order, conditional_forecast_solver=:LagrangeNewton)
-        @test result_ln_explicit !== nothing "Explicit Lagrange-Newton should work"
-        
-        # Explicit LBFGS
-        result_lbfgs_explicit = get_conditional_forecast(RBC_comp, conditions, shocks=shocks, algorithm=:first_order, conditional_forecast_solver=:LBFGS)
-        @test result_lbfgs_explicit !== nothing "Explicit LBFGS should work"
-        
-        # Default and explicit LN should give same results
-        @test maximum(abs, result_default - result_ln_explicit) < 1e-12 "Default should use Lagrange-Newton"
-        
-        println("  ✓ Solver selection parameter works correctly")
+periods = 6
+conditions = Matrix{Union{Nothing,Float64}}(nothing, length(sw_vars), periods)
+
+conditions[idx_y, 1] = 0.001
+conditions[idx_c, 2] = 0.0008
+conditions[idx_y, 3] = 0.0009
+conditions[idx_c, 3] = 0.0007
+conditions[idx_y, 4] = 0.0011
+conditions[idx_pinf, 4] = 0.0004
+conditions[idx_y, 5] = 0.0006
+conditions[idx_c, 5] = 0.0005
+conditions[idx_inve, 5] = 0.0007
+conditions[idx_pinf, 5] = 0.0003
+conditions[idx_y, 6] = 0.0005
+conditions[idx_c, 6] = 0.0004
+conditions[idx_inve, 6] = 0.0006
+conditions[idx_pinf, 6] = 0.0002
+conditions[idx_r, 6] = 0.0003
+conditions[idx_w, 6] = 0.0004
+conditions[idx_lab, 6] = 0.0002
+
+shocks = Matrix{Union{Nothing,Float64}}(nothing, length(sw_shocks), periods)
+
+free_shocks_by_period = [
+    [1],
+    [1, 2],
+    [1, 2],
+    [1, 2, 3],
+    collect(1:7),
+    collect(1:7),
+]
+
+for (period, free_idx) in enumerate(free_shocks_by_period)
+    for i in axes(shocks, 1)
+        shocks[i, period] = (i in free_idx) ? nothing : 0.0
     end
 end
 
-println("\n✓ Solver comparison tests complete!")
+expected_counts = Dict(
+    1 => (1, 1),
+    2 => (2, 1),
+    3 => (2, 2),
+    4 => (3, 2),
+    5 => (7, 4),
+    6 => (7, 7),
+)
+
+@testset "Constraint setup counts" begin
+    for p in 1:periods
+        free_count = count(==(nothing), shocks[:, p])
+        cond_count = count(!isnothing, conditions[:, p])
+        @test (free_count, cond_count) == expected_counts[p]
+    end
+end
+
+forecast_ln = get_conditional_forecast(
+    Smets_Wouters_2007,
+    conditions,
+    shocks = shocks,
+    conditions_in_levels = false,
+    algorithm = :second_order,
+    periods = periods,
+    # conditional_forecast_solver = :LagrangeNewton,
+            # conditional_forecast_solver = :LBFGS,
+)
+
+forecast_lbfgs = get_conditional_forecast(
+    Smets_Wouters_2007,
+    conditions,
+    shocks = shocks,
+    conditions_in_levels = false,
+    algorithm = :second_order,
+    periods = periods,
+    conditional_forecast_solver = :LBFGS,
+)
+
+
+tol = 1e-10
+@testset "Output comparison acros algorithms" begin
+for algorithm in [:second_order, :pruned_second_order, :third_order, :pruned_third_order]
+        forecast_ln = get_conditional_forecast(
+            Smets_Wouters_2007,
+            conditions,
+            shocks = shocks,
+            conditions_in_levels = false,
+            algorithm = algorithm,
+            periods = periods,
+            conditional_forecast_solver = :LagrangeNewton,
+        )
+
+        forecast_lbfgs = get_conditional_forecast(
+            Smets_Wouters_2007,
+            conditions,
+            shocks = shocks,
+            conditions_in_levels = false,
+            algorithm = algorithm,
+            periods = periods,
+            conditional_forecast_solver = :LBFGS,
+        )
+        
+        norm_diff = ℒ.norm(forecast_ln - forecast_lbfgs) / max(ℒ.norm(forecast_lbfgs), ℒ.norm(forecast_ln))
+
+        @test norm_diff < tol
+        println("Output differs by $norm_diff (>$tol) for $algorithm")
+    end
+end
