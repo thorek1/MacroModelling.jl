@@ -77,6 +77,34 @@ plot_irf(RBC)
 
 ![RBC IRF](docs/src/assets/irf__RBC__eps_z__1.png)
 
+### Delayed parameter definition
+
+Parameters do not need to be defined upfront in the `@parameters` block. You can define the model first and provide parameter values later when calling functions. This is useful for loading parameter values from external sources (e.g., CSV files).
+
+```julia
+using MacroModelling
+import StatsPlots
+
+@model RBC_delayed begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+
+    q[0] = exp(z[0]) * k[-1]^α
+
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+@parameters RBC_delayed begin
+end;
+
+plot_irf(RBC_delayed, parameters = (:std_z => 0.01, :ρ => 0.2, :δ => 0.02, :α => 0.5, :β => 0.95))
+```
+
+![RBC IRF](docs/src/assets/irf__RBC__eps_z__1.png)
+
+Note: Calibration equations (using `|` syntax) and parameters defined as functions of other parameters must be declared in the `@parameters` block.
+
 The package contains the following models in the `models` folder:
 
 - [Aguiar and Gopinath (2007)](https://www.journals.uchicago.edu/doi/10.1086/511283) `Aguiar_Gopinath_2007.jl`
