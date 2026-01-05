@@ -683,14 +683,16 @@ end
 
 # The new model NK_ramsey can be used with all standard functions
 get_irf(NK_ramsey)
-get_SS(NK_ramsey)
+get_SS(NK_ramsey)  # After manually creating NK_ramsey from the generated equations
 ```
+
+Note: This macro returns a NamedTuple with the Ramsey equations. To create a fully working model, 
+use `print_ramsey_model_code()` to generate the model code and then evaluate it.
 """
 macro ramsey(model_name, block)
-    ramsey_model_name = Symbol(string(model_name) * "_ramsey")
-    
     # Quote the block to prevent evaluation
     quoted_block = QuoteNode(block)
+    model_name_str = string(model_name)
     
     return quote
         # Parse the ramsey block
@@ -709,20 +711,13 @@ macro ramsey(model_name, block)
         )
         
         # Print info
-        println("Creating Ramsey model: $($(QuoteNode(ramsey_model_name)))")
+        println("Deriving Ramsey optimal policy FOCs for model: ", $model_name_str)
         println("  Original equations: ", length(_orig_model.original_equations))
-        println("  Ramsey equations (total): ", length(_new_eqs))
+        println("  Total equations with FOCs: ", length(_new_eqs))
         println("  Lagrange multipliers: ", _multipliers)
         println("  Instruments: ", _ramsey_config.instruments)
         println()
-        println("To create the augmented model, use the generated equations in a new @model block.")
-        println("FOC equations have been stored in: _ramsey_focs")
-        
-        # Store results for user access
-        global _ramsey_focs = _new_eqs[length(_orig_model.original_equations)+1:end]
-        global _ramsey_multipliers = _multipliers
-        global _ramsey_all_equations = _new_eqs
-        global _ramsey_all_variables = _new_vars
+        println("Use print_ramsey_model_code() to generate a complete model definition.")
         
         # Return info tuple
         (equations = _new_eqs, 
@@ -731,7 +726,8 @@ macro ramsey(model_name, block)
          variables = _new_vars,
          objective = _ramsey_config.objective,
          instruments = _ramsey_config.instruments,
-         discount = _ramsey_config.discount)
+         discount = _ramsey_config.discount,
+         original_model_name = Symbol($model_name_str))
     end
 end
 

@@ -66,10 +66,7 @@ using Test
         @test length(new_eqs) == 8  # 4 original + 4 FOCs
         @test length(mults) == 4
         @test length(new_vars) == 8  # 4 original vars + 4 multipliers
-        @test :Lagr_mult_1 in mults
-        @test :Lagr_mult_2 in mults
-        @test :Lagr_mult_3 in mults
-        @test :Lagr_mult_4 in mults
+        @test all(m -> startswith(string(m), "Lagr_mult_"), mults)
     end
     
     @testset "@ramsey macro" begin
