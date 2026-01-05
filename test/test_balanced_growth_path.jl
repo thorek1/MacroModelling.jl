@@ -100,4 +100,55 @@ using Test
 
         @test has_balanced_growth(RBC_empty_deflator) == false
     end
+
+    @testset "Automatic trend detection - detect_trend_variables function" begin
+        # Test the detect_trend_variables function directly
+        # Pattern: X[0] = γ * X[-1]
+        model_ex1 = :(begin
+            A[0] = γ * A[-1]
+            y[0] = A[0] * k[-1]^α
+        end)
+        
+        trends1 = MacroModelling.detect_trend_variables(model_ex1)
+        @test :A ∈ keys(trends1)
+        @test trends1[:A] == :γ
+        
+        # Pattern: X[0] = X[-1] * γ (reversed order)
+        model_ex2 = :(begin
+            B[0] = B[-1] * μ
+            y[0] = B[0] * n[0]
+        end)
+        
+        trends2 = MacroModelling.detect_trend_variables(model_ex2)
+        @test :B ∈ keys(trends2)
+        @test trends2[:B] == :μ
+        
+        # No trend variables in standard RBC
+        model_ex3 = :(begin
+            1/c[0] = β * (1/c[1]) * (α * k[0]^(α-1) + 1-δ)
+            c[0] + k[0] = k[-1]^α + (1-δ)*k[-1]
+            z[0] = ρ * z[-1] + σ * eps[x]
+        end)
+        
+        trends3 = MacroModelling.detect_trend_variables(model_ex3)
+        @test isempty(trends3)
+    end
+
+    @testset "Automatic deflator detection - detect_deflators_from_equations function" begin
+        # Test the detect_deflators_from_equations function directly
+        model_ex = :(begin
+            A[0] = γ * A[-1]
+            y[0] = A[0] * k[-1]^α
+            c[0] + k[0] = y[0] + (1-δ)*k[-1]
+        end)
+        
+        trend_vars = Dict{Symbol, Union{Symbol, Expr, Number}}(:A => :γ)
+        deflators = MacroModelling.detect_deflators_from_equations(model_ex, trend_vars)
+        
+        # Variables in the same equations as A should be assigned A as deflator
+        @test :y ∈ keys(deflators)
+        @test :k ∈ keys(deflators)
+        @test deflators[:y] == :A
+        @test deflators[:k] == :A
+    end
 end

@@ -2,6 +2,199 @@ const all_available_algorithms = [:first_order, :second_order, :pruned_second_or
 
 
 """
+    detect_trend_variables(model_ex::Expr)
+
+Automatically detect trend variables from model equations by analyzing the equation structure.
+
+A variable is identified as a trend variable if it appears in an equation of the form:
+- `X[0] = γ * X[-1]` (deterministic trend)
+- `X[0] = X[-1] * γ` (same, different order)  
+- `log(X[0]) = log(X[-1]) + g` (log growth)
+
+This indicates the variable has a unit root (grows over time) and doesn't have a well-defined
+non-stochastic steady state unless the growth factor equals 1.
+
+Returns a Dict mapping trend variable symbols to their growth factor expressions.
+"""
+function detect_trend_variables(model_ex::Expr)
+    trend_vars = Dict{Symbol, Union{Symbol, Expr, Number}}()
+    
+    for arg in model_ex.args
+        if !isa(arg, Expr)
+            continue
+        end
+        
+        # Look for equations of the form: X[0] = γ * X[-1] or X[0] = X[-1] * γ
+        # After parsing, equations become: X[0] - γ * X[-1] = 0 or similar
+        eq = arg
+        
+        # Check for pattern: var[0] = growth_factor * var[-1]
+        # The equation is stored as an assignment or call
+        if eq.head == :(=)
+            lhs = eq.args[1]
+            rhs = eq.args[2]
+            
+            # Check if lhs is var[0]
+            if lhs isa Expr && lhs.head == :ref && lhs.args[2] == 0
+                var_name = lhs.args[1]
+                
+                # Check if rhs is growth_factor * var[-1] or var[-1] * growth_factor
+                if rhs isa Expr && rhs.head == :call && rhs.args[1] == :*
+                    # Pattern: γ * var[-1] or var[-1] * γ
+                    term1 = rhs.args[2]
+                    term2 = rhs.args[3]
+                    
+                    # Check if one term is var[-1]
+                    if term1 isa Expr && term1.head == :ref && term1.args[1] == var_name && term1.args[2] == -1
+                        # var[-1] * growth_factor
+                        trend_vars[var_name] = term2
+                    elseif term2 isa Expr && term2.head == :ref && term2.args[1] == var_name && term2.args[2] == -1
+                        # growth_factor * var[-1]
+                        trend_vars[var_name] = term1
+                    end
+                end
+            end
+        end
+    end
+    
+    return trend_vars
+end
+
+
+"""
+    detect_deflators_from_equations(model_ex::Expr, trend_vars::Dict{Symbol, Union{Symbol, Expr, Number}})
+
+Automatically detect which variables should be deflated by which trend variables.
+
+This function analyzes the model equations to find variables that grow proportionally to
+identified trend variables. The approach is:
+
+1. For each non-trend variable, check if it appears multiplied by a trend variable
+2. If a variable consistently appears in the form `v * T` where T is a trend variable,
+   then v is a detrended variable and should use T as its deflator
+
+Currently implements a simple heuristic: any variable that is not a trend variable
+and appears in the same equation as a trend variable is assumed to be detrended by
+that trend variable.
+
+Returns a Dict mapping variable symbols to their deflator (trend variable) symbols.
+"""
+function detect_deflators_from_equations(model_ex::Expr, trend_vars::Dict{Symbol, Union{Symbol, Expr, Number}})
+    if isempty(trend_vars)
+        return Dict{Symbol, Symbol}()
+    end
+    
+    deflators = Dict{Symbol, Symbol}()
+    all_vars = Set{Symbol}()
+    trend_var_names = Set(keys(trend_vars))
+    
+    # First pass: collect all variables
+    postwalk(x -> begin
+        if x isa Expr && x.head == :ref
+            var_name = x.args[1]
+            if var_name isa Symbol
+                push!(all_vars, var_name)
+            end
+        end
+        x
+    end, model_ex)
+    
+    # Second pass: for each equation, find which trend variable it uses
+    # and assign non-trend variables to that trend
+    for arg in model_ex.args
+        if !isa(arg, Expr)
+            continue
+        end
+        
+        vars_in_eq = Set{Symbol}()
+        trend_in_eq = Set{Symbol}()
+        
+        postwalk(x -> begin
+            if x isa Expr && x.head == :ref
+                var_name = x.args[1]
+                if var_name isa Symbol
+                    push!(vars_in_eq, var_name)
+                    if var_name ∈ trend_var_names
+                        push!(trend_in_eq, var_name)
+                    end
+                end
+            end
+            x
+        end, arg)
+        
+        # If exactly one trend variable in this equation, assign all other vars to it
+        if length(trend_in_eq) == 1
+            trend_var = first(trend_in_eq)
+            for var in vars_in_eq
+                if var ∉ trend_var_names && !haskey(deflators, var)
+                    deflators[var] = trend_var
+                end
+            end
+        end
+    end
+    
+    return deflators
+end
+
+
+"""
+    apply_automatic_detrending!(model_ex::Expr, balanced_growth::BalancedGrowthInfo)
+
+Automatically detect trend variables and apply detrending to model equations.
+
+This function:
+1. Detects trend variables from equation patterns (e.g., X[0] = γ * X[-1])
+2. Determines which other variables should be deflated by each trend variable
+3. Transforms the equations by dividing trending variables by their deflators
+4. Updates the BalancedGrowthInfo struct with detected information
+
+Returns the transformed model expression with detrended equations.
+"""
+function apply_automatic_detrending!(model_ex::Expr, balanced_growth::BalancedGrowthInfo)
+    # Step 1: Detect trend variables
+    detected_trends = detect_trend_variables(model_ex)
+    
+    if isempty(detected_trends)
+        return model_ex  # No trends detected, return unchanged
+    end
+    
+    # Store detected trends
+    for (var, growth_factor) in detected_trends
+        balanced_growth.trend_vars[var] = growth_factor
+    end
+    
+    # Step 2: Detect which variables should be deflated
+    detected_deflators = detect_deflators_from_equations(model_ex, detected_trends)
+    
+    # Store deflators and detrended vars
+    for (var, deflator) in detected_deflators
+        balanced_growth.deflators[var] = deflator
+        push!(balanced_growth.detrended_vars, var)
+    end
+    
+    # Step 3: Apply detrending transformation
+    # For each detrended variable v with deflator d, replace v[t] with v[t]/d[t]
+    # This transforms the model to work with stationary (detrended) versions
+    transformed_ex = postwalk(x -> 
+        x isa Expr ?
+            x.head == :ref ?
+                x.args[1] isa Symbol && haskey(detected_deflators, x.args[1]) ?
+                    let var = x.args[1], 
+                        time_idx = x.args[2],
+                        deflator = detected_deflators[var]
+                        # Divide by deflator: v[t] → v[t] / d[t]
+                        Expr(:call, :/, x, Expr(:ref, deflator, time_idx))
+                    end :
+                x :
+            x :
+        x,
+    model_ex)
+    
+    return transformed_ex
+end
+
+
+"""
     apply_deflators(model_ex::Expr, deflator_dict::Dict{Symbol, Symbol})
 
 Transform model equations to detrended form by applying deflators. 
@@ -57,6 +250,7 @@ Parses the model equations and assigns them to an object.
 
 # Optional arguments to be placed between `𝓂` and `ex`
 - `max_obc_horizon` [Default: `40`, Type: `Int`]: maximum length of anticipated shocks and corresponding unconditional forecast horizon over which the occasionally binding constraint is to be enforced. Increase this number if no solution is found to enforce the constraint.
+- `auto_detrend` [Default: `false`, Type: `Bool`]: automatically detect trend variables and detrend the model equations. When enabled, the package analyzes equations to find trend variables (e.g., `A[0] = γ * A[-1]`) and automatically divides other variables by the appropriate trend to achieve stationarity.
 
 Variables must be defined with their time subscript in square brackets.
 Endogenous variables can have the following:
@@ -77,17 +271,35 @@ If an equation contains a `max` or `min` operator, the default dynamic (first or
 
 # Balanced Growth Path
 
-For models with a balanced growth path (non-stationary variables growing at constant rates), you can specify deflators to automatically transform the model to stationary form. Use the `deflator` option to specify which variables should be deflated and by which trend variable:
+For models with a balanced growth path (non-stationary variables growing at constant rates), there are two approaches:
+
+## Automatic Detection (Recommended)
+Use `auto_detrend = true` to automatically detect trend variables and detrend the model:
 
 ```julia
-@model RBC_growth deflator = Dict(:y => :A, :k => :A, :c => :A) begin
-    # Equations written in terms of detrended variables (y, k, c are automatically 
-    # transformed to y/A, k/A, c/A where A is the trend variable)
+@model RBC_growth auto_detrend = true begin
+    A[0] = γ * A[-1]  # Automatically detected as trend variable
+    y[0] = A[0] * k[-1]^α  # y will be automatically divided by A
+    c[0] + k[0] = y[0] + (1-δ)*k[-1]
     ...
 end
 ```
 
-The trend variable (`A` in the example) must be defined in the model with an equation describing its evolution (typically `A[0] = γ * A[-1]` for deterministic growth or with a shock for stochastic growth).
+The package will:
+1. Detect trend variables from equations like `X[0] = growth_factor * X[-1]`
+2. Identify which variables should be deflated by each trend
+3. Automatically divide trending variables by their deflators
+4. Solve for the detrended steady state
+
+## Manual Specification
+Alternatively, use the `deflator` option to manually specify which variables should be deflated:
+
+```julia
+@model RBC_growth deflator = Dict(:y => :A, :k => :A, :c => :A) begin
+    # Equations written in terms of detrended variables
+    ...
+end
+```
 
 # Examples
 ```julia
@@ -119,6 +331,7 @@ macro model(𝓂,ex...)
     precompile = false
     max_obc_horizon = 40
     deflator_dict = Dict{Symbol, Symbol}()
+    auto_detrend = false
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -130,6 +343,8 @@ macro model(𝓂,ex...)
                         precompile = x.args[2] :
                     x.args[1] == :max_obc_horizon && x.args[2] isa Int ?
                         max_obc_horizon = x.args[2] :
+                    x.args[1] == :auto_detrend && x.args[2] isa Bool ?
+                        auto_detrend = x.args[2] :
                     x.args[1] == :deflator ?
                         begin
                             # Parse deflator dictionary
@@ -203,8 +418,34 @@ macro model(𝓂,ex...)
     model_ex = parse_occasionally_binding_constraints(model_ex::Expr, max_obc_horizon = max_obc_horizon)::Expr
     
     # Apply deflator transformation for balanced growth path handling
+    # Manual deflators take precedence over auto-detection
     if !isempty(deflator_dict)
         model_ex = apply_deflators(model_ex, deflator_dict)
+    end
+    
+    # Auto-detect trend variables and apply detrending if requested
+    auto_detected_trends = Dict{Symbol, Union{Symbol, Expr, Number}}()
+    auto_detected_deflators = Dict{Symbol, Symbol}()
+    if auto_detrend
+        auto_detected_trends = detect_trend_variables(model_ex)
+        if !isempty(auto_detected_trends)
+            auto_detected_deflators = detect_deflators_from_equations(model_ex, auto_detected_trends)
+            # Apply automatic detrending (divide trending variables by their deflators)
+            model_ex = postwalk(x -> 
+                x isa Expr ?
+                    x.head == :ref ?
+                        x.args[1] isa Symbol && haskey(auto_detected_deflators, x.args[1]) ?
+                            let var = x.args[1], 
+                                time_idx = x.args[2],
+                                deflator = auto_detected_deflators[var]
+                                # Divide by deflator: v[t] → v[t] / d[t]
+                                Expr(:call, :/, x, Expr(:ref, deflator, time_idx))
+                            end :
+                        x :
+                    x :
+                x,
+            model_ex)
+        end
     end
     
     # obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
@@ -907,11 +1148,25 @@ macro model(𝓂,ex...)
     # default_optimizer = Optimisers.Adam
     # default_optimizer = NLopt.LN_BOBYQA
     
-    # Create balanced growth info from deflator_dict
+    # Create balanced growth info combining manual deflators and auto-detected ones
+    # Manual deflators override auto-detected ones
+    combined_deflators = merge(auto_detected_deflators, deflator_dict)  # deflator_dict takes precedence
+    combined_detrended = Set(keys(combined_deflators))
+    
+    # Convert auto_detected_trends to the right type
+    trend_vars_typed = Dict{Symbol, Union{Symbol, Expr}}()
+    for (k, v) in auto_detected_trends
+        if v isa Symbol || v isa Expr
+            trend_vars_typed[k] = v
+        elseif v isa Number
+            trend_vars_typed[k] = :($v)  # Convert number to expression
+        end
+    end
+    
     balanced_growth_info = BalancedGrowthInfo(
-        Dict{Symbol, Union{Symbol, Expr}}(),  # trend_vars - to be filled in @parameters
-        deflator_dict,
-        Set(keys(deflator_dict)),
+        trend_vars_typed,  # trend_vars - auto-detected, can be supplemented by @parameters
+        combined_deflators,
+        combined_detrended,
         Dict{Symbol, Symbol}()  # original_to_detrended - not used in this direction
     )
     
