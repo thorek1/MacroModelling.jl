@@ -835,7 +835,7 @@ function set_up_obc_violation_function!(𝓂)
 
     alll = []
     for (i,var) in enumerate(present_varss)
-        if !(match(r"^χᵒᵇᶜ", string(var)) === nothing)
+        if !(match(r"^[χΧ]ᵒᵇᶜ", string(var)) === nothing)
             push!(alll,:($var = Y[$(dyn_var_present_idx[i]),1:max(periods, 1)]))
         end
     end
@@ -908,86 +908,29 @@ end
 
 function write_obc_violation_equations(𝓂)
     eqs = Expr[]
-    for (i,eq) in enumerate(𝓂.dyn_equations)
-        if check_for_minmax(eq)
-            minmax_fixed_eqs = postwalk(x -> 
-                x isa Expr ?
-                    x.head == :call ? 
-                        length(x.args) == 3 ?
-                            x.args[3] isa Expr ?
-                                x.args[3].args[1] ∈ [:Min, :min, :Max, :max] ?
-                                    begin
-                                        plchldr = Symbol(replace(string(x.args[2]), "₍₀₎" => ""))
+    for eq in 𝓂.dyn_equations
+        # Look for equations of the form lhs - max/min(arg1, arg2)
+        if eq isa Expr && eq.head == :call && eq.args[1] == :- && eq.args[3] isa Expr
+            mcall = eq.args[3]
+            if mcall.head == :call && mcall.args[1] ∈ (:max, :Max, :min, :Min)
+                lhs = eq.args[2]
+                arg1 = mcall.args[2]
+                arg2 = mcall.args[3]
 
-                                        ineq_plchldr_1 = x.args[3].args[2] isa Symbol ? Symbol(replace(string(x.args[3].args[2]), "₍₀₎" => "")) : x.args[3].args[2]
+                if mcall.args[1] ∈ (:max, :Max)
+                    s1 = :($lhs .- $arg1)
+                    s2 = :($lhs .- $arg2)
+                else
+                    s1 = :($arg1 .- $lhs)
+                    s2 = :($arg2 .- $lhs)
+                end
 
-                                        arg1 = x.args[3].args[2]
-                                        arg2 = x.args[3].args[3]
-
-                                        dyn_1 = check_for_dynamic_variables(x.args[3].args[2])
-                                        dyn_2 = check_for_dynamic_variables(x.args[3].args[3])
-
-                                        cond1 = Expr[]
-                                        cond2 = Expr[]
-
-                                        maximisation = contains(string(plchldr), "⁺")
-                                        
-                                        # if dyn_1
-                                        #     if maximisation
-                                        #         push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                        #         # push!(cond2, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                        #     else
-                                        #         push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
-                                        #         # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[2])))) # RBC
-                                        #     end
-                                        # end
-
-                                        # if dyn_2
-                                        #     if maximisation
-                                        #         push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
-                                        #         # push!(cond2, :(push!(constraint_values, $(x.args[3].args[3])))) # testmax
-                                        #     else
-                                        #         push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
-                                        #         # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[3])))) # RBC
-                                        #     end
-                                        # end
-
-
-                                        if maximisation
-                                            push!(cond1, :(push!(constraint_values, [sum($(x.args[3].args[2]) .* $(x.args[3].args[3]))])))
-                                            push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                            push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
-                                            # push!(cond1, :(push!(constraint_values, max.($(x.args[3].args[2]), $(x.args[3].args[3])))))
-                                        else
-                                            push!(cond1, :(push!(constraint_values, [sum($(x.args[3].args[2]) .* $(x.args[3].args[3]))])))
-                                            push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
-                                            push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
-                                            # push!(cond1, :(push!(constraint_values, min.($(x.args[3].args[2]), $(x.args[3].args[3])))))
-                                        end
-
-                                        # if maximisation
-                                        #     push!(cond1, :(push!(shock_sign_indicators, true)))
-                                        #     # push!(cond2, :(push!(shock_sign_indicators, true)))
-                                        # else
-                                        #     push!(cond1, :(push!(shock_sign_indicators, false)))
-                                        #     # push!(cond2, :(push!(shock_sign_indicators, false)))
-                                        # end
-
-                                        # :(if isapprox($plchldr, $ineq_plchldr_1, atol = 1e-12)
-                                        #     $(Expr(:block, cond1...))
-                                        # else
-                                        #     $(Expr(:block, cond2...))
-                                        # end)
-                                        :($(Expr(:block, cond1...)))
-                                    end :
-                                x :
-                            x :
-                        x :
-                    x :
-                x,
-            eq)
-
-            push!(eqs, minmax_fixed_eqs)
+                push!(eqs, quote
+                    push!(constraint_values, [sum(abs.($s1 .* $s2))])
+                    push!(constraint_values, $s1)
+                    push!(constraint_values, $s2)
+                end)
+            end
         end
     end
 
@@ -2783,17 +2726,11 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_horizon
                                     obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
                                     obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
 
-                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
-                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    else
-                                        obc_vars_left = x.args[2]
-                                    end
-
-                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
-                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
-                                    else
-                                        obc_vars_right = x.args[3]
-                                    end
+                                    # Always bind the placeholders to the original arguments so downstream
+                                    # logic (e.g. write_obc_violation_equations) sees the χ-obc symbols
+                                    # instead of the raw values (like R̄).
+                                    push!(eqs, :($obc_vars_left = $(x.args[2])))
+                                    push!(eqs, :($obc_vars_right = $(x.args[3])))
 
                                     obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
 
@@ -2810,17 +2747,8 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_horizon
                                     obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
                                     obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
 
-                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
-                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    else
-                                        obc_vars_left = x.args[2]
-                                    end
-
-                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
-                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
-                                    else
-                                        obc_vars_right = x.args[3]
-                                    end
+                                    push!(eqs, :($obc_vars_left = $(x.args[2])))
+                                    push!(eqs, :($obc_vars_right = $(x.args[3])))
 
                                     obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
 

@@ -802,11 +802,21 @@ macro model(𝓂,ex...)
         end
     end
 
-    single_dyn_vars_equations = findall(length.(vcat.(collect.(dyn_var_future_list),
-                                                      collect.(dyn_var_present_list),
-                                                      collect.(dyn_var_past_list),
-                                                    #   collect.(dyn_ss_list), # needs to be dynamic after all
-                                                      collect.(dyn_exo_list))) .== 1)
+        single_dyn_vars_equations = findall(length.(vcat.(collect.(dyn_var_future_list),
+                                                                                                            collect.(dyn_var_present_list),
+                                                                                                            collect.(dyn_var_past_list),
+                                                                                                        #   collect.(dyn_ss_list), # needs to be dynamic after all
+                                                                                                            collect.(dyn_exo_list))) .== 1)
+
+        # Ignore auxiliary OBC placeholder assignments (χᵒᵇᶜ/Χᵒᵇᶜ) when enforcing the
+        # "more than one dynamic variable" rule. These assignments carry constants or
+        # single placeholders to feed OBC handling and would otherwise trigger the
+        # assertion below without representing model dynamics.
+        single_dyn_vars_equations = filter(i -> begin
+                        syms = get_symbols(dyn_equations[i])
+                        all(!occursin(r"^χᵒᵇᶜ", string(s)) && !occursin(r"^Χᵒᵇᶜ", string(s)) for s in syms)
+                end,
+                single_dyn_vars_equations)
                                                     
     @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([original_equations[indexin(single_dyn_vars_equations,setdiff(1:length(dyn_equations),dyn_eq_aux_ind .- 1))]...])
     
