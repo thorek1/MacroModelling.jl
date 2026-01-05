@@ -1144,7 +1144,10 @@ function set_steady_state!(𝓂::ℳ, f::Function;
     
     # Create wrapper function that matches the internal SS_solve_func signature
     # Internal signature: (parameter_values, 𝓂, tol, verbose, update_cache, solver_parameters) -> (SS_and_pars, (error, iters))
-    function custom_ss_wrapper(parameter_values::Vector{T}, model, tol, verbosity, update_cache, solver_params) where T
+    function custom_ss_wrapper(parameter_values::Vector{T}, _model, _tol, verbosity, _update_cache, _solver_params) where T
+        # Helper function to return error state
+        error_return() = (zeros(T, n_vars + n_calib_params), (T(1e10), 0))
+        
         try
             # Call the user function with parameter values
             ss_values = f(parameter_values)
@@ -1156,7 +1159,7 @@ function set_steady_state!(𝓂::ℳ, f::Function;
                 if verbosity
                     println(error_msg)
                 end
-                return zeros(T, n_vars + n_calib_params), (T(1e10), 0)
+                return error_return()
             end
             
             # Get calibrated parameters if model has calibration equations
@@ -1168,7 +1171,7 @@ function set_steady_state!(𝓂::ℳ, f::Function;
                     if verbosity
                         println(error_msg)
                     end
-                    return zeros(T, n_vars + n_calib_params), (T(1e10), 0)
+                    return error_return()
                 end
                 SS_and_pars = T[ss_values..., calib_params...]
             else
@@ -1181,7 +1184,7 @@ function set_steady_state!(𝓂::ℳ, f::Function;
             if verbosity
                 println("Error in custom steady state function: ", e)
             end
-            return zeros(T, n_vars + n_calib_params), (T(1e10), 0)
+            return error_return()
         end
     end
     
