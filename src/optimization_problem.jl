@@ -1,6 +1,34 @@
 # Optimization Problem Parser
 # This module provides functionality to derive FOCs from optimization problems
 # similar to gEcon syntax
+#
+# Main function: derive_focs
+#
+# Usage:
+# ------
+# Instead of writing out first-order conditions (FOCs) manually, users can specify
+# their model as an optimization problem and let this module derive the FOCs automatically.
+#
+# Example: Consumer maximizing utility subject to budget and capital accumulation constraints
+#
+#   controls = [:K_s, :C, :L_s, :I]
+#   objective = :(U[0] = log(C[0]) + ψ * log(1 - L_s[0]) + β * U[1])
+#   constraints = [
+#       :(I[0] + C[0] = π[0] + r[0] * K_s[-1] + W[0] * L_s[0]),
+#       :(K_s[0] = (1 - δ) * K_s[-1] + I[0])
+#   ]
+#
+#   focs, multipliers = derive_focs(
+#       controls = controls,
+#       objective = objective,
+#       constraints = constraints,
+#       discount_factor = :β,
+#       block_name = "consumer"
+#   )
+#
+# This will derive the Euler equation and labor-leisure tradeoff conditions automatically.
+#
+# See models/gEcon_RBC_example.jl for a complete example.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helper functions for variable manipulation
@@ -146,17 +174,21 @@ function opt_symbolic_differentiate(expr::Expr, var_name::Symbol, time_idx::Int)
         Symbol(string(var_name) * "__" * string(abs(time_idx))) :
         Symbol(string(var_name) * "_" * string(time_idx))
     
-    # Get all symbols in the expression
+    # Get all symbols in the expression using MacroModelling's get_symbols
     all_symbols = collect(get_symbols(transformed_expr))
     
+    # Filter out non-symbol items (numbers, etc.) 
+    # Note: Julia supports Unicode identifiers, so we accept any symbol that starts with a letter/underscore
+    valid_symbols = filter(sym -> sym isa Symbol, all_symbols)
+    
     # Create SymPy symbols
-    for sym in all_symbols
+    for sym in valid_symbols
         sym_value = SPyPyC.symbols(string(sym), real = true, finite = true)
         Core.eval(SymPyWorkspace, :($sym = $sym_value))
     end
     
     # Also ensure target is a symbol
-    if target_sym ∉ all_symbols
+    if target_sym ∉ valid_symbols
         sym_value = SPyPyC.symbols(string(target_sym), real = true, finite = true)
         Core.eval(SymPyWorkspace, :($(target_sym) = $sym_value))
     end
@@ -172,7 +204,14 @@ function opt_symbolic_differentiate(expr::Expr, var_name::Symbol, time_idx::Int)
     if derivative_str == "0"
         return 0
     end
-    derivative_expr = Meta.parse(derivative_str)
+    
+    # Parse with error handling
+    derivative_expr = try
+        Meta.parse(derivative_str)
+    catch e
+        @warn "Failed to parse derivative expression: $derivative_str"
+        return 0
+    end
     
     # Transform back to original variable notation
     result = opt_untransform_vars_from_sympy(derivative_expr, var_mapping)
