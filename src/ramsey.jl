@@ -734,3 +734,103 @@ macro ramsey(model_name, block)
          discount = _ramsey_config.discount)
     end
 end
+
+
+"""
+    generate_ramsey_model_code(model_name::Symbol, result::NamedTuple, 
+                                parameters::Vector{Pair{Symbol,Float64}})
+
+Generate Julia code that defines a new model with the Ramsey equations.
+The generated code can be evaluated to create a model that works with all
+standard MacroModelling.jl functions.
+
+# Example
+```julia
+result = @ramsey RBC begin
+    objective = log(c[0])
+    instruments = [q]
+    discount = β
+end
+
+# Generate and evaluate the model code
+code = generate_ramsey_model_code(:RBC_ramsey, result, 
+    [:std_z => 0.01, :ρ => 0.2, :δ => 0.02, :α => 0.5, :β => 0.95])
+
+eval(code)  # Creates RBC_ramsey model
+
+# Now use with standard functions
+get_SS(RBC_ramsey)
+get_irf(RBC_ramsey)
+```
+"""
+function generate_ramsey_model_code(model_name::Symbol, result::NamedTuple,
+                                     parameter_values::Vector{Pair{Symbol,Float64}})
+    # Generate the @model block
+    eqs = result.equations
+    
+    # Build the equations block
+    eq_exprs = Expr(:block)
+    for eq in eqs
+        push!(eq_exprs.args, eq)
+    end
+    
+    # Build the parameters block
+    param_exprs = Expr(:block)
+    for (name, val) in parameter_values
+        push!(param_exprs.args, :($name = $val))
+    end
+    
+    # Add zero for multiplier steady states (they should be zero at SS)
+    for mult in result.multipliers
+        push!(param_exprs.args, :($(mult)_ss = 0.0))
+    end
+    
+    # Generate the full code
+    return quote
+        @model $model_name begin
+            $(eq_exprs.args...)
+        end
+        
+        @parameters $model_name begin
+            $(param_exprs.args...)
+        end
+    end
+end
+
+
+"""
+    print_ramsey_model_code(model_name::Symbol, result::NamedTuple,
+                            parameter_values::Vector{Pair{Symbol,Float64}})
+
+Print Julia code that defines a Ramsey model. This is useful for
+copying and modifying the generated model.
+
+# Example
+```julia
+result = @ramsey RBC begin
+    objective = log(c[0])
+    instruments = [q]
+    discount = β
+end
+
+print_ramsey_model_code(:RBC_ramsey, result,
+    [:std_z => 0.01, :ρ => 0.2, :δ => 0.02, :α => 0.5, :β => 0.95])
+```
+"""
+function print_ramsey_model_code(model_name::Symbol, result::NamedTuple,
+                                  parameter_values::Vector{Pair{Symbol,Float64}})
+    println("@model $model_name begin")
+    for eq in result.equations
+        println("    ", eq)
+    end
+    println("end")
+    println()
+    println("@parameters $model_name begin")
+    for (name, val) in parameter_values
+        println("    $name = $val")
+    end
+    for mult in result.multipliers
+        println("    # Multiplier $(mult) - steady state should be 0")
+    end
+    println("end")
+end
