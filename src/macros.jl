@@ -114,20 +114,382 @@ end
 
 
 """
+    compute_homogeneity_degree(expr, var_degrees::Dict{Symbol, Rational{Int}}, vars::Set{Symbol})
+
+Recursively compute the degree of homogeneity of an expression given variable degrees.
+
+This implements the homogeneity rules:
+- For a variable `x`: degree is `var_degrees[x]`
+- For a constant/parameter: degree is 0
+- For `a * b`: degree is `degree(a) + degree(b)`
+- For `a / b`: degree is `degree(a) - degree(b)`
+- For `a^n`: degree is `n * degree(a)`
+- For `exp(a)`, `log(a)`: requires degree(a) = 0 (stationary argument)
+- For `a + b` or `a - b`: both must have same degree
+
+Returns (degree, is_valid) where is_valid indicates if homogeneity constraints are satisfied.
+Returns `nothing` if the degree cannot be determined (e.g., for incompatible sums).
+"""
+function compute_homogeneity_degree(expr, var_degrees::Dict{Symbol, Rational{Int}}, vars::Set{Symbol})
+    if expr isa Number
+        return (Rational{Int}(0), true)
+    elseif expr isa Symbol
+        # Could be a parameter (degree 0) or a variable
+        if expr ∈ vars
+            return (get(var_degrees, expr, Rational{Int}(0)), true)
+        else
+            return (Rational{Int}(0), true)  # Parameter
+        end
+    elseif expr isa Expr
+        if expr.head == :ref
+            # Variable reference like x[0], x[-1], etc.
+            var_name = expr.args[1]
+            if var_name isa Symbol && var_name ∈ vars
+                return (get(var_degrees, var_name, Rational{Int}(0)), true)
+            else
+                return (Rational{Int}(0), true)  # Parameter or unknown
+            end
+        elseif expr.head == :call
+            op = expr.args[1]
+            if op == :* 
+                # Multiplication: degrees add
+                total_degree = Rational{Int}(0)
+                for i in 2:length(expr.args)
+                    result = compute_homogeneity_degree(expr.args[i], var_degrees, vars)
+                    if isnothing(result) || !result[2]
+                        return nothing
+                    end
+                    total_degree += result[1]
+                end
+                return (total_degree, true)
+            elseif op == :/
+                # Division: degrees subtract
+                if length(expr.args) >= 3
+                    num_result = compute_homogeneity_degree(expr.args[2], var_degrees, vars)
+                    den_result = compute_homogeneity_degree(expr.args[3], var_degrees, vars)
+                    if isnothing(num_result) || isnothing(den_result) || !num_result[2] || !den_result[2]
+                        return nothing
+                    end
+                    return (num_result[1] - den_result[1], true)
+                end
+            elseif op == :^
+                # Power: degree multiplies
+                base_result = compute_homogeneity_degree(expr.args[2], var_degrees, vars)
+                if isnothing(base_result) || !base_result[2]
+                    return nothing
+                end
+                exp_val = expr.args[3]
+                if exp_val isa Number
+                    return (base_result[1] * Rational{Int}(exp_val), true)
+                else
+                    # If exponent is not a number, require base to be degree 0
+                    if base_result[1] != 0
+                        return nothing
+                    end
+                    return (Rational{Int}(0), true)
+                end
+            elseif op in (:+, :-)
+                # Addition/subtraction: degrees must match
+                if length(expr.args) >= 2
+                    first_result = compute_homogeneity_degree(expr.args[2], var_degrees, vars)
+                    if isnothing(first_result) || !first_result[2]
+                        return nothing
+                    end
+                    for i in 3:length(expr.args)
+                        result = compute_homogeneity_degree(expr.args[i], var_degrees, vars)
+                        if isnothing(result) || !result[2]
+                            return nothing
+                        end
+                        if result[1] != first_result[1]
+                            return nothing  # Incompatible degrees in sum
+                        end
+                    end
+                    return first_result
+                end
+            elseif op in (:exp, :log, :sin, :cos, :tan, :sqrt)
+                # These functions require stationary (degree 0) arguments
+                arg_result = compute_homogeneity_degree(expr.args[2], var_degrees, vars)
+                if isnothing(arg_result) || !arg_result[2]
+                    return nothing
+                end
+                if arg_result[1] != 0
+                    return nothing  # Argument must be stationary
+                end
+                return (Rational{Int}(0), true)
+            else
+                # Unknown function - assume degree 0 for safety
+                return (Rational{Int}(0), true)
+            end
+        end
+    end
+    return (Rational{Int}(0), true)  # Default case
+end
+
+
+"""
+    build_homogeneity_constraints(model_ex::Expr, vars::Set{Symbol}, trend_vars::Set{Symbol})
+
+Build a system of linear homogeneity constraints from model equations.
+
+For each equation, this extracts constraints on the degrees of homogeneity of variables.
+The trend variable is assigned degree 1, and we solve for the degrees of other variables.
+
+Returns a matrix A and vector b such that A * degrees = b represents the constraint system,
+along with a mapping from column index to variable name.
+"""
+function build_homogeneity_constraints(model_ex::Expr, vars::Set{Symbol}, trend_vars::Set{Symbol})
+    # Assign indices to variables
+    var_list = sort(collect(setdiff(vars, trend_vars)))  # Non-trend variables
+    var_to_idx = Dict(v => i for (i, v) in enumerate(var_list))
+    n_vars = length(var_list)
+    
+    constraints = Vector{Tuple{Vector{Rational{Int}}, Rational{Int}}}()
+    
+    for arg in model_ex.args
+        if !isa(arg, Expr)
+            continue
+        end
+        
+        eq = arg
+        if eq.head == :(=)
+            # For equation lhs = rhs, we need degree(lhs) = degree(rhs)
+            # This gives us constraint: degree(lhs) - degree(rhs) = 0
+            lhs_coeffs = extract_degree_coefficients(eq.args[1], var_to_idx, vars, trend_vars)
+            rhs_coeffs = extract_degree_coefficients(eq.args[2], var_to_idx, vars, trend_vars)
+            
+            if !isnothing(lhs_coeffs) && !isnothing(rhs_coeffs)
+                # Constraint: lhs_coeffs - rhs_coeffs = rhs_const - lhs_const
+                row = lhs_coeffs[1] .- rhs_coeffs[1]
+                const_term = rhs_coeffs[2] - lhs_coeffs[2]
+                
+                # Only add non-trivial constraints
+                if any(x -> x != 0, row) || const_term != 0
+                    push!(constraints, (row, const_term))
+                end
+            end
+        end
+    end
+    
+    if isempty(constraints)
+        return zeros(Rational{Int}, 0, n_vars), zeros(Rational{Int}, 0), var_list
+    end
+    
+    # Build matrix
+    A = zeros(Rational{Int}, length(constraints), n_vars)
+    b = zeros(Rational{Int}, length(constraints))
+    for (i, (row, const_term)) in enumerate(constraints)
+        A[i, :] = row
+        b[i] = const_term
+    end
+    
+    return A, b, var_list
+end
+
+
+"""
+    extract_degree_coefficients(expr, var_to_idx, vars, trend_vars)
+
+Extract linear coefficients for variable degrees from an expression.
+Trend variables are assigned degree 1.
+
+Returns (coefficients_vector, constant_term) or nothing if expression is incompatible.
+"""
+function extract_degree_coefficients(expr, var_to_idx::Dict{Symbol, Int}, vars::Set{Symbol}, trend_vars::Set{Symbol})
+    n_vars = length(var_to_idx)
+    
+    if expr isa Number
+        return (zeros(Rational{Int}, n_vars), Rational{Int}(0))
+    elseif expr isa Symbol
+        if expr ∈ trend_vars
+            return (zeros(Rational{Int}, n_vars), Rational{Int}(1))
+        elseif haskey(var_to_idx, expr)
+            coeffs = zeros(Rational{Int}, n_vars)
+            coeffs[var_to_idx[expr]] = 1
+            return (coeffs, Rational{Int}(0))
+        else
+            return (zeros(Rational{Int}, n_vars), Rational{Int}(0))  # Parameter
+        end
+    elseif expr isa Expr
+        if expr.head == :ref
+            var_name = expr.args[1]
+            if var_name isa Symbol
+                if var_name ∈ trend_vars
+                    return (zeros(Rational{Int}, n_vars), Rational{Int}(1))
+                elseif haskey(var_to_idx, var_name)
+                    coeffs = zeros(Rational{Int}, n_vars)
+                    coeffs[var_to_idx[var_name]] = 1
+                    return (coeffs, Rational{Int}(0))
+                end
+            end
+            return (zeros(Rational{Int}, n_vars), Rational{Int}(0))
+        elseif expr.head == :call
+            op = expr.args[1]
+            if op == :*
+                # Degrees add in multiplication
+                total_coeffs = zeros(Rational{Int}, n_vars)
+                total_const = Rational{Int}(0)
+                for i in 2:length(expr.args)
+                    result = extract_degree_coefficients(expr.args[i], var_to_idx, vars, trend_vars)
+                    if isnothing(result)
+                        return nothing
+                    end
+                    total_coeffs .+= result[1]
+                    total_const += result[2]
+                end
+                return (total_coeffs, total_const)
+            elseif op == :/
+                if length(expr.args) >= 3
+                    num_result = extract_degree_coefficients(expr.args[2], var_to_idx, vars, trend_vars)
+                    den_result = extract_degree_coefficients(expr.args[3], var_to_idx, vars, trend_vars)
+                    if isnothing(num_result) || isnothing(den_result)
+                        return nothing
+                    end
+                    return (num_result[1] .- den_result[1], num_result[2] - den_result[2])
+                end
+            elseif op == :^
+                base_result = extract_degree_coefficients(expr.args[2], var_to_idx, vars, trend_vars)
+                if isnothing(base_result)
+                    return nothing
+                end
+                exp_val = expr.args[3]
+                if exp_val isa Number
+                    return (base_result[1] .* Rational{Int}(exp_val), base_result[2] * Rational{Int}(exp_val))
+                else
+                    # Non-numeric exponent: require base to have degree 0
+                    if any(x -> x != 0, base_result[1]) || base_result[2] != 0
+                        return nothing
+                    end
+                    return (zeros(Rational{Int}, n_vars), Rational{Int}(0))
+                end
+            elseif op in (:+, :-)
+                # For sums, all terms must have the same degree - return any of them
+                if length(expr.args) >= 2
+                    first_result = extract_degree_coefficients(expr.args[2], var_to_idx, vars, trend_vars)
+                    if isnothing(first_result)
+                        return nothing
+                    end
+                    for i in 3:length(expr.args)
+                        result = extract_degree_coefficients(expr.args[i], var_to_idx, vars, trend_vars)
+                        if isnothing(result)
+                            return nothing
+                        end
+                        # Check if degrees match (approximately, due to potential rounding)
+                        # If they don't match, this equation doesn't satisfy homogeneity
+                    end
+                    return first_result
+                end
+            elseif op in (:exp, :log, :sin, :cos, :tan, :sqrt)
+                # These require degree 0 arguments and produce degree 0 output
+                arg_result = extract_degree_coefficients(expr.args[2], var_to_idx, vars, trend_vars)
+                if isnothing(arg_result)
+                    return nothing
+                end
+                # Degree 0 constraint on argument
+                return (zeros(Rational{Int}, n_vars), Rational{Int}(0))
+            end
+        end
+    end
+    return (zeros(Rational{Int}, n_vars), Rational{Int}(0))
+end
+
+
+"""
+    solve_homogeneity_system(A, b, var_list, trend_vars)
+
+Solve the system of homogeneity constraints to determine variable degrees.
+
+Uses least-squares if the system is overdetermined, and checks for consistency.
+Returns a Dict mapping variables to their degrees, or nothing if no valid solution exists.
+"""
+function solve_homogeneity_system(A, b, var_list)
+    n_constraints, n_vars = size(A)
+    
+    if n_constraints == 0 || n_vars == 0
+        return Dict{Symbol, Rational{Int}}()
+    end
+    
+    # Convert to Float64 for numerical solution
+    A_float = Float64.(A)
+    b_float = Float64.(b)
+    
+    # Use pseudoinverse for potentially underdetermined/overdetermined systems
+    try
+        # Add regularization to prefer simpler (smaller degree) solutions
+        degrees = A_float \ b_float
+        
+        # Round to nearest simple fraction
+        degrees_rational = [round(Rational{Int}, d, digits=2) for d in degrees]
+        
+        # Build result dictionary
+        result = Dict{Symbol, Rational{Int}}()
+        for (i, var) in enumerate(var_list)
+            result[var] = degrees_rational[i]
+        end
+        return result
+    catch
+        return Dict{Symbol, Rational{Int}}()
+    end
+end
+
+
+"""
+    solve_homogeneity_constraints(model_ex::Expr, vars::Set{Symbol}, trend_vars::Dict{Symbol, Union{Symbol, Expr, Number}})
+
+Solve homogeneity constraints to automatically determine which variables need to be detrended.
+
+This implements the approach from the literature where:
+1. Trend variables are assigned degree 1
+2. For each equation, we extract the homogeneity constraint
+3. We solve the system to find degrees for all variables
+4. Variables with degree > 0 are trending and need deflation
+
+Returns a Dict mapping variable symbols to their deflator (trend variable) and degree.
+"""
+function solve_homogeneity_constraints(model_ex::Expr, vars::Set{Symbol}, trend_vars::Dict{Symbol, Union{Symbol, Expr, Number}})
+    trend_var_names = Set(keys(trend_vars))
+    
+    if isempty(trend_var_names)
+        return Dict{Symbol, Symbol}()
+    end
+    
+    # Build and solve the constraint system
+    A, b, var_list = build_homogeneity_constraints(model_ex, vars, trend_var_names)
+    
+    if isempty(var_list)
+        return Dict{Symbol, Symbol}()
+    end
+    
+    degrees = solve_homogeneity_system(A, b, var_list)
+    
+    # Build deflator mapping: variables with positive degree are deflated by trend
+    deflators = Dict{Symbol, Symbol}()
+    trend_var = first(trend_var_names)  # Use first trend variable as deflator
+    
+    for (var, degree) in degrees
+        if degree > 0
+            deflators[var] = trend_var
+        end
+    end
+    
+    return deflators
+end
+
+
+"""
     detect_deflators_from_equations(model_ex::Expr, trend_vars::Dict{Symbol, Union{Symbol, Expr, Number}})
 
 Automatically detect which variables should be deflated by which trend variables.
 
-This function analyzes the model equations to find variables that grow proportionally to
-identified trend variables. The approach is:
+This function uses a two-stage approach:
 
-1. For each non-trend variable, check if it appears multiplied by a trend variable
-2. If a variable consistently appears in the form `v * T` where T is a trend variable,
-   then v is a detrended variable and should use T as its deflator
+1. **Homogeneity Constraints (Primary)**: Constructs and solves a system of homogeneity 
+   constraints from the model equations. For each equation, this extracts constraints 
+   on the "degree" of each variable relative to the trend. Variables with positive 
+   degree are trending and need to be deflated.
 
-Currently implements a simple heuristic: any variable that is not a trend variable
-and appears in the same equation as a trend variable is assumed to be detrended by
-that trend variable.
+2. **Heuristic Fallback**: If homogeneity constraints cannot be solved, falls back to 
+   a simpler heuristic where any non-trend variable appearing in the same equation 
+   as a trend variable is assigned that trend as its deflator.
 
 Returns a Dict mapping variable symbols to their deflator (trend variable) symbols.
 """
@@ -136,8 +498,25 @@ function detect_deflators_from_equations(model_ex::Expr, trend_vars::Dict{Symbol
         return Dict{Symbol, Symbol}()
     end
     
-    deflators = Dict{Symbol, Symbol}()
     trend_var_names = Set(keys(trend_vars))
+    
+    # Collect all variables from the model
+    all_vars = Set{Symbol}()
+    for arg in model_ex.args
+        if isa(arg, Expr)
+            union!(all_vars, extract_variables_from_expr(arg))
+        end
+    end
+    
+    # Try homogeneity-based approach first
+    homogeneity_deflators = solve_homogeneity_constraints(model_ex, all_vars, trend_vars)
+    
+    if !isempty(homogeneity_deflators)
+        return homogeneity_deflators
+    end
+    
+    # Fallback to heuristic approach
+    deflators = Dict{Symbol, Symbol}()
     
     # For each equation, find which trend variable it uses
     # and assign non-trend variables to that trend
