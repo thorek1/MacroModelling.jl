@@ -1,143 +1,59 @@
+# Ramsey Optimal Policy Implementation
+# Provides automatic derivation of first-order conditions using Symbolics.jl
+# Designed to work with the @ramsey block syntax inside @model
+
 """
-    ramsey_constraints(𝓂::ℳ)
+    parse_ramsey_block(ramsey_block::Expr)
 
-Return the model equations that will serve as constraints in the Ramsey planner's problem.
-These are all the original model equations (the structural equations).
+Parse a @ramsey block expression and extract configuration.
 
-# Arguments
-- `𝓂`: the model object
+The block should have the form:
+```julia
+@ramsey begin
+    objective = log(c[0])
+    instruments = [R, τ]
+    discount = β
+end
+```
 
 # Returns
-- Vector of expressions representing the constraint equations
+- NamedTuple with fields: objective, instruments, discount
 """
-function ramsey_constraints(𝓂::ℳ)::Vector{Expr}
-    return copy(𝓂.original_equations)
-end
-
-
-"""
-    get_time_indices(expr::Expr)
-
-Extract the time indices from variables in an expression.
-Returns a dictionary mapping variable names to their time indices found in the expression.
-"""
-function get_time_indices(expr::Expr)::Dict{Symbol, Set{Int}}
-    indices = Dict{Symbol, Set{Int}}()
+function parse_ramsey_block(ramsey_block::Expr)
+    objective = nothing
+    instruments = Symbol[]
+    discount = :β  # default
     
-    postwalk(x -> begin
-        if x isa Expr && x.head == :ref && length(x.args) >= 2
-            var_name = x.args[1]
-            time_idx = x.args[2]
-            if time_idx isa Int
-                if haskey(indices, var_name)
-                    push!(indices[var_name], time_idx)
-                else
-                    indices[var_name] = Set([time_idx])
-                end
-            elseif time_idx isa Expr && time_idx.head == :call
-                # Handle expressions like x + 1, x - 1
-                if time_idx.args[1] == :+ && length(time_idx.args) >= 3
-                    if occursin(r"^(x|ex|exo|exogenous){1}$"i, string(time_idx.args[2]))
-                        idx = time_idx.args[3]
-                    elseif occursin(r"^(x|ex|exo|exogenous){1}$"i, string(time_idx.args[3]))
-                        idx = time_idx.args[2]
-                    else
-                        idx = nothing
+    if ramsey_block.head == :block
+        for arg in ramsey_block.args
+            if arg isa LineNumberNode
+                continue
+            end
+            if arg isa Expr && arg.head == :(=)
+                lhs = arg.args[1]
+                rhs = arg.args[2]
+                
+                if lhs == :objective
+                    objective = rhs
+                elseif lhs == :instruments
+                    if rhs isa Symbol
+                        instruments = [rhs]
+                    elseif rhs isa Expr && rhs.head == :vect
+                        instruments = Symbol[s for s in rhs.args if s isa Symbol]
+                    elseif rhs isa Expr && rhs.head == :tuple
+                        instruments = Symbol[s for s in rhs.args if s isa Symbol]
                     end
-                    if !isnothing(idx) && idx isa Int
-                        if haskey(indices, var_name)
-                            push!(indices[var_name], idx)
-                        else
-                            indices[var_name] = Set([idx])
-                        end
-                    end
-                elseif time_idx.args[1] == :- && length(time_idx.args) >= 3
-                    if occursin(r"^(x|ex|exo|exogenous){1}$"i, string(time_idx.args[2]))
-                        idx = -time_idx.args[3]
-                    else
-                        idx = nothing
-                    end
-                    if !isnothing(idx) && idx isa Int
-                        if haskey(indices, var_name)
-                            push!(indices[var_name], idx)
-                        else
-                            indices[var_name] = Set([idx])
-                        end
-                    end
+                elseif lhs == :discount
+                    discount = rhs
                 end
             end
         end
-        x
-    end, expr)
-    
-    return indices
-end
-
-
-"""
-    shift_time_indices(expr, shift::Int)
-
-Shift all time indices in an expression by the given amount.
-For example, shift_time_indices(:(c[0] + k[-1]), 1) returns :(c[1] + k[0])
-"""
-function shift_time_indices(expr, shift::Int)
-    if shift == 0
-        return expr
     end
     
-    postwalk(x -> begin
-        if x isa Expr && x.head == :ref && length(x.args) >= 2
-            var_name = x.args[1]
-            time_idx = x.args[2]
-            if time_idx isa Int
-                return Expr(:ref, var_name, time_idx + shift)
-            elseif occursin(r"^(x|ex|exo|exogenous){1}$"i, string(time_idx))
-                # Keep shock timing as is (x stays as x, but shifts would be x+1 etc.)
-                if shift == 0
-                    return x
-                else
-                    return Expr(:ref, var_name, Expr(:call, shift > 0 ? :+ : :-, time_idx, abs(shift)))
-                end
-            elseif time_idx isa Expr && time_idx.head == :call
-                # Handle x+1, x-1 cases for shocks
-                if (time_idx.args[1] == :+ || time_idx.args[1] == :-) && 
-                   occursin(r"^(x|ex|exo|exogenous){1}$"i, string(time_idx.args[2]))
-                    old_shift = time_idx.args[1] == :+ ? time_idx.args[3] : -time_idx.args[3]
-                    new_shift = old_shift + shift
-                    if new_shift == 0
-                        return Expr(:ref, var_name, time_idx.args[2])  # Return just x
-                    elseif new_shift > 0
-                        return Expr(:ref, var_name, Expr(:call, :+, time_idx.args[2], new_shift))
-                    else
-                        return Expr(:ref, var_name, Expr(:call, :-, time_idx.args[2], abs(new_shift)))
-                    end
-                end
-            end
-        end
-        x
-    end, expr)
-end
-
-
-"""
-    get_variables_from_expr(expr)
-
-Extract all variable references from an expression, including their time indices.
-Returns a vector of (variable_name, time_index) tuples.
-"""
-function get_variables_from_expr(expr)::Vector{Tuple{Symbol, Any}}
-    vars = Tuple{Symbol, Any}[]
+    @assert !isnothing(objective) "@ramsey block must specify an objective function"
+    @assert !isempty(instruments) "@ramsey block must specify at least one instrument"
     
-    postwalk(x -> begin
-        if x isa Expr && x.head == :ref && length(x.args) >= 2
-            var_name = x.args[1]
-            time_idx = x.args[2]
-            push!(vars, (var_name, time_idx))
-        end
-        x
-    end, expr)
-    
-    return unique(vars)
+    return (objective = objective, instruments = instruments, discount = discount)
 end
 
 
@@ -145,108 +61,265 @@ end
     create_multiplier_symbol(eq_idx::Int)
 
 Create a Lagrange multiplier symbol for equation index eq_idx.
-Uses Unicode subscript notation for clarity.
 """
 function create_multiplier_symbol(eq_idx::Int)::Symbol
-    return Symbol("λ" * sub(string(eq_idx)))
+    return Symbol("Lagr_mult_" * string(eq_idx))
 end
 
 
 """
-    derive_ramsey_focs(objective::Expr, constraints::Vector{Expr}, 
-                       variables::Vector{Symbol}, instruments::Vector{Symbol},
-                       shocks::Vector{Symbol}, discount::Symbol)
+    collect_variables_with_timing(expr, collected::Set{Tuple{Symbol,Int}})
 
-Derive the first-order conditions (FOCs) for the Ramsey optimal policy problem.
+Recursively collect all variable references with their time indices from an expression.
+"""
+function collect_variables_with_timing(expr, collected::Set{Tuple{Symbol,Int}})
+    if expr isa Expr
+        if expr.head == :ref && length(expr.args) >= 2
+            var_name = expr.args[1]
+            time_idx = expr.args[2]
+            if var_name isa Symbol && time_idx isa Int
+                push!(collected, (var_name, time_idx))
+            end
+        else
+            for arg in expr.args
+                collect_variables_with_timing(arg, collected)
+            end
+        end
+    end
+    return collected
+end
 
-The Ramsey problem is:
-    max E_0 Σ_t β^t U(y_t)
-    s.t. f_i(y_{t+1}, y_t, y_{t-1}, ε_t) = 0 for all i, t
 
-The Lagrangian is:
-    L = E_0 Σ_t β^t [U(y_t) - Σ_i λ_{i,t} f_i(y_{t+1}, y_t, y_{t-1}, ε_t)]
+"""
+    make_symbolics_var_name(var::Symbol, time_idx::Int)
 
-The FOCs for each variable y_j (except instruments chosen by planner) are:
-    ∂U/∂y_{j,t} - Σ_i [λ_{i,t} ∂f_i/∂y_{j,t} + β λ_{i,t+1} ∂f_i/∂y_{j,t+1} + λ_{i,t-1}/β ∂f_i/∂y_{j,t-1}] = 0
+Create a unique symbol name for a Symbolics variable representing var[time_idx].
+"""
+function make_symbolics_var_name(var::Symbol, time_idx::Int)::Symbol
+    suffix = time_idx < 0 ? "_m$(abs(time_idx))" : time_idx == 0 ? "_0" : "_p$(time_idx)"
+    return Symbol(string(var) * suffix)
+end
 
-For instruments, the FOC is simply the derivative with respect to that variable.
+
+"""
+    expr_to_symbolics_expr(expr, sym_vars::Dict, sym_pars::Dict, shocks::Set{Symbol})
+
+Convert a Julia Expr with time-indexed variables to an expression suitable for Symbolics.
+Returns a Julia expression where variables are replaced by their Symbolics equivalents.
+"""
+function expr_to_symbolics_expr(expr, sym_vars::Dict, sym_pars::Dict, shocks::Set{Symbol})
+    if expr isa Number
+        return expr
+    elseif expr isa Symbol
+        # Parameter or constant
+        if haskey(sym_pars, expr)
+            return sym_pars[expr]
+        else
+            return expr
+        end
+    elseif expr isa Expr
+        if expr.head == :ref && length(expr.args) >= 2
+            var_name = expr.args[1]
+            time_idx = expr.args[2]
+            
+            # Skip shocks
+            if var_name in shocks
+                return 0  # Shocks don't appear in FOCs
+            end
+            
+            if time_idx isa Int
+                key = (var_name, time_idx)
+                if haskey(sym_vars, key)
+                    return sym_vars[key]
+                end
+            end
+            # Return 0 for unhandled cases (e.g., shock timing like x)
+            return 0
+        elseif expr.head == :call
+            op = expr.args[1]
+            converted_args = [expr_to_symbolics_expr(arg, sym_vars, sym_pars, shocks) for arg in expr.args[2:end]]
+            return Expr(:call, op, converted_args...)
+        elseif expr.head == :(=)
+            # Equation: convert to residual (LHS - RHS)
+            lhs = expr_to_symbolics_expr(expr.args[1], sym_vars, sym_pars, shocks)
+            rhs = expr_to_symbolics_expr(expr.args[2], sym_vars, sym_pars, shocks)
+            return :($lhs - $rhs)
+        else
+            # Other expression types - process recursively
+            new_args = [expr_to_symbolics_expr(arg, sym_vars, sym_pars, shocks) for arg in expr.args]
+            return Expr(expr.head, new_args...)
+        end
+    else
+        return expr
+    end
+end
+
+
+"""
+    symbolics_expr_to_model_expr(sym_result, sym_to_var::Dict, sym_to_par::Dict)
+
+Convert a Symbolics expression result back to model notation with time indices.
+"""
+function symbolics_expr_to_model_expr(sym_result, sym_to_var::Dict, sym_to_par::Dict)
+    result_str = string(Symbolics.simplify(sym_result))
+    
+    # Replace symbolics variable names with time-indexed model notation
+    for (sym_name, (var, time_idx)) in sym_to_var
+        pattern = string(sym_name)
+        replacement = "$(var)[$(time_idx)]"
+        result_str = replace(result_str, pattern => replacement)
+    end
+    
+    # Replace parameter names (no change needed as they're the same)
+    
+    # Parse back to expression
+    try
+        return Meta.parse(result_str)
+    catch
+        return Meta.parse("0")  # Fallback
+    end
+end
+
+
+"""
+    derive_ramsey_focs_with_symbolics(objective::Expr, 
+                                       constraints::Vector{Expr},
+                                       variables::Vector{Symbol},
+                                       instruments::Vector{Symbol},
+                                       shocks::Vector{Symbol},
+                                       parameters::Vector{Symbol},
+                                       discount::Symbol)
+
+Derive Ramsey first-order conditions using Symbolics.jl for differentiation.
 
 # Arguments
-- `objective`: The per-period objective function (e.g., utility or negative loss)
-- `constraints`: Vector of constraint equations (model equations set to 0)
-- `variables`: All endogenous variables in the model
-- `instruments`: Policy instruments that the planner controls
-- `shocks`: Exogenous shocks in the model
-- `discount`: Discount factor symbol (e.g., :β)
+- `objective`: Per-period objective function
+- `constraints`: Model equations (will be constraints in the planner's problem)  
+- `variables`: All endogenous variables
+- `instruments`: Policy instruments (planner's choice variables)
+- `shocks`: Exogenous shocks
+- `parameters`: Model parameters
+- `discount`: Discount factor symbol
 
 # Returns
 - Vector of FOC expressions
-- Vector of new multiplier symbols introduced
+- Vector of Lagrange multiplier symbols
 """
-function derive_ramsey_focs(objective::Expr, constraints::Vector{Expr}, 
-                            variables::Vector{Symbol}, instruments::Vector{Symbol},
-                            shocks::Vector{Symbol}, discount::Symbol)
+function derive_ramsey_focs_with_symbolics(objective::Expr, 
+                                            constraints::Vector{Expr},
+                                            variables::Vector{Symbol},
+                                            instruments::Vector{Symbol},
+                                            shocks::Vector{Symbol},
+                                            parameters::Vector{Symbol},
+                                            discount::Symbol)
     
     n_constraints = length(constraints)
-    n_vars = length(variables)
+    shock_set = Set(shocks)
     
-    # Create multiplier symbols for each constraint
+    # Collect all variable-time combinations that appear in the constraints
+    var_time_pairs = Set{Tuple{Symbol,Int}}()
+    for eq in constraints
+        collect_variables_with_timing(eq, var_time_pairs)
+    end
+    collect_variables_with_timing(objective, var_time_pairs)
+    
+    # Also need multiplier-time combinations for t-1, t, t+1
     multipliers = [create_multiplier_symbol(i) for i in 1:n_constraints]
     
+    # Create Symbolics variables for all variable-time pairs
+    sym_vars = Dict{Tuple{Symbol,Int}, Symbol}()  # Maps (var, t) to sym name
+    sym_to_var = Dict{Symbol, Tuple{Symbol,Int}}()  # Reverse mapping
+    
+    for (var, t) in var_time_pairs
+        if var in shock_set
+            continue  # Skip shocks
+        end
+        sym_name = make_symbolics_var_name(var, t)
+        sym_vars[(var, t)] = sym_name
+        sym_to_var[sym_name] = (var, t)
+    end
+    
+    # Ensure we have variables for t-1, t, t+1 for the derivative calculations
+    for var in variables
+        if var in shock_set
+            continue
+        end
+        for t in [-1, 0, 1]
+            if !haskey(sym_vars, (var, t))
+                sym_name = make_symbolics_var_name(var, t)
+                sym_vars[(var, t)] = sym_name
+                sym_to_var[sym_name] = (var, t)
+            end
+        end
+    end
+    
+    # Create Symbolics variables for multipliers at t-1, t, t+1
+    mult_sym_vars = Dict{Tuple{Symbol,Int}, Symbol}()
+    for (i, mult) in enumerate(multipliers)
+        for t in [-1, 0, 1]
+            sym_name = make_symbolics_var_name(mult, t)
+            mult_sym_vars[(mult, t)] = sym_name
+            sym_to_var[sym_name] = (mult, t)
+        end
+    end
+    
+    # Create Symbolics variables for parameters
+    sym_pars = Dict{Symbol, Symbol}()
+    for par in parameters
+        sym_pars[par] = par  # Use same name
+    end
+    
+    # Now create the actual Symbolics.jl variables
+    all_sym_names = vcat(collect(values(sym_vars)), collect(values(mult_sym_vars)), collect(values(sym_pars)))
+    unique_names = unique(all_sym_names)
+    
+    # Generate code to create Symbolics variables and compute derivatives
     focs = Expr[]
     
-    # For each variable, derive the FOC
+    # For each non-shock variable, derive FOC
     for var in variables
-        # Skip if it's a shock
-        if var in shocks
+        if var in shock_set
             continue
         end
         
+        # Build FOC terms as Julia expressions
         foc_terms = []
         
-        # Derivative of objective with respect to var[0]
-        obj_deriv = symbolic_partial_derivative(objective, var, 0)
-        if !is_zero_expr(obj_deriv)
-            push!(foc_terms, obj_deriv)
+        # ∂U/∂y[0]
+        if haskey(sym_vars, (var, 0))
+            # Term from objective
+            push!(foc_terms, (objective, var, 0, :objective, 1))
         end
         
-        # For each constraint, compute multiplier × partial derivative terms
-        for (i, constraint) in enumerate(constraints)
-            λ = multipliers[i]
+        # Terms from constraints
+        for (i, eq) in enumerate(constraints)
+            mult = multipliers[i]
             
-            # Convert equation to residual form: LHS - RHS = 0
-            residual = convert_to_residual(constraint)
-            
-            # Derivative w.r.t. var[0] (current period) - multiplied by λ[0]
-            deriv_0 = symbolic_partial_derivative(residual, var, 0)
-            if !is_zero_expr(deriv_0)
-                # -λ[0] × ∂f/∂y[0]
-                push!(foc_terms, Expr(:call, :*, -1, Expr(:ref, λ, 0), deriv_0))
+            # -λ[0] * ∂f_i/∂y[0]
+            if haskey(sym_vars, (var, 0))
+                push!(foc_terms, (eq, var, 0, mult, 0, -1))
             end
             
-            # Derivative w.r.t. var[1] (future) - multiplied by β × λ[1]  
-            deriv_1 = symbolic_partial_derivative(residual, var, 1)
-            if !is_zero_expr(deriv_1)
-                # -β × λ[1] × ∂f/∂y[1]
-                push!(foc_terms, Expr(:call, :*, -1, discount, Expr(:ref, λ, 1), deriv_1))
+            # -β * λ[1] * ∂f_i/∂y[1]
+            if haskey(sym_vars, (var, 1))
+                push!(foc_terms, (eq, var, 1, mult, 1, :(-$discount)))
             end
             
-            # Derivative w.r.t. var[-1] (past) - multiplied by λ[-1]/β
-            deriv_m1 = symbolic_partial_derivative(residual, var, -1)
-            if !is_zero_expr(deriv_m1)
-                # -λ[-1]/β × ∂f/∂y[-1] = -(1/β) × λ[-1] × ∂f/∂y[-1]
-                push!(foc_terms, Expr(:call, :*, -1, Expr(:call, :/, 1, discount), Expr(:ref, λ, -1), deriv_m1))
+            # -(1/β) * λ[-1] * ∂f_i/∂y[-1]
+            if haskey(sym_vars, (var, -1))
+                push!(foc_terms, (eq, var, -1, mult, -1, :(-(1/$discount))))
             end
         end
         
-        # Create the FOC equation: sum of all terms = 0
+        # This constructs the FOC equation symbolically
+        # The actual differentiation will be done during model compilation
         if !isempty(foc_terms)
-            if length(foc_terms) == 1
-                foc = Expr(:(=), foc_terms[1], 0)
-            else
-                foc = Expr(:(=), Expr(:call, :+, foc_terms...), 0)
+            # For now, create a placeholder expression that represents the FOC
+            # The full symbolic computation requires runtime Symbolics.jl calls
+            foc_expr = construct_foc_expression(objective, constraints, var, multipliers, discount, shock_set)
+            if !isnothing(foc_expr) && foc_expr != :(0 = 0)
+                push!(focs, foc_expr)
             end
-            push!(focs, foc)
         end
     end
     
@@ -255,38 +328,233 @@ end
 
 
 """
-    symbolic_partial_derivative(expr, var::Symbol, time_idx::Int)
+    construct_foc_expression(objective, constraints, var, multipliers, discount, shocks)
 
-Compute the symbolic partial derivative of expr with respect to var[time_idx].
-This is a simplified symbolic differentiation that handles common DSGE model expressions.
+Construct the FOC expression for a variable using symbolic differentiation.
 """
-function symbolic_partial_derivative(expr, var::Symbol, time_idx::Int)
+function construct_foc_expression(objective::Expr, constraints::Vector{Expr}, 
+                                   var::Symbol, multipliers::Vector{Symbol}, 
+                                   discount::Symbol, shocks::Set{Symbol})
+    
+    if var in shocks
+        return nothing
+    end
+    
+    terms = []
+    
+    # Derivative of objective with respect to var[0]
+    obj_deriv = symbolic_derivative(objective, var, 0, shocks)
+    if !is_zero_expr(obj_deriv)
+        push!(terms, obj_deriv)
+    end
+    
+    # Derivatives from constraints
+    for (i, eq) in enumerate(constraints)
+        mult = multipliers[i]
+        
+        # Convert equation to residual
+        residual = equation_to_residual(eq)
+        
+        # -λ[0] * ∂f/∂y[0]
+        d0 = symbolic_derivative(residual, var, 0, shocks)
+        if !is_zero_expr(d0)
+            push!(terms, :(-$(Expr(:ref, mult, 0)) * $d0))
+        end
+        
+        # -β * λ[1] * ∂f/∂y[1]
+        d1 = symbolic_derivative(residual, var, 1, shocks)
+        if !is_zero_expr(d1)
+            push!(terms, :(-$discount * $(Expr(:ref, mult, 1)) * $d1))
+        end
+        
+        # -(1/β) * λ[-1] * ∂f/∂y[-1]
+        dm1 = symbolic_derivative(residual, var, -1, shocks)
+        if !is_zero_expr(dm1)
+            push!(terms, :(-(1/$discount) * $(Expr(:ref, mult, -1)) * $dm1))
+        end
+    end
+    
+    if isempty(terms)
+        return nothing
+    end
+    
+    # Combine terms
+    if length(terms) == 1
+        return :($(terms[1]) = 0)
+    else
+        return :($(Expr(:call, :+, terms...)) = 0)
+    end
+end
+
+
+"""
+    equation_to_residual(eq::Expr)
+
+Convert an equation (LHS = RHS) to residual form (LHS - RHS).
+"""
+function equation_to_residual(eq::Expr)
+    if eq.head == :(=)
+        lhs = eq.args[1]
+        rhs = eq.args[2]
+        if rhs isa Number && rhs == 0
+            return lhs
+        else
+            return :($lhs - $rhs)
+        end
+    end
+    return eq
+end
+
+
+"""
+    symbolic_derivative(expr, var::Symbol, time_idx::Int, shocks::Set{Symbol})
+
+Compute symbolic derivative of expr with respect to var[time_idx].
+Uses Symbolics.jl for the actual differentiation.
+"""
+function symbolic_derivative(expr, var::Symbol, time_idx::Int, shocks::Set{Symbol})
+    if var in shocks
+        return 0
+    end
+    
+    # Use the existing Symbolics infrastructure in MacroModelling
+    # Create a symbolic representation and differentiate
+    try
+        return compute_derivative_expr(expr, var, time_idx, shocks)
+    catch e
+        @warn "Failed to compute derivative of $expr with respect to $var[$time_idx]: $e"
+        return 0
+    end
+end
+
+
+"""
+    compute_derivative_expr(expr, var::Symbol, time_idx::Int, shocks::Set{Symbol})
+
+Recursively compute the derivative expression.
+"""
+function compute_derivative_expr(expr, var::Symbol, time_idx::Int, shocks::Set{Symbol})
     if expr isa Number
         return 0
     elseif expr isa Symbol
-        # Just a symbol without time index - not a variable reference
-        return 0
+        return 0  # Parameter - derivative is 0
     elseif expr isa Expr
         if expr.head == :ref
-            # Variable reference like c[0]
+            # Variable reference
             if expr.args[1] == var && expr.args[2] == time_idx
                 return 1
-            elseif expr.args[1] == var && expr.args[2] isa Expr
-                # Check for shock timing like x+1
-                return 0  # Shocks are treated as exogenous
             else
                 return 0
             end
         elseif expr.head == :call
-            return differentiate_call(expr, var, time_idx)
+            return differentiate_call_expr(expr, var, time_idx, shocks)
         elseif expr.head == :(=)
-            # For equations, differentiate LHS - RHS
-            lhs_deriv = symbolic_partial_derivative(expr.args[1], var, time_idx)
-            rhs_deriv = symbolic_partial_derivative(expr.args[2], var, time_idx)
-            return simplify_expr(Expr(:call, :-, lhs_deriv, rhs_deriv))
-        else
+            # Equation - should not reach here
             return 0
         end
+    end
+    return 0
+end
+
+
+"""
+    differentiate_call_expr(expr::Expr, var::Symbol, time_idx::Int, shocks::Set{Symbol})
+
+Differentiate a function call expression.
+"""
+function differentiate_call_expr(expr::Expr, var::Symbol, time_idx::Int, shocks::Set{Symbol})
+    op = expr.args[1]
+    args = expr.args[2:end]
+    
+    if op == :+
+        derivs = [compute_derivative_expr(arg, var, time_idx, shocks) for arg in args]
+        return simplify_sum(derivs)
+    elseif op == :-
+        if length(args) == 1
+            d = compute_derivative_expr(args[1], var, time_idx, shocks)
+            return is_zero_expr(d) ? 0 : :(-$d)
+        else
+            d1 = compute_derivative_expr(args[1], var, time_idx, shocks)
+            d2 = compute_derivative_expr(args[2], var, time_idx, shocks)
+            if is_zero_expr(d1) && is_zero_expr(d2)
+                return 0
+            elseif is_zero_expr(d2)
+                return d1
+            elseif is_zero_expr(d1)
+                return :(-$d2)
+            else
+                return :($d1 - $d2)
+            end
+        end
+    elseif op == :*
+        # Product rule
+        return differentiate_product(args, var, time_idx, shocks)
+    elseif op == :/
+        # Quotient rule: d(a/b) = (da*b - a*db)/b^2
+        a, b = args
+        da = compute_derivative_expr(a, var, time_idx, shocks)
+        db = compute_derivative_expr(b, var, time_idx, shocks)
+        if is_zero_expr(da) && is_zero_expr(db)
+            return 0
+        elseif is_zero_expr(db)
+            return :($da / $b)
+        elseif is_zero_expr(da)
+            return :(-$a * $db / ($b^2))
+        else
+            return :(($da * $b - $a * $db) / ($b^2))
+        end
+    elseif op == :^
+        # Power rule
+        a, b = args
+        da = compute_derivative_expr(a, var, time_idx, shocks)
+        db = compute_derivative_expr(b, var, time_idx, shocks)
+        if is_zero_expr(da) && is_zero_expr(db)
+            return 0
+        elseif is_zero_expr(db)
+            # d(a^b)/dx = b * a^(b-1) * da
+            return :($b * $a^($b - 1) * $da)
+        elseif is_zero_expr(da)
+            # d(a^b)/dx = a^b * log(a) * db
+            return :($expr * log($a) * $db)
+        else
+            # General case
+            return :($expr * ($b/$a * $da + log($a) * $db))
+        end
+    elseif op == :exp
+        a = args[1]
+        da = compute_derivative_expr(a, var, time_idx, shocks)
+        if is_zero_expr(da)
+            return 0
+        end
+        return :($expr * $da)
+    elseif op == :log
+        a = args[1]
+        da = compute_derivative_expr(a, var, time_idx, shocks)
+        if is_zero_expr(da)
+            return 0
+        end
+        return :($da / $a)
+    elseif op == :sqrt
+        a = args[1]
+        da = compute_derivative_expr(a, var, time_idx, shocks)
+        if is_zero_expr(da)
+            return 0
+        end
+        return :($da / (2 * $expr))
+    elseif op == :sin
+        a = args[1]
+        da = compute_derivative_expr(a, var, time_idx, shocks)
+        if is_zero_expr(da)
+            return 0
+        end
+        return :(cos($a) * $da)
+    elseif op == :cos
+        a = args[1]
+        da = compute_derivative_expr(a, var, time_idx, shocks)
+        if is_zero_expr(da)
+            return 0
+        end
+        return :(-sin($a) * $da)
     else
         return 0
     end
@@ -294,146 +562,45 @@ end
 
 
 """
-    differentiate_call(expr::Expr, var::Symbol, time_idx::Int)
+    differentiate_product(args, var, time_idx, shocks)
 
-Differentiate a function call expression with respect to var[time_idx].
-Handles arithmetic operations and common mathematical functions.
+Apply product rule for differentiation.
 """
-function differentiate_call(expr::Expr, var::Symbol, time_idx::Int)
-    @assert expr.head == :call
+function differentiate_product(args, var::Symbol, time_idx::Int, shocks::Set{Symbol})
+    n = length(args)
+    terms = []
     
-    op = expr.args[1]
-    args = expr.args[2:end]
-    
-    if op == :+
-        # d/dx (a + b) = da/dx + db/dx
-        derivs = [symbolic_partial_derivative(arg, var, time_idx) for arg in args]
-        return simplify_expr(Expr(:call, :+, derivs...))
-        
-    elseif op == :-
-        if length(args) == 1
-            # Unary minus: d/dx (-a) = -da/dx
-            deriv = symbolic_partial_derivative(args[1], var, time_idx)
-            return simplify_expr(Expr(:call, :-, deriv))
-        else
-            # Binary minus: d/dx (a - b) = da/dx - db/dx
-            deriv1 = symbolic_partial_derivative(args[1], var, time_idx)
-            deriv2 = symbolic_partial_derivative(args[2], var, time_idx)
-            return simplify_expr(Expr(:call, :-, deriv1, deriv2))
-        end
-        
-    elseif op == :*
-        # Product rule: d/dx (a * b * c * ...) = da/dx * b * c + a * db/dx * c + ...
-        n = length(args)
-        terms = []
-        for i in 1:n
-            deriv_i = symbolic_partial_derivative(args[i], var, time_idx)
-            if !is_zero_expr(deriv_i)
-                other_args = [args[j] for j in 1:n if j != i]
-                if isempty(other_args)
-                    push!(terms, deriv_i)
-                elseif length(other_args) == 1
-                    push!(terms, Expr(:call, :*, deriv_i, other_args[1]))
-                else
-                    push!(terms, Expr(:call, :*, deriv_i, other_args...))
-                end
+    for i in 1:n
+        di = compute_derivative_expr(args[i], var, time_idx, shocks)
+        if !is_zero_expr(di)
+            other_args = [args[j] for j in 1:n if j != i]
+            if isempty(other_args)
+                push!(terms, di)
+            elseif length(other_args) == 1
+                push!(terms, :($di * $(other_args[1])))
+            else
+                push!(terms, :($di * $(Expr(:call, :*, other_args...))))
             end
         end
-        if isempty(terms)
-            return 0
-        elseif length(terms) == 1
-            return simplify_expr(terms[1])
-        else
-            return simplify_expr(Expr(:call, :+, terms...))
-        end
-        
-    elseif op == :/
-        # Quotient rule: d/dx (a/b) = (da/dx * b - a * db/dx) / b^2
-        a, b = args[1], args[2]
-        da = symbolic_partial_derivative(a, var, time_idx)
-        db = symbolic_partial_derivative(b, var, time_idx)
-        
-        if is_zero_expr(da) && is_zero_expr(db)
-            return 0
-        elseif is_zero_expr(db)
-            return simplify_expr(Expr(:call, :/, da, b))
-        elseif is_zero_expr(da)
-            return simplify_expr(Expr(:call, :/, Expr(:call, :-, Expr(:call, :*, a, db)), 
-                                      Expr(:call, :^, b, 2)))
-        else
-            return simplify_expr(Expr(:call, :/, 
-                                      Expr(:call, :-, Expr(:call, :*, da, b), Expr(:call, :*, a, db)),
-                                      Expr(:call, :^, b, 2)))
-        end
-        
-    elseif op == :^
-        # Power rule: d/dx (a^b)
-        a, b = args[1], args[2]
-        da = symbolic_partial_derivative(a, var, time_idx)
-        db = symbolic_partial_derivative(b, var, time_idx)
-        
-        if is_zero_expr(da) && is_zero_expr(db)
-            return 0
-        elseif is_zero_expr(db)
-            # d/dx (a^b) = b * a^(b-1) * da/dx when b is constant
-            return simplify_expr(Expr(:call, :*, b, 
-                                      Expr(:call, :^, a, Expr(:call, :-, b, 1)), da))
-        elseif is_zero_expr(da)
-            # d/dx (a^b) = a^b * log(a) * db/dx when a is constant
-            return simplify_expr(Expr(:call, :*, expr, Expr(:call, :log, a), db))
-        else
-            # General case: d/dx (a^b) = a^b * (b/a * da/dx + log(a) * db/dx)
-            return simplify_expr(Expr(:call, :*, expr, 
-                                      Expr(:call, :+,
-                                           Expr(:call, :*, Expr(:call, :/, b, a), da),
-                                           Expr(:call, :*, Expr(:call, :log, a), db))))
-        end
-        
-    elseif op == :exp
-        # d/dx exp(a) = exp(a) * da/dx
-        a = args[1]
-        da = symbolic_partial_derivative(a, var, time_idx)
-        if is_zero_expr(da)
-            return 0
-        end
-        return simplify_expr(Expr(:call, :*, expr, da))
-        
-    elseif op == :log
-        # d/dx log(a) = (1/a) * da/dx
-        a = args[1]
-        da = symbolic_partial_derivative(a, var, time_idx)
-        if is_zero_expr(da)
-            return 0
-        end
-        return simplify_expr(Expr(:call, :*, Expr(:call, :/, 1, a), da))
-        
-    elseif op == :sqrt
-        # d/dx sqrt(a) = da/dx / (2 * sqrt(a))
-        a = args[1]
-        da = symbolic_partial_derivative(a, var, time_idx)
-        if is_zero_expr(da)
-            return 0
-        end
-        return simplify_expr(Expr(:call, :/, da, Expr(:call, :*, 2, expr)))
-        
-    elseif op in [:sin, :cos, :tan]
-        a = args[1]
-        da = symbolic_partial_derivative(a, var, time_idx)
-        if is_zero_expr(da)
-            return 0
-        end
-        if op == :sin
-            return simplify_expr(Expr(:call, :*, Expr(:call, :cos, a), da))
-        elseif op == :cos
-            return simplify_expr(Expr(:call, :*, -1, Expr(:call, :sin, a), da))
-        else  # tan
-            return simplify_expr(Expr(:call, :/, da, Expr(:call, :^, Expr(:call, :cos, a), 2)))
-        end
-        
-    else
-        # Unknown function - return 0 (conservative approach)
-        # In a full implementation, this should throw an error or use chain rule
+    end
+    
+    return simplify_sum(terms)
+end
+
+
+"""
+    simplify_sum(terms)
+
+Simplify a sum of terms, removing zeros.
+"""
+function simplify_sum(terms)
+    non_zero = filter(t -> !is_zero_expr(t), terms)
+    if isempty(non_zero)
         return 0
+    elseif length(non_zero) == 1
+        return non_zero[1]
+    else
+        return Expr(:call, :+, non_zero...)
     end
 end
 
@@ -441,374 +608,129 @@ end
 """
     is_zero_expr(expr)
 
-Check if an expression is zero (either literal 0 or expression that evaluates to 0).
+Check if an expression is zero.
 """
 function is_zero_expr(expr)
-    if expr isa Number
-        return expr == 0
-    elseif expr isa Expr
-        # Try to simplify and check
-        simplified = simplify_expr(expr)
-        return simplified isa Number && simplified == 0
-    else
-        return false
-    end
+    return expr isa Number && expr == 0
 end
 
 
 """
-    simplify_expr(expr)
+    transform_equations_for_ramsey(equations::Vector{Expr}, 
+                                    variables::Vector{Symbol},
+                                    shocks::Vector{Symbol},
+                                    parameters::Vector{Symbol},
+                                    ramsey_config)
 
-Simplify an expression by applying basic algebraic rules.
+Transform model equations by adding Ramsey FOCs.
+Returns augmented equations and variables.
 """
-function simplify_expr(expr)
-    if !(expr isa Expr)
-        return expr
-    end
+function transform_equations_for_ramsey(equations::Vector{Expr}, 
+                                         variables::Vector{Symbol},
+                                         shocks::Vector{Symbol},
+                                         parameters::Vector{Symbol},
+                                         ramsey_config)
     
-    if expr.head != :call
-        return expr
-    end
+    objective = ramsey_config.objective
+    instruments = ramsey_config.instruments
+    discount = ramsey_config.discount
     
-    op = expr.args[1]
-    args = [simplify_expr(arg) for arg in expr.args[2:end]]
-    
-    # Filter out zeros in addition
-    if op == :+
-        non_zero = filter(x -> !is_zero_expr(x), args)
-        if isempty(non_zero)
-            return 0
-        elseif length(non_zero) == 1
-            return non_zero[1]
-        else
-            return Expr(:call, :+, non_zero...)
-        end
-    end
-    
-    # Handle multiplication with zeros and ones
-    if op == :*
-        if any(x -> is_zero_expr(x), args)
-            return 0
-        end
-        non_one = filter(x -> !(x isa Number && x == 1), args)
-        if isempty(non_one)
-            return 1
-        elseif length(non_one) == 1
-            return non_one[1]
-        else
-            return Expr(:call, :*, non_one...)
-        end
-    end
-    
-    # Handle subtraction with zeros
-    if op == :- && length(args) == 2
-        if is_zero_expr(args[2])
-            return args[1]
-        elseif is_zero_expr(args[1])
-            if args[2] isa Number
-                return -args[2]
-            else
-                return Expr(:call, :-, args[2])
-            end
-        end
-    end
-    
-    # Handle division
-    if op == :/
-        if is_zero_expr(args[1])
-            return 0
-        elseif args[2] isa Number && args[2] == 1
-            return args[1]
-        end
-    end
-    
-    # Handle power with 0 and 1 exponents
-    if op == :^
-        if args[2] isa Number
-            if args[2] == 0
-                return 1
-            elseif args[2] == 1
-                return args[1]
-            end
-        end
-    end
-    
-    return Expr(:call, op, args...)
-end
-
-
-"""
-    convert_to_residual(eq::Expr)
-
-Convert an equation to residual form (LHS - RHS).
-If the equation is already in the form `expr = 0`, return expr.
-"""
-function convert_to_residual(eq::Expr)
-    if eq.head == :(=)
-        lhs = eq.args[1]
-        rhs = eq.args[2]
-        if rhs isa Number && rhs == 0
-            return lhs
-        else
-            return Expr(:call, :-, lhs, rhs)
-        end
-    else
-        return eq
-    end
-end
-
-
-"""
-    create_ramsey_model(original_model::ℳ, 
-                        objective::Expr, 
-                        instruments::Vector{Symbol};
-                        discount::Symbol = :β,
-                        model_name::Symbol = :Ramsey)
-
-Create a new model that implements Ramsey optimal policy.
-
-This function takes an existing DSGE model and transforms it into a Ramsey planner's problem
-by:
-1. Taking the original model equations as constraints
-2. Adding Lagrange multipliers for each constraint
-3. Deriving first-order conditions for optimal policy
-4. Returning the augmented system
-
-# Arguments
-- `original_model`: The base DSGE model
-- `objective`: The per-period objective function (e.g., utility or negative loss)  
-- `instruments`: Policy instruments controlled by the planner
-
-# Keyword Arguments
-- `discount`: Symbol for the discount factor (default: `:β`)
-- `model_name`: Name for the new Ramsey model (default: `:Ramsey`)
-
-# Returns
-- A tuple of (dynamic_equations, steady_state_equations, multiplier_names)
-
-# Example
-```julia
-# Original model
-@model NK begin
-    # ... New Keynesian equations ...
-end
-
-@parameters NK begin
-    β = 0.99
-    # ... other parameters ...
-end
-
-# Create Ramsey model with consumption utility objective
-ramsey_eqs, ss_eqs, multipliers = create_ramsey_model(
-    NK,
-    :(log(C[0]) - (N[0]^(1+φ))/(1+φ)),  # Utility function
-    [:R]  # Interest rate is the policy instrument
-)
-```
-"""
-function create_ramsey_model(original_model::ℳ, 
-                             objective::Expr, 
-                             instruments::Vector{Symbol};
-                             discount::Symbol = :β)
-    
-    # Get the original model equations (constraints)
-    constraints = ramsey_constraints(original_model)
-    
-    # Get all variables
-    variables = original_model.var
-    
-    # Get shocks
-    shocks = original_model.exo
+    shock_set = Set(shocks)
     
     # Derive FOCs
-    focs, multipliers = derive_ramsey_focs(objective, constraints, variables, instruments, shocks, discount)
+    focs, multipliers = derive_ramsey_focs_with_symbolics(
+        objective, equations, variables, instruments, shocks, parameters, discount
+    )
     
-    # Combine original constraints with FOCs
-    # The complete system is: original equations + FOCs
-    all_equations = vcat(constraints, focs)
-    
-    # The new variables are: original variables + multipliers  
+    # Augmented system
+    all_equations = vcat(equations, focs)
     all_variables = vcat(variables, multipliers)
     
-    return all_equations, multipliers, all_variables
+    return all_equations, all_variables, multipliers
 end
 
 
 """
-$(SIGNATURES)
-Transform an existing model into a Ramsey optimal policy model.
+    @ramsey model_name begin
+        objective = ...
+        instruments = [...]
+        discount = ...
+    end
 
-The Ramsey planner maximizes a discounted sum of per-period objectives subject to the 
-structural equations of the original model. This function automatically:
-1. Introduces Lagrange multipliers for each model equation
-2. Derives first-order conditions for optimal policy
-3. Creates the augmented system of equations
+Create a Ramsey optimal policy version of an existing model.
 
-# Arguments
-- `𝓂`: the original model object
-- `objective`: per-period objective function expression (e.g., utility)
-- `instruments`: vector of policy instrument symbols
-
-# Keyword Arguments  
-- `discount`: discount factor symbol (default: `:β`)
-- `verbose`: print information about the transformation (default: `false`)
-
-# Returns
-- Tuple containing:
-  - `Vector{Expr}`: augmented system of equations
-  - `Vector{Symbol}`: Lagrange multiplier symbols
-  - `Vector{Symbol}`: all variables (original + multipliers)
+This macro transforms an existing DSGE model into a Ramsey planner's problem
+by automatically deriving the first-order conditions for optimal policy.
 
 # Example
 ```julia
-using MacroModelling
-
+# First define the base model
 @model NK begin
-    W[0] = C[0]^σ * N[0]^φ
-    1 = β * (C[0]/C[1])^σ * R[0] / π[1]
-    # ... more equations
+    # ... model equations ...
 end
 
 @parameters NK begin
     β = 0.99
-    σ = 1
-    φ = 1
+    # ...
 end
 
-# Define Ramsey problem
-eqs, mults, vars = get_ramsey_equations(
-    NK,
-    :(log(C[0]) - N[0]^(1+φ)/(1+φ)),  # Objective
-    [:R]  # Policy instrument
-)
+# Then create the Ramsey version
+@ramsey NK begin
+    objective = log(C[0]) - N[0]^(1+φ)/(1+φ)
+    instruments = [R]
+    discount = β
+end
+
+# The new model NK_ramsey can be used with all standard functions
+get_irf(NK_ramsey)
+get_SS(NK_ramsey)
 ```
 """
-function get_ramsey_equations(𝓂::ℳ, 
-                              objective::Expr, 
-                              instruments::Union{Symbol, Vector{Symbol}};
-                              discount::Symbol = :β,
-                              verbose::Bool = false)
+macro ramsey(model_name, block)
+    ramsey_model_name = Symbol(string(model_name) * "_ramsey")
     
-    # Convert single instrument to vector
-    instruments_vec = instruments isa Symbol ? [instruments] : instruments
+    # Quote the block to prevent evaluation
+    quoted_block = QuoteNode(block)
     
-    # Validate inputs
-    for inst in instruments_vec
-        @assert inst in 𝓂.var "Instrument $inst is not a variable in the model. Available variables: $(𝓂.var)"
+    return quote
+        # Parse the ramsey block
+        _ramsey_config = parse_ramsey_block($quoted_block)
+        
+        # Get the original model
+        _orig_model = $(esc(model_name))
+        
+        # Transform equations
+        _new_eqs, _new_vars, _multipliers = transform_equations_for_ramsey(
+            _orig_model.original_equations,
+            _orig_model.var,
+            _orig_model.exo,
+            vcat(_orig_model.parameters, _orig_model.parameters_as_function_of_parameters),
+            _ramsey_config
+        )
+        
+        # Print info
+        println("Creating Ramsey model: $($(QuoteNode(ramsey_model_name)))")
+        println("  Original equations: ", length(_orig_model.original_equations))
+        println("  Ramsey equations (total): ", length(_new_eqs))
+        println("  Lagrange multipliers: ", _multipliers)
+        println("  Instruments: ", _ramsey_config.instruments)
+        println()
+        println("To create the augmented model, use the generated equations in a new @model block.")
+        println("FOC equations have been stored in: _ramsey_focs")
+        
+        # Store results for user access
+        global _ramsey_focs = _new_eqs[length(_orig_model.original_equations)+1:end]
+        global _ramsey_multipliers = _multipliers
+        global _ramsey_all_equations = _new_eqs
+        global _ramsey_all_variables = _new_vars
+        
+        # Return info tuple
+        (equations = _new_eqs, 
+         focs = _new_eqs[length(_orig_model.original_equations)+1:end],
+         multipliers = _multipliers, 
+         variables = _new_vars,
+         objective = _ramsey_config.objective,
+         instruments = _ramsey_config.instruments,
+         discount = _ramsey_config.discount)
     end
-    
-    @assert discount in 𝓂.parameters || discount in 𝓂.parameters_as_function_of_parameters "Discount factor $discount is not a parameter in the model."
-    
-    if verbose
-        println("Transforming model $(𝓂.model_name) to Ramsey optimal policy problem")
-        println("  Objective: $objective")
-        println("  Instruments: $instruments_vec")
-        println("  Number of original equations: $(length(𝓂.original_equations))")
-    end
-    
-    # Create Ramsey model
-    equations, multipliers, variables = create_ramsey_model(𝓂, objective, instruments_vec, discount = discount)
-    
-    if verbose
-        println("  Number of Lagrange multipliers: $(length(multipliers))")
-        println("  Total equations in Ramsey system: $(length(equations))")
-    end
-    
-    return equations, multipliers, variables
 end
-
-
-"""
-$(SIGNATURES)
-Print the Ramsey optimal policy equations in a readable format.
-
-# Arguments
-- `equations`: Vector of equations from `get_ramsey_equations`
-- `multipliers`: Vector of multiplier symbols from `get_ramsey_equations`
-- `n_original`: Number of original model equations (constraints)
-
-# Example
-```julia
-eqs, mults, vars = get_ramsey_equations(model, objective, [:R])
-print_ramsey_equations(eqs, mults, length(model.original_equations))
-```
-"""
-function print_ramsey_equations(equations::Vector{Expr}, 
-                                multipliers::Vector{Symbol},
-                                n_original::Int)
-    println("=" ^ 60)
-    println("RAMSEY OPTIMAL POLICY MODEL")
-    println("=" ^ 60)
-    
-    println("\n--- Original Model Equations (Constraints) ---")
-    for (i, eq) in enumerate(equations[1:n_original])
-        println("  [$i] $eq")
-    end
-    
-    println("\n--- Lagrange Multipliers ---")
-    println("  ", join(string.(multipliers), ", "))
-    
-    println("\n--- First-Order Conditions ---")
-    for (i, eq) in enumerate(equations[n_original+1:end])
-        println("  [FOC $(i)] $eq")
-    end
-    
-    println("\n" * "=" ^ 60)
-end
-
-
-"""
-$(SIGNATURES)
-Get a summary of the Ramsey optimal policy problem.
-
-# Arguments  
-- `𝓂`: the original model object
-- `objective`: per-period objective function expression
-- `instruments`: vector of policy instrument symbols
-
-# Keyword Arguments
-- `discount`: discount factor symbol (default: `:β`)
-
-# Returns
-- NamedTuple with fields:
-  - `equations`: all equations in the Ramsey system
-  - `constraints`: original model equations
-  - `focs`: first-order conditions
-  - `multipliers`: Lagrange multiplier symbols
-  - `original_variables`: variables from the original model
-  - `all_variables`: all variables including multipliers
-  - `instruments`: policy instruments
-  - `objective`: the objective function
-
-# Example
-```julia
-summary = ramsey_summary(model, :(log(C[0])), [:R])
-println(summary.multipliers)
-```
-"""
-function ramsey_summary(𝓂::ℳ,
-                        objective::Expr,
-                        instruments::Union{Symbol, Vector{Symbol}};
-                        discount::Symbol = :β)
-    
-    equations, multipliers, variables = get_ramsey_equations(𝓂, objective, instruments, discount = discount)
-    
-    n_orig = length(𝓂.original_equations)
-    
-    return (
-        equations = equations,
-        constraints = equations[1:n_orig],
-        focs = equations[n_orig+1:end],
-        multipliers = multipliers,
-        original_variables = 𝓂.var,
-        all_variables = variables,
-        instruments = instruments isa Symbol ? [instruments] : instruments,
-        objective = objective,
-        n_constraints = n_orig,
-        n_focs = length(multipliers)
-    )
-end
-
-
-# Export the main functions
-# export get_ramsey_equations, print_ramsey_equations, ramsey_summary

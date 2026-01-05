@@ -16,10 +16,7 @@ subject to the model's equilibrium conditions:
 f_i(y_{t+1}, y_t, y_{t-1}, \varepsilon_t) = 0, \quad \forall i
 ```
 
-MacroModelling.jl can automatically derive the first-order conditions (FOCs) for this problem by:
-1. Introducing Lagrange multipliers for each constraint
-2. Computing partial derivatives of the Lagrangian
-3. Generating the optimality conditions
+MacroModelling.jl can automatically derive the first-order conditions (FOCs) for this problem using the `@ramsey` macro.
 
 ## Basic Usage
 
@@ -46,46 +43,60 @@ end
 end
 ```
 
-### Step 2: Derive Ramsey Equations
+### Step 2: Create the Ramsey Model
 
-Use `get_ramsey_equations` to derive the optimal policy FOCs:
+Use the `@ramsey` macro to derive the optimal policy FOCs:
 
 ```julia
-# Define objective function and policy instrument
-objective = :(log(c[0]))  # Utility function
-instruments = [:q]        # Policy instrument(s)
-
-# Get the Ramsey system
-equations, multipliers, variables = get_ramsey_equations(
-    RBC,
-    objective,
-    instruments,
-    discount = :β,
-    verbose = true
-)
+result = @ramsey RBC begin
+    objective = log(c[0])     # Utility function
+    instruments = [q]         # Policy instrument(s)
+    discount = β              # Discount factor
+end
 ```
 
-This returns:
+This returns a NamedTuple with:
 - `equations`: All equations in the Ramsey system (constraints + FOCs)
-- `multipliers`: The Lagrange multiplier symbols (e.g., `[:λ₁, :λ₂, :λ₃, :λ₄]`)
+- `focs`: Just the first-order conditions
+- `multipliers`: The Lagrange multiplier symbols
 - `variables`: All variables including multipliers
+- `objective`, `instruments`, `discount`: The configuration
 
-### Step 3: Analyze the Results
-
-Use `ramsey_summary` for a structured view:
+### Step 3: View the Results
 
 ```julia
-summary = ramsey_summary(RBC, :(log(c[0])), [:q], discount = :β)
+println("Original equations: ", length(RBC.original_equations))
+println("Total Ramsey equations: ", length(result.equations))
+println("Lagrange multipliers: ", result.multipliers)
 
-println("Multipliers: ", summary.multipliers)
-println("Number of constraints: ", summary.n_constraints)
-println("Number of FOCs: ", summary.n_focs)
+println("\nFirst-Order Conditions:")
+for (i, foc) in enumerate(result.focs)
+    println("  FOC $i: ", foc)
+end
 ```
 
-Use `print_ramsey_equations` for formatted output:
+## Example Output
+
+For the RBC model above, the `@ramsey` macro generates:
+
+```
+Creating Ramsey model: RBC_ramsey
+  Original equations: 4
+  Ramsey equations (total): 8
+  Lagrange multipliers: [:Lagr_mult_1, :Lagr_mult_2, :Lagr_mult_3, :Lagr_mult_4]
+  Instruments: [:q]
+```
+
+## Multiple Instruments
+
+You can specify multiple policy instruments:
 
 ```julia
-print_ramsey_equations(summary.equations, summary.multipliers, summary.n_constraints)
+result = @ramsey NK begin
+    objective = log(C[0]) - N[0]^(1+φ)/(1+φ)
+    instruments = [R, τ]    # Interest rate and tax rate
+    discount = β
+end
 ```
 
 ## Understanding the Output
@@ -94,7 +105,7 @@ print_ramsey_equations(summary.equations, summary.multipliers, summary.n_constra
 These are the model's equilibrium conditions that constrain the planner's choices.
 
 ### Lagrange Multipliers
-Each constraint gets a multiplier (λ₁, λ₂, ...). These represent the shadow value of relaxing each constraint.
+Each constraint gets a multiplier (`Lagr_mult_1`, `Lagr_mult_2`, ...). These represent the shadow value of relaxing each constraint.
 
 ### First-Order Conditions
 The FOCs determine optimal policy. For each variable `y`:
@@ -103,45 +114,22 @@ The FOCs determine optimal policy. For each variable `y`:
 \frac{\partial U}{\partial y_{j,t}} - \sum_i \left[ \lambda_{i,t} \frac{\partial f_i}{\partial y_{j,t}} + \beta \lambda_{i,t+1} \frac{\partial f_i}{\partial y_{j,t+1}} + \frac{\lambda_{i,t-1}}{\beta} \frac{\partial f_i}{\partial y_{j,t-1}} \right] = 0
 ```
 
-## Example: New Keynesian Optimal Monetary Policy
+## Building the Full Ramsey Model
 
-Here's a more realistic example with a New Keynesian model:
+To create a solvable model, you need to include the generated equations in a new `@model` block. The returned `result.equations` contains both the original model equations and the new FOCs.
 
 ```julia
-using MacroModelling
+# Get the Ramsey equations
+result = @ramsey RBC begin
+    objective = log(c[0])
+    instruments = [q]
+    discount = β
+end
 
-# Load a New Keynesian model
-include("models/RBC_CME.jl")
-
-# Define welfare objective (negative of squared deviations)
-# Standard central bank loss function: π² + λ_y * y²
-objective = :(-0.5 * Pi[0]^2)
-
-# Interest rate is the policy instrument
-instruments = [:R]
-
-# Get Ramsey equations
-eqs, mults, vars = get_ramsey_equations(
-    m,  # The NK model
-    objective,
-    instruments,
-    discount = :beta,
-    verbose = true
-)
-
-# View the system
-print_ramsey_equations(eqs, mults, length(m.original_equations))
+# The equations are available for building a new model
+println("All equations: ", result.equations)
+println("New variables (including multipliers): ", result.variables)
 ```
-
-## Tips and Best Practices
-
-1. **Choose appropriate instruments**: Policy instruments should be variables that the planner can directly control (e.g., interest rates, tax rates).
-
-2. **Objective function**: The objective should be the per-period utility or loss function. For welfare analysis, use utility; for policy rules, use negative of loss.
-
-3. **Discount factor**: Make sure to specify the correct discount factor symbol that matches your model parameters.
-
-4. **Interpretation**: The multipliers in the FOCs represent intertemporal trade-offs in optimal policy.
 
 ## Mathematical Details
 
@@ -157,12 +145,10 @@ Taking FOCs with respect to each variable `y_j`:
 \frac{\partial \mathcal{L}}{\partial y_{j,t}} = \beta^t \left[ \frac{\partial U}{\partial y_{j,t}} - \sum_i \lambda_{i,t} \frac{\partial f_i}{\partial y_{j,t}} - \beta \lambda_{i,t+1} \frac{\partial f_i}{\partial y_{j,t+1}} - \frac{\lambda_{i,t-1}}{\beta} \frac{\partial f_i}{\partial y_{j,t-1}} \right] = 0
 ```
 
-Simplifying by multiplying by `β^{-t}` gives the FOC shown above.
-
 ## API Reference
 
 ```@docs
-get_ramsey_equations
-print_ramsey_equations
-ramsey_summary
+@ramsey
+parse_ramsey_block
+transform_equations_for_ramsey
 ```
