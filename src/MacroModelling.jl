@@ -4808,7 +4808,11 @@ function solve_steady_state!(𝓂::ℳ;
     
     parameters_in_equations = []
 
-    for (i, parss) in enumerate(𝓂.parameters) 
+    # Include both regular parameters and missing parameters
+    # Missing parameters will be filled in later via write_parameters_input!
+    all_params_for_equations = vcat(𝓂.parameters, 𝓂.missing_parameters)
+
+    for (i, parss) in enumerate(all_params_for_equations) 
         if parss ∈ union(atoms_in_equations, relevant_pars_across)
             push!(parameters_in_equations, :($parss = parameters[$i]))
         end
@@ -4816,10 +4820,10 @@ function solve_steady_state!(𝓂::ℳ;
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
+        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, all_params_for_equations)))
     end
 
-    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
+    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), all_params_for_equations))
 
     𝓂.SS_dependencies = dependencies
 
@@ -4851,7 +4855,7 @@ function solve_steady_state!(𝓂::ℳ;
     # fix parameter bounds
     par_bounds = []
     
-    for varpar in intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across))
+    for varpar in intersect(all_params_for_equations, union(atoms_in_equations, relevant_pars_across))
         if haskey(𝓂.bounds, varpar)
             push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.bounds[varpar][1])),$(𝓂.bounds[varpar][2]))))
         end
