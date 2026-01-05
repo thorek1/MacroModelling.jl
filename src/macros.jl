@@ -1096,6 +1096,8 @@ macro parameters(𝓂,ex...)
     perturbation_order = 1
     guess = Dict{Symbol,Float64}()
     simplify = true
+    steady_state_function = nothing
+    calibrated_parameters_function = nothing
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -1117,6 +1119,10 @@ macro parameters(𝓂,ex...)
                         guess = x.args[2] :
                     x.args[1] == :simplify && x.args[2] isa Bool ?
                         simplify = x.args[2] :
+                    x.args[1] == :steady_state_function ?
+                        steady_state_function = x.args[2] :
+                    x.args[1] == :calibrated_parameters_function ?
+                        calibrated_parameters_function = x.args[2] :
                     begin
                         @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@parameters` for valid options."
                         x
@@ -1664,6 +1670,15 @@ macro parameters(𝓂,ex...)
     
             if !$silent
                 println(round(time() - start_time, digits = 3), " seconds")
+            end
+        end
+
+        # Set custom steady state function if provided
+        if !isnothing($(esc(steady_state_function)))
+            if !isnothing($(esc(calibrated_parameters_function)))
+                set_steady_state!(mod.$𝓂, $(esc(steady_state_function)), calibrated_parameters = $(esc(calibrated_parameters_function)))
+            else
+                set_steady_state!(mod.$𝓂, $(esc(steady_state_function)))
             end
         end
 

@@ -151,6 +151,9 @@ const ParameterType = Union{Nothing,
                             Matrix{Real},
                             Vector{Float64} } where S <: AbstractString
 
+# Type for steady state function argument
+# Can be a function (f(params) -> ss_values), a Tuple of (ss_func, calib_func), or nothing
+const SteadyStateFunctionType = Union{Nothing, Function, Tuple{Function, Function}}
 
 using DispatchDoctor
 # @stable default_mode = "disable" begin
@@ -6859,6 +6862,7 @@ end
 
 function solve!(𝓂::ℳ; 
                 parameters::ParameterType = nothing, 
+                steady_state_function::SteadyStateFunctionType = nothing,
                 dynamics::Bool = false, 
                 algorithm::Symbol = :first_order, 
                 opts::CalculationOptions = merge_calculation_options(),
@@ -6870,6 +6874,17 @@ function solve!(𝓂::ℳ;
                 # tol::AbstractFloat = 1e-12)
 
     @assert algorithm ∈ all_available_algorithms
+    
+    # Handle steady_state_function argument
+    if !isnothing(steady_state_function)
+        if steady_state_function isa Tuple
+            # Tuple of (ss_func, calibrated_parameters_func)
+            set_steady_state!(𝓂, steady_state_function[1], calibrated_parameters = steady_state_function[2])
+        else
+            # Just the ss function
+            set_steady_state!(𝓂, steady_state_function)
+        end
+    end
     
     # @timeit_debug timer "Write parameter inputs" begin
 

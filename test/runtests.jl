@@ -3877,7 +3877,64 @@ if test_set == "basic"
         @test size(sim, 1) == 4  # 4 variables
         @test size(sim, 2) == 40  # default periods
 
+        # Test steady_state_function as argument in @parameters macro
+        function my_ss_func_macro(params)
+            std_z, ρ, δ, α, β = params
+            k_ss = ((1/β - 1 + δ) / α)^(1/(α - 1))
+            q_ss = k_ss^α
+            c_ss = q_ss - δ * k_ss
+            z_ss = 0.0
+            return [c_ss, k_ss, q_ss, z_ss]
+        end
+
+        @model RBC_macro_ss begin
+            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_macro_ss steady_state_function = my_ss_func_macro begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Verify macro-defined SS function is set
+        @test !isnothing(RBC_macro_ss.custom_steady_state_function)
+        
+        macro_ss = get_steady_state(RBC_macro_ss)
+        @test isapprox(default_ss(:c, :Steady_state), macro_ss(:c, :Steady_state), rtol = 1e-10)
+
+        # Test steady_state_function as function argument
+        @model RBC_func_arg begin
+            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_func_arg begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Test steady_state_function in get_irf
+        irf_func = get_irf(RBC_func_arg, steady_state_function = my_ss_func_macro)
+        @test size(irf_func, 1) == 4
+
+        # Test steady_state_function in get_steady_state
+        ss_func = get_steady_state(RBC_func_arg, steady_state_function = my_ss_func_macro)
+        @test isapprox(default_ss(:c, :Steady_state), ss_func(:c, :Steady_state), rtol = 1e-10)
+
         RBC_custom_ss = nothing
+        RBC_macro_ss = nothing
+        RBC_func_arg = nothing
     end
     GC.gc()
 
