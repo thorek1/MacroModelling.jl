@@ -109,7 +109,7 @@
 - [ ] check warnings, errors throughout. check suppress not interfering with pigeons
 - [ ] functions to reverse state_update (input: previous shock and current state, output previous state), find shocks corresponding to bringing one state to the next
 - [ ] cover nested case: min(50,a+b+max(c,10))
-- [ ] add balanced growth path handling
+- [x] add balanced growth path handling
 - [ ] autocorr and covariance with derivatives. return 3d array
 - [ ] add pydsge and econpizza to overview
 - [ ] add for loop parser in @parameters
