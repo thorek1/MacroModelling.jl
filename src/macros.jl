@@ -887,6 +887,7 @@ macro model(𝓂,ex...)
                         $SS_solve_func,
                         # $SS_calib_func,
                         $SS_check_func,
+                        nothing, # custom_steady_state_function
                         $∂SS_equations_∂parameters,
                         $∂SS_equations_∂SS_and_pars,
                         $SS_dependencies,

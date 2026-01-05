@@ -3801,7 +3801,85 @@ if test_set == "basic"
     end
 
 
+    @testset verbose = true "Custom steady state function" begin
+        # Test custom steady state function with simple RBC model
+        @model RBC_custom_ss begin
+            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
 
+        @parameters RBC_custom_ss begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Get default steady state
+        default_ss = get_steady_state(RBC_custom_ss)
+        
+        # Get variable order for custom function
+        var_order = sort(union(RBC_custom_ss.var, RBC_custom_ss.exo_past, RBC_custom_ss.exo_future))
+        @test var_order == [:c, :k, :q, :z]
+        
+        # Define custom steady state function
+        # Variables in order: [:c, :k, :q, :z] (alphabetically sorted)
+        # Parameters in order: [:std_z, :ρ, :δ, :α, :β] (declaration order)
+        function my_steady_state_rbc(params)
+            std_z, ρ, δ, α, β = params
+            
+            # Analytical steady state for RBC model
+            k_ss = ((1/β - 1 + δ) / α)^(1/(α - 1))
+            q_ss = k_ss^α
+            c_ss = q_ss - δ * k_ss
+            z_ss = 0.0
+            
+            return [c_ss, k_ss, q_ss, z_ss]
+        end
+
+        # Test custom function directly
+        custom_result = my_steady_state_rbc(RBC_custom_ss.parameter_values)
+        @test length(custom_result) == 4
+
+        # Set custom steady state function
+        set_steady_state!(RBC_custom_ss, my_steady_state_rbc)
+        
+        # Get steady state with custom function
+        custom_ss = get_steady_state(RBC_custom_ss)
+        
+        # Compare with default (should be essentially the same)
+        @test isapprox(default_ss(:c, :Steady_state), custom_ss(:c, :Steady_state), rtol = 1e-10)
+        @test isapprox(default_ss(:k, :Steady_state), custom_ss(:k, :Steady_state), rtol = 1e-10)
+        @test isapprox(default_ss(:q, :Steady_state), custom_ss(:q, :Steady_state), rtol = 1e-10)
+        @test isapprox(default_ss(:z, :Steady_state), custom_ss(:z, :Steady_state), rtol = 1e-10)
+        
+        # Test that model can be solved with custom SS function
+        irf_custom = get_irf(RBC_custom_ss)
+        @test size(irf_custom, 1) == 4  # 4 variables
+        
+        # Test clear_steady_state!
+        clear_steady_state!(RBC_custom_ss)
+        @test isnothing(RBC_custom_ss.custom_steady_state_function)
+        
+        # Steady state should still work after clearing
+        after_clear_ss = get_steady_state(RBC_custom_ss)
+        @test isapprox(default_ss(:c, :Steady_state), after_clear_ss(:c, :Steady_state), rtol = 1e-10)
+
+        # Test with verbose option
+        set_steady_state!(RBC_custom_ss, my_steady_state_rbc, verbose = false)
+        @test !isnothing(RBC_custom_ss.custom_steady_state_function)
+        
+        # Test simulation works with custom SS function
+        sim = simulate(RBC_custom_ss)
+        @test size(sim, 1) == 4  # 4 variables
+        @test size(sim, 2) == 40  # default periods
+
+        RBC_custom_ss = nothing
+    end
+    GC.gc()
 
 
     @testset verbose = true "Plotting" begin

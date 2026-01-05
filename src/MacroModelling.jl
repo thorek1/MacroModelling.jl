@@ -182,6 +182,7 @@ include("./filter/kalman.jl")
 
 
 export @model, @parameters, solve!
+export set_steady_state!, clear_steady_state!
 
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
 export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
@@ -1032,6 +1033,196 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
     𝓂.solution.perturbation.second_order_solution = spzeros(0,0)
     𝓂.solution.perturbation.third_order_solution = spzeros(0,0)
 
+    return nothing
+end
+
+
+"""
+$(SIGNATURES)
+Set a custom function to calculate the steady state of the model.
+
+This function allows users to provide their own steady state solver, which can be useful when:
+- The default numerical solver has difficulty finding the steady state
+- An analytical solution for the steady state is known
+- A more efficient custom solver is available
+
+# Arguments
+- `𝓂`: Model object
+- `f`: A function that takes a vector of parameter values (in declaration order) and returns a vector of steady state values for all variables (in the order returned by `get_variables(𝓂)`).
+
+# Keyword Arguments
+- `calibrated_parameters`: A function that takes the parameter vector and returns a vector of calibrated parameter values in the order of `𝓂.calibration_equations_parameters`. If the model has calibration equations (parameters determined by targeting steady state values), this function must be provided to return those calibrated parameter values. Default is `nothing`.
+- `verbose` [Default: `false`, Type: `Bool`]: Print information about the variable and parameter ordering.
+
+# Details
+The custom function `f` should have the signature:
+```julia
+f(parameters::Vector{Float64}) -> Vector{Float64}
+```
+
+Where:
+- Input: Parameter values in the declaration order (as defined in `@parameters`). Use `get_parameters(𝓂)` to see the parameter order.
+- Output: Steady state values for all variables in the order returned by `get_variables(𝓂)`.
+
+If the model has calibration equations (e.g., `k[ss] / q[ss] = 2.5 | α`), the `calibrated_parameters` function must also be provided:
+```julia
+calibrated_parameters(parameters::Vector{Float64}) -> Vector{Float64}
+```
+Where the output is the values of calibrated parameters in the order of `𝓂.calibration_equations_parameters`.
+
+# Examples
+```julia
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+# Define a custom steady state function
+# get_variables(RBC) returns [:c, :k, :q, :z] (sorted alphabetically)
+# get_parameters(RBC) returns [:std_z, :ρ, :δ, :α, :β] (in declaration order)
+function my_steady_state(params)
+    std_z, ρ, δ, α, β = params
+    
+    # Analytical steady state
+    k_ss = ((1/β - 1 + δ) / α)^(1/(α - 1))
+    q_ss = k_ss^α
+    c_ss = q_ss - δ * k_ss
+    z_ss = 0.0
+    
+    return [c_ss, k_ss, q_ss, z_ss]  # Order matches get_variables(RBC)
+end
+
+set_steady_state!(RBC, my_steady_state)
+
+# Verify the steady state
+get_steady_state(RBC)
+```
+
+# Returns
+- `nothing`
+
+See also: [`get_variables`](@ref), [`get_parameters`](@ref), [`get_steady_state`](@ref)
+"""
+function set_steady_state!(𝓂::ℳ, f::Function; 
+                           calibrated_parameters::Union{Nothing, Function} = nothing, 
+                           verbose::Bool = false)
+    # Get the variable order (sorted union of var, exo_past, exo_future)
+    var_order = sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))
+    n_vars = length(var_order)
+    n_calib_params = length(𝓂.calibration_equations_parameters)
+    
+    # Check if model has calibration equations
+    if n_calib_params > 0 && isnothing(calibrated_parameters)
+        error("Model has $(n_calib_params) calibration equation parameter(s): $(𝓂.calibration_equations_parameters). " *
+              "You must provide a `calibrated_parameters` function that returns these values. " *
+              "The function should take the parameter vector and return a vector of calibrated parameter values " *
+              "in the order: $(𝓂.calibration_equations_parameters).")
+    end
+    
+    if verbose
+        println("Parameter order (input to custom function):")
+        println("  ", 𝓂.parameters)
+        println("\nVariable order (output from custom function):")
+        println("  ", var_order)
+        if n_calib_params > 0
+            println("\nCalibrated parameters order (from calibrated_parameters function):")
+            println("  ", 𝓂.calibration_equations_parameters)
+        end
+    end
+    
+    # Create wrapper function that matches the internal SS_solve_func signature
+    # Internal signature: (parameter_values, 𝓂, tol, verbose, update_cache, solver_parameters) -> (SS_and_pars, (error, iters))
+    function custom_ss_wrapper(parameter_values::Vector{T}, model, tol, verbosity, update_cache, solver_params) where T
+        try
+            # Call the user function with parameter values
+            ss_values = f(parameter_values)
+            
+            # Check output length
+            if length(ss_values) != n_vars
+                error_msg = "Custom steady state function returned $(length(ss_values)) values, " *
+                           "but expected $(n_vars) values (one for each variable in get_variables(model))."
+                if verbosity
+                    println(error_msg)
+                end
+                return zeros(T, n_vars + n_calib_params), (T(1e10), 0)
+            end
+            
+            # Get calibrated parameters if model has calibration equations
+            if n_calib_params > 0
+                calib_params = calibrated_parameters(parameter_values)
+                if length(calib_params) != n_calib_params
+                    error_msg = "calibrated_parameters function returned $(length(calib_params)) values, " *
+                               "but expected $(n_calib_params) values."
+                    if verbosity
+                        println(error_msg)
+                    end
+                    return zeros(T, n_vars + n_calib_params), (T(1e10), 0)
+                end
+                SS_and_pars = T[ss_values..., calib_params...]
+            else
+                SS_and_pars = T[ss_values...]
+            end
+            
+            # Return the steady state with zero error (user function is assumed to be correct)
+            return SS_and_pars, (T(0.0), 0)
+        catch e
+            if verbosity
+                println("Error in custom steady state function: ", e)
+            end
+            return zeros(T, n_vars + n_calib_params), (T(1e10), 0)
+        end
+    end
+    
+    # Store the custom function
+    𝓂.custom_steady_state_function = custom_ss_wrapper
+    
+    # Mark the solution as outdated
+    𝓂.solution.outdated_NSSS = true
+    for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+        push!(𝓂.solution.outdated_algorithms, alg)
+    end
+    
+    return nothing
+end
+
+
+"""
+$(SIGNATURES)
+Clear the custom steady state function and revert to using the default solver.
+
+# Arguments
+- `𝓂`: Model object
+
+# Returns
+- `nothing`
+
+# Examples
+```julia
+# Remove the custom steady state function
+clear_steady_state!(RBC)
+```
+"""
+function clear_steady_state!(𝓂::ℳ)
+    𝓂.custom_steady_state_function = nothing
+    
+    # Mark the solution as outdated
+    𝓂.solution.outdated_NSSS = true
+    for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+        push!(𝓂.solution.outdated_algorithms, alg)
+    end
+    
     return nothing
 end
 
@@ -9557,7 +9748,13 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                     opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS" begin
-    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+    
+    # Use custom steady state function if available, otherwise use default solver
+    if !isnothing(𝓂.custom_steady_state_function)
+        SS_and_pars, (solution_error, iters) = 𝓂.custom_steady_state_function(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+    else
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+    end
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose 
@@ -9580,7 +9777,12 @@ function rrule(::typeof(get_NSSS_and_parameters),
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
 
-    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+    # Use custom steady state function if available, otherwise use default solver
+    if !isnothing(𝓂.custom_steady_state_function)
+        SS_and_pars, (solution_error, iters) = 𝓂.custom_steady_state_function(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+    else
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+    end
 
     # end # timeit_debug
 
