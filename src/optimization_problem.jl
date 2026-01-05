@@ -885,7 +885,251 @@ function parse_exogenous_block(block_expr::Expr)
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Preprocessing for @model macro integration
+# ─────────────────────────────────────────────────────────────────────────────
+
+"""
+    parse_optimization_syntax(equations_block)
+
+Preprocess model equations to detect and transform optimization problem syntax.
+
+Supported syntax:
+```julia
+U[0] = maximise(log(C[0]) + ψ * log(1 - L[0]) + β * U[1],
+    controls = [C[0], L[0], K[1]]
+) | begin
+    C[0] + I[0] = π[0] + r[0] * K[-1] + w[0] * L[0]
+    K[0] = (1 - δ) * K[-1] + I[0]
+end
+```
+
+Also supports `maximize` (American spelling) and `minimise`/`minimize`.
+
+Returns transformed equations block with optimization problems replaced by their FOCs.
+"""
+function parse_optimization_syntax(equations_block::Expr)
+    new_args = Any[]
+    
+    for arg in equations_block.args
+        if arg isa Expr
+            transformed = transform_optimization_expr(arg)
+            if transformed isa Vector
+                append!(new_args, transformed)
+            else
+                push!(new_args, transformed)
+            end
+        else
+            push!(new_args, arg)
+        end
+    end
+    
+    return Expr(:block, new_args...)
+end
+
+"""
+    transform_optimization_expr(expr)
+
+Transform a single expression, detecting optimization problem syntax.
+Returns either the original expression or a vector of FOC equations.
+"""
+function transform_optimization_expr(expr::Expr)
+    # Check for pattern: LHS = maximise/minimize(...) | begin ... end
+    # or: LHS = maximise/minimize(..., subject_to = begin ... end)
+    
+    if expr.head == :(=) && expr.args[2] isa Expr
+        rhs = expr.args[2]
+        lhs = expr.args[1]
+        
+        # First, recursively unblock the RHS
+        rhs = unblock(rhs)
+        
+        # Pattern 1: LHS = maximise(...) | begin ... end
+        if rhs isa Expr && rhs.head == :call && rhs.args[1] == :|
+            opt_call = rhs.args[2]
+            constraints_block = rhs.args[3]
+            
+            if opt_call isa Expr && opt_call.head == :call && 
+               opt_call.args[1] in (:maximise, :maximize, :minimise, :minimize)
+                return process_optimization_problem(lhs, opt_call, constraints_block)
+            end
+        end
+        
+        # Pattern 2: LHS = maximise(..., subject_to = begin ... end)
+        if rhs isa Expr && rhs.head == :call && rhs.args[1] in (:maximise, :maximize, :minimise, :minimize)
+            # Look for subject_to keyword argument
+            subject_to_block = nothing
+            for arg in rhs.args
+                if arg isa Expr && arg.head == :kw && arg.args[1] == :subject_to
+                    subject_to_block = arg.args[2]
+                    break
+                end
+            end
+            
+            if subject_to_block !== nothing
+                return process_optimization_problem(lhs, rhs, subject_to_block)
+            end
+        end
+        
+        # Pattern 3: LHS = maximise(...) do begin ... end (do block syntax)
+        if rhs isa Expr && rhs.head == :do && rhs.args[1] isa Expr && rhs.args[1].head == :call
+            opt_call = rhs.args[1]
+            if opt_call.args[1] in (:maximise, :maximize, :minimise, :minimize)
+                # Extract constraints from do block
+                do_block = rhs.args[2]
+                if do_block isa Expr && do_block.head == :(->)
+                    constraints_block = do_block.args[2]
+                    return process_optimization_problem(lhs, opt_call, constraints_block)
+                end
+            end
+        end
+        
+        # Not an optimization expression - return with unblocked RHS
+        return Expr(:(=), lhs, rhs)
+    end
+    
+    return expr
+end
+
+"""
+    process_optimization_problem(lhs, opt_call, constraints_block)
+
+Process an optimization problem and return the derived FOC equations.
+
+Arguments:
+- lhs: Left-hand side of the objective equation (e.g., U[0])
+- opt_call: The maximise/minimize call expression
+- constraints_block: Block containing constraint equations
+
+Returns a vector of expressions representing the FOCs and constraints.
+"""
+function process_optimization_problem(lhs::Expr, opt_call::Expr, constraints_block::Expr)
+    # Extract optimization type
+    opt_type = opt_call.args[1]
+    is_maximization = opt_type in (:maximise, :maximize)
+    
+    # Extract objective function (first positional argument)
+    objective_expr = opt_call.args[2]
+    
+    # Extract controls from keyword argument
+    controls = Symbol[]
+    discount_factor = :β  # Default
+    
+    for arg in opt_call.args[3:end]
+        if arg isa Expr && arg.head == :kw
+            if arg.args[1] == :controls
+                controls_list = arg.args[2]
+                if controls_list isa Expr && controls_list.head == :vect
+                    for ctrl in controls_list.args
+                        if ctrl isa Expr && ctrl.head == :ref
+                            push!(controls, ctrl.args[1])
+                        elseif ctrl isa Symbol
+                            push!(controls, ctrl)
+                        end
+                    end
+                end
+            elseif arg.args[1] == :discount_factor
+                discount_factor = arg.args[2]
+            end
+        end
+    end
+    
+    # Extract constraints from the constraints block
+    constraints = Expr[]
+    if constraints_block isa Expr && constraints_block.head == :block
+        for item in constraints_block.args
+            if item isa Expr && item.head == :(=)
+                push!(constraints, item)
+            end
+        end
+    elseif constraints_block isa Expr && constraints_block.head == :vect
+        # Array syntax for constraints
+        for item in constraints_block.args
+            if item isa Expr && item.head == :(=)
+                push!(constraints, item)
+            end
+        end
+    end
+    
+    # Build the full objective: LHS = objective_expr
+    full_objective = Expr(:(=), lhs, objective_expr)
+    
+    # Generate unique multiplier name prefix based on LHS variable
+    if lhs isa Expr && lhs.head == :ref
+        block_name = string(lhs.args[1])
+    else
+        block_name = "opt"
+    end
+    
+    # Derive FOCs
+    focs, multipliers = derive_focs(
+        controls = controls,
+        objective = full_objective,
+        constraints = constraints,
+        discount_factor = discount_factor,
+        block_name = block_name
+    )
+    
+    # For minimization, negate the FOCs from the objective part
+    # (The constraint derivatives don't change sign)
+    if !is_maximization
+        focs = [negate_objective_terms(foc) for foc in focs]
+    end
+    
+    # Build the result: FOCs + constraints
+    result = Expr[]
+    
+    # Add FOCs as equations (FOC = 0 form, converted to LHS = RHS by moving terms)
+    # The @model macro expects equations in the form: expr1 = expr2 (implying expr1 - expr2 = 0)
+    # Our FOCs are already in the form "expression = 0", so we convert them
+    for foc in focs
+        if foc isa Expr
+            # Convert FOC expression to equation form: foc_expr = 0
+            push!(result, Expr(:(=), foc, 0))
+        end
+    end
+    
+    # Add constraints as equations (clean up any block wrappers)
+    for constraint in constraints
+        if constraint isa Expr && constraint.head == :(=)
+            # Clean the RHS if it has a block wrapper
+            lhs_c = constraint.args[1]
+            rhs_c = constraint.args[2]
+            
+            # Unwrap block expressions
+            if rhs_c isa Expr && rhs_c.head == :block
+                # Find the actual expression inside the block
+                for item in rhs_c.args
+                    if item isa Expr
+                        rhs_c = item
+                        break
+                    end
+                end
+            end
+            
+            push!(result, Expr(:(=), lhs_c, rhs_c))
+        else
+            push!(result, constraint)
+        end
+    end
+    
+    return result
+end
+
+"""
+    negate_objective_terms(expr)
+
+For minimization problems, negate the objective derivative terms.
+This is a simplified approach - in practice, minimization is the same as
+maximizing the negative.
+"""
+function negate_objective_terms(expr)
+    # For now, just return as-is since FOC = 0 structure is the same
+    # The derivative signs are already correct from the Lagrangian
+    return expr
+end
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Export functions
 # ─────────────────────────────────────────────────────────────────────────────
 
-export derive_focs
+export derive_focs, parse_optimization_syntax
