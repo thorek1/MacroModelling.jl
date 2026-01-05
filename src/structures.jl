@@ -281,6 +281,31 @@ mutable struct solver_parameters
     backtracking_order::Int
 end
 
+"""
+    BalancedGrowthInfo
+
+Stores information about balanced growth path handling.
+- `trend_vars`: Variables declared as trend variables with their growth factors
+- `deflators`: Mapping from variables to their deflators (for detrending)
+- `detrended_vars`: Variables that have been detrended
+- `original_to_detrended`: Mapping from original variable names to detrended versions
+"""
+struct BalancedGrowthInfo
+    trend_vars::Dict{Symbol, Union{Symbol, Expr}}  # trend_var => growth_factor expression
+    deflators::Dict{Symbol, Symbol}                # variable => deflator (trend_var)
+    detrended_vars::Set{Symbol}                    # set of variables that are detrended
+    original_to_detrended::Dict{Symbol, Symbol}    # original_var => detrended_var
+end
+
+function BalancedGrowthInfo()
+    BalancedGrowthInfo(
+        Dict{Symbol, Union{Symbol, Expr}}(),
+        Dict{Symbol, Symbol}(),
+        Set{Symbol}(),
+        Dict{Symbol, Symbol}()
+    )
+end
+
 mutable struct ℳ
     model_name::Any
     # SS_optimizer
@@ -294,6 +319,9 @@ mutable struct ℳ
     precompile::Bool
 
     guess::Dict{Symbol, Float64}
+    
+    # Balanced growth path information
+    balanced_growth::BalancedGrowthInfo
 
     # ss
     # dynamic_variables::Vector{Symbol}

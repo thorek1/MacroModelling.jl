@@ -2,6 +2,52 @@ const all_available_algorithms = [:first_order, :second_order, :pruned_second_or
 
 
 """
+    apply_deflators(model_ex::Expr, deflator_dict::Dict{Symbol, Symbol})
+
+Transform model equations to detrended form by applying deflators. 
+
+For each variable `v` with deflator `d`, replaces `v[t]` with `(v[t] * d[t])` in the equations.
+This allows users to write models in terms of detrended variables while the internal 
+representation maintains the relationship to the original (trending) variables.
+
+The transformation applied is:
+- `v[0]` → `(v[0] * d[0])`      (present)
+- `v[-1]` → `(v[-1] * d[-1])`   (past)
+- `v[1]` → `(v[1] * d[1])`      (future)
+- `v[ss]` → `(v[ss] * d[ss])`   (steady state)
+
+This is the inverse transformation of what's commonly called "detrending":
+if the original trending variable is `V` and detrended variable is `v = V/d`,
+then `V = v * d`, which is what we substitute.
+"""
+function apply_deflators(model_ex::Expr, deflator_dict::Dict{Symbol, Symbol})
+    if isempty(deflator_dict)
+        return model_ex
+    end
+    
+    # Transform each equation in the model
+    transformed_ex = postwalk(x -> 
+        x isa Expr ?
+            x.head == :ref ?
+                # Check if this is a variable reference that needs deflating
+                x.args[1] isa Symbol && haskey(deflator_dict, x.args[1]) ?
+                    # Apply deflator: v[t] → (v[t] * d[t])
+                    let var = x.args[1], 
+                        time_idx = x.args[2],
+                        deflator = deflator_dict[var]
+                        # Create the deflated expression: v[t] * d[t]
+                        Expr(:call, :*, x, Expr(:ref, deflator, time_idx))
+                    end :
+                x :
+            x :
+        x,
+    model_ex)
+    
+    return transformed_ex
+end
+
+
+"""
 $(SIGNATURES)
 Parses the model equations and assigns them to an object.
 
@@ -28,6 +74,20 @@ Exogenous variables (shocks) can have the following:
 Parameters enter the equations without square brackets.
 
 If an equation contains a `max` or `min` operator, the default dynamic (first order) solution of the model will enforce the occasionally binding constraint. This enforcement can be disabled by setting `ignore_obc = true` in the relevant function calls.
+
+# Balanced Growth Path
+
+For models with a balanced growth path (non-stationary variables growing at constant rates), you can specify deflators to automatically transform the model to stationary form. Use the `deflator` option to specify which variables should be deflated and by which trend variable:
+
+```julia
+@model RBC_growth deflator = Dict(:y => :A, :k => :A, :c => :A) begin
+    # Equations written in terms of detrended variables (y, k, c are automatically 
+    # transformed to y/A, k/A, c/A where A is the trend variable)
+    ...
+end
+```
+
+The trend variable (`A` in the example) must be defined in the model with an equation describing its evolution (typically `A[0] = γ * A[-1]` for deterministic growth or with a shock for stochastic growth).
 
 # Examples
 ```julia
@@ -58,6 +118,7 @@ macro model(𝓂,ex...)
     verbose = false
     precompile = false
     max_obc_horizon = 40
+    deflator_dict = Dict{Symbol, Symbol}()
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -69,6 +130,23 @@ macro model(𝓂,ex...)
                         precompile = x.args[2] :
                     x.args[1] == :max_obc_horizon && x.args[2] isa Int ?
                         max_obc_horizon = x.args[2] :
+                    x.args[1] == :deflator ?
+                        begin
+                            # Parse deflator dictionary
+                            # Can be a Dict expression or a variable holding the dict
+                            deflator_expr = x.args[2]
+                            if deflator_expr isa Expr && deflator_expr.head == :call && deflator_expr.args[1] == :Dict
+                                # Parse Dict(:y => :A, :k => :A) syntax
+                                for pair in deflator_expr.args[2:end]
+                                    if pair isa Expr && pair.head == :call && pair.args[1] == :(=>)
+                                        var_sym = pair.args[2] isa QuoteNode ? pair.args[2].value : pair.args[2]
+                                        deflator_sym = pair.args[3] isa QuoteNode ? pair.args[3].value : pair.args[3]
+                                        deflator_dict[var_sym] = deflator_sym
+                                    end
+                                end
+                            end
+                            x
+                        end :
                     begin
                         @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@model` for valid options."
                         x
@@ -123,6 +201,11 @@ macro model(𝓂,ex...)
     model_ex = remove_nothing(model_ex::Expr)::Expr
 
     model_ex = parse_occasionally_binding_constraints(model_ex::Expr, max_obc_horizon = max_obc_horizon)::Expr
+    
+    # Apply deflator transformation for balanced growth path handling
+    if !isempty(deflator_dict)
+        model_ex = apply_deflators(model_ex, deflator_dict)
+    end
     
     # obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
 
@@ -824,6 +907,14 @@ macro model(𝓂,ex...)
     # default_optimizer = Optimisers.Adam
     # default_optimizer = NLopt.LN_BOBYQA
     
+    # Create balanced growth info from deflator_dict
+    balanced_growth_info = BalancedGrowthInfo(
+        Dict{Symbol, Union{Symbol, Expr}}(),  # trend_vars - to be filled in @parameters
+        deflator_dict,
+        Set(keys(deflator_dict)),
+        Dict{Symbol, Symbol}()  # original_to_detrended - not used in this direction
+    )
+    
     #assemble data container
     model_name = string(𝓂)
     quote
@@ -841,6 +932,8 @@ macro model(𝓂,ex...)
                         false, # precompile - to be set by @parameters
 
                         Dict{Symbol, Float64}(), # guess
+                        
+                        $balanced_growth_info, # balanced growth path information
 
                         sort($aux),
                         sort(collect($aux_present)), 
@@ -1012,6 +1105,11 @@ Parameters can be defined in either of the following ways:
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non-stochastic steady state symbolically and fall back to a numerical solution if not possible
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. When working with higher order perturbation later on, respective derivatives will be taken at that stage.
 - `simplify` [Default: `true`, Type: `Bool`]: whether to eliminate redundant variables and simplify the non-stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
+- `trend_var` [Type: `Dict{Symbol, <:Union{Symbol, Expr}}`]: Specify trend variables and their growth factors for balanced growth path models. The keys are trend variable names and values are the growth factor expressions. Example: `trend_var = Dict(:A => :γ)` means variable `A` grows at rate `γ` per period (i.e., `A[0] = γ * A[-1]`).
+
+# Balanced Growth Path
+
+When using the `deflator` option in `@model` and `trend_var` option in `@parameters`, the package automatically handles models with a balanced growth path. The trend variables must be defined in the model equations (typically as `A[0] = γ * A[-1]` for deterministic growth).
 
 # Delayed parameter definition
 Not all parameters need to be defined in the `@parameters` macro. Calibration equations using the `|` syntax and parameters defined as functions of other parameters must be declared here, but simple parameter value assignments (e.g., `α = 0.5`) can be deferred and provided later by passing them to any function that accepts the `parameters` argument (e.g., [`get_irf`](@ref), [`get_steady_state`](@ref), [`simulate`](@ref)). 
@@ -1095,6 +1193,7 @@ macro parameters(𝓂,ex...)
     perturbation_order = 1
     guess = Dict{Symbol,Float64}()
     simplify = true
+    trend_var_dict = Dict{Symbol, Union{Symbol, Expr}}()
 
     for exp in ex[1:end-1]
         postwalk(x -> 
@@ -1116,6 +1215,21 @@ macro parameters(𝓂,ex...)
                         guess = x.args[2] :
                     x.args[1] == :simplify && x.args[2] isa Bool ?
                         simplify = x.args[2] :
+                    x.args[1] == :trend_var ?
+                        begin
+                            # Parse trend_var dictionary: Dict(:A => :γ) or Dict(:A => :(exp(g)))
+                            trend_var_expr = x.args[2]
+                            if trend_var_expr isa Expr && trend_var_expr.head == :call && trend_var_expr.args[1] == :Dict
+                                for pair in trend_var_expr.args[2:end]
+                                    if pair isa Expr && pair.head == :call && pair.args[1] == :(=>)
+                                        trend_sym = pair.args[2] isa QuoteNode ? pair.args[2].value : pair.args[2]
+                                        growth_factor = pair.args[3] isa QuoteNode ? pair.args[3].value : pair.args[3]
+                                        trend_var_dict[trend_sym] = growth_factor
+                                    end
+                                end
+                            end
+                            x
+                        end :
                     begin
                         @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@parameters` for valid options."
                         x
@@ -1561,6 +1675,13 @@ macro parameters(𝓂,ex...)
         
         # Store precompile flag in model container
         mod.$𝓂.precompile = $precompile
+        
+        # Update balanced growth info with trend_var information
+        if !isempty($trend_var_dict)
+            for (trend_sym, growth_factor) in $trend_var_dict
+                mod.$𝓂.balanced_growth.trend_vars[trend_sym] = growth_factor
+            end
+        end
         
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed 

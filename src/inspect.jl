@@ -943,4 +943,78 @@ function get_jump_variables(𝓂::ℳ)::Vector{String}
     𝓂.timings.future_not_past_and_mixed |> collect |> sort .|> x -> replace.(string.(x), "◖" => "{", "◗" => "}")
 end
 
+
+"""
+$(SIGNATURES)
+Returns information about the balanced growth path configuration of the model.
+
+# Arguments
+- $MODEL®
+
+# Returns
+- `NamedTuple` with the following fields:
+  - `has_balanced_growth`: `Bool` indicating whether balanced growth path handling is enabled
+  - `trend_vars`: `Dict{Symbol, Union{Symbol, Expr}}` mapping trend variables to their growth factors
+  - `deflators`: `Dict{Symbol, Symbol}` mapping variables to their deflators (trend variables)
+  - `detrended_vars`: `Vector{Symbol}` list of variables that are detrended
+
+# Examples
+```julia
+using MacroModelling
+
+@model RBC_growth deflator = Dict(:y => :A, :k => :A, :c => :A) begin
+    # ... model equations ...
+end
+
+@parameters RBC_growth trend_var = Dict(:A => :γ) begin
+    γ = 1.02  # 2% growth rate
+    # ... other parameters ...
+end
+
+get_balanced_growth_path_info(RBC_growth)
+```
+"""
+function get_balanced_growth_path_info(𝓂::ℳ)
+    bg = 𝓂.balanced_growth
+    return (
+        has_balanced_growth = !isempty(bg.deflators) || !isempty(bg.trend_vars),
+        trend_vars = bg.trend_vars,
+        deflators = bg.deflators,
+        detrended_vars = collect(bg.detrended_vars)
+    )
+end
+
+
+"""
+$(SIGNATURES)
+Returns `true` if the model has balanced growth path handling enabled, `false` otherwise.
+
+A model has balanced growth path handling enabled if either deflators have been specified
+in the `@model` macro or trend variables have been specified in the `@parameters` macro.
+
+# Arguments
+- $MODEL®
+
+# Returns
+- `Bool`
+
+# Examples
+```julia
+using MacroModelling
+
+@model RBC begin
+    # standard RBC equations without growth
+end
+
+@parameters RBC begin
+    # parameters
+end
+
+has_balanced_growth(RBC)  # returns false
+```
+"""
+function has_balanced_growth(𝓂::ℳ)::Bool
+    return !isempty(𝓂.balanced_growth.deflators) || !isempty(𝓂.balanced_growth.trend_vars)
+end
+
 end # dispatch_doctor
