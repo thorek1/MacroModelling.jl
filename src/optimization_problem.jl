@@ -537,11 +537,14 @@ function derive_single_foc(instant_objective, constraints::Vector{Expr}, multipl
 end
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Main @optimization_model macro
+# Main @optimization_model macro (EXPERIMENTAL - not fully implemented)
+# For now, use the derive_focs function directly. See models/gEcon_RBC_example.jl
 # ─────────────────────────────────────────────────────────────────────────────
 
 """
 $(SIGNATURES)
+**EXPERIMENTAL - Not fully implemented. Use `derive_focs` function directly instead.**
+
 Parses an optimization problem and derives the first-order conditions automatically.
 
 This macro allows users to specify DSGE models in terms of optimization problems 
@@ -885,4 +888,4 @@ end
 # Export functions
 # ─────────────────────────────────────────────────────────────────────────────
 
-export @optimization_model, derive_focs
+export derive_focs

@@ -182,7 +182,7 @@ include("./filter/kalman.jl")
 # end # DispatchDoctor
 
 
-export @model, @parameters, @optimization_model, solve!, derive_focs
+export @model, @parameters, solve!, derive_focs
 
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
 export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
