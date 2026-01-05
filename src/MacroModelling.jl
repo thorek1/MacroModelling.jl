@@ -210,7 +210,7 @@ export write_mod_file, write_dynare_file, write_to_dynare_file, write_to_dynare,
 
 export get_equations, get_steady_state_equations, get_dynamic_equations, get_calibration_equations, get_parameters, get_calibrated_parameters, get_parameters_in_equations, get_parameters_defined_by_parameters, get_parameters_defining_parameters, get_calibration_equation_parameters, get_variables, get_nonnegativity_auxiliary_variables, get_dynamic_auxiliary_variables, get_shocks, get_state_variables, get_jump_variables, get_missing_parameters, has_missing_parameters
 
-export @ramsey, parse_ramsey_block, transform_equations_for_ramsey
+export @ramsey, parse_ramsey_block, transform_equations_for_ramsey, generate_ramsey_model_code, print_ramsey_model_code
 
 # Internal
 export irf, girf

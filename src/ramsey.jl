@@ -782,7 +782,8 @@ function generate_ramsey_model_code(model_name::Symbol, result::NamedTuple,
     
     # Add zero for multiplier steady states (they should be zero at SS)
     for mult in result.multipliers
-        push!(param_exprs.args, :($(mult)_ss = 0.0))
+        mult_ss = Symbol(string(mult) * "_ss")
+        push!(param_exprs.args, :($mult_ss = 0.0))
     end
     
     # Generate the full code
