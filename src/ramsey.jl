@@ -718,5 +718,97 @@ function get_ramsey_equations(𝓂::ℳ,
 end
 
 
-# Export the main function
-# export get_ramsey_equations
+"""
+$(SIGNATURES)
+Print the Ramsey optimal policy equations in a readable format.
+
+# Arguments
+- `equations`: Vector of equations from `get_ramsey_equations`
+- `multipliers`: Vector of multiplier symbols from `get_ramsey_equations`
+- `n_original`: Number of original model equations (constraints)
+
+# Example
+```julia
+eqs, mults, vars = get_ramsey_equations(model, objective, [:R])
+print_ramsey_equations(eqs, mults, length(model.original_equations))
+```
+"""
+function print_ramsey_equations(equations::Vector{Expr}, 
+                                multipliers::Vector{Symbol},
+                                n_original::Int)
+    println("=" ^ 60)
+    println("RAMSEY OPTIMAL POLICY MODEL")
+    println("=" ^ 60)
+    
+    println("\n--- Original Model Equations (Constraints) ---")
+    for (i, eq) in enumerate(equations[1:n_original])
+        println("  [$i] $eq")
+    end
+    
+    println("\n--- Lagrange Multipliers ---")
+    println("  ", join(string.(multipliers), ", "))
+    
+    println("\n--- First-Order Conditions ---")
+    for (i, eq) in enumerate(equations[n_original+1:end])
+        println("  [FOC $(i)] $eq")
+    end
+    
+    println("\n" * "=" ^ 60)
+end
+
+
+"""
+$(SIGNATURES)
+Get a summary of the Ramsey optimal policy problem.
+
+# Arguments  
+- `𝓂`: the original model object
+- `objective`: per-period objective function expression
+- `instruments`: vector of policy instrument symbols
+
+# Keyword Arguments
+- `discount`: discount factor symbol (default: `:β`)
+
+# Returns
+- NamedTuple with fields:
+  - `equations`: all equations in the Ramsey system
+  - `constraints`: original model equations
+  - `focs`: first-order conditions
+  - `multipliers`: Lagrange multiplier symbols
+  - `original_variables`: variables from the original model
+  - `all_variables`: all variables including multipliers
+  - `instruments`: policy instruments
+  - `objective`: the objective function
+
+# Example
+```julia
+summary = ramsey_summary(model, :(log(C[0])), [:R])
+println(summary.multipliers)
+```
+"""
+function ramsey_summary(𝓂::ℳ,
+                        objective::Expr,
+                        instruments::Union{Symbol, Vector{Symbol}};
+                        discount::Symbol = :β)
+    
+    equations, multipliers, variables = get_ramsey_equations(𝓂, objective, instruments, discount = discount)
+    
+    n_orig = length(𝓂.original_equations)
+    
+    return (
+        equations = equations,
+        constraints = equations[1:n_orig],
+        focs = equations[n_orig+1:end],
+        multipliers = multipliers,
+        original_variables = 𝓂.var,
+        all_variables = variables,
+        instruments = instruments isa Symbol ? [instruments] : instruments,
+        objective = objective,
+        n_constraints = n_orig,
+        n_focs = length(multipliers)
+    )
+end
+
+
+# Export the main functions
+# export get_ramsey_equations, print_ramsey_equations, ramsey_summary
