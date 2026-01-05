@@ -6177,7 +6177,8 @@ function solve!(𝓂::ℳ;
         
         perturbation_order = 1
         
-        if !𝓂.precompile
+        # Use symbolic solving only if SymPy extension is loaded and precompile is false
+        if !𝓂.precompile && sympy_available()
             start_time = time()
 
             if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
@@ -6206,6 +6207,10 @@ function solve!(𝓂::ℳ;
             if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
             solve_steady_state!(𝓂, verbose = verbose)
+
+            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+            
+            set_up_obc_violation_function!(𝓂)
 
             if !silent println(round(time() - start_time, digits = 3), " seconds") end
         end

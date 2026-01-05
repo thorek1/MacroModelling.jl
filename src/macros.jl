@@ -1607,7 +1607,7 @@ macro parameters(𝓂,ex...)
         
             if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
-                solve_steady_state!(mod.$𝓂, verbose = $verbose)
+            solve_steady_state!(mod.$𝓂, verbose = $verbose)
 
             mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
             
