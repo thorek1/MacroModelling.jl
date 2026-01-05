@@ -791,6 +791,12 @@ function remove_redundant_SS_vars!(𝓂::ℳ, symbolics; avoid_solve::Bool = fal
     return nothing
 end
 
+# solve_symbolically: return nothing when SymPy is not loaded
+# This is overridden by the SymPyPythonCallExt extension when available
+function solve_symbolically(eqs, vars)
+    return nothing
+end
+
 
 function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
     𝓂 = p[4]
