@@ -181,12 +181,16 @@ function compute_homogeneity_degree(expr, var_degrees::Dict{Symbol, Rational{Int
                 exp_val = expr.args[3]
                 if exp_val isa Number
                     return (base_result[1] * Rational{Int}(exp_val), true)
+                elseif exp_val isa Symbol
+                    # Symbolic exponent (parameter like α): treat as multiplier of 1
+                    # For homogeneity analysis, k^α preserves the degree structure
+                    return (base_result[1], true)
                 else
-                    # If exponent is not a number, require base to be degree 0
-                    if base_result[1] != 0
-                        return nothing
+                    # Complex exponent: if base has degree 0, result is degree 0
+                    if base_result[1] == 0
+                        return (Rational{Int}(0), true)
                     end
-                    return (Rational{Int}(0), true)
+                    return (base_result[1], true)
                 end
             elseif op in (:+, :-)
                 # Addition/subtraction: degrees must match
@@ -354,12 +358,19 @@ function extract_degree_coefficients(expr, var_to_idx::Dict{Symbol, Int}, vars::
                 exp_val = expr.args[3]
                 if exp_val isa Number
                     return (base_result[1] .* Rational{Int}(exp_val), base_result[2] * Rational{Int}(exp_val))
+                elseif exp_val isa Symbol
+                    # Symbolic exponent (parameter like α): multiply degree by symbolic coefficient
+                    # For homogeneity analysis, we treat α as 1 since we're finding relative degrees
+                    # This means k^α has degree 1 * degree(k) = degree(k) for the purpose of 
+                    # determining which variables are trending
+                    return (base_result[1], base_result[2])
                 else
-                    # Non-numeric exponent: require base to have degree 0
-                    if any(x -> x != 0, base_result[1]) || base_result[2] != 0
-                        return nothing
+                    # Complex exponent expression: if base has degree 0, result is degree 0
+                    if all(x -> x == 0, base_result[1]) && base_result[2] == 0
+                        return (zeros(Rational{Int}, n_vars), Rational{Int}(0))
                     end
-                    return (zeros(Rational{Int}, n_vars), Rational{Int}(0))
+                    # Otherwise, assume the degree structure is preserved
+                    return (base_result[1], base_result[2])
                 end
             elseif op in (:+, :-)
                 # For sums, all terms must have the same degree - return any of them
