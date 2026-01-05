@@ -2,6 +2,58 @@ const all_available_algorithms = [:first_order, :second_order, :pruned_second_or
 
 
 """
+    extract_variables_from_expr(expr)
+
+Extract all variable symbols from an expression that appear in `ref` expressions (e.g., `var[0]`, `var[-1]`).
+Returns a Set{Symbol} of variable names.
+"""
+function extract_variables_from_expr(expr)
+    vars = Set{Symbol}()
+    postwalk(x -> begin
+        if x isa Expr && x.head == :ref
+            var_name = x.args[1]
+            if var_name isa Symbol
+                push!(vars, var_name)
+            end
+        end
+        x
+    end, expr)
+    return vars
+end
+
+
+"""
+    apply_deflator_transformation(model_ex::Expr, deflators::Dict{Symbol, Symbol}, operation::Symbol=:/)
+
+Apply deflator transformation to model equations.
+
+For `operation = :/` (detrending): replaces `v[t]` with `v[t] / d[t]` for each variable `v` with deflator `d`.
+For `operation = :*` (re-trending): replaces `v[t]` with `v[t] * d[t]` for each variable `v` with deflator `d`.
+"""
+function apply_deflator_transformation(model_ex::Expr, deflators::Dict{Symbol, Symbol}, operation::Symbol=:/)
+    if isempty(deflators)
+        return model_ex
+    end
+    
+    transformed_ex = postwalk(x -> 
+        x isa Expr ?
+            x.head == :ref ?
+                x.args[1] isa Symbol && haskey(deflators, x.args[1]) ?
+                    let var = x.args[1], 
+                        time_idx = x.args[2],
+                        deflator = deflators[var]
+                        Expr(:call, operation, x, Expr(:ref, deflator, time_idx))
+                    end :
+                x :
+            x :
+        x,
+    model_ex)
+    
+    return transformed_ex
+end
+
+
+"""
     detect_trend_variables(model_ex::Expr)
 
 Automatically detect trend variables from model equations by analyzing the equation structure.
@@ -85,42 +137,18 @@ function detect_deflators_from_equations(model_ex::Expr, trend_vars::Dict{Symbol
     end
     
     deflators = Dict{Symbol, Symbol}()
-    all_vars = Set{Symbol}()
     trend_var_names = Set(keys(trend_vars))
     
-    # First pass: collect all variables
-    postwalk(x -> begin
-        if x isa Expr && x.head == :ref
-            var_name = x.args[1]
-            if var_name isa Symbol
-                push!(all_vars, var_name)
-            end
-        end
-        x
-    end, model_ex)
-    
-    # Second pass: for each equation, find which trend variable it uses
+    # For each equation, find which trend variable it uses
     # and assign non-trend variables to that trend
     for arg in model_ex.args
         if !isa(arg, Expr)
             continue
         end
         
-        vars_in_eq = Set{Symbol}()
-        trend_in_eq = Set{Symbol}()
-        
-        postwalk(x -> begin
-            if x isa Expr && x.head == :ref
-                var_name = x.args[1]
-                if var_name isa Symbol
-                    push!(vars_in_eq, var_name)
-                    if var_name ∈ trend_var_names
-                        push!(trend_in_eq, var_name)
-                    end
-                end
-            end
-            x
-        end, arg)
+        # Use helper function to extract variables
+        vars_in_eq = extract_variables_from_expr(arg)
+        trend_in_eq = intersect(vars_in_eq, trend_var_names)
         
         # If exactly one trend variable in this equation, assign all other vars to it
         if length(trend_in_eq) == 1
@@ -172,25 +200,8 @@ function apply_automatic_detrending!(model_ex::Expr, balanced_growth::BalancedGr
         push!(balanced_growth.detrended_vars, var)
     end
     
-    # Step 3: Apply detrending transformation
-    # For each detrended variable v with deflator d, replace v[t] with v[t]/d[t]
-    # This transforms the model to work with stationary (detrended) versions
-    transformed_ex = postwalk(x -> 
-        x isa Expr ?
-            x.head == :ref ?
-                x.args[1] isa Symbol && haskey(detected_deflators, x.args[1]) ?
-                    let var = x.args[1], 
-                        time_idx = x.args[2],
-                        deflator = detected_deflators[var]
-                        # Divide by deflator: v[t] → v[t] / d[t]
-                        Expr(:call, :/, x, Expr(:ref, deflator, time_idx))
-                    end :
-                x :
-            x :
-        x,
-    model_ex)
-    
-    return transformed_ex
+    # Step 3: Apply detrending transformation using helper function
+    return apply_deflator_transformation(model_ex, detected_deflators, :/)
 end
 
 
@@ -214,29 +225,8 @@ if the original trending variable is `V` and detrended variable is `v = V/d`,
 then `V = v * d`, which is what we substitute.
 """
 function apply_deflators(model_ex::Expr, deflator_dict::Dict{Symbol, Symbol})
-    if isempty(deflator_dict)
-        return model_ex
-    end
-    
-    # Transform each equation in the model
-    transformed_ex = postwalk(x -> 
-        x isa Expr ?
-            x.head == :ref ?
-                # Check if this is a variable reference that needs deflating
-                x.args[1] isa Symbol && haskey(deflator_dict, x.args[1]) ?
-                    # Apply deflator: v[t] → (v[t] * d[t])
-                    let var = x.args[1], 
-                        time_idx = x.args[2],
-                        deflator = deflator_dict[var]
-                        # Create expression: (v[t] * d[t]) which converts detrended v to level form V = v * d
-                        Expr(:call, :*, x, Expr(:ref, deflator, time_idx))
-                    end :
-                x :
-            x :
-        x,
-    model_ex)
-    
-    return transformed_ex
+    # Use helper function with multiplication operation
+    return apply_deflator_transformation(model_ex, deflator_dict, :*)
 end
 
 
@@ -430,21 +420,8 @@ macro model(𝓂,ex...)
         auto_detected_trends = detect_trend_variables(model_ex)
         if !isempty(auto_detected_trends)
             auto_detected_deflators = detect_deflators_from_equations(model_ex, auto_detected_trends)
-            # Apply automatic detrending (divide trending variables by their deflators)
-            model_ex = postwalk(x -> 
-                x isa Expr ?
-                    x.head == :ref ?
-                        x.args[1] isa Symbol && haskey(auto_detected_deflators, x.args[1]) ?
-                            let var = x.args[1], 
-                                time_idx = x.args[2],
-                                deflator = auto_detected_deflators[var]
-                                # Divide by deflator: v[t] → v[t] / d[t]
-                                Expr(:call, :/, x, Expr(:ref, deflator, time_idx))
-                            end :
-                        x :
-                    x :
-                x,
-            model_ex)
+            # Apply automatic detrending using helper function
+            model_ex = apply_deflator_transformation(model_ex, auto_detected_deflators, :/)
         end
     end
     
