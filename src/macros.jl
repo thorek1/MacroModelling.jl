@@ -35,7 +35,7 @@ function apply_deflators(model_ex::Expr, deflator_dict::Dict{Symbol, Symbol})
                     let var = x.args[1], 
                         time_idx = x.args[2],
                         deflator = deflator_dict[var]
-                        # Create the deflated expression: v[t] * d[t]
+                        # Create expression: (v[t] * d[t]) which converts detrended v to level form V = v * d
                         Expr(:call, :*, x, Expr(:ref, deflator, time_idx))
                     end :
                 x :
