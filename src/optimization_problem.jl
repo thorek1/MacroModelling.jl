@@ -79,11 +79,9 @@ end
 Reverse transformation: C_0 -> C[0]
 """
 function untransform_from_sympy(expr, mapping::Dict{Symbol, Expr})
-    reverse_mapping = Dict(k => v for (k, v) in mapping)
-    
     return postwalk(x -> begin
-        if x isa Symbol && haskey(reverse_mapping, x)
-            return reverse_mapping[x]
+        if x isa Symbol && haskey(mapping, x)
+            return mapping[x]
         end
         return x
     end, expr)
@@ -336,6 +334,11 @@ function process_optimization(lhs::Expr, opt_call::Expr, constraints_block::Expr
     
     # Extract objective (first positional arg)
     objective_expr = opt_call.args[2]
+    
+    # For minimization, we maximize the negative
+    if !is_max
+        objective_expr = Expr(:call, :-, objective_expr)
+    end
     
     # Extract controls from keyword arg
     controls = Symbol[]
