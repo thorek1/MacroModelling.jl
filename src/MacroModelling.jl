@@ -153,7 +153,7 @@ const ParameterType = Union{Nothing,
 
 # Type for steady state function argument
 # Can be a function (f(params) -> ss_values), a Tuple of (ss_func, calib_func), or nothing
-const SteadyStateFunctionType = Union{Nothing, Function, Tuple{Function, Function}}
+const SteadyStateFunctionType = Union{Nothing, Function}
 
 using DispatchDoctor
 # @stable default_mode = "disable" begin
@@ -1051,10 +1051,9 @@ This function allows users to provide their own steady state solver, which can b
 
 # Arguments
 - `𝓂`: Model object
-- `f`: A function that takes a vector of parameter values (in declaration order) and returns a vector of steady state values for all variables (in the order returned by `get_variables(𝓂)`).
+- `f`: A function that takes a vector of parameter values (in declaration order) and returns steady state values in the same order as `get_NSSS_and_parameters`: variables first, then calibrated parameters (if any).
 
 # Keyword Arguments
-- `calibrated_parameters`: A function that takes the parameter vector and returns a vector of calibrated parameter values in the order of `𝓂.calibration_equations_parameters`. If the model has calibration equations (parameters determined by targeting steady state values), this function must be provided to return those calibrated parameter values. Default is `nothing`.
 - `verbose` [Default: `false`, Type: `Bool`]: Print information about the variable and parameter ordering.
 
 # Details
@@ -1065,13 +1064,7 @@ f(parameters::Vector{Float64}) -> Vector{Float64}
 
 Where:
 - Input: Parameter values in the declaration order (as defined in `@parameters`). Use `get_parameters(𝓂)` to see the parameter order.
-- Output: Steady state values for all variables in the order returned by `get_variables(𝓂)`.
-
-If the model has calibration equations (e.g., `k[ss] / q[ss] = 2.5 | α`), the `calibrated_parameters` function must also be provided:
-```julia
-calibrated_parameters(parameters::Vector{Float64}) -> Vector{Float64}
-```
-Where the output is the values of calibrated parameters in the order of `𝓂.calibration_equations_parameters`.
+- Output: Steady state values in the same order as `get_NSSS_and_parameters`: variables in `sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))`, followed by calibrated parameters in `𝓂.calibration_equations_parameters` (if any).
 
 # Examples
 ```julia
@@ -1095,6 +1088,8 @@ end
 # Define a custom steady state function
 # get_variables(RBC) returns [:c, :k, :q, :z] (sorted alphabetically)
 # get_parameters(RBC) returns [:std_z, :ρ, :δ, :α, :β] (in declaration order)
+# Return values must match the order used by get_NSSS_and_parameters:
+# variables in sort(union(RBC.var, RBC.exo_past, RBC.exo_future)), then any calibrated parameters.
 function my_steady_state(params)
     std_z, ρ, δ, α, β = params
     
@@ -1104,7 +1099,7 @@ function my_steady_state(params)
     c_ss = q_ss - δ * k_ss
     z_ss = 0.0
     
-    return [c_ss, k_ss, q_ss, z_ss]  # Order matches get_variables(RBC)
+    return [c_ss, k_ss, q_ss, z_ss]  # Order matches get_NSSS_and_parameters(RBC)
 end
 
 set_steady_state!(RBC, my_steady_state)
@@ -1119,29 +1114,20 @@ get_steady_state(RBC)
 See also: [`get_variables`](@ref), [`get_parameters`](@ref), [`get_steady_state`](@ref)
 """
 function set_steady_state!(𝓂::ℳ, f::Function; 
-                           calibrated_parameters::Union{Nothing, Function} = nothing, 
                            verbose::Bool = false)
     # Get the variable order (sorted union of var, exo_past, exo_future)
     var_order = sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))
     n_vars = length(var_order)
     n_calib_params = length(𝓂.calibration_equations_parameters)
     
-    # Check if model has calibration equations
-    if n_calib_params > 0 && isnothing(calibrated_parameters)
-        error("Model has $(n_calib_params) calibration equation parameter(s): $(𝓂.calibration_equations_parameters). " *
-              "You must provide a `calibrated_parameters` function that returns these values. " *
-              "The function should take the parameter vector and return a vector of calibrated parameter values " *
-              "in the order: $(𝓂.calibration_equations_parameters).")
-    end
-    
     if verbose
         println("Parameter order (input to custom function):")
         println("  ", 𝓂.parameters)
-        println("\nVariable order (output from custom function):")
-        println("  ", var_order)
+        println("\nOutput order (custom steady state function):")
         if n_calib_params > 0
-            println("\nCalibrated parameters order (from calibrated_parameters function):")
-            println("  ", 𝓂.calibration_equations_parameters)
+            println("  ", vcat(var_order, 𝓂.calibration_equations_parameters))
+        else
+            println("  ", var_order)
         end
     end
     
@@ -1153,33 +1139,23 @@ function set_steady_state!(𝓂::ℳ, f::Function;
         
         try
             # Call the user function with parameter values
-            ss_values = f(parameter_values)
-            
+            ss_and_pars = f(parameter_values)
+            expected_len = n_vars + n_calib_params
+
             # Check output length
-            if length(ss_values) != n_vars
-                error_msg = "Custom steady state function returned $(length(ss_values)) values, " *
-                           "but expected $(n_vars) values (one for each variable in get_variables(model))."
+            if length(ss_and_pars) != expected_len
+                expected_order = n_calib_params > 0 ?
+                    "variables in order $(var_order) followed by calibrated parameters in order $(𝓂.calibration_equations_parameters)." :
+                    "variables in order $(var_order)."
+                error_msg = "Custom steady state function returned $(length(ss_and_pars)) values, " *
+                            "but expected $(expected_len) values: " * expected_order
                 if verbosity
                     println(error_msg)
                 end
                 return error_return()
             end
-            
-            # Get calibrated parameters if model has calibration equations
-            if n_calib_params > 0
-                calib_params = calibrated_parameters(parameter_values)
-                if length(calib_params) != n_calib_params
-                    error_msg = "calibrated_parameters function returned $(length(calib_params)) values, " *
-                               "but expected $(n_calib_params) values."
-                    if verbosity
-                        println(error_msg)
-                    end
-                    return error_return()
-                end
-                SS_and_pars = T[ss_values..., calib_params...]
-            else
-                SS_and_pars = T[ss_values...]
-            end
+
+            SS_and_pars = T[ss_and_pars...]
             
             # Return the steady state with zero error (user function is assumed to be correct)
             return SS_and_pars, (T(0.0), 0)
@@ -6877,13 +6853,7 @@ function solve!(𝓂::ℳ;
     
     # Handle steady_state_function argument
     if !isnothing(steady_state_function)
-        if steady_state_function isa Tuple
-            # Tuple of (ss_func, calibrated_parameters_func)
-            set_steady_state!(𝓂, steady_state_function[1], calibrated_parameters = steady_state_function[2])
-        else
-            # Just the ss function
-            set_steady_state!(𝓂, steady_state_function)
-        end
+        set_steady_state!(𝓂, steady_state_function)
     end
     
     # @timeit_debug timer "Write parameter inputs" begin
