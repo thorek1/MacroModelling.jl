@@ -654,7 +654,6 @@ macro model(𝓂,ex...)
         if ss_aux_equation isa Symbol 
             push!(ss_aux_equations, Expr(:call,:-,ss_aux_equation,0))
         else#if !(ss_aux_equation isa Int)
-            # println(eq)
             push!(ss_aux_equations, ss_aux_equation)
         end
     end
@@ -789,7 +788,6 @@ macro model(𝓂,ex...)
     dyn_past_list =     match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")
     dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
 
-    # println(ss_aux_equations)
     # write down original equations as written down in model block
     for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
@@ -801,22 +799,12 @@ macro model(𝓂,ex...)
             push!(original_equations,unblock(prs_exx))
         end
     end
-
-        single_dyn_vars_equations = findall(length.(vcat.(collect.(dyn_var_future_list),
-                                                                                                            collect.(dyn_var_present_list),
-                                                                                                            collect.(dyn_var_past_list),
-                                                                                                        #   collect.(dyn_ss_list), # needs to be dynamic after all
-                                                                                                            collect.(dyn_exo_list))) .== 1)
-
-        # Ignore auxiliary OBC placeholder assignments (χᵒᵇᶜ/Χᵒᵇᶜ) when enforcing the
-        # "more than one dynamic variable" rule. These assignments carry constants or
-        # single placeholders to feed OBC handling and would otherwise trigger the
-        # assertion below without representing model dynamics.
-        single_dyn_vars_equations = filter(i -> begin
-                        syms = get_symbols(dyn_equations[i])
-                        all(!occursin(r"^χᵒᵇᶜ", string(s)) && !occursin(r"^Χᵒᵇᶜ", string(s)) for s in syms)
-                end,
-                single_dyn_vars_equations)
+    
+    single_dyn_vars_equations = findall(length.(vcat.(collect.(dyn_var_future_list),
+                                                      collect.(dyn_var_present_list),
+                                                      collect.(dyn_var_past_list),
+                                                    #   collect.(dyn_ss_list), # needs to be dynamic after all
+                                                      collect.(dyn_exo_list))) .== 1)
                                                     
     @assert length(single_dyn_vars_equations) == 0 "Equations must contain more than 1 dynamic variable. This is not the case for: " * repr([original_equations[indexin(single_dyn_vars_equations,setdiff(1:length(dyn_equations),dyn_eq_aux_ind .- 1))]...])
     
@@ -849,6 +837,7 @@ macro model(𝓂,ex...)
                         
                         Symbol[], # missing_parameters - to be filled by @parameters
                         false, # precompile - to be set by @parameters
+                        true, # simplify - to be set by @parameters
 
                         Dict{Symbol, Float64}(), # guess
 
@@ -1480,7 +1469,6 @@ macro parameters(𝓂,ex...)
         x,bound)
     end
 
-    # println($m)
     return quote
         mod = @__MODULE__
 
@@ -1582,51 +1570,15 @@ macro parameters(𝓂,ex...)
 
         mod.$𝓂.guess = guess_dict
         
-        # Store precompile flag in model container
+        # Store precompile and simplify flag in model container
         mod.$𝓂.precompile = $precompile
+        mod.$𝓂.simplify = $simplify
         
-        # time_symbolics = @elapsed 
-        # time_rm_red_SS_vars = @elapsed 
         # Only set up SS problem if all parameters are defined
         if !has_missing_parameters
-            # Use symbolic solving only if SymPy extension is loaded and precompile is false
-            if !$precompile && sympy_available()
-                start_time = time()
-
-                if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
-
-                symbolics = create_symbols_eqs!(mod.$𝓂)
-
-                remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
-
-                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-
-
-                start_time = time()
-        
-                if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-                solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
-
-                mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
-                
-                set_up_obc_violation_function!(mod.$𝓂)
-
-                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-            else
-                # Use numerical solving when SymPy is not available or precompile is true
-                start_time = time()
-        
-                if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-                solve_steady_state!(mod.$𝓂, verbose = $verbose)
-
-                mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
-            
-                set_up_obc_violation_function!(mod.$𝓂)
-
-                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-            end
+            # Delegate to extension or default numerical setup
+            # The extension (if loaded) can override this to provide symbolic solving
+            setup_steady_state_numerical!(mod.$𝓂, $verbose, $silent)
         end
         
         mod.$𝓂.solution.functions_written = false

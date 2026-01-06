@@ -67,17 +67,6 @@ import Reexport
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
-# Check if SymPy extension is available (will be set to true when extension loads)
-const _sympy_available = Ref(false)
-
-"""
-    sympy_available()
-
-Returns `true` if the SymPy extension (SymPyPythonCallExt) is loaded, `false` otherwise.
-When SymPy is available, advanced symbolic solving features are enabled for steady state computation.
-"""
-sympy_available() = _sympy_available[]
-
 # Reserved names that cannot be used as variables, shocks, or parameters
 # These are functions and operators available in SymPyWorkspace
 const SYMPYWORKSPACE_RESERVED_NAMES = Set([
@@ -158,8 +147,6 @@ include("./filter/kalman.jl")
 
 
 export @model, @parameters, solve!
-
-export sympy_available
 
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
 export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
@@ -446,75 +433,6 @@ function check_for_dynamic_variables(ex::Expr)
     any(dynamic_indicator)
 end
 
-
-function transform_expression(expr::Expr)
-    # Dictionary to store the transformations for reversing
-    reverse_transformations = Dict{Symbol, Expr}()
-
-    # Counter for generating unique placeholders
-    unique_counter = Ref(0)
-
-    # Step 1: Replace min/max calls and record their original form
-    function replace_min_max(expr)
-        if expr isa Expr && expr.head == :call && (expr.args[1] == :min || expr.args[1] == :max)
-            # Replace min/max functions with a placeholder
-            # placeholder = Symbol("minimal__P", unique_counter[])
-            placeholder = :minmax__P
-            unique_counter[] += 1
-
-            # Store the original min/max call for reversal
-            reverse_transformations[placeholder] = expr
-
-            return placeholder
-        else
-            return expr
-        end
-    end
-
-    # Step 2: Transform :ref fields in the rest of the expression
-    function transform_ref_fields(expr)
-        if expr isa Expr && expr.head == :ref && isa(expr.args[1], Symbol)
-            # Handle :ref expressions
-            if isa(expr.args[2], Number) || isa(expr.args[2], Symbol)           
-                if expr.args[2] < 0
-                    new_symbol = Symbol(expr.args[1], "__", abs(expr.args[2]))
-                else
-                    new_symbol = Symbol(expr.args[1], "_", expr.args[2])
-                end
-            else
-                # Generate a unique placeholder for complex :ref
-                unique_counter[] += 1
-                placeholder = Symbol("__placeholder", unique_counter[])
-                new_symbol = placeholder
-            end
-
-            # Record the reverse transformation
-            reverse_transformations[new_symbol] = expr
-
-            return new_symbol
-        else
-            return expr
-        end
-    end
-
-
-    # Replace equality sign with minus
-    function replace_equality_with_minus(expr)
-        if expr isa Expr && expr.head == :(=)
-            return Expr(:call, :-, expr.args...)
-        else
-            return expr
-        end
-    end
-
-    # Apply transformations
-    expr = postwalk(replace_min_max, expr)
-    expr = postwalk(transform_ref_fields, expr)
-    transformed_expr = postwalk(replace_equality_with_minus, expr)
-    
-    return transformed_expr, reverse_transformations
-end
-
 @stable default_mode = "disable" begin
 
 function normalize_filtering_options(filter::Symbol,
@@ -710,59 +628,6 @@ function process_ignore_obc_flag(shocks,
 end
 
 
-
-function reverse_transformation(transformed_expr::Expr, reverse_dict::Dict{Symbol, Expr})
-    # Function to replace the transformed symbols with their original form
-    function revert_symbol(expr)
-        if expr isa Symbol && haskey(reverse_dict, expr)
-            return reverse_dict[expr]
-        else
-            return expr
-        end
-    end
-
-    # Revert the expression using postwalk
-    reverted_expr = postwalk(revert_symbol, transformed_expr)
-
-    return reverted_expr
-end
-
-
-# Stub functions for SymPy functionality - these will be overridden by the SymPyPythonCallExt extension
-
-"""
-    simplify(ex::Expr)
-
-Simplify a Julia expression. When SymPyPythonCall extension is loaded, uses SymPy's 
-symbolic simplification. Otherwise, returns the expression unchanged.
-"""
-function simplify end
-
-"""
-    transform_obc(ex::Expr; avoid_solve::Bool = false)
-
-Transform an occasionally binding constraint expression. When SymPyPythonCall extension 
-is loaded, uses symbolic solving to rearrange min/max expressions. Otherwise, returns 
-the original expression.
-"""
-function transform_obc end
-
-"""
-    create_symbols_eqs!(𝓂::ℳ)
-
-Create symbolic representations of model equations. Requires SymPyPythonCall extension.
-Returns nothing when SymPy is not available.
-"""
-function create_symbols_eqs! end
-
-"""
-    remove_redundant_SS_vars!(𝓂::ℳ, symbolics; avoid_solve::Bool = false)
-
-Remove redundant steady state variables using symbolic solving. Requires SymPyPythonCall extension.
-Does nothing when SymPy is not available.
-"""
-function remove_redundant_SS_vars! end
-
 # Default implementations when SymPy is not available
 
 # simplify: just return the expression as-is when SymPy is not loaded
@@ -791,13 +656,6 @@ function remove_redundant_SS_vars!(𝓂::ℳ, symbolics; avoid_solve::Bool = fal
     return nothing
 end
 
-# solve_symbolically: return nothing when SymPy is not loaded
-# This is overridden by the SymPyPythonCallExt extension when available
-function solve_symbolically(eqs, vars)
-    return nothing
-end
-
-
 function obc_constraint_optim_fun(res::Vector{S}, X::Vector{S}, jac::Matrix{S}, p) where S
     𝓂 = p[4]
 
@@ -819,6 +677,26 @@ function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
     sum(abs2, X)
 end
 
+"""
+    setup_steady_state_numerical!(𝓂::ℳ, verbose::Bool, silent::Bool)
+
+Default implementation for steady state setup using numerical solving.
+This is the fallback used when the SymPy extension is not loaded or precompile is true.
+"""
+function setup_steady_state_numerical!(𝓂::ℳ, verbose::Bool, silent::Bool)
+    start_time = time()
+
+    if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+    solve_steady_state!(𝓂, verbose = verbose)
+
+    𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+
+    set_up_obc_violation_function!(𝓂)
+
+    if !silent println(round(time() - start_time, digits = 3), " seconds") end
+end
+
 function set_up_obc_violation_function!(𝓂)
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
 
@@ -835,7 +713,7 @@ function set_up_obc_violation_function!(𝓂)
 
     alll = []
     for (i,var) in enumerate(present_varss)
-        if !(match(r"^[χΧ]ᵒᵇᶜ", string(var)) === nothing)
+        if !(match(r"^χᵒᵇᶜ", string(var)) === nothing)
             push!(alll,:($var = Y[$(dyn_var_present_idx[i]),1:max(periods, 1)]))
         end
     end
@@ -908,29 +786,86 @@ end
 
 function write_obc_violation_equations(𝓂)
     eqs = Expr[]
-    for eq in 𝓂.dyn_equations
-        # Look for equations of the form lhs - max/min(arg1, arg2)
-        if eq isa Expr && eq.head == :call && eq.args[1] == :- && eq.args[3] isa Expr
-            mcall = eq.args[3]
-            if mcall.head == :call && mcall.args[1] ∈ (:max, :Max, :min, :Min)
-                lhs = eq.args[2]
-                arg1 = mcall.args[2]
-                arg2 = mcall.args[3]
+    for (i,eq) in enumerate(𝓂.dyn_equations)
+        if check_for_minmax(eq)
+            minmax_fixed_eqs = postwalk(x -> 
+                x isa Expr ?
+                    x.head == :call ? 
+                        length(x.args) == 3 ?
+                            x.args[3] isa Expr ?
+                                x.args[3].args[1] ∈ [:Min, :min, :Max, :max] ?
+                                    begin
+                                        plchldr = Symbol(replace(string(x.args[2]), "₍₀₎" => ""))
 
-                if mcall.args[1] ∈ (:max, :Max)
-                    s1 = :($lhs .- $arg1)
-                    s2 = :($lhs .- $arg2)
-                else
-                    s1 = :($arg1 .- $lhs)
-                    s2 = :($arg2 .- $lhs)
-                end
+                                        ineq_plchldr_1 = x.args[3].args[2] isa Symbol ? Symbol(replace(string(x.args[3].args[2]), "₍₀₎" => "")) : x.args[3].args[2]
 
-                push!(eqs, quote
-                    push!(constraint_values, [sum(abs.($s1 .* $s2))])
-                    push!(constraint_values, $s1)
-                    push!(constraint_values, $s2)
-                end)
-            end
+                                        arg1 = x.args[3].args[2]
+                                        arg2 = x.args[3].args[3]
+
+                                        dyn_1 = check_for_dynamic_variables(x.args[3].args[2])
+                                        dyn_2 = check_for_dynamic_variables(x.args[3].args[3])
+
+                                        cond1 = Expr[]
+                                        cond2 = Expr[]
+
+                                        maximisation = contains(string(plchldr), "⁺")
+                                        
+                                        # if dyn_1
+                                        #     if maximisation
+                                        #         push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
+                                        #         # push!(cond2, :(push!(constraint_values, $(x.args[3].args[2]))))
+                                        #     else
+                                        #         push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
+                                        #         # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[2])))) # RBC
+                                        #     end
+                                        # end
+
+                                        # if dyn_2
+                                        #     if maximisation
+                                        #         push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
+                                        #         # push!(cond2, :(push!(constraint_values, $(x.args[3].args[3])))) # testmax
+                                        #     else
+                                        #         push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
+                                        #         # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[3])))) # RBC
+                                        #     end
+                                        # end
+
+
+                                        if maximisation
+                                            push!(cond1, :(push!(constraint_values, [sum($(x.args[3].args[2]) .* $(x.args[3].args[3]))])))
+                                            push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
+                                            push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
+                                            # push!(cond1, :(push!(constraint_values, max.($(x.args[3].args[2]), $(x.args[3].args[3])))))
+                                        else
+                                            push!(cond1, :(push!(constraint_values, [sum($(x.args[3].args[2]) .* $(x.args[3].args[3]))])))
+                                            push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
+                                            push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
+                                            # push!(cond1, :(push!(constraint_values, min.($(x.args[3].args[2]), $(x.args[3].args[3])))))
+                                        end
+
+                                        # if maximisation
+                                        #     push!(cond1, :(push!(shock_sign_indicators, true)))
+                                        #     # push!(cond2, :(push!(shock_sign_indicators, true)))
+                                        # else
+                                        #     push!(cond1, :(push!(shock_sign_indicators, false)))
+                                        #     # push!(cond2, :(push!(shock_sign_indicators, false)))
+                                        # end
+
+                                        # :(if isapprox($plchldr, $ineq_plchldr_1, atol = 1e-12)
+                                        #     $(Expr(:block, cond1...))
+                                        # else
+                                        #     $(Expr(:block, cond2...))
+                                        # end)
+                                        :($(Expr(:block, cond1...)))
+                                    end :
+                                x :
+                            x :
+                        x :
+                    x :
+                x,
+            eq)
+
+            push!(eqs, minmax_fixed_eqs)
         end
     end
 
@@ -2690,18 +2625,6 @@ function match_pattern(strings::Union{Set,Vector}, pattern::Regex)
     return filter(r -> match(pattern, string(r)) !== nothing, strings)
 end
 
-
-function count_ops(expr)::Int
-    op_count = 0
-    postwalk(x -> begin
-        if x isa Expr && x.head == :call
-            op_count += 1
-        end
-        x
-    end, expr)
-    return op_count
-end
-
 # try: run optim only if there is a violation / capture case with small shocks and set them to zero
 function parse_occasionally_binding_constraints(equations_block; max_obc_horizon::Int = 40, avoid_solve::Bool = false)
     # precision_factor = 1e  #factor to force the optimiser to have non-relevatn shocks at zero
@@ -2726,11 +2649,17 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_horizon
                                     obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
                                     obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
 
-                                    # Always bind the placeholders to the original arguments so downstream
-                                    # logic (e.g. write_obc_violation_equations) sees the χ-obc symbols
-                                    # instead of the raw values (like R̄).
-                                    push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    push!(eqs, :($obc_vars_right = $(x.args[3])))
+                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
+                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
+                                    else
+                                        obc_vars_left = x.args[2]
+                                    end
+
+                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
+                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
+                                    else
+                                        obc_vars_right = x.args[3]
+                                    end
 
                                     obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
 
@@ -2747,8 +2676,17 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_horizon
                                     obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
                                     obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
 
-                                    push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    push!(eqs, :($obc_vars_right = $(x.args[3])))
+                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
+                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
+                                    else
+                                        obc_vars_left = x.args[2]
+                                    end
+
+                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
+                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
+                                    else
+                                        obc_vars_right = x.args[3]
+                                    end
 
                                     obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
 
@@ -2827,10 +2765,6 @@ end
 # compatibility with SymPy
 Max = max
 Min = min
-
-# Note: simplify is now defined as a stub function earlier in the file
-# It returns the expression unchanged when SymPy is not available
-# When the SymPyPythonCallExt extension is loaded, it provides the full implementation
 
 function convert_to_ss_equation(eq::Expr)::Expr
     postwalk(x -> 
@@ -3357,802 +3291,6 @@ function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
 end
 
 
-# Note: The full implementations of create_symbols_eqs! and remove_redundant_SS_vars! 
-# with SymPy support are provided by the SymPyPythonCallExt extension.
-# The stub functions defined earlier in this file will be called when SymPy is not available.
-
-function write_block_solution!(𝓂, 
-                                SS_solve_func, 
-                                vars_to_solve, 
-                                eqs_to_solve, 
-                                relevant_pars_across,
-                                NSSS_solver_cache_init_tmp, 
-                                eq_idx_in_block_to_solve, 
-                                atoms_in_equations_list;
-                                cse = true,
-                                skipzeros = true, 
-                                density_threshold::Float64 = .1,
-                                nnz_parallel_threshold::Int = 1000000,
-                                min_length::Int = 10000)
-
-    # ➕_vars = Symbol[]
-    unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
-
-    vars_to_exclude = [vcat(Symbol.(vars_to_solve), 𝓂.➕_vars),Symbol[]]
-
-    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors(Meta.parse.(string.(eqs_to_solve)), vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
-
-
-    push!(𝓂.solved_vars, Symbol.(vars_to_solve))
-    push!(𝓂.solved_vals, rewritten_eqs)
-
-
-    syms_in_eqs = Set{Symbol}()
-
-    for i in vcat(ss_and_aux_equations_dep, ss_and_aux_equations, rewritten_eqs)
-        push!(syms_in_eqs, get_symbols(i)...)
-    end
-
-    setdiff!(syms_in_eqs,𝓂.➕_vars)
-
-    syms_in_eqs2 = Set{Symbol}()
-
-    for i in ss_and_aux_equations
-        push!(syms_in_eqs2, get_symbols(i)...)
-    end
-
-    ➕_vars_alread_in_eqs = intersect(𝓂.➕_vars,reduce(union,get_symbols.(Meta.parse.(string.(eqs_to_solve)))))
-
-    union!(syms_in_eqs, intersect(union(➕_vars_alread_in_eqs, syms_in_eqs2), 𝓂.➕_vars))
-
-    push!(atoms_in_equations_list,setdiff(syms_in_eqs, 𝓂.solved_vars[end]))
-
-    # guess = Expr[]
-    # untransformed_guess = Expr[]
-    result = Expr[]
-    # calib_pars = Expr[]
-
-    calib_pars_input = Symbol[]
-
-    relevant_pars = union(intersect(reduce(union, vcat(𝓂.par_list_aux_SS, 𝓂.par_calib_list)[eq_idx_in_block_to_solve]), syms_in_eqs),intersect(syms_in_eqs, 𝓂.➕_vars))
-    
-    union!(relevant_pars_across, relevant_pars)
-
-    sorted_vars = sort(Symbol.(vars_to_solve))
-
-    for (i, parss) in enumerate(sorted_vars) 
-        # push!(guess,:($parss = guess[$i]))
-        # push!(untransformed_guess,:($parss = undo_transform(guess[$i],transformation_level)))
-        push!(result,:($parss = sol[$i]))
-    end
-
-    iii = 1
-    for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters, 𝓂.missing_parameters)
-        if :($parss) ∈ relevant_pars
-            # push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
-            push!(calib_pars_input, :($parss))
-            iii += 1
-        end
-    end
-
-    # separate out auxiliary variables (nonnegativity)
-    # nnaux = []
-    # nnaux_linear = []
-    # nnaux_error = []
-    # push!(nnaux_error, :(aux_error = 0))
-    solved_vals = Expr[]
-    # solved_vals_in_place = Expr[]
-    # partially_solved_block = Expr[]
-
-    other_vrs_eliminated_by_sympy = Set{Symbol}()
-
-    for (i,val) in enumerate(𝓂.solved_vals[end])
-        if eq_idx_in_block_to_solve[i] ∈ 𝓂.ss_equations_with_aux_variables
-            val = vcat(𝓂.ss_aux_equations, 𝓂.calibration_equations)[eq_idx_in_block_to_solve[i]]
-            # push!(nnaux,:($(val.args[2]) = max(eps(),$(val.args[3]))))
-            push!(other_vrs_eliminated_by_sympy, val.args[2])
-            # push!(nnaux_linear,:($val))
-            # push!(nnaux_error, :(aux_error += min(eps(),$(val.args[3]))))
-        end
-    end
-
-
-    
-    for (i,val) in enumerate(rewritten_eqs)
-        push!(solved_vals, postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))
-        # push!(solved_vals_in_place, :(ℰ[$i] = $(postwalk(x -> x isa Expr ? x.args[1] == :conjugate ? x.args[2] : x : x, val))))
-    end
-
-
-    # if length(nnaux) > 1
-    #     all_symbols = map(x->x.args[1],nnaux) #relevant symbols come first in respective equations
-
-    #     nn_symbols = map(x->intersect(all_symbols,x), get_symbols.(nnaux))
-        
-    #     inc_matrix = fill(0,length(all_symbols),length(all_symbols))
-
-    #     for i in 1:length(all_symbols)
-    #         for k in 1:length(nn_symbols)
-    #             inc_matrix[i,k] = collect(all_symbols)[i] ∈ collect(nn_symbols)[k]
-    #         end
-    #     end
-
-    #     QQ, P, R, nmatch, n_blocks = BlockTriangularForm.order(sparse(inc_matrix))
-
-    #     nnaux = nnaux[QQ]
-    #     nnaux_linear = nnaux_linear[QQ]
-    # end
-
-    # other_vars = Expr[]
-    other_vars_input = Symbol[]
-    other_vrs = intersect( setdiff( union(𝓂.var, 𝓂.calibration_equations_parameters, 𝓂.➕_vars),
-                                        sort(𝓂.solved_vars[end]) ),
-                                union(syms_in_eqs, other_vrs_eliminated_by_sympy ) )
-                                # union(syms_in_eqs, other_vrs_eliminated_by_sympy, setdiff(reduce(union, get_symbols.(nnaux), init = []), map(x->x.args[1],nnaux)) ) )
-
-    for var in other_vrs
-        # push!(other_vars,:($(var) = parameters_and_solved_vars[$iii]))
-        push!(other_vars_input,:($(var)))
-        iii += 1
-    end
-
-    parameters_and_solved_vars = vcat(calib_pars_input, other_vrs)
-
-    ng = length(sorted_vars)
-    np = length(parameters_and_solved_vars)
-    nd = length(ss_and_aux_equations_dep)
-    nx = iii - 1
-
-    Symbolics.@variables 𝔊[1:ng] 𝔓[1:np]
-
-
-    parameter_dict = Dict{Symbol, Symbol}()
-    back_to_array_dict = Dict{Symbolics.Num, Symbolics.Num}()
-    aux_vars = Symbol[]
-    aux_expr = []
-
-
-    for (i,v) in enumerate(sorted_vars)
-        push!(parameter_dict, v => :($(Symbol("𝔊_$i"))))
-        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔊_$i"))), @__MODULE__) => 𝔊[i])
-    end
-
-    for (i,v) in enumerate(parameters_and_solved_vars)
-        push!(parameter_dict, v => :($(Symbol("𝔓_$i"))))
-        push!(back_to_array_dict, Symbolics.parse_expr_to_symbolic(:($(Symbol("𝔓_$i"))), @__MODULE__) => 𝔓[i])
-    end
-
-    for (i,v) in enumerate(ss_and_aux_equations_dep)
-        push!(aux_vars, v.args[1])
-        push!(aux_expr, v.args[2])
-    end
-    
-    aux_replacements = Dict{Symbol,Any}()
-    for (i,x) in enumerate(aux_vars)
-        replacement = Dict(x => aux_expr[i])
-        for ii in i+1:length(aux_vars)
-            aux_expr[ii] = replace_symbols(aux_expr[ii], replacement)
-        end
-        push!(aux_replacements, x => aux_expr[i])
-    end
-    # aux_replacements = Dict{Symbol,Any}(aux_vars .=> aux_expr)
-
-    replaced_solved_vals = solved_vals |> 
-        x -> replace_symbols.(x, Ref(aux_replacements)) |> 
-        x -> replace_symbols.(x, Ref(parameter_dict)) |> 
-        x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
-        x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
-
-    lennz = length(replaced_solved_vals)
-
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
-
-    _, calc_block! = Symbolics.build_function(replaced_solved_vals, 𝔊, 𝔓,
-                                                cse = cse, 
-                                                skipzeros = skipzeros, 
-                                                # nanmath = false,
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
-
-    # 𝐷 = zeros(Symbolics.Num, nd)
-
-    # ϵᵃ = zeros(nd)
-
-    # calc_block_aux!(𝐷, 𝔊, 𝔓)
-
-    ϵˢ = zeros(Symbolics.Num, ng)
-
-    ϵ = zeros(ng)
-
-    # calc_block!(ϵˢ, 𝔊, 𝔓, 𝐷)
-
-    ∂block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals, 𝔊) # nϵ x nx
-
-    lennz = nnz(∂block_∂parameters_and_solved_vars)
-
-    if (lennz / length(∂block_∂parameters_and_solved_vars) > density_threshold) || (length(∂block_∂parameters_and_solved_vars) < min_length)
-        derivatives_mat = convert(Matrix, ∂block_∂parameters_and_solved_vars)
-        buffer = zeros(Float64, size(∂block_∂parameters_and_solved_vars))
-    else
-        derivatives_mat = ∂block_∂parameters_and_solved_vars
-        buffer = similar(∂block_∂parameters_and_solved_vars, Float64)
-        buffer.nzval .= 1
-    end
-
-    chol_buff = buffer * buffer'
-
-    chol_buff += ℒ.I
-
-    prob = 𝒮.LinearProblem(chol_buff, ϵ, 𝒮.CholeskyFactorization())
-
-    chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
-
-    prob = 𝒮.LinearProblem(buffer, ϵ, 𝒮.LUFactorization())
-
-    lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
-
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
-    
-    _, func_exprs = Symbolics.build_function(derivatives_mat, 𝔊, 𝔓,
-                                                cse = cse, 
-                                                skipzeros = skipzeros, 
-                                                # nanmath = false,
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
-
-
-    Symbolics.@variables 𝔊[1:ng+nx]
-
-    ext_diff = Symbolics.Num[]
-    for i in 1:nx
-        push!(ext_diff, 𝔓[i] - 𝔊[ng + i])
-    end
-    replaced_solved_vals_ext = vcat(replaced_solved_vals, ext_diff)
-
-    _, calc_ext_block! = Symbolics.build_function(replaced_solved_vals_ext, 𝔊, 𝔓,
-                                                cse = cse, 
-                                                skipzeros = skipzeros, 
-                                                # nanmath = false,
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
-
-    ϵᵉ = zeros(ng + nx)
-    
-    # ϵˢᵉ = zeros(Symbolics.Num, ng + nx)
-
-    # calc_block_aux!(𝐷, 𝔊, 𝔓)
-
-    # Evaluate the function symbolically
-    # calc_ext_block!(ϵˢᵉ, 𝔊, 𝔓, 𝐷)
-
-    ∂ext_block_∂parameters_and_solved_vars = Symbolics.sparsejacobian(replaced_solved_vals_ext, 𝔊) # nϵ x nx
-
-    lennz = nnz(∂ext_block_∂parameters_and_solved_vars)
-
-    if (lennz / length(∂ext_block_∂parameters_and_solved_vars) > density_threshold) || (length(∂ext_block_∂parameters_and_solved_vars) < min_length)
-        derivatives_mat_ext = convert(Matrix, ∂ext_block_∂parameters_and_solved_vars)
-        ext_buffer = zeros(Float64, size(∂ext_block_∂parameters_and_solved_vars))
-    else
-        derivatives_mat_ext = ∂ext_block_∂parameters_and_solved_vars
-        ext_buffer = similar(∂ext_block_∂parameters_and_solved_vars, Float64)
-        ext_buffer.nzval .= 1
-    end
-
-    ext_chol_buff = ext_buffer * ext_buffer'
-
-    ext_chol_buff += ℒ.I
-
-    prob = 𝒮.LinearProblem(ext_chol_buff, ϵᵉ, 𝒮.CholeskyFactorization())
-
-    ext_chol_buffer = 𝒮.init(prob, 𝒮.CholeskyFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
-
-    prob = 𝒮.LinearProblem(ext_buffer, ϵᵉ, 𝒮.LUFactorization())
-
-    ext_lu_buffer = 𝒮.init(prob, 𝒮.LUFactorization(), verbose = isdefined(𝒮, :LinearVerbosity) ? 𝒮.LinearVerbosity(𝒮.SciMLLogging.Minimal()) : false)
-
-    if lennz > nnz_parallel_threshold
-        parallel = Symbolics.ShardedForm(1500,4)
-    else
-        parallel = Symbolics.SerialForm()
-    end
-    
-    _, ext_func_exprs = Symbolics.build_function(derivatives_mat_ext, 𝔊, 𝔓,
-                                                cse = cse, 
-                                                skipzeros = skipzeros, 
-                                                # nanmath = false,
-                                                parallel = parallel,
-                                                expression_module = @__MODULE__,
-                                                expression = Val(false))::Tuple{<:Function, <:Function}
-
-    
-    push!(NSSS_solver_cache_init_tmp, [haskey(𝓂.guess, v) ? 𝓂.guess[v] : Inf for v in sorted_vars])
-    push!(NSSS_solver_cache_init_tmp, [Inf])
-
-    # WARNING: infinite bounds are transformed to 1e12
-    lbs = Float64[]
-    ubs = Float64[]
-
-    limit_boundaries = 1e12
-
-    for i in vcat(sorted_vars, calib_pars_input, other_vars_input)
-        if haskey(𝓂.bounds,i)
-            push!(lbs,𝓂.bounds[i][1])
-            push!(ubs,𝓂.bounds[i][2])
-        else
-            push!(lbs,-limit_boundaries)
-            push!(ubs, limit_boundaries)
-        end
-    end
-
-    push!(SS_solve_func,ss_and_aux_equations...)
-
-    push!(SS_solve_func,:(params_and_solved_vars = [$(calib_pars_input...), $(other_vars_input...)]))
-
-    push!(SS_solve_func,:(lbs = [$(lbs...)]))
-    push!(SS_solve_func,:(ubs = [$(ubs...)]))
-            
-    # n_block = length(𝓂.ss_solve_blocks) + 1 
-    n_block = length(𝓂.ss_solve_blocks_in_place) + 1   
-        
-    push!(SS_solve_func,:(inits = [max.(lbs[1:length(closest_solution[$(2*(n_block-1)+1)])], min.(ubs[1:length(closest_solution[$(2*(n_block-1)+1)])], closest_solution[$(2*(n_block-1)+1)])), closest_solution[$(2*n_block)]]))
-
-    push!(SS_solve_func,:(solution = block_solver(params_and_solved_vars,
-                                                            $(n_block), 
-                                                            𝓂.ss_solve_blocks_in_place[$(n_block)], 
-                                                            # 𝓂.ss_solve_blocks[$(n_block)], 
-                                                            # 𝓂.ss_solve_blocks_no_transform[$(n_block)], 
-                                                            # f, 
-                                                            inits,
-                                                            lbs, 
-                                                            ubs,
-                                                            solver_parameters,
-                                                            fail_fast_solvers_only,
-                                                            cold_start,
-                                                            verbose)))
-                                                            
-    push!(SS_solve_func,:(iters += solution[2][2])) 
-    push!(SS_solve_func,:(solution_error += solution[2][1])) 
-    push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed after solving block with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
-
-    if length(ss_and_aux_equations_error) > 0
-        push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, ss_and_aux_equations_error...))))
-        push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for aux variables with error $(solution_error)") end; scale = scale * .3 + solved_scale * .7; continue end))
-    end
-
-    push!(SS_solve_func,:(sol = solution[1]))
-
-    push!(SS_solve_func,:($(result...)))   
-
-    push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(sol) == Vector{Float64} ? sol : ℱ.value.(sol)]))
-    push!(SS_solve_func,:(NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., typeof(params_and_solved_vars) == Vector{Float64} ? params_and_solved_vars : ℱ.value.(params_and_solved_vars)]))
-
-    
-    push!(𝓂.ss_solve_blocks_in_place, ss_solve_block(
-            function_and_jacobian(calc_block!::Function, ϵ, func_exprs::Function, buffer, chol_buffer, lu_buffer),
-            function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
-        )
-    )
-    
-    return nothing
-end
-
-
-
-
-function partial_solve(eqs_to_solve::Vector{E}, vars_to_solve::Vector{T}, incidence_matrix_subset; avoid_solve::Bool = false)::Tuple{Vector{T}, Vector{T}, Vector{E}, Vector{T}} where {E, T}
-    for n in length(eqs_to_solve)-1:-1:2
-        for eq_combo in combinations(1:length(eqs_to_solve), n)
-            var_indices_to_select_from = findall([sum(incidence_matrix_subset[:,eq_combo],dims = 2)...] .> 0)
-
-            var_indices_in_remaining_eqs = findall([sum(incidence_matrix_subset[:,setdiff(1:length(eqs_to_solve),eq_combo)],dims = 2)...] .> 0) 
-
-            for var_combo in combinations(var_indices_to_select_from, n)
-                remaining_vars_in_remaining_eqs = setdiff(var_indices_in_remaining_eqs, var_combo)
-                # println("Solving for: ",vars_to_solve[var_combo]," in: ",eqs_to_solve[eq_combo])
-                if length(remaining_vars_in_remaining_eqs) == length(eqs_to_solve) - n # not sure whether this condition needs to be there. could be because if the last remaining vars not solved for in the block is not present in the remaining block he will not be able to solve it for the same reasons he wasn't able to solve the unpartitioned block 
-                    if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve[eq_combo]))) > 15
-                        soll = nothing
-                    else
-                        soll = solve_symbolically(eqs_to_solve[eq_combo], vars_to_solve[var_combo])
-                    end
-                    
-                    if !(isnothing(soll) || isempty(soll))
-                        soll_collected = collect(values(soll))
-                        
-                        return (vars_to_solve[setdiff(1:length(eqs_to_solve),var_combo)],
-                                vars_to_solve[var_combo],
-                                eqs_to_solve[setdiff(1:length(eqs_to_solve),eq_combo)],
-                                soll_collected)
-                    end
-                end
-            end
-        end
-    end
-    
-    return (T[], T[], E[], T[])
-end
-
-
-
-function make_equation_robust_to_domain_errors(eqs,#::Vector{Union{Symbol,Expr}}, 
-                                                vars_to_exclude::Vector{Vector{Symbol}}, 
-                                                bounds::Dict{Symbol,Tuple{Float64,Float64}}, 
-                                                ➕_vars::Vector{Symbol}, 
-                                                unique_➕_eqs,#::Dict{Union{Expr,Symbol},Symbol}();
-                                                precompile::Bool = false)
-    ss_and_aux_equations = Expr[]
-    ss_and_aux_equations_dep = Expr[]
-    ss_and_aux_equations_error = Expr[]
-    ss_and_aux_equations_error_dep = Expr[]
-    rewritten_eqs = Union{Expr,Symbol}[]
-    # write down ss equations including nonnegativity auxiliary variables
-    # find nonegative variables, parameters, or terms
-    for eq in eqs
-        if eq isa Symbol
-            push!(rewritten_eqs, eq)
-        elseif eq isa Expr
-            rewritten_eq = postwalk(x -> 
-                x isa Expr ? 
-                    # x.head == :(=) ? 
-                    #     Expr(:call,:(-),x.args[1],x.args[2]) : #convert = to -
-                    #         x.head == :ref ?
-                    #             occursin(r"^(x|ex|exo|exogenous){1}"i,string(x.args[2])) ? 0 : # set shocks to zero and remove time scripts
-                    #     x : 
-                    x.head == :call ?
-                        x.args[1] == :* ?
-                            x.args[2] isa Int ?
-                                x.args[3] isa Int ?
-                                    x :
-                                Expr(:call, :*, x.args[3:end]..., x.args[2]) : # 2beta => beta * 2 
-                            x :
-                        x.args[1] ∈ [:^] ?
-                            !(x.args[3] isa Int) ?
-                                x.args[2] isa Symbol ? # nonnegative parameters 
-                                    x.args[2] ∈ vars_to_exclude[1] ?
-                                        begin
-                                            bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
-                                            x 
-                                        end :
-                                    begin
-                                        if haskey(unique_➕_eqs, x.args[2])
-                                            replacement = unique_➕_eqs[x.args[2]]
-                                        else
-                                            if x.args[2] in vars_to_exclude[1]
-                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
-                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                            else
-                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
-                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                            end
-
-                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
-
-                                            unique_➕_eqs[x.args[2]] = replacement
-                                        end
-                                        
-                                        :($(replacement) ^ $(x.args[3]))
-                                    end :
-                                x.args[2] isa Float64 ?
-                                    x :
-                                x.args[2].head == :call ? # nonnegative expressions
-                                    begin
-                                        if precompile
-                                            replacement = x.args[2]
-                                        else
-                                            replacement = simplify(x.args[2])
-                                        end
-
-                                        if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                            if haskey(unique_➕_eqs, x.args[2])
-                                                replacement = unique_➕_eqs[x.args[2]]
-                                            else
-                                                if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
-                                                    push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
-                                                    push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                                else
-                                                    push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
-                                                    push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                                end
-
-                                                bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
-                                                push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                                replacement = Symbol("➕" * sub(string(length(➕_vars))))
-
-                                                unique_➕_eqs[x.args[2]] = replacement
-                                            end
-                                        end
-
-                                        :($(replacement) ^ $(x.args[3]))
-                                    end :
-                                x :
-                            x :
-                        x.args[2] isa Float64 ?
-                            x :
-                        x.args[1] ∈ [:log] ?
-                            x.args[2] isa Symbol ? # nonnegative parameters 
-                                x.args[2] ∈ vars_to_exclude[1] ?
-                                    begin
-                                        bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1e12)) : (eps(), 1e12)
-                                        x 
-                                    end :
-                                begin
-                                    if haskey(unique_➕_eqs, x.args[2])
-                                        replacement = unique_➕_eqs[x.args[2]]
-                                    else
-                                        if x.args[2] in vars_to_exclude[1]
-                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
-                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                        else
-                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
-                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                        end
-
-                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
-                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
-
-                                        unique_➕_eqs[x.args[2]] = replacement
-                                    end
-                                
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x.args[2].head == :call ? # nonnegative expressions
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
-
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if haskey(unique_➕_eqs, x.args[2])
-                                            replacement = unique_➕_eqs[x.args[2]]
-                                        else
-                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
-                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
-                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                            else
-                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1e12,max(eps(),$(x.args[2])))))
-                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                            end
-
-                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1e12)) : (eps(), 1e12)
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
-
-                                            unique_➕_eqs[x.args[2]] = replacement
-                                        end
-                                    end
-
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
-                        x.args[1] ∈ [:norminvcdf, :norminv, :qnorm] ?
-                            x.args[2] isa Symbol ? # nonnegative parameters 
-                                x.args[2] ∈ vars_to_exclude[1] ?
-                                begin
-                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 1-eps())) : (eps(), 1 - eps())
-                                    x 
-                                end :
-                                begin
-                                    if haskey(unique_➕_eqs, x.args[2])
-                                        replacement = unique_➕_eqs[x.args[2]]
-                                    else
-                                        if x.args[2] in vars_to_exclude[1]
-                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
-                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                        else
-                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
-                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                        end
-
-                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1 - eps())) : (eps(), 1 - eps())
-                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
-
-                                        unique_➕_eqs[x.args[2]] = replacement
-                                    end
-                                
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x.args[2].head == :call ? # nonnegative expressions
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
-
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if haskey(unique_➕_eqs, x.args[2])
-                                            replacement = unique_➕_eqs[x.args[2]]
-                                        else
-                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
-                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
-                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                            else
-                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(1-eps(),max(eps(),$(x.args[2])))))
-                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                            end
-
-                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 1 - eps())) : (eps(), 1 - eps())
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
-
-                                            unique_➕_eqs[x.args[2]] = replacement
-                                        end
-                                    end
-
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
-                        x.args[1] ∈ [:exp] ?
-                            x.args[2] isa Symbol ? # have exp terms bound so they dont go to Inf
-                                x.args[2] ∈ vars_to_exclude[1] ?
-                                begin
-                                    bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], -1e12), min(bounds[x.args[2]][2], 600)) : (-1e12, 600)
-                                    x 
-                                end :
-                                begin
-                                    if haskey(unique_➕_eqs, x.args[2])
-                                        replacement = unique_➕_eqs[x.args[2]]
-                                    else
-                                        if x.args[2] in vars_to_exclude[1]
-                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2])))))
-                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                        else
-                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2]))))) 
-                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                        end
-                                        
-                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 600)) : (-1e12, 600)
-                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
-
-                                        unique_➕_eqs[x.args[2]] = replacement
-                                    end
-                                
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x.args[2].head == :call ? # have exp terms bound so they dont go to Inf
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
-
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if haskey(unique_➕_eqs, x.args[2])
-                                            replacement = unique_➕_eqs[x.args[2]]
-                                        else
-                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
-                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2])))))
-                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                            else
-                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(600,max(-1e12,$(x.args[2])))))
-                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                            end
-                                            
-                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], -1e12), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 600)) : (-1e12, 600)
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
-
-                                            unique_➕_eqs[x.args[2]] = replacement
-                                        end
-                                    end
-
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
-                        x.args[1] ∈ [:erfcinv] ?
-                            x.args[2] isa Symbol ? # nonnegative parameters 
-                                x.args[2] ∈ vars_to_exclude[1] ?
-                                    begin
-                                        bounds[x.args[2]] = haskey(bounds, x.args[2]) ? (max(bounds[x.args[2]][1], eps()), min(bounds[x.args[2]][2], 2 - eps())) : (eps(), 2 - eps())
-                                        x 
-                                    end :
-                                begin
-                                    if haskey(unique_➕_eqs, x.args[2])
-                                        replacement = unique_➕_eqs[x.args[2]]
-                                    else
-                                        if x.args[2] in vars_to_exclude[1]
-                                            push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
-                                            push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                        else
-                                            push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
-                                            push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                        end
-                                        
-                                        bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 2 - eps())) : (eps(), 2 - eps())
-                                        push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                        replacement = Symbol("➕" * sub(string(length(➕_vars))))
-
-                                        unique_➕_eqs[x.args[2]] = replacement
-                                    end
-                                
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x.args[2].head == :call ? # nonnegative expressions
-                                begin
-                                    if precompile
-                                        replacement = x.args[2]
-                                    else
-                                        replacement = simplify(x.args[2])
-                                    end
-
-                                    if !(replacement isa Int) # check if the nonnegative term is just a constant
-                                        if haskey(unique_➕_eqs, x.args[2])
-                                            replacement = unique_➕_eqs[x.args[2]]
-                                        else
-                                            if isempty(intersect(get_symbols(x.args[2]), vars_to_exclude[1]))
-                                                push!(ss_and_aux_equations, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
-                                                push!(ss_and_aux_equations_error, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                            else
-                                                push!(ss_and_aux_equations_dep, :($(Symbol("➕" * sub(string(length(➕_vars)+1)))) = min(2-eps(),max(eps(),$(x.args[2])))))
-                                                push!(ss_and_aux_equations_error_dep, Expr(:call,:abs, Expr(:call,:-, :($(Symbol("➕" * sub(string(length(➕_vars)+1))))), x.args[2])))
-                                            end
-                                            
-                                            bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))] = haskey(bounds, Symbol("➕" * sub(string(length(➕_vars)+1)))) ? (max(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][1], eps()), min(bounds[Symbol("➕" * sub(string(length(➕_vars)+1)))][2], 2 - eps())) : (eps(), 2 - eps())
-                                            push!(➕_vars,Symbol("➕" * sub(string(length(➕_vars)+1))))
-                                            replacement = Symbol("➕" * sub(string(length(➕_vars))))
-
-                                            unique_➕_eqs[x.args[2]] = replacement
-                                        end
-                                    end
-
-                                    :($(Expr(:call, x.args[1], replacement)))
-                                end :
-                            x :
-                        x :
-                    x :
-                x,
-            eq)
-            push!(rewritten_eqs,rewritten_eq)
-        else
-            @assert typeof(eq) in [Symbol, Expr]
-        end
-    end
-
-    vars_to_exclude_from_block = vcat(vars_to_exclude...)
-
-    found_new_dependecy = true
-
-    while found_new_dependecy
-        found_new_dependecy = false
-
-        for ssauxdep in ss_and_aux_equations_dep
-            push!(vars_to_exclude_from_block, ssauxdep.args[1])
-        end
-
-        for (iii, ssaux) in enumerate(ss_and_aux_equations)
-            if !isempty(intersect(get_symbols(ssaux), vars_to_exclude_from_block))
-                found_new_dependecy = true
-                push!(vars_to_exclude_from_block, ssaux.args[1])
-                push!(ss_and_aux_equations_dep, ssaux)
-                push!(ss_and_aux_equations_error_dep, ss_and_aux_equations_error[iii])
-                deleteat!(ss_and_aux_equations, iii)
-                deleteat!(ss_and_aux_equations_error, iii)
-            end
-        end
-    end
-
-    return rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep
-end
-
 
 
 function replace_symbols(exprs::T, remap::Dict{Symbol,S}) where {T,S}
@@ -4329,18 +3467,6 @@ function write_ss_check_function!(𝓂::ℳ;
 end
 
 
-# Note: The symbolic version of `solve_steady_state!` that takes a `symbolics`
-# argument is provided by the `SymPyPythonCallExt` extension when SymPy is
-# available. Some call sites pass positional arguments `(mod, SS_symbolic,
-# symbolics, ...)` expecting that extension. When the extension is not
-# installed, provide a minimal fallback wrapper that accepts the positional
-# arguments and delegates to the non-symbolic keyword-only implementation.
-
-function solve_steady_state!(𝓂::ℳ, SS_symbolic::Bool, symbolics::Nothing; kwargs...)
-    return solve_steady_state!(𝓂; kwargs...)
-end
-
-
 function solve_steady_state!(𝓂::ℳ;
                             cse = true,
                             skipzeros = true,
@@ -4421,7 +3547,7 @@ function solve_steady_state!(𝓂::ℳ;
         relevant_pars_across = union(relevant_pars_across,relevant_pars)
         
         iii = 1
-        for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters, 𝓂.missing_parameters)
+        for parss in union(𝓂.parameters,𝓂.parameters_as_function_of_parameters)
             # valss   = 𝓂.parameter_values[i]
             if :($parss) ∈ relevant_pars
                 # push!(calib_pars,:($parss = parameters_and_solved_vars[$iii]))
@@ -4547,51 +3673,9 @@ function solve_steady_state!(𝓂::ℳ;
         # end
     
         # aux_replacements = Dict(aux_vars .=> aux_expr)
-
-        # Build a dict to replace parameters that are not passed as function arguments
-        # This handles parameters like K_ss = 11 that have fixed numeric values
-        fixed_param_replacements = Dict{Symbol, Any}()
-        
-        # First add all regular parameters that have fixed values and are not in parameters_and_solved_vars
-        params_in_solved_vars = Set(parameters_and_solved_vars)
-        for (i, param) in enumerate(𝓂.parameters)
-            if param ∉ params_in_solved_vars && param ∉ sorted_vars
-                # This parameter has a fixed value and is not being solved for
-                fixed_param_replacements[param] = 𝓂.parameter_values[i]
-            end
-        end
-        
-        # Now add parameters from calibration_equations_no_var with iterative substitution
-        # This handles cases like: cgamma = 1 + ctrend / 100 where ctrend = 0.4
-        calib_vars = Symbol[]
-        calib_exprs = Any[]
-        for eq in 𝓂.calibration_equations_no_var
-            if eq isa Expr && eq.head == :(=)
-                param_name = eq.args[1]
-                param_value = eq.args[2]
-                if param_name isa Symbol
-                    push!(calib_vars, param_name)
-                    push!(calib_exprs, param_value)
-                end
-            end
-        end
-        
-        # Iteratively substitute values - first substitute fixed_param_replacements into expressions
-        # then substitute earlier calib expressions into later ones
-        for (i, var) in enumerate(calib_vars)
-            # First substitute fixed params (like ctrend = 0.4) into expression
-            calib_exprs[i] = replace_symbols(calib_exprs[i], fixed_param_replacements)
-            # Then substitute earlier calib vars into this expression
-            for j in 1:i-1
-                calib_exprs[i] = replace_symbols(calib_exprs[i], Dict(calib_vars[j] => calib_exprs[j]))
-            end
-            # Add to fixed_param_replacements for subsequent use
-            fixed_param_replacements[var] = calib_exprs[i]
-        end
     
         replaced_solved_vals = solved_vals |> 
             # x -> replace_symbols.(x, Ref(aux_replacements)) |> 
-            x -> replace_symbols.(x, Ref(fixed_param_replacements)) |>
             x -> replace_symbols.(x, Ref(parameter_dict)) |> 
             x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
             x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
@@ -4731,7 +3815,7 @@ function solve_steady_state!(𝓂::ℳ;
 
 
         push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(sorted_vars)))
-        push!(NSSS_solver_cache_init_tmp,fill(Inf, length(parameters_and_solved_vars) > 0 ? length(parameters_and_solved_vars) : 1))
+        push!(NSSS_solver_cache_init_tmp,[Inf])
 
         # WARNING: infinite bounds are transformed to 1e12
         lbs = []
@@ -4816,11 +3900,7 @@ function solve_steady_state!(𝓂::ℳ;
     
     parameters_in_equations = []
 
-    # Include both regular parameters and missing parameters
-    # Missing parameters will be filled in later via write_parameters_input!
-    all_params_for_equations = vcat(𝓂.parameters, 𝓂.missing_parameters)
-
-    for (i, parss) in enumerate(all_params_for_equations) 
+    for (i, parss) in enumerate(𝓂.parameters) 
         if parss ∈ union(atoms_in_equations, relevant_pars_across)
             push!(parameters_in_equations, :($parss = parameters[$i]))
         end
@@ -4828,10 +3908,10 @@ function solve_steady_state!(𝓂::ℳ;
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, all_params_for_equations)))
+        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
     end
 
-    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), all_params_for_equations))
+    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
 
     𝓂.SS_dependencies = dependencies
 
@@ -4863,7 +3943,7 @@ function solve_steady_state!(𝓂::ℳ;
     # fix parameter bounds
     par_bounds = []
     
-    for varpar in intersect(all_params_for_equations, union(atoms_in_equations, relevant_pars_across))
+    for varpar in intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across))
         if haskey(𝓂.bounds, varpar)
             push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.bounds[varpar][1])),$(𝓂.bounds[varpar][2]))))
         end
@@ -5149,25 +4229,7 @@ function solve_ss(SS_optimizer::Function,
         sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : solver_params.starting_value for g in guess]))
     end
 
-    # Check if extended problem is valid
-    # The extended problem function expects ng+nx variables where nx = number of params at compile time
-    # lbs was computed for sorted_vars + params, so length(lbs) - length(guess) gives expected params
-    expected_params = length(lbs) - length(guess)
-    actual_params = length(closest_parameters_and_solved_vars)
-    
-    # Only use extended problem if the sizes match
-    use_extended = extended_problem && (expected_params == actual_params) && (expected_params > 0)
-    
-    # For extended problem, extend bounds to include parameters
-    if use_extended
-        lbs_ext = lbs
-        ubs_ext = ubs
-    else
-        lbs_ext = lbs[1:length(guess)]
-        ubs_ext = ubs[1:length(guess)]
-    end
-
-    sol_new_tmp, info = SS_optimizer(   use_extended ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
+    sol_new_tmp, info = SS_optimizer(   extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
     # if extended_problem
     #     function ext_function_to_optimize(guesses)
     #         gss = guesses[1:length(guess)]
@@ -5183,10 +4245,10 @@ function solve_ss(SS_optimizer::Function,
     # end
 
     # sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
-                                        use_extended ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
+                                        extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
                                         parameters_and_solved_vars,
-                                        lbs_ext,
-                                        ubs_ext,
+                                        extended_problem ? lbs : lbs[1:length(guess)],
+                                        extended_problem ? ubs : ubs[1:length(guess)],
                                         solver_params,
                                         tol = tol   )
 
@@ -5201,7 +4263,7 @@ function solve_ss(SS_optimizer::Function,
     total_iters[1] += info[1]
     total_iters[2] += info[2]
 
-    extended_problem_str = use_extended ? "(extended problem) " : ""
+    extended_problem_str = extended_problem ? "(extended problem) " : ""
 
     if separate_starting_value isa Bool
         starting_value_str = ""
@@ -6123,43 +5185,8 @@ function solve!(𝓂::ℳ;
         
         perturbation_order = 1
         
-        # Use symbolic solving only if SymPy extension is loaded and precompile is false
-        if !𝓂.precompile && sympy_available()
-            start_time = time()
-
-            if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
-
-            symbolics = create_symbols_eqs!(𝓂)
-
-            remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = false) 
-
-            if !silent println(round(time() - start_time, digits = 3), " seconds") end
-
-
-            start_time = time()
-
-            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-            solve_steady_state!(𝓂, false, symbolics, verbose = verbose, avoid_solve = false) # 2nd argument is SS_symbolic
-
-            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
-            
-            set_up_obc_violation_function!(𝓂)
-
-            if !silent println(round(time() - start_time, digits = 3), " seconds") end
-        else
-            start_time = time()
-
-            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-            solve_steady_state!(𝓂, verbose = verbose)
-
-            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
-            
-            set_up_obc_violation_function!(𝓂)
-
-            if !silent println(round(time() - start_time, digits = 3), " seconds") end
-        end
+        # Delegate to extension or default numerical setup
+        setup_steady_state_numerical!(𝓂, verbose, silent)
     
         start_time = time()
 

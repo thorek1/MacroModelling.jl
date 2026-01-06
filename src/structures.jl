@@ -93,8 +93,6 @@ struct timings
     dynamic_order::Vector{Int}
 end
 
-# Note: The symbolics struct that uses SymPy types is now defined in the SymPyPythonCallExt extension.
-# It is only available when SymPy is loaded.
 
 struct auxiliary_indices
     dyn_var_future_idx::Vector{Int}
@@ -240,6 +238,7 @@ mutable struct ℳ
     
     missing_parameters::Vector{Symbol}
     precompile::Bool
+    simplify::Bool
 
     guess::Dict{Symbol, Float64}
 
