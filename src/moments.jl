@@ -16,7 +16,7 @@ function calculate_covariance(parameters::Vector{R},
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                             opts = opts)
 
-    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+    @ignore_derivatives update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 

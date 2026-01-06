@@ -1096,7 +1096,7 @@ function get_irf(𝓂::ℳ,
                                                             opts = opts,
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution)
     
-    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+    @ignore_derivatives update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
     if solved 
         𝓂.solution.perturbation.qme_solution = qme_sol
@@ -1938,7 +1938,7 @@ function get_solution(𝓂::ℳ,
                                                         opts = opts,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
-    update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
+    @ignore_derivatives update_perturbation_counter!(𝓂, solved, estimation = opts.estimation, order = 1)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -1962,7 +1962,7 @@ function get_solution(𝓂::ℳ,
                                                     T = 𝓂.timings, 
                                                     opts = opts)
 
-        update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
+        @ignore_derivatives update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
 
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
@@ -1983,7 +1983,7 @@ function get_solution(𝓂::ℳ,
                                                     T = 𝓂.timings, 
                                                     opts = opts)
     
-        update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
+        @ignore_derivatives update_perturbation_counter!(𝓂, solved2, estimation = opts.estimation, order = 2)
 
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
@@ -2004,7 +2004,7 @@ function get_solution(𝓂::ℳ,
                                                     T = 𝓂.timings, 
                                                     opts = opts)
                                                     
-        update_perturbation_counter!(𝓂, solved3, estimation = opts.estimation, order = 3)
+        @ignore_derivatives update_perturbation_counter!(𝓂, solved3, estimation = opts.estimation, order = 3)
 
         if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
         
