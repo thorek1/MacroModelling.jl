@@ -7,8 +7,6 @@ import ThreadedSparseArrays
 using PrecompileTools
 import SpecialFunctions: erfcinv, erfc # can't use constants because of SymPy (e.g. sqrt2)
 import SpecialFunctions
-import SymPyPythonCall as SPyPyC
-import PythonCall
 import Symbolics
 import Accessors
 # import TimerOutputs
@@ -33,7 +31,6 @@ backend = 𝒟.AutoForwardDiff()
 import LoopVectorization: @turbo
 # import Polyester
 import NLopt
-import Optim, LineSearches
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse, nonzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -70,36 +67,16 @@ import Reexport
 Reexport.@reexport import AxisKeys: KeyedArray, axiskeys, rekey, NamedDimsArray
 Reexport.@reexport import SparseArrays: sparse, spzeros, droptol!, sparsevec, spdiagm, findnz
 
-# Module for SymPy symbol workspace to avoid polluting MacroModelling namespace
-module SymPyWorkspace
-    # Import SpecialFunctions
-    using ..SpecialFunctions: erfcinv, erfc
-    
-    # Define density-related functions directly in the workspace
-    # These need to be available for symbolic expressions
-    function norminvcdf(p::T)::T where T
-        -erfcinv(2*p) * 1.4142135623730951
-    end
-    norminv(p) = norminvcdf(p)
-    qnorm(p) = norminvcdf(p)
+# Check if SymPy extension is available (will be set to true when extension loads)
+const _sympy_available = Ref(false)
 
-    function normlogpdf(z::T)::T where T
-        -(abs2(z) + 1.8378770664093453) / 2
-    end
+"""
+    sympy_available()
 
-    function normpdf(z::T)::T where T
-        exp(-abs2(z)/2) * 0.3989422804014327
-    end
-
-    function normcdf(z::T)::T where T
-        erfc(-z * 0.7071067811865475) / 2
-    end
-    pnorm(p) = normcdf(p)
-    dnorm(p) = normpdf(p)
-
-    Max = max
-    Min = min
-end
+Returns `true` if the SymPy extension (SymPyPythonCallExt) is loaded, `false` otherwise.
+When SymPy is available, advanced symbolic solving features are enabled for steady state computation.
+"""
+sympy_available() = _sympy_available[]
 
 # Reserved names that cannot be used as variables, shocks, or parameters
 # These are functions and operators available in SymPyWorkspace
@@ -171,7 +148,6 @@ include("./algorithms/sylvester.jl")
 include("./algorithms/lyapunov.jl")
 include("./algorithms/nonlinear_solver.jl")
 include("./algorithms/quadratic_matrix_equation.jl")
-include("./algorithms/conditional_forecast_lbfgs.jl")
 
 include("./filter/find_shocks.jl")
 include("./filter/inversion.jl")
@@ -182,6 +158,8 @@ include("./filter/kalman.jl")
 
 
 export @model, @parameters, solve!
+
+export sympy_available
 
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
 export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
@@ -750,74 +728,73 @@ function reverse_transformation(transformed_expr::Expr, reverse_dict::Dict{Symbo
 end
 
 
-function replace_with_one(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
-    # equation.subs(variable, 1).replace(SPyPyC.Sym(ℯ), exp(1))
-    tmp = SPyPyC.subs(equation, variable, 1)
+# Stub functions for SymPy functionality - these will be overridden by the SymPyPythonCallExt extension
 
-    return replace_e(tmp)
+"""
+    simplify(ex::Expr)
+
+Simplify a Julia expression. When SymPyPythonCall extension is loaded, uses SymPy's 
+symbolic simplification. Otherwise, returns the expression unchanged.
+"""
+function simplify end
+
+"""
+    transform_obc(ex::Expr; avoid_solve::Bool = false)
+
+Transform an occasionally binding constraint expression. When SymPyPythonCall extension 
+is loaded, uses symbolic solving to rearrange min/max expressions. Otherwise, returns 
+the original expression.
+"""
+function transform_obc end
+
+"""
+    create_symbols_eqs!(𝓂::ℳ)
+
+Create symbolic representations of model equations. Requires SymPyPythonCall extension.
+Returns nothing when SymPy is not available.
+"""
+function create_symbols_eqs! end
+
+"""
+    remove_redundant_SS_vars!(𝓂::ℳ, symbolics; avoid_solve::Bool = false)
+
+Remove redundant steady state variables using symbolic solving. Requires SymPyPythonCall extension.
+Does nothing when SymPy is not available.
+"""
+function remove_redundant_SS_vars! end
+
+# Default implementations when SymPy is not available
+
+# simplify: just return the expression as-is when SymPy is not loaded
+function simplify(ex::U)::U where U <: Union{Expr,Symbol,Int}
+    return ex
 end
 
-function replace_e(equation::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
-    outraw =  SPyPyC.subs(equation, SPyPyC.Sym(ℯ), exp(1))
-
-    if outraw isa SPyPyC.Sym{PythonCall.Core.Py}
-        out = outraw
-    else
-        out = collect(outraw)[1]
-    end
-    
-    return out
-end
-
-function replace_symbolic(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py}, replacement::SPyPyC.Sym{PythonCall.Core.Py})::SPyPyC.Sym{PythonCall.Core.Py}
-    # equation.subs(variable, replacement)
-    return SPyPyC.subs(equation, variable, replacement)
-end
-
-function solve_symbolically(equation::SPyPyC.Sym{PythonCall.Core.Py}, variable::SPyPyC.Sym{PythonCall.Core.Py})::Union{Nothing,Vector{SPyPyC.Sym{PythonCall.Core.Py}}}
-    soll =  try SPyPyC.solve(equation, variable)
-            catch
-            end
-
-    return soll
-end
-
-function solve_symbolically(equations::Vector{SPyPyC.Sym{PythonCall.Core.Py}}, variables::Vector{SPyPyC.Sym{PythonCall.Core.Py}})::Union{Nothing,Dict{SPyPyC.Sym{PythonCall.Core.Py}, SPyPyC.Sym{PythonCall.Core.Py}}}
-    soll =  try SPyPyC.solve(equations, variables)
-            catch
-            end
-
-    if soll == Any[]
-        soll = Dict{SPyPyC.Sym{PythonCall.Core.Py}, SPyPyC.Sym{PythonCall.Core.Py}}()
-    elseif soll isa Vector
-        soll = Dict{SPyPyC.Sym{PythonCall.Core.Py}, SPyPyC.Sym{PythonCall.Core.Py}}(variables .=> soll[1])
-    end
-    
-    return soll
-end
-
+# transform_obc: return the original expression when SymPy is not loaded
 function transform_obc(ex::Expr; avoid_solve::Bool = false)
-    transformed_expr, reverse_dict = transform_expression(ex)
+    # When SymPy is not available, just return the original expression
+    # This means occasionally binding constraints won't be symbolically simplified
+    return ex
+end
 
-    for symbs in get_symbols(transformed_expr)
-        sym_value = SPyPyC.symbols(string(symbs), real = true, finite = true)
-        Core.eval(SymPyWorkspace, :($symbs = $sym_value))
-    end
+# create_symbols_eqs!: not available without SymPy
+function create_symbols_eqs!(𝓂::ℳ)
+    # Returns nothing when SymPy is not available
+    # The @parameters macro checks sympy_available() and uses numerical methods instead
+    return nothing
+end
 
-    eq = Core.eval(SymPyWorkspace, transformed_expr)
+# remove_redundant_SS_vars!: no-op without SymPy
+function remove_redundant_SS_vars!(𝓂::ℳ, symbolics; avoid_solve::Bool = false)
+    # No-op when SymPy is not available
+    # The @parameters macro checks sympy_available() and uses numerical methods instead
+    return nothing
+end
 
-    if avoid_solve || count_ops(Meta.parse(string(eq))) > 15
-        soll = nothing
-    else
-        soll = solve_symbolically(eq, Core.eval(SymPyWorkspace, :minmax__P))
-    end
-
-    if !isempty(soll)
-        sorted_minmax = Expr(:call, reverse_dict[:minmax__P].args[1], :($(reverse_dict[:minmax__P].args[2]) - $(Meta.parse(string(soll[1])))),  :($(reverse_dict[:minmax__P].args[3]) - $(Meta.parse(string(soll[1])))))
-        return reverse_transformation(sorted_minmax, reverse_dict)
-    else
-        @error "Occasionally binding constraint not well-defined. See documentation for examples."
-    end
+# solve_symbolically: return nothing when SymPy is not loaded
+# This is overridden by the SymPyPythonCallExt extension when available
+function solve_symbolically(eqs, vars)
+    return nothing
 end
 
 
@@ -858,7 +835,7 @@ function set_up_obc_violation_function!(𝓂)
 
     alll = []
     for (i,var) in enumerate(present_varss)
-        if !(match(r"^χᵒᵇᶜ", string(var)) === nothing)
+        if !(match(r"^[χΧ]ᵒᵇᶜ", string(var)) === nothing)
             push!(alll,:($var = Y[$(dyn_var_present_idx[i]),1:max(periods, 1)]))
         end
     end
@@ -931,86 +908,29 @@ end
 
 function write_obc_violation_equations(𝓂)
     eqs = Expr[]
-    for (i,eq) in enumerate(𝓂.dyn_equations)
-        if check_for_minmax(eq)
-            minmax_fixed_eqs = postwalk(x -> 
-                x isa Expr ?
-                    x.head == :call ? 
-                        length(x.args) == 3 ?
-                            x.args[3] isa Expr ?
-                                x.args[3].args[1] ∈ [:Min, :min, :Max, :max] ?
-                                    begin
-                                        plchldr = Symbol(replace(string(x.args[2]), "₍₀₎" => ""))
+    for eq in 𝓂.dyn_equations
+        # Look for equations of the form lhs - max/min(arg1, arg2)
+        if eq isa Expr && eq.head == :call && eq.args[1] == :- && eq.args[3] isa Expr
+            mcall = eq.args[3]
+            if mcall.head == :call && mcall.args[1] ∈ (:max, :Max, :min, :Min)
+                lhs = eq.args[2]
+                arg1 = mcall.args[2]
+                arg2 = mcall.args[3]
 
-                                        ineq_plchldr_1 = x.args[3].args[2] isa Symbol ? Symbol(replace(string(x.args[3].args[2]), "₍₀₎" => "")) : x.args[3].args[2]
+                if mcall.args[1] ∈ (:max, :Max)
+                    s1 = :($lhs .- $arg1)
+                    s2 = :($lhs .- $arg2)
+                else
+                    s1 = :($arg1 .- $lhs)
+                    s2 = :($arg2 .- $lhs)
+                end
 
-                                        arg1 = x.args[3].args[2]
-                                        arg2 = x.args[3].args[3]
-
-                                        dyn_1 = check_for_dynamic_variables(x.args[3].args[2])
-                                        dyn_2 = check_for_dynamic_variables(x.args[3].args[3])
-
-                                        cond1 = Expr[]
-                                        cond2 = Expr[]
-
-                                        maximisation = contains(string(plchldr), "⁺")
-                                        
-                                        # if dyn_1
-                                        #     if maximisation
-                                        #         push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                        #         # push!(cond2, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                        #     else
-                                        #         push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
-                                        #         # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[2])))) # RBC
-                                        #     end
-                                        # end
-
-                                        # if dyn_2
-                                        #     if maximisation
-                                        #         push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
-                                        #         # push!(cond2, :(push!(constraint_values, $(x.args[3].args[3])))) # testmax
-                                        #     else
-                                        #         push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
-                                        #         # push!(cond2, :(push!(constraint_values, -$(x.args[3].args[3])))) # RBC
-                                        #     end
-                                        # end
-
-
-                                        if maximisation
-                                            push!(cond1, :(push!(constraint_values, [sum($(x.args[3].args[2]) .* $(x.args[3].args[3]))])))
-                                            push!(cond1, :(push!(constraint_values, $(x.args[3].args[2]))))
-                                            push!(cond1, :(push!(constraint_values, $(x.args[3].args[3]))))
-                                            # push!(cond1, :(push!(constraint_values, max.($(x.args[3].args[2]), $(x.args[3].args[3])))))
-                                        else
-                                            push!(cond1, :(push!(constraint_values, [sum($(x.args[3].args[2]) .* $(x.args[3].args[3]))])))
-                                            push!(cond1, :(push!(constraint_values, -$(x.args[3].args[2]))))
-                                            push!(cond1, :(push!(constraint_values, -$(x.args[3].args[3]))))
-                                            # push!(cond1, :(push!(constraint_values, min.($(x.args[3].args[2]), $(x.args[3].args[3])))))
-                                        end
-
-                                        # if maximisation
-                                        #     push!(cond1, :(push!(shock_sign_indicators, true)))
-                                        #     # push!(cond2, :(push!(shock_sign_indicators, true)))
-                                        # else
-                                        #     push!(cond1, :(push!(shock_sign_indicators, false)))
-                                        #     # push!(cond2, :(push!(shock_sign_indicators, false)))
-                                        # end
-
-                                        # :(if isapprox($plchldr, $ineq_plchldr_1, atol = 1e-12)
-                                        #     $(Expr(:block, cond1...))
-                                        # else
-                                        #     $(Expr(:block, cond2...))
-                                        # end)
-                                        :($(Expr(:block, cond1...)))
-                                    end :
-                                x :
-                            x :
-                        x :
-                    x :
-                x,
-            eq)
-
-            push!(eqs, minmax_fixed_eqs)
+                push!(eqs, quote
+                    push!(constraint_values, [sum(abs.($s1 .* $s2))])
+                    push!(constraint_values, $s1)
+                    push!(constraint_values, $s2)
+                end)
+            end
         end
     end
 
@@ -2806,17 +2726,11 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_horizon
                                     obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
                                     obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
 
-                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
-                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    else
-                                        obc_vars_left = x.args[2]
-                                    end
-
-                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
-                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
-                                    else
-                                        obc_vars_right = x.args[3]
-                                    end
+                                    # Always bind the placeholders to the original arguments so downstream
+                                    # logic (e.g. write_obc_violation_equations) sees the χ-obc symbols
+                                    # instead of the raw values (like R̄).
+                                    push!(eqs, :($obc_vars_left = $(x.args[2])))
+                                    push!(eqs, :($obc_vars_right = $(x.args[3])))
 
                                     obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁺ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
 
@@ -2833,17 +2747,8 @@ function parse_occasionally_binding_constraints(equations_block; max_obc_horizon
                                     obc_vars_left = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝˡ" ), 0)
                                     obc_vars_right = Expr(:ref, Meta.parse("χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝʳ" ), 0)
 
-                                    if !(x.args[2] isa Symbol) && check_for_dynamic_variables(x.args[2])
-                                        push!(eqs, :($obc_vars_left = $(x.args[2])))
-                                    else
-                                        obc_vars_left = x.args[2]
-                                    end
-
-                                    if !(x.args[3] isa Symbol) && check_for_dynamic_variables(x.args[3])
-                                        push!(eqs, :($obc_vars_right = $(x.args[3])))
-                                    else
-                                        obc_vars_right = x.args[3]
-                                    end
+                                    push!(eqs, :($obc_vars_left = $(x.args[2])))
+                                    push!(eqs, :($obc_vars_right = $(x.args[3])))
 
                                     obc_inequality = Expr(:ref, Meta.parse("Χᵒᵇᶜ⁻ꜝ" * super(string(length(obc_shocks) + 1)) * "ꜝ" ), 0)
 
@@ -2923,22 +2828,9 @@ end
 Max = max
 Min = min
 
-function simplify(ex::Expr)::Union{Expr,Symbol,Int}
-    ex_ss = convert_to_ss_equation(ex)
-
-    for x in get_symbols(ex_ss)
-        sym_value = SPyPyC.symbols(string(x), real = true, finite = true)
-        Core.eval(SymPyWorkspace, :($x = $sym_value))
-    end
-
-    parsed = ex_ss |> x -> Core.eval(SymPyWorkspace, x) |> string |> Meta.parse
-
-    postwalk(x ->   x isa Expr ? 
-                        x.args[1] == :conjugate ? 
-                            x.args[2] : 
-                        x : 
-                    x, parsed)
-end
+# Note: simplify is now defined as a stub function earlier in the file
+# It returns the expression unchanged when SymPy is not available
+# When the SymPyPythonCallExt extension is loaded, it provides the full implementation
 
 function convert_to_ss_equation(eq::Expr)::Expr
     postwalk(x -> 
@@ -3465,151 +3357,9 @@ function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
 end
 
 
-
-function create_symbols_eqs!(𝓂::ℳ)::symbolics
-    # create symbols in SymPyWorkspace to avoid polluting MacroModelling namespace
-    symbols_in_dynamic_equations = reduce(union, get_symbols.(𝓂.dyn_equations))
-
-    symbols_in_dynamic_equations_wo_subscripts = Symbol.(replace.(string.(symbols_in_dynamic_equations), r"₍₋?(₀|₁|ₛₛ|ₓ)₎$"=>""))
-
-    symbols_in_ss_equations = reduce(union,get_symbols.(𝓂.ss_aux_equations))
-
-    symbols_in_equation = union(𝓂.parameters_in_equations, 
-                                𝓂.parameters, 
-                                𝓂.parameters_as_function_of_parameters,
-                                symbols_in_dynamic_equations,
-                                symbols_in_dynamic_equations_wo_subscripts,
-                                symbols_in_ss_equations) #, 𝓂.dynamic_variables_future)
-
-    symbols_pos = []
-    symbols_neg = []
-    symbols_none = []
-
-    for symb in symbols_in_equation
-        if haskey(𝓂.bounds, symb)
-            if 𝓂.bounds[symb][1] >= 0
-                push!(symbols_pos, symb)
-            elseif 𝓂.bounds[symb][2] <= 0
-                push!(symbols_neg, symb)
-            else 
-                push!(symbols_none, symb)
-            end
-        else
-            push!(symbols_none, symb)
-        end
-    end
-
-    # Create symbols in SymPyWorkspace instead of MacroModelling namespace
-    for pos in symbols_pos
-        sym_value = SPyPyC.symbols(string(pos), real = true, finite = true, positive = true)
-        Core.eval(SymPyWorkspace, :($pos = $sym_value))
-    end
-
-    for neg in symbols_neg
-        sym_value = SPyPyC.symbols(string(neg), real = true, finite = true, negative = true)
-        Core.eval(SymPyWorkspace, :($neg = $sym_value))
-    end
-
-    for none in symbols_none
-        sym_value = SPyPyC.symbols(string(none), real = true, finite = true)
-        Core.eval(SymPyWorkspace, :($none = $sym_value))
-    end
-
-    symbolics(map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.ss_aux_equations),
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations),
-                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.dyn_equations_future),
-
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_present_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_past_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift_var_future_list),
-
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift2_var_past_list),
-
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_present_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_past_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_future_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_ss_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_list),
-
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_future_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_present_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_past_list),
-
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_future_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_present_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_past_list),
-
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_present_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_past_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_future_list_aux_SS),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.ss_list_aux_SS),
-
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_list_aux_SS),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_list),
-                # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dynamic_variables_future_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.par_list_aux_SS),
-
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.calibration_equations),
-                map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.calibration_equations_parameters),
-                # map(x->Core.eval(SymPyWorkspace, :($x)),𝓂.parameters),
-
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_present...)]))),
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_past...)]))),
-                # Set(Core.eval(SymPyWorkspace, :([$(𝓂.var_future...)]))),
-                Set(Core.eval(SymPyWorkspace, :([$(𝓂.vars_in_ss_equations...)]))),
-                Set(Core.eval(SymPyWorkspace, :([$(𝓂.var...)]))),
-                Set(Core.eval(SymPyWorkspace, :([$(𝓂.➕_vars...)]))),
-
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.ss_calib_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.par_calib_list),
-
-                [Set() for _ in 1:length(𝓂.ss_aux_equations)],
-                # [Set() for _ in 1:length(𝓂.calibration_equations)],
-                # [Set() for _ in 1:length(𝓂.ss_aux_equations)],
-                # [Set() for _ in 1:length(𝓂.calibration_equations)]
-                )
-end
-
-
-
-function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve::Bool = false)
-    ss_equations = Symbolics.ss_equations
-
-    # check variables which appear in two time periods. they might be redundant in steady state
-    redundant_vars = intersect.(
-        union.(
-            intersect.(Symbolics.var_future_list, Symbolics.var_present_list),
-            intersect.(Symbolics.var_future_list, Symbolics.var_past_list),
-            intersect.(Symbolics.var_present_list, Symbolics.var_past_list),
-            intersect.(Symbolics.ss_list, Symbolics.var_present_list),
-            intersect.(Symbolics.ss_list, Symbolics.var_past_list),
-            intersect.(Symbolics.ss_list, Symbolics.var_future_list)
-        ),
-    Symbolics.var_list)
-
-    redundant_idx = getindex(1:length(redundant_vars), (length.(redundant_vars) .> 0) .& (length.(Symbolics.var_list) .> 1))
-
-    for i in redundant_idx
-        for var_to_solve_for in redundant_vars[i]            
-            if avoid_solve || count_ops(Meta.parse(string(ss_equations[i]))) > 15
-                soll = nothing
-            else
-                soll = solve_symbolically(ss_equations[i],var_to_solve_for)
-            end
-
-            if isnothing(soll)
-                continue
-            end
-            
-            if isempty(soll) || soll == SPyPyC.Sym{PythonCall.Core.Py}[0] # take out variable if it is redundant from that euation only
-                push!(Symbolics.var_redundant_list[i],var_to_solve_for)
-                ss_equations[i] = replace_with_one(ss_equations[i], var_to_solve_for) # replace euler constant as it is not translated to julia properly
-            end
-
-        end
-    end
-
-end
+# Note: The full implementations of create_symbols_eqs! and remove_redundant_SS_vars! 
+# with SymPy support are provided by the SymPyPythonCallExt extension.
+# The stub functions defined earlier in this file will be called when SymPy is not available.
 
 function write_block_solution!(𝓂, 
                                 SS_solve_func, 
@@ -3677,7 +3427,7 @@ function write_block_solution!(𝓂,
     end
 
     iii = 1
-    for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters)
+    for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters, 𝓂.missing_parameters)
         if :($parss) ∈ relevant_pars
             # push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
             push!(calib_pars_input, :($parss))
@@ -4579,419 +4329,16 @@ function write_ss_check_function!(𝓂::ℳ;
 end
 
 
-function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false, avoid_solve::Bool = false)
-    write_ss_check_function!(𝓂)
-
-    unknowns = union(Symbolics.calibration_equations_parameters, Symbolics.vars_in_ss_equations)
-
-    @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
-
-    incidence_matrix = spzeros(Int,length(unknowns),length(unknowns))
-
-    eq_list = vcat(union.(setdiff.(union.(Symbolics.var_list,
-                                        Symbolics.ss_list),
-                                    Symbolics.var_redundant_list),
-                            Symbolics.par_list),
-                    union.(Symbolics.ss_calib_list,
-                            Symbolics.par_calib_list))
-
-    for (i,u) in enumerate(unknowns)
-        for (k,e) in enumerate(eq_list)
-            incidence_matrix[i,k] = u ∈ e
-        end
-    end
-
-    Q, P, R, nmatch, n_blocks = BlockTriangularForm.order(incidence_matrix)
-    R̂ = Int[]
-    for i in 1:n_blocks
-        [push!(R̂, n_blocks - i + 1) for ii in R[i]:R[i+1] - 1]
-    end
-    push!(R̂,1)
-
-    vars = hcat(P, R̂)'
-    eqs = hcat(Q, R̂)'
-    
-    # @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations for: " * repr([collect(Symbol.(unknowns))[vars[1,eqs[1,:] .< 0]]...]) # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
-    @assert all(eqs[1,:] .> 0) "Could not solve system of steady state and calibration equations. Number of redundant equations: " * repr(sum(eqs[1,:] .< 0)) * ". Try defining some steady state values as parameters (e.g. r[ss] -> r̄). Nonstationary variables are not supported as of now." # repr([vcat(Symbolics.ss_equations,Symbolics.calibration_equations)[-eqs[1,eqs[1,:].<0]]...])
-    
-    n = n_blocks
-
-    ss_equations = vcat(Symbolics.ss_equations,Symbolics.calibration_equations)# .|> SPyPyC.Sym
-    # println(ss_equations)
-
-    SS_solve_func = []
-
-    atoms_in_equations = Set{Symbol}()
-    atoms_in_equations_list = []
-    relevant_pars_across = Symbol[]
-    NSSS_solver_cache_init_tmp = []
-
-    min_max_errors = []
-
-    unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
-
-    while n > 0 
-        if length(eqs[:,eqs[2,:] .== n]) == 2
-            var_to_solve_for = unknowns[vars[:,vars[2,:] .== n][1]]
-
-            eq_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1]]
-
-            # eliminate min/max from equations if solving for variables inside min/max. set to the variable we solve for automatically
-            parsed_eq_to_solve_for = eq_to_solve |> string |> Meta.parse
-
-            minmax_fixed_eqs = postwalk(x -> 
-                x isa Expr ?
-                    x.head == :call ? 
-                        x.args[1] ∈ [:Max,:Min] ?
-                            Symbol(var_to_solve_for) ∈ get_symbols(x.args[2]) ?
-                                x.args[2] :
-                            Symbol(var_to_solve_for) ∈ get_symbols(x.args[3]) ?
-                                x.args[3] :
-                            x :
-                        x :
-                    x :
-                x,
-            parsed_eq_to_solve_for)
-
-            if parsed_eq_to_solve_for != minmax_fixed_eqs
-                [push!(atoms_in_equations, a) for a in setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs))]
-                push!(min_max_errors,:(solution_error += abs($parsed_eq_to_solve_for)))
-                push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for min max terms in equations with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
-                eq_to_solve = eval(minmax_fixed_eqs)
-            end
-            
-            if avoid_solve || count_ops(Meta.parse(string(eq_to_solve))) > 15
-                soll = nothing
-            else
-                soll = solve_symbolically(eq_to_solve,var_to_solve_for)
-            end
-
-            if isnothing(soll) || isempty(soll)
-                println("Failed finding solution symbolically for: ",var_to_solve_for," in: ",eq_to_solve)
-                
-                eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
-
-                write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
-                # write_domain_safe_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
-            elseif soll[1].is_number == true
-                ss_equations = [replace_symbolic(eq, var_to_solve_for, soll[1]) for eq in ss_equations]
-                
-                push!(𝓂.solved_vars,Symbol(var_to_solve_for))
-                push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
-
-                if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
-                else
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
-                end
-
-                push!(atoms_in_equations_list,[])
-            else
-                push!(𝓂.solved_vars,Symbol(var_to_solve_for))
-                push!(𝓂.solved_vals,Meta.parse(string(soll[1])))
-                
-                [push!(atoms_in_equations, Symbol(a)) for a in soll[1].atoms()]
-                push!(atoms_in_equations_list, Set(union(setdiff(get_symbols(parsed_eq_to_solve_for), get_symbols(minmax_fixed_eqs)),Symbol.(soll[1].atoms()))))
-
-                if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
-                    push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, 𝓂.solved_vars[end], 𝓂.solved_vals[end])))))
-                    push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for analytical aux variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
-                    
-                    unique_➕_eqs[𝓂.solved_vals[end]] = 𝓂.solved_vars[end]
-                else
-                    vars_to_exclude = [vcat(Symbol.(var_to_solve_for), 𝓂.➕_vars), Symbol[]]
-                    
-                    rewritten_eqs, ss_and_aux_equations, ss_and_aux_equations_dep, ss_and_aux_equations_error, ss_and_aux_equations_error_dep = make_equation_robust_to_domain_errors([𝓂.solved_vals[end]], vars_to_exclude, 𝓂.bounds, 𝓂.➕_vars, unique_➕_eqs)
-    
-                    if length(vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)) > 0
-                        push!(SS_solve_func,vcat(ss_and_aux_equations, ss_and_aux_equations_dep)...)
-                        push!(SS_solve_func,:(solution_error += $(Expr(:call, :+, vcat(ss_and_aux_equations_error, ss_and_aux_equations_error_dep)...))))
-                        push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for analytical variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
-                    end
-                    
-                    push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
-                end
-
-                if haskey(𝓂.bounds, 𝓂.solved_vars[end]) && 𝓂.solved_vars[end] ∉ 𝓂.➕_vars
-                    push!(SS_solve_func,:(solution_error += abs(min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vars[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2])) - $(𝓂.solved_vars[end]))))
-                    push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for bounded variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
-                end
-            end
-        else
-            vars_to_solve = unknowns[vars[:,vars[2,:] .== n][1,:]]
-
-            eqs_to_solve = ss_equations[eqs[:,eqs[2,:] .== n][1,:]]
-
-            numerical_sol = false
-            
-            if symbolic_SS
-                if avoid_solve || count_ops(Meta.parse(string(eqs_to_solve))) > 15
-                    soll = nothing
-                else
-                    soll = solve_symbolically(eqs_to_solve,vars_to_solve)
-                end
-
-                if isnothing(soll) || isempty(soll) || length(intersect((union(SPyPyC.free_symbols.(collect(values(soll)))...) .|> SPyPyC.:↓),(vars_to_solve .|> SPyPyC.:↓))) > 0
-                    if verbose println("Failed finding solution symbolically for: ",vars_to_solve," in: ",eqs_to_solve,". Solving numerically.") end
-
-                    numerical_sol = true
-                else
-                    if verbose println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " symbolically.") end
-                    
-                    atoms = reduce(union,map(x->x.atoms(),collect(values(soll))))
-
-                    for a in atoms push!(atoms_in_equations, Symbol(a)) end
-                    
-                    for vars in vars_to_solve
-                        push!(𝓂.solved_vars,Symbol(vars))
-                        push!(𝓂.solved_vals,Meta.parse(string(soll[vars]))) #using convert(Expr,x) leads to ugly expressions
-
-                        push!(atoms_in_equations_list, Set(Symbol.(soll[vars].atoms())))
-                        push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
-                    end
-                end
-            end
-
-            eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
-
-            incidence_matrix_subset = incidence_matrix[vars[:,vars[2,:] .== n][1,:], eq_idx_in_block_to_solve]
-
-            # try symbolically and use numerical if it does not work
-            if numerical_sol || !symbolic_SS
-                pv = sortperm(vars_to_solve, by = Symbol)
-                pe = sortperm(eqs_to_solve, by = string)
-
-                if length(pe) > 5
-                    write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
-                    # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)
-                else
-                    solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe], avoid_solve = avoid_solve)
-                    
-                    # if !isnothing(solved_system) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "LambertW")) && !any(contains.(string.(vcat(solved_system[3],solved_system[4])), "Heaviside")) 
-                    #     write_reduced_block_solution!(𝓂, SS_solve_func, solved_system, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, 
-                    #     𝓂.➕_vars, unique_➕_eqs)  
-                    # else
-                        write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
-                        # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
-                    # end
-                end
-
-                if !symbolic_SS && verbose
-                    println("Solved: ",string.(eqs_to_solve)," for: ",Symbol.(vars_to_solve), " numerically.")
-                end
-            end
-        end
-        n -= 1
-    end
-
-    push!(NSSS_solver_cache_init_tmp, fill(Inf, length(𝓂.parameters)))
-    push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_init_tmp)
-
-    unknwns = Symbol.(unknowns)
-
-    parameters_only_in_par_defs = Set()
-    # add parameters from parameter definitions
-    if length(𝓂.calibration_equations_no_var) > 0
-		atoms = reduce(union, get_symbols.(𝓂.calibration_equations_no_var))
-	    [push!(atoms_in_equations, a) for a in atoms]
-	    [push!(parameters_only_in_par_defs, a) for a in atoms]
-	end
-    
-    # 𝓂.par = union(𝓂.par,setdiff(parameters_only_in_par_defs,𝓂.parameters_as_function_of_parameters))
-    
-    parameters_in_equations = []
-
-    for (i, parss) in enumerate(𝓂.parameters) 
-        if parss ∈ union(atoms_in_equations, relevant_pars_across)
-            push!(parameters_in_equations, :($parss = parameters[$i]))
-        end
-    end
-    
-    dependencies = []
-    for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
-    end
-
-    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
-
-    𝓂.SS_dependencies = dependencies
-    
-
-    
-    dyn_exos = []
-    for dex in union(𝓂.exo_past, 𝓂.exo_future)
-        push!(dyn_exos,:($dex = 0))
-    end
-
-    push!(SS_solve_func,:($(dyn_exos...)))
-    
-    push!(SS_solve_func, min_max_errors...)
-    # push!(SS_solve_func,:(push!(NSSS_solver_cache_tmp, params_scaled_flt)))
-    
-    push!(SS_solve_func,:(if length(NSSS_solver_cache_tmp) == 0 NSSS_solver_cache_tmp = [copy(params_flt)] else NSSS_solver_cache_tmp = [NSSS_solver_cache_tmp..., copy(params_flt)] end))
-    
-
-    # push!(SS_solve_func,:(for pars in 𝓂.NSSS_solver_cache
-    #                             latest = sqrt(sum(abs2,pars[end] - params_flt))# / max(sum(abs2,pars[end]), sum(abs,params_flt))
-    #                             if latest <= current_best
-    #                                 current_best = latest
-    #                             end
-    #                         end))
-        push!(SS_solve_func,:(if (current_best > 1e-8) && (solution_error < tol.NSSS_acceptance_tol) && (scale == 1)
-                                    reverse_diff_friendly_push!(𝓂.NSSS_solver_cache, NSSS_solver_cache_tmp)
-                            end))
-    # push!(SS_solve_func,:(if length(𝓂.NSSS_solver_cache) > 100 popfirst!(𝓂.NSSS_solver_cache) end))
-    
-    # push!(SS_solve_func,:(SS_init_guess = ([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)])))
-
-    # push!(SS_solve_func,:(𝓂.SS_init_guess = typeof(SS_init_guess) == Vector{Float64} ? SS_init_guess : ℱ.value.(SS_init_guess)))
-
-    # push!(SS_solve_func,:(return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]))))
-
-
-    # fix parameter bounds
-    par_bounds = []
-
-    for varpar in intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across))
-        if haskey(𝓂.bounds, varpar)
-            push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.bounds[varpar][1])),$(𝓂.bounds[varpar][2]))))
-        end
-    end
-
-    solve_exp = :(function solve_SS(initial_parameters::Vector{Real}, 
-                                    𝓂::ℳ,
-                                    # fail_fast_solvers_only::Bool, 
-                                    tol::Tolerances,
-                                    verbose::Bool, 
-                                    cold_start::Bool,
-                                    solver_parameters::Vector{solver_parameters})
-                    initial_parameters = typeof(initial_parameters) == Vector{Float64} ? initial_parameters : ℱ.value.(initial_parameters)
-
-                    initial_parameters_tmp = copy(initial_parameters)
-
-                    parameters = copy(initial_parameters)
-                    params_flt = copy(initial_parameters)
-                    
-                    current_best = sum(abs2,𝓂.NSSS_solver_cache[end][end] - initial_parameters)
-                    closest_solution_init = 𝓂.NSSS_solver_cache[end]
-                    
-                    for pars in 𝓂.NSSS_solver_cache
-                        copy!(initial_parameters_tmp, pars[end])
-
-                        ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
-
-                        latest = sum(abs2,initial_parameters_tmp)
-                        if latest <= current_best
-                            current_best = latest
-                            closest_solution_init = pars
-                        end
-                    end
-
-                    # closest_solution = copy(closest_solution_init)
-                    # solution_error = 1.0
-                    # iters = 0
-                    range_iters = 0
-                    solution_error = 1.0
-                    solved_scale = 0
-                    # range_length = [ 1, 2, 4, 8,16,32,64,128,1024]
-                    scale = 1.0
-
-                    NSSS_solver_cache_scale = CircularBuffer{Vector{Vector{Float64}}}(500)
-                    push!(NSSS_solver_cache_scale, closest_solution_init)
-                    # fail_fast_solvers_only = true
-                    while range_iters <= (cold_start ? 1 : 500) && !(solution_error < tol.NSSS_acceptance_tol && solved_scale == 1)
-                        range_iters += 1
-                        fail_fast_solvers_only = range_iters > 1 ? true : false
-
-                        if abs(solved_scale - scale) < 1e-2
-                            # println(NSSS_solver_cache_scale[end])
-                            break 
-                        end
-
-                        # println("i: $range_iters - scale: $scale - solved_scale: $solved_scale")
-                        # println(closest_solution[end])
-                    # for range_ in range_length
-                        # rangee = range(0,1,range_+1)
-                        # for scale in rangee[2:end]
-                            # scale = 6*scale^5 - 15*scale^4 + 10*scale^3 # smootherstep
-
-                            # if scale <= solved_scale continue end
-
-                            
-                            current_best = sum(abs2,NSSS_solver_cache_scale[end][end] - initial_parameters)
-                            closest_solution = NSSS_solver_cache_scale[end]
-
-                            for pars in NSSS_solver_cache_scale
-                                copy!(initial_parameters_tmp, pars[end])
-                                
-                                ℒ.axpy!(-1,initial_parameters,initial_parameters_tmp)
-
-                                latest = sum(abs2,initial_parameters_tmp)
-
-                                if latest <= current_best
-                                    current_best = latest
-                                    closest_solution = pars
-                                end
-                            end
-
-                            # println(closest_solution)
-
-                            if all(isfinite,closest_solution[end]) && initial_parameters != closest_solution_init[end]
-                                parameters = scale * initial_parameters + (1 - scale) * closest_solution_init[end]
-                            else
-                                parameters = copy(initial_parameters)
-                            end
-                            params_flt = parameters
-                            
-                            # println(parameters)
-
-                            $(parameters_in_equations...)
-                            $(par_bounds...)
-                            $(𝓂.calibration_equations_no_var...)
-                            NSSS_solver_cache_tmp = []
-                            solution_error = 0.0
-                            iters = 0
-                            $(SS_solve_func...)
-
-                            if solution_error < tol.NSSS_acceptance_tol
-                                # println("solved for $scale; $range_iters")
-                                solved_scale = scale
-                                if scale == 1
-                                    # return ComponentVector([$(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))...), $(𝓂.calibration_equations_parameters...)], Axis([sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...])), solution_error
-                                    # NSSS_solution = [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)]
-                                    # NSSS_solution[abs.(NSSS_solution) .< 1e-12] .= 0 # doesn't work with Zygote
-                                    return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
-                                else
-                                    reverse_diff_friendly_push!(NSSS_solver_cache_scale, NSSS_solver_cache_tmp)
-                                end
-
-                                if scale > .95
-                                    scale = 1
-                                else
-                                    # scale = (scale + 1) / 2
-                                    scale = scale * .4 + .6
-                                end
-                            # else
-                            #     println("no sol")
-                            #     scale  = (scale + solved_scale) / 2
-                            #     println("scale $scale")
-                            # elseif scale == 1 && range_ == range_length[end]
-                            #     return [$(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))...), $(𝓂.calibration_equations_parameters...)], (solution_error, iters)
-                            end
-                    #     end
-                    end
-                    return zeros($(length(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)) + length(𝓂.calibration_equations_parameters))), (1, 0)
-                end)
-
-
-    𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
-    # 𝓂.SS_solve_func = eval(solve_exp)
-
-    return nothing
+# Note: The symbolic version of `solve_steady_state!` that takes a `symbolics`
+# argument is provided by the `SymPyPythonCallExt` extension when SymPy is
+# available. Some call sites pass positional arguments `(mod, SS_symbolic,
+# symbolics, ...)` expecting that extension. When the extension is not
+# installed, provide a minimal fallback wrapper that accepts the positional
+# arguments and delegates to the non-symbolic keyword-only implementation.
+
+function solve_steady_state!(𝓂::ℳ, SS_symbolic::Bool, symbolics::Nothing; kwargs...)
+    return solve_steady_state!(𝓂; kwargs...)
 end
-
-
 
 
 function solve_steady_state!(𝓂::ℳ;
@@ -5074,7 +4421,7 @@ function solve_steady_state!(𝓂::ℳ;
         relevant_pars_across = union(relevant_pars_across,relevant_pars)
         
         iii = 1
-        for parss in union(𝓂.parameters,𝓂.parameters_as_function_of_parameters)
+        for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters, 𝓂.missing_parameters)
             # valss   = 𝓂.parameter_values[i]
             if :($parss) ∈ relevant_pars
                 # push!(calib_pars,:($parss = parameters_and_solved_vars[$iii]))
@@ -5200,9 +4547,51 @@ function solve_steady_state!(𝓂::ℳ;
         # end
     
         # aux_replacements = Dict(aux_vars .=> aux_expr)
+
+        # Build a dict to replace parameters that are not passed as function arguments
+        # This handles parameters like K_ss = 11 that have fixed numeric values
+        fixed_param_replacements = Dict{Symbol, Any}()
+        
+        # First add all regular parameters that have fixed values and are not in parameters_and_solved_vars
+        params_in_solved_vars = Set(parameters_and_solved_vars)
+        for (i, param) in enumerate(𝓂.parameters)
+            if param ∉ params_in_solved_vars && param ∉ sorted_vars
+                # This parameter has a fixed value and is not being solved for
+                fixed_param_replacements[param] = 𝓂.parameter_values[i]
+            end
+        end
+        
+        # Now add parameters from calibration_equations_no_var with iterative substitution
+        # This handles cases like: cgamma = 1 + ctrend / 100 where ctrend = 0.4
+        calib_vars = Symbol[]
+        calib_exprs = Any[]
+        for eq in 𝓂.calibration_equations_no_var
+            if eq isa Expr && eq.head == :(=)
+                param_name = eq.args[1]
+                param_value = eq.args[2]
+                if param_name isa Symbol
+                    push!(calib_vars, param_name)
+                    push!(calib_exprs, param_value)
+                end
+            end
+        end
+        
+        # Iteratively substitute values - first substitute fixed_param_replacements into expressions
+        # then substitute earlier calib expressions into later ones
+        for (i, var) in enumerate(calib_vars)
+            # First substitute fixed params (like ctrend = 0.4) into expression
+            calib_exprs[i] = replace_symbols(calib_exprs[i], fixed_param_replacements)
+            # Then substitute earlier calib vars into this expression
+            for j in 1:i-1
+                calib_exprs[i] = replace_symbols(calib_exprs[i], Dict(calib_vars[j] => calib_exprs[j]))
+            end
+            # Add to fixed_param_replacements for subsequent use
+            fixed_param_replacements[var] = calib_exprs[i]
+        end
     
         replaced_solved_vals = solved_vals |> 
             # x -> replace_symbols.(x, Ref(aux_replacements)) |> 
+            x -> replace_symbols.(x, Ref(fixed_param_replacements)) |>
             x -> replace_symbols.(x, Ref(parameter_dict)) |> 
             x -> Symbolics.parse_expr_to_symbolic.(x, Ref(@__MODULE__)) |>
             x -> Symbolics.substitute.(x, Ref(back_to_array_dict))
@@ -5342,7 +4731,7 @@ function solve_steady_state!(𝓂::ℳ;
 
 
         push!(NSSS_solver_cache_init_tmp,fill(1.205996189998029, length(sorted_vars)))
-        push!(NSSS_solver_cache_init_tmp,[Inf])
+        push!(NSSS_solver_cache_init_tmp,fill(Inf, length(parameters_and_solved_vars) > 0 ? length(parameters_and_solved_vars) : 1))
 
         # WARNING: infinite bounds are transformed to 1e12
         lbs = []
@@ -5427,7 +4816,11 @@ function solve_steady_state!(𝓂::ℳ;
     
     parameters_in_equations = []
 
-    for (i, parss) in enumerate(𝓂.parameters) 
+    # Include both regular parameters and missing parameters
+    # Missing parameters will be filled in later via write_parameters_input!
+    all_params_for_equations = vcat(𝓂.parameters, 𝓂.missing_parameters)
+
+    for (i, parss) in enumerate(all_params_for_equations) 
         if parss ∈ union(atoms_in_equations, relevant_pars_across)
             push!(parameters_in_equations, :($parss = parameters[$i]))
         end
@@ -5435,10 +4828,10 @@ function solve_steady_state!(𝓂::ℳ;
     
     dependencies = []
     for (i, a) in enumerate(atoms_in_equations_list)
-        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, 𝓂.parameters)))
+        push!(dependencies, 𝓂.solved_vars[i] => intersect(a, union(𝓂.var, all_params_for_equations)))
     end
 
-    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), 𝓂.parameters))
+    push!(dependencies, :SS_relevant_calibration_parameters => intersect(reduce(union, atoms_in_equations_list), all_params_for_equations))
 
     𝓂.SS_dependencies = dependencies
 
@@ -5470,7 +4863,7 @@ function solve_steady_state!(𝓂::ℳ;
     # fix parameter bounds
     par_bounds = []
     
-    for varpar in intersect(𝓂.parameters,union(atoms_in_equations, relevant_pars_across))
+    for varpar in intersect(all_params_for_equations, union(atoms_in_equations, relevant_pars_across))
         if haskey(𝓂.bounds, varpar)
             push!(par_bounds, :($varpar = min(max($varpar,$(𝓂.bounds[varpar][1])),$(𝓂.bounds[varpar][2]))))
         end
@@ -5623,22 +5016,48 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
     return log_lik / 1e4 + runtime * 1e3
 end
 
+"""
+    find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
 
-function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 250000, tol::Tolerances = Tolerances(), verbosity = 0)
+Find optimal steady state solver parameters using NLopt's ESCH algorithm.
+
+This function optimizes solver parameters to minimize runtime while maintaining solver accuracy.
+It uses the ESCH global optimization algorithm from the NLopt package.
+
+# Arguments
+- `𝓂`: Model structure
+- `maxtime`: Maximum time in seconds for optimization
+- `maxiter`: Maximum number of iterations
+- `tol`: Tolerance structure
+- `verbosity`: Verbosity level for output
+"""
+function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
     pars = rand(20) .+ 1
     pars[20] -= 1
 
     lbs = fill(eps(), length(pars))
     lbs[20] = -20
 
-    ubs = fill(100.0,length(pars))
+    ubs = fill(100.0, length(pars))
     
-    sol = Optim.optimize(x -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂, tol = tol), 
-                            lbs, ubs, pars, 
-                            Optim.SAMIN(verbosity = verbosity, nt = 5, ns = 5), 
-                            Optim.Options(time_limit = maxtime, iterations = maxiter))::Optim.MultivariateOptimizationResults
+    opt = NLopt.Opt(NLopt.:GN_ESCH, length(pars))
 
-    pars = Optim.minimizer(sol)::Vector{Float64}
+    opt.min_objective = (x,p) -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂, tol = tol)
+
+    NLopt.lower_bounds!(opt, lbs)
+    NLopt.upper_bounds!(opt, ubs)
+
+    opt.xtol_abs = eps(Float32)
+    opt.ftol_abs = eps(Float32)
+
+    # opt.maxeval = maxiter
+    opt.maxtime = maxtime
+
+    (minf,x,ret) = NLopt.optimize(opt, pars)
+
+    verbosity > 0 && @info "NLopt return code: $ret"
+
+    pars = x
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
@@ -5730,7 +5149,25 @@ function solve_ss(SS_optimizer::Function,
         sol_values_init = max.(lbs[1:length(guess)], min.(ubs[1:length(guess)], [g < 1e12 ? g : solver_params.starting_value for g in guess]))
     end
 
-    sol_new_tmp, info = SS_optimizer(   extended_problem ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
+    # Check if extended problem is valid
+    # The extended problem function expects ng+nx variables where nx = number of params at compile time
+    # lbs was computed for sorted_vars + params, so length(lbs) - length(guess) gives expected params
+    expected_params = length(lbs) - length(guess)
+    actual_params = length(closest_parameters_and_solved_vars)
+    
+    # Only use extended problem if the sizes match
+    use_extended = extended_problem && (expected_params == actual_params) && (expected_params > 0)
+    
+    # For extended problem, extend bounds to include parameters
+    if use_extended
+        lbs_ext = lbs
+        ubs_ext = ubs
+    else
+        lbs_ext = lbs[1:length(guess)]
+        ubs_ext = ubs[1:length(guess)]
+    end
+
+    sol_new_tmp, info = SS_optimizer(   use_extended ? SS_solve_block.extended_ss_problem : SS_solve_block.ss_problem,
     # if extended_problem
     #     function ext_function_to_optimize(guesses)
     #         gss = guesses[1:length(guess)]
@@ -5746,10 +5183,10 @@ function solve_ss(SS_optimizer::Function,
     # end
 
     # sol_new_tmp, info = SS_optimizer(   extended_problem ? ext_function_to_optimize : function_to_optimize,
-                                        extended_problem ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
+                                        use_extended ? vcat(sol_values_init, closest_parameters_and_solved_vars) : sol_values_init,
                                         parameters_and_solved_vars,
-                                        extended_problem ? lbs : lbs[1:length(guess)],
-                                        extended_problem ? ubs : ubs[1:length(guess)],
+                                        lbs_ext,
+                                        ubs_ext,
                                         solver_params,
                                         tol = tol   )
 
@@ -5764,7 +5201,7 @@ function solve_ss(SS_optimizer::Function,
     total_iters[1] += info[1]
     total_iters[2] += info[2]
 
-    extended_problem_str = extended_problem ? "(extended problem) " : ""
+    extended_problem_str = use_extended ? "(extended problem) " : ""
 
     if separate_starting_value isa Bool
         starting_value_str = ""
@@ -6686,7 +6123,8 @@ function solve!(𝓂::ℳ;
         
         perturbation_order = 1
         
-        if !𝓂.precompile
+        # Use symbolic solving only if SymPy extension is loaded and precompile is false
+        if !𝓂.precompile && sympy_available()
             start_time = time()
 
             if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
@@ -6715,6 +6153,10 @@ function solve!(𝓂::ℳ;
             if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
             solve_steady_state!(𝓂, verbose = verbose)
+
+            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+            
+            set_up_obc_violation_function!(𝓂)
 
             if !silent println(round(time() - start_time, digits = 3), " seconds") end
         end
@@ -8026,6 +7468,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         # Mark that solution needs to be recomputed
         𝓂.solution.outdated_NSSS = true
         𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        # Force rebuild of SS_solve_func since parameter order/count has changed
+        𝓂.solution.functions_written = false
         
         # If all missing parameters are now provided, print a message
         if !isempty(𝓂.missing_parameters)
