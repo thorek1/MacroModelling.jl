@@ -1,10 +1,10 @@
 module OptimExt
 
-import MacroModelling
+import MacroModelling: find_shocks_conditional_forecast, find_SS_solver_parameters!, Tolerances, ℳ, calculate_SS_solver_runtime_and_loglikelihood, solver_parameters
 import Optim
 
 # Helper function for LBFGS optimization objective
-function _minimize_distance_to_conditions(X::Vector{S}, p)::S where S
+function minimize_distance_to_conditions(X::Vector{S}, p)::S where S
     Conditions, State_update, Shocks, Cond_var_idx, Free_shock_idx, State, Pruning, precision_factor = p
 
     S_shocks = convert(Vector{S}, Shocks)
@@ -47,7 +47,7 @@ Note: This is the Optim-based implementation. It requires the Optim.jl extension
 - `matched`: Boolean indicating if optimization converged successfully
 - Set `verbose = true` to show optimizer traces and fallback attempts
 """
-function MacroModelling.find_shocks_conditional_forecast(::Val{:LBFGS},
+function find_shocks_conditional_forecast(::Val{:LBFGS},
                                          initial_state::Union{Vector{Float64}, Vector{Vector{Float64}}},
                                          shocks::Vector{Float64},
                                          conditions::Vector{Float64},
@@ -67,7 +67,7 @@ function MacroModelling.find_shocks_conditional_forecast(::Val{:LBFGS},
     verbose && @info "LBFGS line-search attempt" free_shocks = length(free_shock_idx) conditioned = length(cond_var_idx)
     
     # First attempt: LBFGS with line search
-    res = Optim.optimize(x -> _minimize_distance_to_conditions(x, p), 
+    res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                       zeros(length(free_shock_idx)), 
                       Optim.LBFGS(linesearch = Optim.LineSearches.BackTracking(order = 3)), 
                       options; 
@@ -78,7 +78,7 @@ function MacroModelling.find_shocks_conditional_forecast(::Val{:LBFGS},
     # Second attempt: LBFGS without line search if first failed
     if !matched
         verbose && @info "LBFGS retry without line search" objective = Optim.minimum(res)
-        res = Optim.optimize(x -> _minimize_distance_to_conditions(x, p), 
+        res = Optim.optimize(x -> minimize_distance_to_conditions(x, p), 
                           zeros(length(free_shock_idx)), 
                           Optim.LBFGS(), 
                           options; 
@@ -108,10 +108,10 @@ It uses Simulated Annealing with Metropolis acceptance (SAMIN) from Optim.jl.
 - `tol`: Tolerance structure
 - `verbosity`: Verbosity level for output
 """
-function MacroModelling.find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::MacroModelling.ℳ; 
+function find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::ℳ; 
                                                     maxtime::Int = 120, 
                                                     maxiter::Int = 2500000, 
-                                                    tol::MacroModelling.Tolerances = MacroModelling.Tolerances(), 
+                                                    tol::Tolerances = Tolerances(), 
                                                     verbosity = 0)
     pars = rand(20) .+ 1
     pars[20] -= 1
@@ -122,14 +122,14 @@ function MacroModelling.find_SS_solver_parameters!(::Val{:SAMIN}, 𝓂::MacroMod
     ubs = fill(100.0, length(pars))
     
     # Use Optim SAMIN algorithm
-    sol = Optim.optimize(x -> MacroModelling.calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂, tol = tol), 
+    sol = Optim.optimize(x -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂, tol = tol), 
                         lbs, ubs, pars, 
                         Optim.SAMIN(verbosity = verbosity, nt = 5, ns = 5), 
                         Optim.Options(time_limit = maxtime, iterations = maxiter))::Optim.MultivariateOptimizationResults
 
     pars = Optim.minimizer(sol)::Vector{Float64}
 
-    par_inputs = MacroModelling.solver_parameters(pars..., 1, 0.0, 2)
+    par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 
     SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(𝓂.parameter_values, 𝓂, tol, false, true, [par_inputs])
 
