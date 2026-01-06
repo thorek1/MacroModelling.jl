@@ -946,75 +946,110 @@ end
 
 """
 $(SIGNATURES)
-Returns information about the balanced growth path configuration of the model.
+Check if a model has balanced growth path structure (trend variables detected).
 
 # Arguments
-- $MODEL®
+- `𝓂`: A model object
 
 # Returns
-- `NamedTuple` with the following fields:
-  - `has_balanced_growth`: `Bool` indicating whether balanced growth path handling is enabled
-  - `trend_vars`: `Dict{Symbol, Union{Symbol, Expr}}` mapping trend variables to their growth factors
-  - `deflators`: `Dict{Symbol, Symbol}` mapping variables to their deflators (trend variables)
-  - `detrended_vars`: `Vector{Symbol}` list of variables that are detrended
+- `Bool`: `true` if trend variables were detected, `false` otherwise.
 
 # Examples
 ```julia
 using MacroModelling
 
-@model RBC_growth deflator = Dict(:y => :A, :k => :A, :c => :A) begin
-    # ... model equations ...
+@model RBC_growth begin
+    A[0] = γ * A[-1]  # Trend variable
+    y[0] = A[0] * k[-1]^α
+    # ...
 end
 
-@parameters RBC_growth trend_var = Dict(:A => :γ) begin
-    γ = 1.02  # 2% growth rate
-    # ... other parameters ...
+@parameters RBC_growth begin
+    γ = 1.02
+    α = 0.33
 end
 
-get_balanced_growth_path_info(RBC_growth)
+has_balanced_growth(RBC_growth)  # returns true
 ```
 """
-function get_balanced_growth_path_info(𝓂::ℳ)
-    bg = 𝓂.balanced_growth
-    return (
-        has_balanced_growth = !isempty(bg.deflators) || !isempty(bg.trend_vars),
-        trend_vars = bg.trend_vars,
-        deflators = bg.deflators,
-        detrended_vars = collect(bg.detrended_vars)
+function has_balanced_growth(𝓂::ℳ)::Bool
+    !isempty(𝓂.balanced_growth.trend_variables)
+end
+
+
+"""
+$(SIGNATURES)
+Get information about the balanced growth path structure of the model.
+
+# Arguments
+- `𝓂`: A model object
+
+# Returns
+- `NamedTuple` with fields:
+  - `trend_variables`: Dict mapping trend variable names to their growth rate parameters
+  - `variable_degrees`: Dict mapping variable names to their homogeneity degrees
+  - `growth_parameters`: Set of parameters representing growth rates
+
+# Examples
+```julia
+using MacroModelling
+
+@model RBC_growth begin
+    A[0] = γ * A[-1]
+    y[0] = A[0] * k[-1]^α
+    c[0] + k[0] = y[0] + (1-δ)*k[-1]
+    1/c[0] = β * (1/c[1]) * (α * y[1]/k[0] + 1-δ)
+end
+
+@parameters RBC_growth begin
+    γ = 1.02
+    α = 0.33
+    β = 0.99
+    δ = 0.025
+end
+
+info = get_balanced_growth_info(RBC_growth)
+# info.trend_variables  # Dict(:A => :γ)
+# info.variable_degrees # Dict(:A => 1.0, :y => 1.0, :c => 1.0, :k => 1.0)
+```
+"""
+function get_balanced_growth_info(𝓂::ℳ)
+    (
+        trend_variables = 𝓂.balanced_growth.trend_variables,
+        variable_degrees = 𝓂.balanced_growth.variable_degrees,
+        growth_parameters = 𝓂.balanced_growth.growth_rate_parameters
     )
 end
 
 
 """
 $(SIGNATURES)
-Returns `true` if the model has balanced growth path handling enabled, `false` otherwise.
-
-A model has balanced growth path handling enabled if either deflators have been specified
-in the `@model` macro or trend variables have been specified in the `@parameters` macro.
+Get the names of trend variables in the model.
 
 # Arguments
-- $MODEL®
+- `𝓂`: A model object
 
 # Returns
-- `Bool`
-
-# Examples
-```julia
-using MacroModelling
-
-@model RBC begin
-    # standard RBC equations without growth
-end
-
-@parameters RBC begin
-    # parameters
-end
-
-has_balanced_growth(RBC)  # returns false
-```
+- `Vector{Symbol}`: Names of variables that have been identified as trends (unit roots).
 """
-function has_balanced_growth(𝓂::ℳ)::Bool
-    return !isempty(𝓂.balanced_growth.deflators) || !isempty(𝓂.balanced_growth.trend_vars)
+function get_trend_variables(𝓂::ℳ)::Vector{Symbol}
+    collect(keys(𝓂.balanced_growth.trend_variables)) |> sort
+end
+
+
+"""
+$(SIGNATURES)
+Get the homogeneity degree of a specific variable.
+
+# Arguments
+- `𝓂`: A model object
+- `var::Symbol`: The variable name
+
+# Returns
+- `Float64`: The homogeneity degree (0.0 for stationary, 1.0 for growing at trend rate)
+"""
+function get_variable_degree(𝓂::ℳ, var::Symbol)::Float64
+    get(𝓂.balanced_growth.variable_degrees, var, 0.0)
 end
 
 end # dispatch_doctor

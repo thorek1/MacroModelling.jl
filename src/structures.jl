@@ -281,30 +281,34 @@ mutable struct solver_parameters
     backtracking_order::Int
 end
 
-"""
-    BalancedGrowthInfo
 
-Stores information about balanced growth path handling.
-- `trend_vars`: Variables declared as trend variables with their growth factors
-- `deflators`: Mapping from variables to their deflators (for detrending)
-- `detrended_vars`: Variables that have been detrended
-- `original_to_detrended`: Mapping from original variable names to detrended versions
 """
-struct BalancedGrowthInfo
-    trend_vars::Dict{Symbol, Union{Symbol, Expr}}  # trend_var => growth_factor expression
-    deflators::Dict{Symbol, Symbol}                # variable => deflator (trend_var)
-    detrended_vars::Set{Symbol}                    # set of variables that are detrended
-    original_to_detrended::Dict{Symbol, Symbol}    # original_var => detrended_var
+    BalancedGrowthPath
+
+Stores information about the balanced growth path structure of a model.
+
+# Fields
+- `trend_variables::Dict{Symbol, Symbol}`: Maps trend variable names to their growth rate parameters
+  (e.g., `:A => :γ` means A grows at rate γ, i.e., `A[0] = γ * A[-1]`)
+- `variable_degrees::Dict{Symbol, Float64}`: The homogeneity degree of each variable relative to the trend
+  (degree 1 means the variable grows at the same rate as the trend)
+- `detrended_equations::Vector{Expr}`: The model equations after detrending transformation
+- `growth_rate_parameters::Set{Symbol}`: Parameters that represent growth rates
+"""
+struct BalancedGrowthPath
+    trend_variables::Dict{Symbol, Symbol}  # trend_var => growth_rate_param
+    variable_degrees::Dict{Symbol, Float64}  # var => homogeneity degree
+    detrended_equations::Vector{Expr}
+    growth_rate_parameters::Set{Symbol}
 end
 
-function BalancedGrowthInfo()
-    BalancedGrowthInfo(
-        Dict{Symbol, Union{Symbol, Expr}}(),
-        Dict{Symbol, Symbol}(),
-        Set{Symbol}(),
-        Dict{Symbol, Symbol}()
-    )
-end
+BalancedGrowthPath() = BalancedGrowthPath(
+    Dict{Symbol, Symbol}(),
+    Dict{Symbol, Float64}(),
+    Expr[],
+    Set{Symbol}()
+)
+
 
 mutable struct ℳ
     model_name::Any
@@ -321,7 +325,7 @@ mutable struct ℳ
     guess::Dict{Symbol, Float64}
     
     # Balanced growth path information
-    balanced_growth::BalancedGrowthInfo
+    balanced_growth::BalancedGrowthPath
 
     # ss
     # dynamic_variables::Vector{Symbol}
