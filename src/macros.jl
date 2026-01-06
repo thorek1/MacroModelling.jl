@@ -1574,11 +1574,41 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.precompile = $precompile
         mod.$𝓂.simplify = $simplify
         
-        # Only set up SS problem if all parameters are defined
+        # time_symbolics = @elapsed 
+        # time_rm_red_SS_vars = @elapsed 
         if !has_missing_parameters
-            # Delegate to extension or default numerical setup
-            # The extension (if loaded) can override this to provide symbolic solving
-            setup_steady_state_numerical!(mod.$𝓂, $verbose, $silent)
+            if !$precompile
+                start_time = time()
+
+                if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
+
+                symbolics = create_symbols_eqs!(mod.$𝓂)
+
+                remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
+
+                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+
+
+                start_time = time()
+        
+                if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+                solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
+
+                mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
+                
+                set_up_obc_violation_function!(mod.$𝓂)
+
+                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+            else
+                start_time = time()
+            
+                if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+                solve_steady_state!(mod.$𝓂, verbose = $verbose)
+
+                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+            end
         end
         
         mod.$𝓂.solution.functions_written = false
