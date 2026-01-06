@@ -161,7 +161,6 @@ include("common_docstrings.jl")
 include("options_and_caches.jl")
 include("structures.jl")
 include("macros.jl")
-include("optimization_problem.jl")
 include("get_functions.jl")
 include("dynare.jl")
 include("inspect.jl")
@@ -178,6 +177,7 @@ include("./filter/find_shocks.jl")
 include("./filter/inversion.jl")
 include("./filter/kalman.jl")
 
+include("optimization_problem.jl")
 
 # end # DispatchDoctor
 

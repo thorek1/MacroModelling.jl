@@ -122,7 +122,7 @@ macro model(𝓂,ex...)
 
     model_ex = remove_nothing(model_ex::Expr)::Expr
 
-    # Parse optimization problem syntax (maximise/minimize with subject_to)
+    # Parse optimization problems (maximise/minimize syntax)
     model_ex = parse_optimization_syntax(model_ex::Expr)::Expr
 
     model_ex = parse_occasionally_binding_constraints(model_ex::Expr, max_obc_horizon = max_obc_horizon)::Expr
