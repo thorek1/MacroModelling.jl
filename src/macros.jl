@@ -1587,9 +1587,11 @@ macro parameters(𝓂,ex...)
         
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed 
-        # Use symbolic solving only if SymPy extension is loaded and precompile is false
-        if !$precompile && sympy_available()
-            start_time = time()
+        # Only set up SS problem if all parameters are defined
+        if !has_missing_parameters
+            # Use symbolic solving only if SymPy extension is loaded and precompile is false
+            if !$precompile && sympy_available()
+                start_time = time()
 
                 if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
 
@@ -1610,20 +1612,21 @@ macro parameters(𝓂,ex...)
                 
                 set_up_obc_violation_function!(mod.$𝓂)
 
-            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-        else
-            # Use numerical solving when SymPy is not available or precompile is true
-            start_time = time()
+                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+            else
+                # Use numerical solving when SymPy is not available or precompile is true
+                start_time = time()
         
-            if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+                if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
-            solve_steady_state!(mod.$𝓂, verbose = $verbose)
+                solve_steady_state!(mod.$𝓂, verbose = $verbose)
 
-            mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
+                mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
             
-            set_up_obc_violation_function!(mod.$𝓂)
+                set_up_obc_violation_function!(mod.$𝓂)
 
-            if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+            end
         end
         
         mod.$𝓂.solution.functions_written = false
