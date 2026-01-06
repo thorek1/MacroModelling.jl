@@ -3427,7 +3427,7 @@ function write_block_solution!(𝓂,
     end
 
     iii = 1
-    for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters)
+    for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters, 𝓂.missing_parameters)
         if :($parss) ∈ relevant_pars
             # push!(calib_pars, :($parss = parameters_and_solved_vars[$iii]))
             push!(calib_pars_input, :($parss))
@@ -4413,7 +4413,7 @@ function solve_steady_state!(𝓂::ℳ;
         relevant_pars_across = union(relevant_pars_across,relevant_pars)
         
         iii = 1
-        for parss in union(𝓂.parameters,𝓂.parameters_as_function_of_parameters)
+        for parss in union(𝓂.parameters, 𝓂.parameters_as_function_of_parameters, 𝓂.missing_parameters)
             # valss   = 𝓂.parameter_values[i]
             if :($parss) ∈ relevant_pars
                 # push!(calib_pars,:($parss = parameters_and_solved_vars[$iii]))
@@ -7460,6 +7460,8 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         # Mark that solution needs to be recomputed
         𝓂.solution.outdated_NSSS = true
         𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+        # Force rebuild of SS_solve_func since parameter order/count has changed
+        𝓂.solution.functions_written = false
         
         # If all missing parameters are now provided, print a message
         if !isempty(𝓂.missing_parameters)
