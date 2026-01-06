@@ -1,7 +1,7 @@
 module SymPyPythonCallExt
 
 import MacroModelling
-import MacroModelling: ℳ, SYMPYWORKSPACE_RESERVED_NAMES, get_symbols, count_ops, convert_to_ss_equation, transform_expression, reverse_transformation, write_ss_check_function!, write_block_solution!, write_SS_solve_func!, postwalk
+import MacroModelling: ℳ, SYMPYWORKSPACE_RESERVED_NAMES, _sympy_available, get_symbols, count_ops, convert_to_ss_equation, transform_expression, reverse_transformation, write_ss_check_function!, write_block_solution!, write_SS_solve_func!, postwalk
 
 import SymPyPythonCall as SPyPyC
 import PythonCall
@@ -14,7 +14,7 @@ using DispatchDoctor
 
 # Set the flag to indicate SymPy is available
 function __init__()
-    MacroModelling._sympy_available[] = true
+    _sympy_available[] = true
 end
 
 # Module for SymPy symbol workspace to avoid polluting MacroModelling namespace
@@ -138,7 +138,7 @@ Min = min
 
 Simplify a Julia expression using SymPy's symbolic simplification.
 """
-function MacroModelling.simplify(ex::Expr)::Union{Expr,Symbol,Int}
+function simplify(ex::Expr)::Union{Expr,Symbol,Int}
     ex_ss = convert_to_ss_equation(ex)
 
     for x in get_symbols(ex_ss)
@@ -161,7 +161,7 @@ end
 
 Transform an occasionally binding constraint expression using symbolic solving.
 """
-function MacroModelling.transform_obc(ex::Expr; avoid_solve::Bool = false)
+function transform_obc(ex::Expr; avoid_solve::Bool = false)
     transformed_expr, reverse_dict = transform_expression(ex)
 
     for symbs in get_symbols(transformed_expr)
@@ -191,7 +191,7 @@ end
 
 Create symbolic representations of model equations using SymPy.
 """
-function MacroModelling.create_symbols_eqs!(𝓂::ℳ)::symbolics
+function create_symbols_eqs!(𝓂::ℳ)::symbolics
     # create symbols in SymPyWorkspace to avoid polluting MacroModelling namespace
     symbols_in_dynamic_equations = reduce(union,get_symbols.(𝓂.dyn_equations))
 
@@ -265,7 +265,7 @@ function MacroModelling.create_symbols_eqs!(𝓂::ℳ)::symbolics
 
                 [Set() for _ in 1:length(𝓂.ss_aux_equations)],
                 )
-end
+    end
 
 
 """
@@ -273,7 +273,7 @@ end
 
 Remove redundant steady state variables using symbolic solving.
 """
-function MacroModelling.remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve::Bool = false)
+function remove_redundant_SS_vars!(𝓂::ℳ, Symbolics::symbolics; avoid_solve::Bool = false)
     ss_equations = Symbolics.ss_equations
 
     # check variables which appear in two time periods. they might be redundant in steady state
@@ -318,8 +318,8 @@ end
 
 Solve steady state using symbolic methods when SymPy is available.
 """
-function MacroModelling.solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false, avoid_solve::Bool = false)
-    MacroModelling.write_ss_check_function!(𝓂)
+function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false, avoid_solve::Bool = false)
+    write_ss_check_function!(𝓂)
 
     unknowns = union(Symbolics.calibration_equations_parameters, Symbolics.vars_in_ss_equations)
 
@@ -442,7 +442,7 @@ function MacroModelling.solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::s
 
         if length(eq_idx_in_block_to_solve) > 0 || (isnothing(soll) || isempty(soll))
             # Use the numerical solver path
-            MacroModelling.write_block_solution!(𝓂, 
+            write_block_solution!(𝓂, 
                                     SS_solve_func, 
                                     length(eq_idx_in_block_to_solve) > 0 ? Symbol.(vars_to_solve[eq_idx_in_block_to_solve]) : Symbol.(vars_to_solve), 
                                     length(eq_idx_in_block_to_solve) > 0 ? Meta.parse.(string.(eqs_to_solve[eq_idx_in_block_to_solve])) : Meta.parse.(string.(eqs_to_solve)), 
@@ -456,7 +456,7 @@ function MacroModelling.solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::s
     end
 
     # Write the final SS solve function
-    MacroModelling.write_SS_solve_func!(𝓂, SS_solve_func, relevant_pars_across, NSSS_solver_cache_init_tmp)
+    write_SS_solve_func!(𝓂, SS_solve_func, relevant_pars_across, NSSS_solver_cache_init_tmp)
 
     return nothing
 end

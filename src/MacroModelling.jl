@@ -4329,8 +4329,16 @@ function write_ss_check_function!(𝓂::ℳ;
 end
 
 
-# Note: The symbolic version of solve_steady_state! that takes a symbolics argument
-# is provided by the SymPyPythonCallExt extension when SymPy is available.
+# Note: The symbolic version of `solve_steady_state!` that takes a `symbolics`
+# argument is provided by the `SymPyPythonCallExt` extension when SymPy is
+# available. Some call sites pass positional arguments `(mod, SS_symbolic,
+# symbolics, ...)` expecting that extension. When the extension is not
+# installed, provide a minimal fallback wrapper that accepts the positional
+# arguments and delegates to the non-symbolic keyword-only implementation.
+
+function solve_steady_state!(𝓂::ℳ, SS_symbolic::Bool, symbolics::Nothing; kwargs...)
+    return solve_steady_state!(𝓂; kwargs...)
+end
 
 
 function solve_steady_state!(𝓂::ℳ;
