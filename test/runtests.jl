@@ -793,6 +793,197 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
+
+    @testset verbose = true "Custom steady state function" begin
+        # Test custom steady state function with simple RBC model
+        @model RBC_custom_ss begin
+            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_custom_ss begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+
+        # Get default steady state
+        default_ss = get_steady_state(RBC_custom_ss)
+        
+        # Define custom steady state function
+        # Variables in order: [:c, :k, :q, :z] (alphabetically sorted)
+        # Parameters in order: [:std_z, :ρ, :δ, :α, :β] (declaration order)
+        function my_steady_state_rbc(params)
+            std_z, ρ, δ, α, β = params
+            
+            # Analytical steady state for RBC model
+            k_ss = ((1/β - 1 + δ) / α)^(1/(α - 1))
+            q_ss = k_ss^α
+            c_ss = q_ss - δ * k_ss
+            z_ss = 0.0
+            
+            return [c_ss, k_ss, q_ss, z_ss]
+        end
+
+        # Test custom function directly
+        custom_result = my_steady_state_rbc(RBC_custom_ss.parameter_values)
+        @test isapprox(custom_result, default_ss(:,:Steady_state))
+
+        # Get steady state with custom function
+        custom_ss = get_steady_state(RBC_custom_ss, steady_state_function = my_steady_state_rbc)
+        
+        # Compare with default (should be essentially the same)
+        @test isapprox(default_ss, custom_ss, rtol = 1e-10)
+        
+        # Test that model can be solved with custom SS function
+        irf_custom = get_irf(RBC_custom_ss, levels = true)
+
+        # Steady state should still work after clearing
+        after_clear_ss = get_steady_state(RBC_custom_ss, steady_state_function = nothing)
+        @test isnothing(RBC_custom_ss.custom_steady_state_function)
+        @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
+
+        irf_after_clear = get_irf(RBC_custom_ss, levels = true)
+        @test isapprox(irf_after_clear, irf_custom, rtol = 1e-10)
+        
+        # Test with verbose option (internal function still available but not exported)
+        MacroModelling.set_steady_state!(RBC_custom_ss, my_steady_state_rbc)
+        @test !isnothing(RBC_custom_ss.custom_steady_state_function)
+        
+        
+        @model RBC_macro_ss begin
+            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^α
+            z[0] = ρ * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_macro_ss steady_state_function = my_steady_state_rbc begin
+            std_z = 0.01
+            ρ = 0.2
+            δ = 0.02
+            α = 0.5
+            β = 0.95
+        end
+        
+        # Verify macro-defined SS function is set
+        @test isapprox(RBC_macro_ss.custom_steady_state_function(RBC_macro_ss.parameter_values), default_ss(:,:Steady_state), rtol = 1e-10)
+        
+        macro_ss = get_steady_state(RBC_macro_ss)
+        @test isapprox(default_ss, macro_ss, rtol = 1e-10)
+
+        RBC_custom_ss = nothing
+        RBC_macro_ss = nothing
+        RBC_func_arg = nothing
+    end
+
+
+    @testset verbose = true "Custom steady state function with calibration equations and lead/lags" begin
+        # Test custom steady state function with RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve model
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+        
+        # Get default steady state
+        default_ss = get_steady_state(m)
+        
+        function custom_steady_state(p::Vector{Float64})
+            # 1. Unpack parameters
+            cap_share   = p[1]
+            R_ss_target = p[2]
+            I_K_ratio   = p[3]
+            phi_pi    = p[4] 
+            # std_eps   = p[5] 
+            # std_z_d   = p[6] 
+            Pi_real     = p[7]
+            # rhoz      = p[8] 
+
+            # 2. Solve for Deep Parameters and Rates
+            # Target R: log(R) = R_ss - 1
+            R = exp(R_ss_target - 1.0)
+
+            # Target Pi
+            Pi = R_ss_target - Pi_real
+            
+            # Euler Equation: 1 = beta * (R / Pi)
+            beta = Pi / R
+            Pibar = (R * beta) ^ (-1/phi_pi) * Pi
+
+            # Ratios
+            # k / (4 * y) = cap_share
+            ky_ratio = 4.0 * cap_share
+            
+            # c / y = 1 - I_K_ratio
+            cy_ratio = 1.0 - I_K_ratio
+
+            # Resource Constraint: 1 = c/y + delta * k/y
+            delta = (1.0 - cy_ratio) / ky_ratio
+
+            # Euler Equation: 1 = beta * (alpha * y/k + 1 - delta)
+            # alpha = (k/y) * (1/beta - 1 + delta)
+            alpha = ky_ratio * ((1.0 / beta) - 1.0 + delta)
+
+            # 3. Solve for Levels
+            A = 1.0
+            z_delta = 1.0
+
+            # Production: y/k = k^(alpha-1) => k = (k/y)^(1/(1-alpha))
+            k = (ky_ratio)^(1.0 / (1.0 - alpha))
+            y = k^alpha
+            c = cy_ratio * y
+
+            # Auxiliary variables
+            ZZ_avg = A
+            ZZ_avg_fut = A
+            log_ZZ_avg = 0.0 # log(1.0)
+
+            # Distributional functions
+            c_logpdf = normlogpdf(c)
+            c_invcdf = norminvcdf(c - 1.0)
+            
+            # 4. Return Vector
+            return [
+                A,              # 7
+                Pi,             # 4
+                R,              # 3
+                ZZ_avg,         # 8
+                ZZ_avg_fut,     # 9
+                c,              # 2
+                c_invcdf,       # 12
+                c_logpdf,       # 11
+                k,              # 5
+                log_ZZ_avg,     # 10
+                y,              # 1
+                z_delta,        # 6
+                beta,           # 14 (Derived)
+                Pibar,          # 15 (Derived)
+                alpha,          # 13 (Derived)
+                delta           # 16 (Derived)
+            ]
+        end
+        
+        # Get steady state with custom function
+        custom_ss = get_steady_state(m, steady_state_function = custom_steady_state)
+        
+        # Compare key variables with default (should be essentially the same)
+        @test isapprox(default_ss, custom_ss, rtol = 1e-10)
+        
+        # Test that model can be solved with custom SS function
+        std_custom = get_std(m)
+
+        # Steady state should still work after clearing
+        after_clear_ss = get_steady_state(m, steady_state_function = nothing)
+        @test isnothing(m.custom_steady_state_function)
+        @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
+
+        std_after_clear = get_std(m)
+        @test isapprox(std_after_clear, std_custom, rtol = 1e-10)
+        
+        m = nothing
+    end
+
     @testset "Solver comparison - LBFGS vs Lagrange-Newton" begin
         # Test solver comparison between LBFGS and Lagrange-Newton
         include("test_solver_comparison.jl")
@@ -3799,198 +3990,6 @@ if test_set == "basic"
 
         RBC_CME = nothing
     end
-
-
-    @testset verbose = true "Custom steady state function" begin
-        # Test custom steady state function with simple RBC model
-        @model RBC_custom_ss begin
-            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-            q[0] = exp(z[0]) * k[-1]^α
-            z[0] = ρ * z[-1] + std_z * eps_z[x]
-        end
-
-        @parameters RBC_custom_ss begin
-            std_z = 0.01
-            ρ = 0.2
-            δ = 0.02
-            α = 0.5
-            β = 0.95
-        end
-
-        # Get default steady state
-        default_ss = get_steady_state(RBC_custom_ss)
-        
-        # Define custom steady state function
-        # Variables in order: [:c, :k, :q, :z] (alphabetically sorted)
-        # Parameters in order: [:std_z, :ρ, :δ, :α, :β] (declaration order)
-        function my_steady_state_rbc(params)
-            std_z, ρ, δ, α, β = params
-            
-            # Analytical steady state for RBC model
-            k_ss = ((1/β - 1 + δ) / α)^(1/(α - 1))
-            q_ss = k_ss^α
-            c_ss = q_ss - δ * k_ss
-            z_ss = 0.0
-            
-            return [c_ss, k_ss, q_ss, z_ss]
-        end
-
-        # Test custom function directly
-        custom_result = my_steady_state_rbc(RBC_custom_ss.parameter_values)
-        @test isapprox(custom_result, default_ss(:,:Steady_state))
-
-        # Get steady state with custom function
-        custom_ss = get_steady_state(RBC_custom_ss, steady_state_function = my_steady_state_rbc)
-        
-        # Compare with default (should be essentially the same)
-        @test isapprox(default_ss, custom_ss, rtol = 1e-10)
-        
-        # Test that model can be solved with custom SS function
-        irf_custom = get_irf(RBC_custom_ss, levels = true)
-
-        # Steady state should still work after clearing
-        after_clear_ss = get_steady_state(RBC_custom_ss, steady_state_function = nothing)
-        @test isnothing(RBC_custom_ss.custom_steady_state_function)
-        @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
-
-        irf_after_clear = get_irf(RBC_custom_ss, levels = true)
-        @test isapprox(irf_after_clear, irf_custom, rtol = 1e-10)
-        
-        # Test with verbose option (internal function still available but not exported)
-        MacroModelling.set_steady_state!(RBC_custom_ss, my_steady_state_rbc)
-        @test !isnothing(RBC_custom_ss.custom_steady_state_function)
-        
-        
-        @model RBC_macro_ss begin
-            1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
-            c[0] + k[0] = (1 - δ) * k[-1] + q[0]
-            q[0] = exp(z[0]) * k[-1]^α
-            z[0] = ρ * z[-1] + std_z * eps_z[x]
-        end
-
-        @parameters RBC_macro_ss steady_state_function = my_steady_state_rbc begin
-            std_z = 0.01
-            ρ = 0.2
-            δ = 0.02
-            α = 0.5
-            β = 0.95
-        end
-        
-        # Verify macro-defined SS function is set
-        @test isapprox(RBC_macro_ss.custom_steady_state_function(RBC_macro_ss.parameter_values), default_ss(:,:Steady_state), rtol = 1e-10)
-        
-        macro_ss = get_steady_state(RBC_macro_ss)
-        @test isapprox(default_ss, macro_ss, rtol = 1e-10)
-
-        RBC_custom_ss = nothing
-        RBC_macro_ss = nothing
-        RBC_func_arg = nothing
-    end
-
-
-    @testset verbose = true "Custom steady state function with calibration equations and lead/lags" begin
-        # Test custom steady state function with RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve model
-        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
-        
-        # Get default steady state
-        default_ss = get_steady_state(m)
-        
-        function custom_steady_state(p::Vector{Float64})
-            # 1. Unpack parameters
-            cap_share   = p[1]
-            R_ss_target = p[2]
-            I_K_ratio   = p[3]
-            phi_pi    = p[4] 
-            # std_eps   = p[5] 
-            # std_z_d   = p[6] 
-            Pi_real     = p[7]
-            # rhoz      = p[8] 
-
-            # 2. Solve for Deep Parameters and Rates
-            # Target R: log(R) = R_ss - 1
-            R = exp(R_ss_target - 1.0)
-
-            # Target Pi
-            Pi = R_ss_target - Pi_real
-            
-            # Euler Equation: 1 = beta * (R / Pi)
-            beta = Pi / R
-            Pibar = (R * beta) ^ (-1/phi_pi) * Pi
-
-            # Ratios
-            # k / (4 * y) = cap_share
-            ky_ratio = 4.0 * cap_share
-            
-            # c / y = 1 - I_K_ratio
-            cy_ratio = 1.0 - I_K_ratio
-
-            # Resource Constraint: 1 = c/y + delta * k/y
-            delta = (1.0 - cy_ratio) / ky_ratio
-
-            # Euler Equation: 1 = beta * (alpha * y/k + 1 - delta)
-            # alpha = (k/y) * (1/beta - 1 + delta)
-            alpha = ky_ratio * ((1.0 / beta) - 1.0 + delta)
-
-            # 3. Solve for Levels
-            A = 1.0
-            z_delta = 1.0
-
-            # Production: y/k = k^(alpha-1) => k = (k/y)^(1/(1-alpha))
-            k = (ky_ratio)^(1.0 / (1.0 - alpha))
-            y = k^alpha
-            c = cy_ratio * y
-
-            # Auxiliary variables
-            ZZ_avg = A
-            ZZ_avg_fut = A
-            log_ZZ_avg = 0.0 # log(1.0)
-
-            # Distributional functions
-            c_logpdf = normlogpdf(c)
-            c_invcdf = norminvcdf(c - 1.0)
-            
-            # 4. Return Vector
-            return [
-                A,              # 7
-                Pi,             # 4
-                R,              # 3
-                ZZ_avg,         # 8
-                ZZ_avg_fut,     # 9
-                c,              # 2
-                c_invcdf,       # 12
-                c_logpdf,       # 11
-                k,              # 5
-                log_ZZ_avg,     # 10
-                y,              # 1
-                z_delta,        # 6
-                beta,           # 14 (Derived)
-                Pibar,          # 15 (Derived)
-                alpha,          # 13 (Derived)
-                delta           # 16 (Derived)
-            ]
-        end
-        
-        # Get steady state with custom function
-        custom_ss = get_steady_state(m, steady_state_function = custom_steady_state)
-        
-        # Compare key variables with default (should be essentially the same)
-        @test isapprox(default_ss, custom_ss, rtol = 1e-10)
-        
-        # Test that model can be solved with custom SS function
-        std_custom = get_std(m)
-
-        # Steady state should still work after clearing
-        after_clear_ss = get_steady_state(m, steady_state_function = nothing)
-        @test isnothing(m.custom_steady_state_function)
-        @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
-
-        std_after_clear = get_std(m)
-        @test isapprox(std_after_clear, std_custom, rtol = 1e-10)
-        
-        m = nothing
-    end
-
 
 
     @testset verbose = true "Plotting" begin
