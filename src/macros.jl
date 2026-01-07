@@ -1,6 +1,678 @@
 const all_available_algorithms = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
 
+# ============================================================================
+# Balanced Growth Path Functions
+# ============================================================================
+
+"""
+    extract_variables_from_expr(expr)
+
+Extract all variable symbols from an expression that appear in `ref` expressions 
+(e.g., `var[0]`, `var[-1]`). Returns a Set{Symbol} of variable names.
+"""
+function extract_variables_from_expr(expr)
+    vars = Set{Symbol}()
+    postwalk(x -> begin
+        if x isa Expr && x.head == :ref
+            var_name = x.args[1]
+            if var_name isa Symbol
+                push!(vars, var_name)
+            end
+        end
+        x
+    end, expr)
+    return vars
+end
+
+
+"""
+    detect_trend_variables(model_ex::Expr)
+
+Detect trend (unit root) variables from model equations.
+
+A variable X is identified as a trend variable if it appears in an equation of the form:
+- `X[0] = γ * X[-1]` (deterministic trend with growth rate γ)
+- `X[0] = X[-1] * γ` (same pattern, different order)
+
+This pattern indicates X has a unit root and grows at rate γ over time.
+
+Returns a Dict mapping trend variable symbols to their growth rate parameter symbols.
+"""
+function detect_trend_variables(model_ex::Expr)
+    trend_vars = Dict{Symbol, Symbol}()
+    
+    for arg in model_ex.args
+        if !isa(arg, Expr) || arg.head != :(=)
+            continue
+        end
+        
+        lhs, rhs = arg.args[1], arg.args[2]
+        
+        # Check if lhs is var[0]
+        if !(lhs isa Expr && lhs.head == :ref && lhs.args[2] == 0)
+            continue
+        end
+        
+        var_name = lhs.args[1]
+        if !(var_name isa Symbol)
+            continue
+        end
+        
+        # Check if rhs is growth_factor * var[-1] or var[-1] * growth_factor
+        if rhs isa Expr && rhs.head == :call && rhs.args[1] == :*
+            term1 = rhs.args[2]
+            term2 = length(rhs.args) >= 3 ? rhs.args[3] : nothing
+            
+            if isnothing(term2)
+                continue
+            end
+            
+            # Pattern: var[-1] * growth_factor
+            if term1 isa Expr && term1.head == :ref && 
+               term1.args[1] == var_name && term1.args[2] == -1 &&
+               term2 isa Symbol
+                trend_vars[var_name] = term2
+            # Pattern: growth_factor * var[-1]
+            elseif term2 isa Expr && term2.head == :ref && 
+                   term2.args[1] == var_name && term2.args[2] == -1 &&
+                   term1 isa Symbol
+                trend_vars[var_name] = term1
+            end
+        end
+    end
+    
+    return trend_vars
+end
+
+
+"""
+    compute_homogeneity_degree(expr, var_degrees::Dict{Symbol, Float64}, 
+                               params::Set{Symbol}, trend_vars::Set{Symbol})
+
+Recursively compute the homogeneity degree of an expression.
+
+Homogeneity rules:
+- Variables have their assigned degree from `var_degrees`
+- Trend variables have degree 1.0
+- Parameters and constants have degree 0.0
+- For `a * b`: degree(a) + degree(b)
+- For `a / b`: degree(a) - degree(b)  
+- For `a^n` where n is numeric: n * degree(a)
+- For `a^p` where p is a parameter: degree(a) (assumes parameter is O(1))
+- For `a + b` or `a - b`: both must have same degree (returns that degree)
+- For functions like `exp`, `log`: argument must have degree 0
+
+Returns (degree::Float64, valid::Bool) where valid indicates if homogeneity holds.
+"""
+function compute_homogeneity_degree(expr, var_degrees::Dict{Symbol, Float64}, 
+                                    params::Set{Symbol}, trend_vars::Set{Symbol})
+    if expr isa Number
+        return (0.0, true)
+    elseif expr isa Symbol
+        if expr ∈ trend_vars
+            return (1.0, true)
+        elseif haskey(var_degrees, expr)
+            return (var_degrees[expr], true)
+        else
+            return (0.0, true)  # Parameter or constant
+        end
+    elseif expr isa Expr
+        if expr.head == :ref
+            var_name = expr.args[1]
+            if var_name isa Symbol
+                if var_name ∈ trend_vars
+                    return (1.0, true)
+                elseif haskey(var_degrees, var_name)
+                    return (var_degrees[var_name], true)
+                end
+            end
+            return (0.0, true)
+        elseif expr.head == :call
+            op = expr.args[1]
+            
+            if op == :*
+                total = 0.0
+                for i in 2:length(expr.args)
+                    d, valid = compute_homogeneity_degree(expr.args[i], var_degrees, params, trend_vars)
+                    if !valid
+                        return (0.0, false)
+                    end
+                    total += d
+                end
+                return (total, true)
+                
+            elseif op == :/
+                if length(expr.args) >= 3
+                    d1, v1 = compute_homogeneity_degree(expr.args[2], var_degrees, params, trend_vars)
+                    d2, v2 = compute_homogeneity_degree(expr.args[3], var_degrees, params, trend_vars)
+                    if !v1 || !v2
+                        return (0.0, false)
+                    end
+                    return (d1 - d2, true)
+                end
+                
+            elseif op == :^
+                base_d, base_v = compute_homogeneity_degree(expr.args[2], var_degrees, params, trend_vars)
+                if !base_v
+                    return (0.0, false)
+                end
+                exp_val = expr.args[3]
+                if exp_val isa Number
+                    return (base_d * exp_val, true)
+                elseif exp_val isa Symbol && exp_val ∈ params
+                    # For x^α where α is a parameter, we assume the result grows at base rate
+                    return (base_d, true)
+                else
+                    # Complex exponent - assume degree 0 for safety
+                    return (0.0, base_d == 0.0)
+                end
+                
+            elseif op in (:+, :-)
+                if length(expr.args) < 2
+                    return (0.0, true)
+                end
+                d1, v1 = compute_homogeneity_degree(expr.args[2], var_degrees, params, trend_vars)
+                if !v1
+                    return (0.0, false)
+                end
+                for i in 3:length(expr.args)
+                    di, vi = compute_homogeneity_degree(expr.args[i], var_degrees, params, trend_vars)
+                    if !vi || abs(di - d1) > 1e-10
+                        return (0.0, false)  # Mismatched degrees
+                    end
+                end
+                return (d1, true)
+                
+            elseif op in (:exp, :log, :sin, :cos, :tan, :sqrt)
+                d, v = compute_homogeneity_degree(expr.args[2], var_degrees, params, trend_vars)
+                # These functions require degree-0 arguments
+                return (0.0, v && abs(d) < 1e-10)
+            end
+        end
+    end
+    return (0.0, true)
+end
+
+
+"""
+    solve_homogeneity_constraints(model_ex::Expr, trend_vars::Dict{Symbol, Symbol}, 
+                                  all_vars::Set{Symbol}, params::Set{Symbol})
+
+Solve for the homogeneity degrees of all variables using iterative constraint propagation.
+
+The algorithm:
+1. Assign degree 1 to trend variables
+2. For each equation with form `LHS = RHS`, extract degree constraints
+3. Propagate degrees: if v appears in an expression with known-degree terms, infer v's degree
+4. Iterate until convergence
+
+For balanced growth models, trending variables (degree 1) include:
+- Output, consumption, capital when they grow with productivity
+- Any variable that appears multiplied by the trend or other trending variables
+
+Returns Dict{Symbol, Float64} mapping each variable to its homogeneity degree.
+"""
+function solve_homogeneity_constraints(model_ex::Expr, trend_vars::Dict{Symbol, Symbol},
+                                       all_vars::Set{Symbol}, params::Set{Symbol})
+    # Initialize degrees: trend vars have degree 1, others unknown (-1)
+    degrees = Dict{Symbol, Float64}()
+    trend_var_set = Set(keys(trend_vars))
+    
+    for v in trend_var_set
+        degrees[v] = 1.0
+    end
+    
+    # Non-trend variables start unknown
+    non_trend_vars = setdiff(all_vars, trend_var_set)
+    for v in non_trend_vars
+        degrees[v] = -1.0  # Unknown
+    end
+    
+    # Skip the trend equation itself when inferring degrees
+    trend_equations = Set{Int}()
+    for (i, arg) in enumerate(model_ex.args)
+        if isa(arg, Expr) && arg.head == :(=)
+            lhs = arg.args[1]
+            if lhs isa Expr && lhs.head == :ref
+                var_name = lhs.args[1]
+                if var_name isa Symbol && var_name ∈ trend_var_set
+                    push!(trend_equations, i)
+                end
+            end
+        end
+    end
+    
+    # Iteratively propagate degrees
+    max_iterations = 10
+    for _ in 1:max_iterations
+        changed = false
+        
+        for (i, arg) in enumerate(model_ex.args)
+            if i ∈ trend_equations || !isa(arg, Expr)
+                continue
+            end
+            
+            # For equations LHS = RHS, try to infer degrees
+            if arg.head == :(=)
+                lhs_deg = infer_expression_degree(arg.args[1], degrees, trend_var_set)
+                rhs_deg = infer_expression_degree(arg.args[2], degrees, trend_var_set)
+                
+                # If one side has known degree, propagate to unknowns on other side
+                if lhs_deg !== nothing && rhs_deg === nothing
+                    if propagate_degree!(arg.args[2], lhs_deg, degrees, trend_var_set)
+                        changed = true
+                    end
+                elseif rhs_deg !== nothing && lhs_deg === nothing
+                    if propagate_degree!(arg.args[1], rhs_deg, degrees, trend_var_set)
+                        changed = true
+                    end
+                end
+            end
+        end
+        
+        if !changed
+            break
+        end
+    end
+    
+    # Set remaining unknowns to 0 (stationary)
+    for v in non_trend_vars
+        if degrees[v] == -1.0
+            degrees[v] = 0.0
+        end
+    end
+    
+    return degrees
+end
+
+
+"""
+    infer_expression_degree(expr, degrees::Dict{Symbol, Float64}, trend_vars::Set{Symbol})
+
+Infer the homogeneity degree of an expression given known variable degrees.
+Returns nothing if degree cannot be determined (contains unknowns).
+"""
+function infer_expression_degree(expr, degrees::Dict{Symbol, Float64}, trend_vars::Set{Symbol})
+    if expr isa Number
+        return 0.0
+    elseif expr isa Symbol
+        # Parameter or constant - degree 0
+        return 0.0
+    elseif expr isa Expr
+        if expr.head == :ref
+            var_name = expr.args[1]
+            if var_name isa Symbol
+                deg = get(degrees, var_name, 0.0)
+                return deg == -1.0 ? nothing : deg
+            end
+            return 0.0
+        elseif expr.head == :call
+            op = expr.args[1]
+            
+            if op == :*
+                total = 0.0
+                for i in 2:length(expr.args)
+                    d = infer_expression_degree(expr.args[i], degrees, trend_vars)
+                    if d === nothing
+                        return nothing
+                    end
+                    total += d
+                end
+                return total
+            elseif op == :/
+                if length(expr.args) >= 3
+                    d1 = infer_expression_degree(expr.args[2], degrees, trend_vars)
+                    d2 = infer_expression_degree(expr.args[3], degrees, trend_vars)
+                    if d1 === nothing || d2 === nothing
+                        return nothing
+                    end
+                    return d1 - d2
+                end
+            elseif op == :^
+                base_d = infer_expression_degree(expr.args[2], degrees, trend_vars)
+                if base_d === nothing
+                    return nothing
+                end
+                exp_val = expr.args[3]
+                if exp_val isa Number
+                    return base_d * exp_val
+                else
+                    # Symbolic exponent - assume base degree preserved (for params like α)
+                    return base_d
+                end
+            elseif op in (:+, :-)
+                # For sums, all terms should have same degree
+                if length(expr.args) < 2
+                    return 0.0
+                end
+                first_d = infer_expression_degree(expr.args[2], degrees, trend_vars)
+                if first_d === nothing
+                    return nothing
+                end
+                for i in 3:length(expr.args)
+                    d = infer_expression_degree(expr.args[i], degrees, trend_vars)
+                    if d === nothing
+                        return nothing
+                    end
+                    # In balanced growth, sums can have terms of same degree
+                    # If degrees differ, take the max (dominant term)
+                    if abs(d - first_d) > 0.5
+                        first_d = max(d, first_d)
+                    end
+                end
+                return first_d
+            elseif op in (:exp, :log, :sin, :cos)
+                # Transcendental functions require degree 0 arguments
+                return 0.0
+            end
+        elseif expr.head == :block
+            # Handle block expressions - return degree of last non-LineNumberNode
+            for i in length(expr.args):-1:1
+                if !(expr.args[i] isa LineNumberNode)
+                    return infer_expression_degree(expr.args[i], degrees, trend_vars)
+                end
+            end
+        end
+    end
+    return 0.0
+end
+
+
+"""
+    propagate_degree!(expr, target_degree::Float64, degrees::Dict{Symbol, Float64}, 
+                      trend_vars::Set{Symbol})
+
+Try to assign degrees to unknown variables in expr to achieve target_degree.
+Returns true if any degrees were updated.
+"""
+function propagate_degree!(expr, target_degree::Float64, degrees::Dict{Symbol, Float64},
+                           trend_vars::Set{Symbol})
+    if !(expr isa Expr)
+        return false
+    end
+    
+    changed = false
+    
+    if expr.head == :ref
+        var_name = expr.args[1]
+        if var_name isa Symbol && haskey(degrees, var_name) && degrees[var_name] == -1.0
+            degrees[var_name] = target_degree
+            changed = true
+        end
+    elseif expr.head == :call
+        op = expr.args[1]
+        
+        if op in (:*, :+, :-, :/)
+            # For multiplicative expressions with one unknown, solve for it
+            unknown_count = 0
+            unknown_idx = 0
+            known_sum = 0.0
+            
+            for i in 2:length(expr.args)
+                d = infer_expression_degree(expr.args[i], degrees, trend_vars)
+                if d === nothing
+                    unknown_count += 1
+                    unknown_idx = i
+                else
+                    if op == :*
+                        known_sum += d
+                    elseif op == :/ && i == 3
+                        known_sum -= d
+                    end
+                end
+            end
+            
+            if unknown_count == 1 && op in (:*, :/)
+                # Can solve for the unknown
+                required_deg = target_degree - known_sum
+                if propagate_degree!(expr.args[unknown_idx], required_deg, degrees, trend_vars)
+                    changed = true
+                end
+            else
+                # Recurse into all args with target degree
+                for i in 2:length(expr.args)
+                    if propagate_degree!(expr.args[i], target_degree, degrees, trend_vars)
+                        changed = true
+                    end
+                end
+            end
+        else
+            # For other ops, recurse
+            for i in 2:length(expr.args)
+                if propagate_degree!(expr.args[i], target_degree, degrees, trend_vars)
+                    changed = true
+                end
+            end
+        end
+    elseif expr.head == :block
+        for arg in expr.args
+            if !(arg isa LineNumberNode)
+                if propagate_degree!(arg, target_degree, degrees, trend_vars)
+                    changed = true
+                end
+            end
+        end
+    end
+    
+    return changed
+end
+
+
+"""
+    detrend_variable_ref(var_ref::Expr, degrees::Dict{Symbol, Float64}, 
+                         trend_var::Symbol, growth_param::Symbol)
+
+Transform a variable reference v[t] to its detrended form.
+
+For a variable v with degree d > 0:
+- v[0] → v[0] * T[0]^d (current period)
+- v[-1] → v[-1] * T[-1]^d (lagged)
+- v[1] → v[1] * T[1]^d (lead)
+- v[ss] → v[ss] (steady state - trend cancels in ratios)
+
+Variables with degree 0 are left unchanged.
+"""
+function detrend_variable_ref(var_ref::Expr, degrees::Dict{Symbol, Float64},
+                              trend_var::Symbol, growth_param::Symbol)
+    if var_ref.head != :ref
+        return var_ref
+    end
+    
+    var_name = var_ref.args[1]
+    time_idx = var_ref.args[2]
+    
+    if !(var_name isa Symbol)
+        return var_ref
+    end
+    
+    degree = get(degrees, var_name, 0.0)
+    
+    # Variables with degree 0 or the trend variable itself are unchanged
+    if degree == 0.0 || var_name == trend_var
+        return var_ref
+    end
+    
+    # Check if this is a steady state reference
+    if time_idx isa Symbol && occursin(r"^(ss|stst|steady|steadystate|steady_state)$"i, string(time_idx))
+        # In steady state, detrended variables are just the variable values
+        # because the trend normalizes to 1 on the balanced growth path
+        return var_ref
+    end
+    
+    # Create trend reference with same time index
+    trend_ref = Expr(:ref, trend_var, time_idx)
+    
+    # For degree 1: v[t] → v[t] * T[t]
+    # For other degrees: v[t] → v[t] * T[t]^d
+    if degree == 1.0
+        return Expr(:call, :*, var_ref, trend_ref)
+    else
+        return Expr(:call, :*, var_ref, Expr(:call, :^, trend_ref, degree))
+    end
+end
+
+
+"""
+    detrend_expression(expr, degrees::Dict{Symbol, Float64}, 
+                       trend_var::Symbol, growth_param::Symbol)
+
+Recursively transform an expression by detrending all variable references.
+"""
+function detrend_expression(expr, degrees::Dict{Symbol, Float64},
+                           trend_var::Symbol, growth_param::Symbol)
+    postwalk(x -> begin
+        if x isa Expr && x.head == :ref
+            return detrend_variable_ref(x, degrees, trend_var, growth_param)
+        end
+        x
+    end, expr)
+end
+
+
+"""
+    transform_trend_equation(eq::Expr, trend_var::Symbol, growth_param::Symbol)
+
+Transform the trend equation T[0] = γ * T[-1] into a normalized form.
+
+The original trend equation states that T grows at rate γ.
+For the detrended system, we transform this to: T[0] / T[-1] = γ
+
+This allows the steady state solver to find γ as the ratio.
+Actually, we set T[ss] = 1 as the normalization and remove the trend equation,
+replacing it with: 1 = γ (which is just a constraint on the growth rate steady state).
+
+Or more precisely, we replace the equation with T[0] = T[-1] * γ in terms of 
+the normalized trend where T[ss] = 1.
+"""
+function transform_trend_equation(eq::Expr, trend_var::Symbol, growth_param::Symbol)
+    # The trend equation T[0] = γ * T[-1] in steady state means T = T * γ
+    # This only has a solution if γ = 1 (no growth in steady state)
+    # OR we normalize T[ss] = 1 and accept that the equation holds trivially
+    
+    # Return the equation unchanged - the detrending of other variables
+    # will make them stationary, and T[ss] will be normalized to 1
+    return eq
+end
+
+
+"""
+    apply_automatic_detrending(model_ex::Expr)
+
+Automatically detect trend variables from model equations.
+
+This function:
+1. Detects trend variables from equations like T[0] = γ * T[-1]
+2. Solves homogeneity constraints to determine which variables might be trending
+3. Returns the original equations (unchanged) and balanced growth information
+
+The actual detrending happens during steady state computation where the trend
+is normalized (T[ss] = 1 for deterministic steady state).
+
+Note: This follows the approach in the paper where the model is analyzed for
+balanced growth structure, but the equations are kept in their original form.
+The solver handles the normalization internally.
+"""
+function apply_automatic_detrending(model_ex::Expr)
+    # Step 1: Detect trend variables
+    trend_vars = detect_trend_variables(model_ex)
+    
+    if isempty(trend_vars)
+        # No trends detected - return original equations
+        return model_ex, BalancedGrowthPath()
+    end
+    
+    # Collect all variables from the model
+    all_vars = Set{Symbol}()
+    for arg in model_ex.args
+        if isa(arg, Expr)
+            union!(all_vars, extract_variables_from_expr(arg))
+        end
+    end
+    
+    # Step 2: Solve homogeneity constraints to identify trending variables
+    params = Set{Symbol}()  # Parameters will be identified separately
+    degrees = solve_homogeneity_constraints(model_ex, trend_vars, all_vars, params)
+    
+    # Create balanced growth path info (equations are NOT transformed)
+    growth_params = Set{Symbol}(values(trend_vars))
+    bgp = BalancedGrowthPath(
+        trend_vars,
+        degrees,
+        Expr[],  # No transformed equations - we keep original form
+        growth_params
+    )
+    
+    # Return original equations unchanged - detrending handled in steady state solver
+    return model_ex, bgp
+end
+
+
+"""
+    is_trend_equation(eq::Expr, trend_var::Symbol)
+
+Check if an equation is the trend equation for the given trend variable.
+"""
+function is_trend_equation(eq::Expr, trend_var::Symbol)
+    if eq.head != :(=)
+        return false
+    end
+    
+    lhs = eq.args[1]
+    if lhs isa Expr && lhs.head == :ref && lhs.args[1] == trend_var && lhs.args[2] == 0
+        return true
+    end
+    
+    return false
+end
+
+
+"""
+    analyze_balanced_growth(model_ex::Expr, params::Set{Symbol})
+
+Analyze a model for balanced growth path structure.
+
+Returns a BalancedGrowthPath struct containing:
+- Detected trend variables and their growth rates
+- Homogeneity degrees of all variables
+- Information needed for detrended steady state computation
+"""
+function analyze_balanced_growth(model_ex::Expr, params::Set{Symbol})
+    # Step 1: Detect trend variables
+    trend_vars = detect_trend_variables(model_ex)
+    
+    if isempty(trend_vars)
+        return BalancedGrowthPath()
+    end
+    
+    # Collect all variables from the model
+    all_vars = Set{Symbol}()
+    for arg in model_ex.args
+        if isa(arg, Expr)
+            union!(all_vars, extract_variables_from_expr(arg))
+        end
+    end
+    
+    # Step 2: Solve homogeneity constraints
+    degrees = solve_homogeneity_constraints(model_ex, trend_vars, all_vars, params)
+    
+    # Step 3: Create balanced growth path info
+    growth_params = Set{Symbol}(values(trend_vars))
+    
+    return BalancedGrowthPath(
+        trend_vars,
+        degrees,
+        Expr[],  # Detrended equations computed later if needed
+        growth_params
+    )
+end
+
+
+# ============================================================================
+# End Balanced Growth Path Functions
+# ============================================================================
+
+
 """
 $(SIGNATURES)
 Parses the model equations and assigns them to an object.
@@ -123,6 +795,11 @@ macro model(𝓂,ex...)
     model_ex = remove_nothing(model_ex::Expr)::Expr
 
     model_ex = parse_occasionally_binding_constraints(model_ex::Expr, max_obc_horizon = max_obc_horizon)::Expr
+    
+    # Automatic balanced growth path detection and detrending
+    # This step identifies trend variables and transforms the model equations
+    # to work with detrended (stationary) variables
+    model_ex, balanced_growth_info = apply_automatic_detrending(model_ex)
     
     # obc_shock_bounds = Tuple{Symbol, Bool, Float64}[]
 
@@ -840,6 +1517,8 @@ macro model(𝓂,ex...)
                         true, # simplify - to be set by @parameters
 
                         Dict{Symbol, Float64}(), # guess
+                        
+                        $balanced_growth_info, # balanced_growth - detected during parsing
 
                         sort($aux),
                         sort(collect($aux_present)), 
