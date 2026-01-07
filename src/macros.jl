@@ -1126,8 +1126,8 @@ macro parameters(𝓂,ex...)
                         ss_solver_parameters_algorithm = x.args[2] isa QuoteNode ? x.args[2].value : x.args[2] :
                     (x.args[1] == :simplify && x.args[2] isa Bool) ?
                         simplify = x.args[2] :
-                    (x.args[1] == :steady_state_function && x.args[2] isa Function) ?
-                        steady_state_function = x.args[2] :
+                    (x.args[1] == :steady_state_function && x.args[2] isa Symbol) ? # allow Symbol, anonymous fn, or any callable expr
+                        steady_state_function = esc(x.args[2]) :
                     (x.args[1] == :ss_solver_parameters_maxtime && x.args[2] isa Real) ?
                         ss_solver_parameters_maxtime = x.args[2] :
                     begin
@@ -1138,7 +1138,7 @@ macro parameters(𝓂,ex...)
             x,
         exp)
     end
-
+    
     if ss_solver_parameters_algorithm ∉ [:ESCH, :SAMIN]
         @warn "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $ss_solver_parameters_algorithm. Using default :ESCH."
     end
@@ -1580,9 +1580,14 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.precompile = $precompile
         mod.$𝓂.simplify = $simplify
         
+        # Set custom steady state function if provided
+        # if !isnothing($steady_state_function)
+        set_steady_state!(mod.$𝓂, $steady_state_function)
+        # end
+
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed 
-        if !has_missing_parameters
+        if !has_missing_parameters && isnothing($steady_state_function)
             if !$precompile
                 start_time = time()
 
@@ -1618,11 +1623,6 @@ macro parameters(𝓂,ex...)
         end
         
         mod.$𝓂.solution.functions_written = false
-        
-        # Set custom steady state function if provided
-        if !isnothing($steady_state_function)
-            set_steady_state!(mod.$𝓂, $steady_state_function)
-        end
 
         if !has_missing_parameters
             # Mark functions as written even if we skipped SS setup due to missing parameters

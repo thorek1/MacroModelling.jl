@@ -194,6 +194,7 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 function plot_model_estimates(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
+                                steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -248,7 +249,12 @@ function plot_model_estimates(𝓂::ℳ,
 
     filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, shock_decomposition, warmup_iterations)
 
-    solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
+    solve!(𝓂, 
+            parameters = parameters, 
+            steady_state_function = steady_state_function,
+            algorithm = algorithm, 
+            opts = opts, 
+            dynamics = true)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
@@ -842,6 +848,7 @@ plot_model_estimates!(RBC_CME, simulation([:k],:,:simulate), parameters = :beta 
 function plot_model_estimates!(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
+                                steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -894,7 +901,12 @@ function plot_model_estimates!(𝓂::ℳ,
 
     filter, smooth, algorithm, _, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
-    solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
+    solve!(𝓂, 
+            parameters = parameters, 
+            steady_state_function = steady_state_function,
+            algorithm = algorithm, 
+            opts = opts, 
+            dynamics = true)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
@@ -1795,6 +1807,7 @@ function plot_irf(𝓂::ℳ;
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCKS_EXCLUDING_OBC, 
                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC,
                     parameters::ParameterType = nothing,
+                    steady_state_function::SteadyStateFunctionType = missing,
                     label::Union{Real, String, Symbol} = DEFAULT_LABEL,
                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
@@ -1847,7 +1860,13 @@ function plot_irf(𝓂::ℳ;
 
     generalised_irf = adjust_generalised_irf_flag(generalised_irf, generalised_irf_warmup_iterations, generalised_irf_draws, algorithm, occasionally_binding_constraints, shocks)
 
-    solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+    solve!(𝓂, 
+            parameters = parameters, 
+            steady_state_function = steady_state_function,
+            opts = opts, 
+            dynamics = true, 
+            algorithm = algorithm, 
+            obc = occasionally_binding_constraints || obc_shocks_included)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
@@ -2477,6 +2496,7 @@ function plot_irf!(𝓂::ℳ;
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCKS_EXCLUDING_OBC, 
                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC,
                     parameters::ParameterType = nothing,
+                    steady_state_function::SteadyStateFunctionType = missing,
                     label::Union{Real, String, Symbol} = length(irf_active_plot_container) + 1,
                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
@@ -2541,7 +2561,13 @@ function plot_irf!(𝓂::ℳ;
 
     generalised_irf = adjust_generalised_irf_flag(generalised_irf, generalised_irf_warmup_iterations, generalised_irf_draws, algorithm, occasionally_binding_constraints, shocks)
 
-    solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+    solve!(𝓂, 
+            parameters = parameters, 
+            steady_state_function = steady_state_function,
+            opts = opts, 
+            dynamics = true, 
+            algorithm = algorithm, 
+            obc = occasionally_binding_constraints || obc_shocks_included)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
@@ -3523,6 +3549,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 periods::Int = DEFAULT_PERIODS, 
                                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
                                                 parameters::ParameterType = nothing,
+                                                steady_state_function::SteadyStateFunctionType = missing,
                                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                                 save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
@@ -3558,6 +3585,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     fevds = get_conditional_variance_decomposition(𝓂,
                                                     periods = 1:periods,
                                                     parameters = parameters,
+                                                    steady_state_function = steady_state_function,
                                                     verbose = verbose,
                                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                     tol = tol)
@@ -3789,6 +3817,7 @@ function plot_solution(𝓂::ℳ,
                         algorithm::Symbol = DEFAULT_ALGORITHM,
                         σ::Union{Int64,Float64} = DEFAULT_SIGMA_RANGE,
                         parameters::ParameterType = nothing,
+                        steady_state_function::SteadyStateFunctionType = missing,
                         ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                         label::Union{Real, String, Symbol} = DEFAULT_LABEL,
                         show_plots::Bool = DEFAULT_SHOW_PLOTS,
@@ -3839,6 +3868,7 @@ function plot_solution(𝓂::ℳ,
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
                             parameters = parameters,
+                            steady_state_function = steady_state_function,
                             variables = :all,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm = sylvester_algorithm,
@@ -4512,6 +4542,7 @@ function plot_solution!(𝓂::ℳ,
                         algorithm::Symbol = DEFAULT_ALGORITHM,
                         σ::Union{Int64,Float64} = DEFAULT_SIGMA_RANGE,
                         parameters::ParameterType = nothing,
+                        steady_state_function::SteadyStateFunctionType = missing,
                         ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                         label::Union{Real, String, Symbol} = length(solution_active_plot_container) + 1,
                         show_plots::Bool = DEFAULT_SHOW_PLOTS,
@@ -4564,6 +4595,7 @@ function plot_solution!(𝓂::ℳ,
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
                             parameters = parameters,
+                            steady_state_function = steady_state_function,
                             variables = :all,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm = sylvester_algorithm,
@@ -4794,6 +4826,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                                     periods::Int = DEFAULT_PERIODS, 
                                     parameters::ParameterType = nothing,
+                                    steady_state_function::SteadyStateFunctionType = missing,
                                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                     conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
                                     algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -4840,6 +4873,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 initial_state = initial_state,
                                 periods = periods, 
                                 parameters = parameters,
+                                steady_state_function = steady_state_function,
                                 variables = variables, 
                                 conditions_in_levels = conditions_in_levels,
                                 algorithm = algorithm,
@@ -5250,6 +5284,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                                     periods::Int = DEFAULT_PERIODS, 
                                     parameters::ParameterType = nothing,
+                                    steady_state_function::SteadyStateFunctionType = missing,
                                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                     conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
                                     algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -5300,6 +5335,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                 initial_state = initial_state,
                                 periods = periods, 
                                 parameters = parameters,
+                                steady_state_function = steady_state_function,
                                 variables = variables, 
                                 conditions_in_levels = conditions_in_levels,
                                 algorithm = algorithm,

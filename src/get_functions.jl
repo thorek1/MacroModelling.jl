@@ -78,7 +78,7 @@ And data, 4×2×40 Array{Float64, 3}:
 function get_shock_decomposition(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,
+                                steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
@@ -221,7 +221,7 @@ And data, 1×40 Matrix{Float64}:
 function get_estimated_shocks(𝓂::ℳ,
                             data::KeyedArray{Float64};
                             parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,
+                            steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
                             filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
                             warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -350,7 +350,7 @@ And data, 4×40 Matrix{Float64}:
 function get_estimated_variables(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,
+                                steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -478,7 +478,7 @@ And data, 5×40 Matrix{Float64}:
 function get_model_estimates(𝓂::ℳ,
                              data::KeyedArray{Float64};
                              parameters::ParameterType = nothing,
-                                          steady_state_function::SteadyStateFunctionType = nothing,
+                             steady_state_function::SteadyStateFunctionType = missing,
                              algorithm::Symbol = DEFAULT_ALGORITHM,
                              filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
                              warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -493,7 +493,7 @@ function get_model_estimates(𝓂::ℳ,
 
     vars = get_estimated_variables(𝓂, data;
                                    parameters = parameters,
-            steady_state_function = steady_state_function,
+                                   steady_state_function = steady_state_function,
                                    algorithm = algorithm,
                                    filter = filter,
                                    warmup_iterations = warmup_iterations,
@@ -508,7 +508,7 @@ function get_model_estimates(𝓂::ℳ,
 
     shks = get_estimated_shocks(𝓂, data;
                                 parameters = parameters,
-            steady_state_function = steady_state_function,
+                                steady_state_function = steady_state_function,
                                 algorithm = algorithm,
                                 filter = filter,
                                 warmup_iterations = warmup_iterations,
@@ -587,7 +587,7 @@ And data, 4×40 Matrix{Float64}:
 function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                     data::KeyedArray{Float64};
                                                     parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,
+                                                    steady_state_function::SteadyStateFunctionType = missing,
                                                     data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                                     smooth::Bool = DEFAULT_SMOOTH_FLAG,
                                                     verbose::Bool = DEFAULT_VERBOSE,
@@ -746,7 +746,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                 initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                                 periods::Int = DEFAULT_PERIODS, 
                                 parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,
+                                steady_state_function::SteadyStateFunctionType = missing,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -1222,7 +1222,7 @@ function get_irf(𝓂::ℳ;
                 periods::Int = DEFAULT_PERIODS, 
                 algorithm::Symbol = DEFAULT_ALGORITHM, 
                 parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,
+                steady_state_function::SteadyStateFunctionType = missing,
                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                 shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCKS_EXCLUDING_OBC,
                 negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK, 
@@ -1445,7 +1445,7 @@ And data, 4×6 Matrix{Float64}:
 """
 function get_steady_state(𝓂::ℳ; 
                             parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing, 
+                            steady_state_function::SteadyStateFunctionType = missing, 
                             derivatives::Bool = DEFAULT_DERIVATIVES_FLAG, 
                             stochastic::Bool = DEFAULT_STOCHASTIC_FLAG,
                             algorithm::Symbol = DEFAULT_ALGORITHM_SELECTOR(stochastic),
@@ -1475,8 +1475,10 @@ function get_steady_state(𝓂::ℳ;
         end
     end
 
-    solve!(𝓂, parameters = parameters,
-            steady_state_function = steady_state_function, opts = opts)
+    solve!(𝓂, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
+            opts = opts)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
     
@@ -1507,6 +1509,7 @@ function get_steady_state(𝓂::ℳ;
     if stochastic
         solve!(𝓂, 
                 opts = opts, 
+                steady_state_function = steady_state_function, 
                 dynamics = true, 
                 algorithm = algorithm, 
                 silent = silent, 
@@ -1739,7 +1742,7 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 """
 function get_solution(𝓂::ℳ; 
                         parameters::ParameterType = nothing,
-                steady_state_function::SteadyStateFunctionType = nothing,
+                        steady_state_function::SteadyStateFunctionType = missing,
                         algorithm::Symbol = DEFAULT_ALGORITHM, 
                         silent::Bool = DEFAULT_SILENT_FLAG,
                         verbose::Bool = DEFAULT_VERBOSE,
@@ -2117,7 +2120,7 @@ And data, 7×2×21 Array{Float64, 3}:
 function get_conditional_variance_decomposition(𝓂::ℳ; 
                                                 periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = DEFAULT_CONDITIONAL_VARIANCE_PERIODS,
                                                 parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,  
+                                                steady_state_function::SteadyStateFunctionType = missing,  
                                                 verbose::Bool = DEFAULT_VERBOSE,
                                                 tol::Tolerances = Tolerances(),
                                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
@@ -2128,7 +2131,10 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 lyapunov_algorithm = lyapunov_algorithm)
 
-    solve!(𝓂, opts = opts, parameters = parameters)
+    solve!(𝓂, 
+            opts = opts,
+            steady_state_function = steady_state_function,  
+            parameters = parameters)
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
@@ -2278,7 +2284,7 @@ And data, 7×2 Matrix{Float64}:
 """
 function get_variance_decomposition(𝓂::ℳ; 
                                     parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,
+                                    steady_state_function::SteadyStateFunctionType = missing,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
@@ -2289,7 +2295,10 @@ function get_variance_decomposition(𝓂::ℳ;
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     lyapunov_algorithm = lyapunov_algorithm)
     
-    solve!(𝓂, opts = opts, parameters = parameters)
+    solve!(𝓂, 
+            opts = opts, 
+            steady_state_function = steady_state_function, 
+            parameters = parameters)
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
@@ -2407,7 +2416,7 @@ And data, 4×4 Matrix{Float64}:
 """
 function get_correlation(𝓂::ℳ; 
                         parameters::ParameterType = nothing,
-                steady_state_function::SteadyStateFunctionType = nothing,  
+                        steady_state_function::SteadyStateFunctionType = missing,  
                         algorithm::Symbol = DEFAULT_ALGORITHM,
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
@@ -2526,7 +2535,7 @@ And data, 4×5 Matrix{Float64}:
 function get_autocorrelation(𝓂::ℳ; 
                             autocorrelation_periods::UnitRange{Int} = DEFAULT_AUTOCORRELATION_PERIODS,
                             parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,  
+                            steady_state_function::SteadyStateFunctionType = missing,  
                             algorithm::Symbol = DEFAULT_ALGORITHM,
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
@@ -2686,7 +2695,7 @@ And data, 4×6 Matrix{Float64}:
 """
 function get_moments(𝓂::ℳ; 
                     parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,  
+                    steady_state_function::SteadyStateFunctionType = missing,  
                     non_stochastic_steady_state::Bool = DEFAULT_NON_STOCHASTIC_STEADY_STATE_FLAG, 
                     mean::Bool = DEFAULT_MEAN_FLAG,
                     standard_deviation::Bool = DEFAULT_STANDARD_DEVIATION_FLAG, 
@@ -3686,15 +3695,17 @@ And data, 5-element Vector{Float64}:
 function get_non_stochastic_steady_state_residuals(𝓂::ℳ, 
                                                     values::Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}; 
                                                     parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,
+                                                    steady_state_function::SteadyStateFunctionType = missing,
                                                     tol::Tolerances = Tolerances(),
                                                     verbose::Bool = DEFAULT_VERBOSE)
     # @nospecialize # reduce compile time                                             
 
     opts = merge_calculation_options(tol = tol, verbose = verbose)
     
-    solve!(𝓂, parameters = parameters,
-            steady_state_function = steady_state_function, opts = opts)
+    solve!(𝓂, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
+            opts = opts)
 
     SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 

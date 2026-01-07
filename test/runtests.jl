@@ -3863,7 +3863,7 @@ if test_set == "basic"
         @test isapprox(default_ss(:c, :Steady_state), after_clear_ss(:c, :Steady_state), rtol = 1e-10)
 
         # Test with verbose option (internal function still available but not exported)
-        MacroModelling.set_steady_state!(RBC_custom_ss, my_steady_state_rbc, verbose = false)
+        MacroModelling.set_steady_state!(RBC_custom_ss, my_steady_state_rbc)
         @test !isnothing(RBC_custom_ss.custom_steady_state_function)
         
         # Test simulation works with custom SS function
@@ -3895,9 +3895,9 @@ if test_set == "basic"
             α = 0.5
             β = 0.95
         end
-
+        
         # Verify macro-defined SS function is set
-        @test !isnothing(RBC_macro_ss.custom_steady_state_function)
+        @test !isnothing(RBC_macro_ss.custom_steady_state_function(RBC_macro_ss.parameter_values))
         
         macro_ss = get_steady_state(RBC_macro_ss)
         @test isapprox(default_ss(:c, :Steady_state), macro_ss(:c, :Steady_state), rtol = 1e-10)
@@ -3929,8 +3929,111 @@ if test_set == "basic"
         RBC_custom_ss = nothing
         RBC_macro_ss = nothing
         RBC_func_arg = nothing
+
     end
-    GC.gc()
+
+
+    @testset verbose = true "Custom steady state function with calibration equations and lead/lags" begin
+        # Test custom steady state function with RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve model
+        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+        
+        # Get default steady state
+        default_ss = get_steady_state(m)
+     
+        function custom_steady_state(p::Vector{Float64})
+            # 1. Unpack parameters
+            cap_share   = p[1]
+            R_ss_target = p[2]
+            I_K_ratio   = p[3]
+            phi_pi    = p[4] 
+            # std_eps   = p[5] 
+            # std_z_d   = p[6] 
+            Pi_real     = p[7]
+            # rhoz      = p[8] 
+
+            # 2. Solve for Deep Parameters and Rates
+            # Target R: log(R) = R_ss - 1
+            R = exp(R_ss_target - 1.0)
+
+            # Target Pi
+            Pi = R_ss_target - Pi_real
+            
+            # Euler Equation: 1 = beta * (R / Pi)
+            beta = Pi / R
+            Pibar = (R * beta) ^ (-1/phi_pi) * Pi
+
+            # Ratios
+            # k / (4 * y) = cap_share
+            ky_ratio = 4.0 * cap_share
+            
+            # c / y = 1 - I_K_ratio
+            cy_ratio = 1.0 - I_K_ratio
+
+            # Resource Constraint: 1 = c/y + delta * k/y
+            delta = (1.0 - cy_ratio) / ky_ratio
+
+            # Euler Equation: 1 = beta * (alpha * y/k + 1 - delta)
+            # alpha = (k/y) * (1/beta - 1 + delta)
+            alpha = ky_ratio * ((1.0 / beta) - 1.0 + delta)
+
+            # 3. Solve for Levels
+            A = 1.0
+            z_delta = 1.0
+
+            # Production: y/k = k^(alpha-1) => k = (k/y)^(1/(1-alpha))
+            k = (ky_ratio)^(1.0 / (1.0 - alpha))
+            y = k^alpha
+            c = cy_ratio * y
+
+            # Auxiliary variables
+            ZZ_avg = A
+            ZZ_avg_fut = A
+            log_ZZ_avg = 0.0 # log(1.0)
+
+            # Distributional functions
+            c_logpdf = normlogpdf(c)
+            c_invcdf = norminvcdf(c - 1.0)
+
+            # 4. Return Vector
+            return [
+                A,              # 7
+                Pi,             # 4
+                R,              # 3
+                ZZ_avg,         # 8
+                ZZ_avg_fut,     # 9
+                c,              # 2
+                c_invcdf,       # 12
+                c_logpdf,       # 11
+                k,              # 5
+                log_ZZ_avg,     # 10
+                y,              # 1
+                z_delta,        # 6
+                beta,           # 14 (Derived)
+                Pibar,          # 15 (Derived)
+                alpha,          # 13 (Derived)
+                delta           # 16 (Derived)
+            ]
+        end
+        
+        # Get steady state with custom function
+        custom_ss = get_steady_state(m, steady_state_function = custom_steady_state)
+        
+        # Compare key variables with default (should be essentially the same)
+        @test isapprox(default_ss, custom_ss, rtol = 1e-10)
+        
+        # Test that model can be solved with custom SS function
+        irf_custom = get_irf(m, steady_state_function = my_steady_state_rbc_cme)
+        @test size(irf_custom, 1) == length(var_order)  # All variables
+        
+        # Test simulation works with custom SS function
+        sim = simulate(m, steady_state_function = my_steady_state_rbc_cme)
+        @test size(sim, 1) == length(var_order)  # All variables
+        @test size(sim, 2) == 40  # default periods
+
+        m = nothing
+        
+    end
+
 
 
     @testset verbose = true "Plotting" begin

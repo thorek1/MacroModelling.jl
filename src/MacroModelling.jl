@@ -152,7 +152,7 @@ const ParameterType = Union{Nothing,
 
 # Type for steady state function argument
 # Accepts a function, `nothing` (explicitly clear)
-const SteadyStateFunctionType = Union{Nothing, Function}
+const SteadyStateFunctionType = Union{Nothing, Function, Missing}
 
 using DispatchDoctor
 # @stable default_mode = "disable" begin
@@ -1038,7 +1038,7 @@ end
 
 
 """
-    set_steady_state!(𝓂::ℳ, f::Function; verbose::Bool = false)
+    set_steady_state!(𝓂::ℳ, f::Function)
 
 *Internal function* - Set a custom function to calculate the steady state of the model.
 
@@ -1114,69 +1114,19 @@ get_irf(RBC, steady_state_function = my_steady_state)
 
 See also: [`get_variables`](@ref), [`get_parameters`](@ref), [`get_steady_state`](@ref), [`get_irf`](@ref), [`simulate`](@ref)
 """
-function set_steady_state!(𝓂::ℳ, f::Function; 
-                           verbose::Bool = false)
-    # # Get the variable order (sorted union of var, exo_past, exo_future)
-    # var_order = sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))
-    # n_vars = length(var_order)
-    # n_calib_params = length(𝓂.calibration_equations_parameters)
-    
-    # if verbose
-    #     println("Parameter order (input to custom function):")
-    #     println("  ", 𝓂.parameters)
-    #     println("\nOutput order (custom steady state function):")
-    #     if n_calib_params > 0
-    #         println("  ", vcat(var_order, 𝓂.calibration_equations_parameters))
-    #     else
-    #         println("  ", var_order)
-    #     end
-    # end
-    
-    # # Create wrapper function that matches the internal SS_solve_func signature
-    # # Internal signature: (parameter_values, 𝓂, tol, verbose, update_cache, solver_parameters) -> (SS_and_pars, (error, iters))
-    # function custom_ss_wrapper(parameter_values::Vector{T}, _model, _tol, verbosity, _update_cache, _solver_params) where T
-    #     # Helper function to return error state
-    #     error_return() = (zeros(T, n_vars + n_calib_params), (T(1e10), 0))
-        
-    #     try
-    #         # Call the user function with parameter values
-    #         ss_and_pars = f(parameter_values)
-    #         expected_len = n_vars + n_calib_params
-
-    #         # Check output length
-    #         if length(ss_and_pars) != expected_len
-    #             expected_order = n_calib_params > 0 ?
-    #                 "variables in order $(var_order) followed by calibrated parameters in order $(𝓂.calibration_equations_parameters)." :
-    #                 "variables in order $(var_order)."
-    #             error_msg = "Custom steady state function returned $(length(ss_and_pars)) values, " *
-    #                         "but expected $(expected_len) values: " * expected_order
-    #             if verbosity
-    #                 println(error_msg)
-    #             end
-    #             return error_return()
-    #         end
-
-    #         SS_and_pars = T[ss_and_pars...]
-            
-    #         # Return the steady state with zero error (user function is assumed to be correct)
-    #         return SS_and_pars, (T(0.0), 0)
-    #     catch e
-    #         if verbosity
-    #             println("Error in custom steady state function: ", e)
-    #         end
-    #         return error_return()
-    #     end
-    # end
-    
+function set_steady_state!(𝓂::ℳ, f::SteadyStateFunctionType)
     # Store the custom function
-    𝓂.custom_steady_state_function = f
-    
-    # Mark the solution as outdated
-    𝓂.solution.outdated_NSSS = true
-    for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
-        push!(𝓂.solution.outdated_algorithms, alg)
+    if isnothing(f)
+        𝓂.custom_steady_state_function = nothing
+    elseif f isa Function
+        𝓂.custom_steady_state_function = f 
+        
+        𝓂.solution.outdated_NSSS = true
+        for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+            push!(𝓂.solution.outdated_algorithms, alg)
+        end
     end
-    
+
     return nothing
 end
 
@@ -6882,9 +6832,9 @@ function solve!(𝓂::ℳ;
     @assert algorithm ∈ all_available_algorithms
     
     # Handle steady_state_function argument
-    if !isnothing(steady_state_function)
-        set_steady_state!(𝓂, steady_state_function)
-    end
+    # if !isnothing(steady_state_function)
+    set_steady_state!(𝓂, steady_state_function)
+    # end
     
     # @timeit_debug timer "Write parameter inputs" begin
 
@@ -9770,27 +9720,28 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     
     # Use custom steady state function if available, otherwise use default solver
     if !isnothing(𝓂.custom_steady_state_function)
+        
         SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
 
-        axis1 = vcat(𝓂.var, 𝓂.calibration_equations_parameters)
+        residual = zeros(length(SS_and_pars))
 
-        vars_in_ss_equations =
-            sort!(collect(setdiff(union(get_symbols.(𝓂.ss_equations)...),
-                                union(𝓂.parameters_in_equations))))
-
-        unknowns = vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
-
-        idx = indexin(unknowns, axis1)
-
-        vals = SS_and_pars[idx]
-
-        residual = zeros(length(vals))
-
-        𝓂.SS_check_func(residual, 𝓂.parameter_values, vals)
+        𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
 
         solution_error = sum(abs, residual)
-        
+
         iters = 0
+          
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+    
+        var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        SS_and_pars_tmp = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
+
+        SS_and_pars_tmp[[var_idx..., calib_idx...]] = SS_and_pars
+
+        SS_and_pars = SS_and_pars_tmp
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
@@ -9820,26 +9771,26 @@ function rrule(::typeof(get_NSSS_and_parameters),
     # Use custom steady state function if available, otherwise use default solver
     if !isnothing(𝓂.custom_steady_state_function)
         SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
-        
-        axis1 = vcat(𝓂.var, 𝓂.calibration_equations_parameters)
 
-        vars_in_ss_equations =
-            sort!(collect(setdiff(union(get_symbols.(𝓂.ss_equations)...),
-                                union(𝓂.parameters_in_equations))))
+        residual = zeros(length(SS_and_pars))
 
-        unknowns = vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
-
-        idx = indexin(unknowns, axis1)
-
-        vals = SS_and_pars[idx]
-
-        residual = zeros(S, length(vals))
-
-        𝓂.SS_check_func(residual, 𝓂.parameter_values, vals)
+        𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
 
         solution_error = sum(abs, residual)
         
         iters = 0
+        
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+    
+        var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        SS_and_pars_tmp = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
+
+        SS_and_pars_tmp[[var_idx..., calib_idx...]] = SS_and_pars
+
+        SS_and_pars = SS_and_pars_tmp
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
@@ -9935,26 +9886,26 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
     if !isnothing(𝓂.custom_steady_state_function)
         SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
-        
-        axis1 = vcat(𝓂.var, 𝓂.calibration_equations_parameters)
 
-        vars_in_ss_equations =
-            sort!(collect(setdiff(union(get_symbols.(𝓂.ss_equations)...),
-                                union(𝓂.parameters_in_equations))))
+        residual = zeros(length(SS_and_pars))
 
-        unknowns = vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
-
-        idx = indexin(unknowns, axis1)
-
-        vals = SS_and_pars[idx]
-
-        residual = zeros(length(vals))
-
-        𝓂.SS_check_func(residual, 𝓂.parameter_values, vals)
+        𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
 
         solution_error = sum(abs, residual)
         
         iters = 0
+        
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+    
+        var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        SS_and_pars_tmp = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
+
+        SS_and_pars_tmp[[var_idx..., calib_idx...]] = SS_and_pars
+
+        SS_and_pars = SS_and_pars_tmp
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
