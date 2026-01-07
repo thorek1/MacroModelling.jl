@@ -654,7 +654,6 @@ macro model(𝓂,ex...)
         if ss_aux_equation isa Symbol 
             push!(ss_aux_equations, Expr(:call,:-,ss_aux_equation,0))
         else#if !(ss_aux_equation isa Int)
-            # println(eq)
             push!(ss_aux_equations, ss_aux_equation)
         end
     end
@@ -789,7 +788,6 @@ macro model(𝓂,ex...)
     dyn_past_list =     match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")
     dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
 
-    # println(ss_aux_equations)
     # write down original equations as written down in model block
     for (i,arg) in enumerate(model_ex.args)
         if isa(arg,Expr)
@@ -801,7 +799,7 @@ macro model(𝓂,ex...)
             push!(original_equations,unblock(prs_exx))
         end
     end
-
+    
     single_dyn_vars_equations = findall(length.(vcat.(collect.(dyn_var_future_list),
                                                       collect.(dyn_var_present_list),
                                                       collect.(dyn_var_past_list),
@@ -839,6 +837,7 @@ macro model(𝓂,ex...)
                         
                         Symbol[], # missing_parameters - to be filled by @parameters
                         false, # precompile - to be set by @parameters
+                        true, # simplify - to be set by @parameters
 
                         Dict{Symbol, Float64}(), # guess
 
@@ -958,7 +957,10 @@ macro model(𝓂,ex...)
                             solver_parameters(86.68744085399935, 44.356034936019704, 3.0248550511209418, 2.5434387875674105, 0.44177199922855287, 11.258039640546523, 59.1538457315958, 50.22390673260303, 45.699696761126376, 76.139237123852, 7.474593067106561, 95.69459863829196, 6.651922334973468, 18.01104269012316, 7.843038549255355, 42.350869207246724, 12.544216405091063, 64.54315767944557, 11.098496176990707, 0.7910630794135145, 
                             1, 0.0, 2),
 
-                            solver_parameters(4.1784912636092235, 1.8166012668623566, 0.5168801279930487, 78.18194336881028, 2.139580134601701, 0.4617967010780055, 33.95219683424897, 17.315839925955242, 2.220446049250313e-16, 12.287343174930065, 2.220446049250313e-16, 6.185479065850274, 88.3014875814592, 36.31304631280673, 5.262437586106421, 2.220446049250313e-16, 2.220446049250313e-16, 6.347784900438273, 0.7130503478600859, 0.6594888633818169, 1, 0.0, 2)
+                            solver_parameters(4.1784912636092235, 1.8166012668623566, 0.5168801279930487, 78.18194336881028, 2.139580134601701, 0.4617967010780055, 33.95219683424897, 17.315839925955242, 2.220446049250313e-16, 12.287343174930065, 2.220446049250313e-16, 6.185479065850274, 88.3014875814592, 36.31304631280673, 5.262437586106421, 2.220446049250313e-16, 2.220446049250313e-16, 6.347784900438273, 0.7130503478600859, 0.6594888633818169, 1, 0.0, 2),
+
+                            solver_parameters(75.41767502114854, 48.44868207231484, 66.70557675476336, 17.001461658038423, 2.715293366195093, 1.2745896783633328, 37.70721763849395, 50.739875243093444, 66.72525429469775, 54.137861579508154, 12.078847271504216, 19.723433260864525, 2.2648933923720476, 54.735557478829, 98.94783074858547, 17.863177309960086, 85.97559329517274, 64.79678330684743, 26.59975637589043, 24.72319192940016, 1, 0.0, 2)
+
                         ],
 
                         solution(
@@ -1014,6 +1016,8 @@ Parameters can be defined in either of the following ways:
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non-stochastic steady state symbolically and fall back to a numerical solution if not possible
 - `perturbation_order` [Default: `1`, Type: `Int`]: take derivatives only up to the specified order at this stage. When working with higher order perturbation later on, respective derivatives will be taken at that stage.
 - `simplify` [Default: `true`, Type: `Bool`]: whether to eliminate redundant variables and simplify the non-stochastic steady state (NSSS) problem. Setting this to `false` can speed up the process, but might make it harder to find the NSSS. If the model does not parse at all (at step 1 or 2), setting this option to `false` might solve it.
+- `ss_solver_parameters_algorithm` [Default: `:ESCH`, Type: `Symbol`]: global optimization routine used when searching for steady-state solver parameters after an initial failure; choose `:ESCH` (evolutionary) or `:SAMIN` (simulated annealing). `:SAMIN` is available only when Optim.jl is loaded.
+- `ss_solver_parameters_maxtime` [Default: `120.0`, Type: `Real`]: time budget in seconds for the steady-state solver parameter search when `ss_solver_parameters_algorithm` is invoked
 
 # Delayed parameter definition
 Not all parameters need to be defined in the `@parameters` macro. Calibration equations using the `|` syntax and parameters defined as functions of other parameters must be declared here, but simple parameter value assignments (e.g., `α = 0.5`) can be deferred and provided later by passing them to any function that accepts the `parameters` argument (e.g., [`get_irf`](@ref), [`get_steady_state`](@ref), [`simulate`](@ref)). 
@@ -1097,27 +1101,33 @@ macro parameters(𝓂,ex...)
     perturbation_order = 1
     guess = Dict{Symbol,Float64}()
     simplify = true
+    ss_solver_parameters_algorithm = :ESCH
+    ss_solver_parameters_maxtime = 120.0
 
     for exp in ex[1:end-1]
         postwalk(x -> 
             x isa Expr ?
                 x.head == :(=) ?  
-                    x.args[1] == :symbolic && x.args[2] isa Bool ?
+                    (x.args[1] == :symbolic && x.args[2] isa Bool) ?
                         symbolic = x.args[2] :
-                    x.args[1] == :verbose && x.args[2] isa Bool ?
+                    (x.args[1] == :verbose && x.args[2] isa Bool) ?
                         verbose = x.args[2] :
-                    x.args[1] == :silent && x.args[2] isa Bool ?
+                    (x.args[1] == :silent && x.args[2] isa Bool) ?
                         silent = x.args[2] :
-                    x.args[1] == :report_missing_parameters && x.args[2] isa Bool ?
+                    (x.args[1] == :report_missing_parameters && x.args[2] isa Bool) ?
                         report_missing_parameters = x.args[2] :
-                    x.args[1] == :precompile && x.args[2] isa Bool ?
+                    (x.args[1] == :precompile && x.args[2] isa Bool) ?
                         precompile = x.args[2] :
-                    x.args[1] == :perturbation_order && x.args[2] isa Int ?
+                    (x.args[1] == :perturbation_order && x.args[2] isa Int) ?
                         perturbation_order = x.args[2] :
-                    x.args[1] == :guess && (isa(eval(x.args[2]), Dict{Symbol, <:Real}) || isa(eval(x.args[2]), Dict{String, <:Real})) ?
+                    (x.args[1] == :guess && (isa(eval(x.args[2]), Dict{Symbol, <:Real}) || isa(eval(x.args[2]), Dict{String, <:Real}))) ?
                         guess = x.args[2] :
-                    x.args[1] == :simplify && x.args[2] isa Bool ?
+                    (x.args[1] == :ss_solver_parameters_algorithm && (x.args[2] isa Symbol || (x.args[2] isa QuoteNode && x.args[2].value isa Symbol))) ?
+                        ss_solver_parameters_algorithm = x.args[2] isa QuoteNode ? x.args[2].value : x.args[2] :
+                    (x.args[1] == :simplify && x.args[2] isa Bool) ?
                         simplify = x.args[2] :
+                    (x.args[1] == :ss_solver_parameters_maxtime && x.args[2] isa Real) ?
+                        ss_solver_parameters_maxtime = x.args[2] :
                     begin
                         @warn "Invalid option `$(x.args[1])` ignored. See docs: `?@parameters` for valid options."
                         x
@@ -1127,6 +1137,10 @@ macro parameters(𝓂,ex...)
         exp)
     end
 
+    if ss_solver_parameters_algorithm ∉ [:ESCH, :SAMIN]
+        @warn "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $ss_solver_parameters_algorithm. Using default :ESCH."
+    end
+    
     parameter_definitions = replace_indices(ex[end])
 
     # parse parameter inputs
@@ -1459,7 +1473,6 @@ macro parameters(𝓂,ex...)
         x,bound)
     end
 
-    # println($m)
     return quote
         mod = @__MODULE__
 
@@ -1561,8 +1574,9 @@ macro parameters(𝓂,ex...)
 
         mod.$𝓂.guess = guess_dict
         
-        # Store precompile flag in model container
+        # Store precompile and simplify flag in model container
         mod.$𝓂.precompile = $precompile
+        mod.$𝓂.simplify = $simplify
         
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed 
@@ -1625,7 +1639,8 @@ macro parameters(𝓂,ex...)
 
                 if solution_error > opts.tol.NSSS_acceptance_tol
                     # start_time = time()
-                    found_solution = find_SS_solver_parameters!(mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = 120, maxiter = 10000000)
+                    
+                    found_solution = find_SS_solver_parameters!($(Val(ss_solver_parameters_algorithm)), mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = $ss_solver_parameters_maxtime, maxiter = 1000000000)
                     # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
                     if found_solution
                         SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
