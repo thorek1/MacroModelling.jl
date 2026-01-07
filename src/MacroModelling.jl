@@ -1131,37 +1131,6 @@ function set_steady_state!(𝓂::ℳ, f::SteadyStateFunctionType)
 end
 
 
-"""
-    clear_steady_state!(𝓂::ℳ)
-
-*Internal function* - Clear the custom steady state function and revert to using the default solver.
-
-This function is not exported. Users should instead pass `steady_state_function = nothing` to functions like `get_irf`, `get_steady_state`, or `simulate` to clear the custom steady state function and revert the model back to the default solver.
-
-# Arguments
-- `𝓂`: Model object
-
-# Returns
-- `nothing`
-
-# Examples
-```julia
-# Clear the custom steady state function via a high-level call
-irf = get_irf(RBC, steady_state_function = nothing)
-```
-"""
-function clear_steady_state!(𝓂::ℳ)
-    𝓂.custom_steady_state_function = nothing
-    
-    # Mark the solution as outdated
-    𝓂.solution.outdated_NSSS = true
-    for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
-        push!(𝓂.solution.outdated_algorithms, alg)
-    end
-    
-    return nothing
-end
-
 
 """
     infer_step(x_axis)
