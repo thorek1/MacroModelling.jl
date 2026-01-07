@@ -68,7 +68,7 @@ The algorithm selects solver parameters and starting points that maximise speed 
 
 ## Custom Steady State Functions
 
-For complex models where the internal solver may struggle, or when you have analytical solutions available, you can provide a custom steady state function. There are three ways to specify this:
+For complex models where the internal solver may struggle, or when you have analytical solutions available, you can provide a custom steady state function. There are two primary ways to specify this, plus a per-call toggle:
 
 ### Method 1: Via the `@parameters` Macro
 
@@ -108,20 +108,20 @@ get_steady_state(RBC, steady_state_function = my_ss)
 simulate(RBC, steady_state_function = my_ss)
 ```
 
-### Method 3: Via `set_steady_state!`
+### Per-call Toggle: Use or Clear the Custom Function
 
-You can set a persistent custom steady state function that will be used for all subsequent computations:
+- To use a custom function for a specific call, pass it as a keyword (once and it becomes permanent thereafter):
 
 ```julia
-# Set the custom function
-set_steady_state!(RBC, my_ss)
+get_irf(RBC, steady_state_function = my_ss)
+get_steady_state(RBC, steady_state_function = my_ss)
+simulate(RBC, steady_state_function = my_ss)
+```
 
-# Now all functions use the custom solver
-get_steady_state(RBC)
-get_irf(RBC)
+- To revert to the internal solver and clear any previously set custom function on the model, pass `nothing`:
 
-# Clear to revert to the internal solver
-clear_steady_state!(RBC)
+```julia
+get_irf(RBC, steady_state_function = nothing)
 ```
 
 ### Writing a Custom Steady State Function

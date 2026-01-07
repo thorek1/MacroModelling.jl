@@ -478,7 +478,7 @@ And data, 5×40 Matrix{Float64}:
 function get_model_estimates(𝓂::ℳ,
                              data::KeyedArray{Float64};
                              parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,
+                                          steady_state_function::SteadyStateFunctionType = nothing,
                              algorithm::Symbol = DEFAULT_ALGORITHM,
                              filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
                              warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -1739,7 +1739,7 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 """
 function get_solution(𝓂::ℳ; 
                         parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,
+                steady_state_function::SteadyStateFunctionType = nothing,
                         algorithm::Symbol = DEFAULT_ALGORITHM, 
                         silent::Bool = DEFAULT_SILENT_FLAG,
                         verbose::Bool = DEFAULT_VERBOSE,
@@ -2407,7 +2407,7 @@ And data, 4×4 Matrix{Float64}:
 """
 function get_correlation(𝓂::ℳ; 
                         parameters::ParameterType = nothing,
-                                steady_state_function::SteadyStateFunctionType = nothing,  
+                steady_state_function::SteadyStateFunctionType = nothing,  
                         algorithm::Symbol = DEFAULT_ALGORITHM,
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),

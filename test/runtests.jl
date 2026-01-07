@@ -3844,11 +3844,8 @@ if test_set == "basic"
         custom_result = my_steady_state_rbc(RBC_custom_ss.parameter_values)
         @test length(custom_result) == 4
 
-        # Set custom steady state function
-        set_steady_state!(RBC_custom_ss, my_steady_state_rbc)
-        
         # Get steady state with custom function
-        custom_ss = get_steady_state(RBC_custom_ss)
+        custom_ss = get_steady_state(RBC_custom_ss, steady_state_function = my_steady_state_rbc)
         
         # Compare with default (should be essentially the same)
         @test isapprox(default_ss(:c, :Steady_state), custom_ss(:c, :Steady_state), rtol = 1e-10)
@@ -3859,17 +3856,14 @@ if test_set == "basic"
         # Test that model can be solved with custom SS function
         irf_custom = get_irf(RBC_custom_ss)
         @test size(irf_custom, 1) == 4  # 4 variables
-        
-        # Test clear_steady_state!
-        clear_steady_state!(RBC_custom_ss)
-        @test isnothing(RBC_custom_ss.custom_steady_state_function)
-        
+
         # Steady state should still work after clearing
-        after_clear_ss = get_steady_state(RBC_custom_ss)
+        after_clear_ss = get_steady_state(RBC_custom_ss, steady_state_function = nothing)
+        @test isnothing(RBC_custom_ss.custom_steady_state_function)
         @test isapprox(default_ss(:c, :Steady_state), after_clear_ss(:c, :Steady_state), rtol = 1e-10)
 
-        # Test with verbose option
-        set_steady_state!(RBC_custom_ss, my_steady_state_rbc, verbose = false)
+        # Test with verbose option (internal function still available but not exported)
+        MacroModelling.set_steady_state!(RBC_custom_ss, my_steady_state_rbc, verbose = false)
         @test !isnothing(RBC_custom_ss.custom_steady_state_function)
         
         # Test simulation works with custom SS function

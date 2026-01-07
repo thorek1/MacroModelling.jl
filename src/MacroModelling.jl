@@ -151,7 +151,7 @@ const ParameterType = Union{Nothing,
                             Vector{Float64} } where S <: AbstractString
 
 # Type for steady state function argument
-# Can be a function (f(params) -> ss_values), a Tuple of (ss_func, calib_func), or nothing
+# Accepts a function, `nothing` (explicitly clear)
 const SteadyStateFunctionType = Union{Nothing, Function}
 
 using DispatchDoctor
@@ -183,7 +183,6 @@ include("./filter/kalman.jl")
 
 
 export @model, @parameters, solve!
-export set_steady_state!, clear_steady_state!
 
 export plot_irfs, plot_irf, plot_IRF, plot_simulations, plot_solution, plot_simulation, plot_girf #, plot
 export plot_conditional_forecast, plot_conditional_variance_decomposition, plot_forecast_error_variance_decomposition, plot_fevd, plot_model_estimates, plot_shock_decomposition
@@ -1039,8 +1038,14 @@ end
 
 
 """
-$(SIGNATURES)
-Set a custom function to calculate the steady state of the model.
+    set_steady_state!(𝓂::ℳ, f::Function; verbose::Bool = false)
+
+*Internal function* - Set a custom function to calculate the steady state of the model.
+
+This function is not exported. Users should instead pass the `steady_state_function` argument to functions like:
+- `get_irf(𝓂, steady_state_function = f)`
+- `get_steady_state(𝓂, steady_state_function = f)`
+- `simulate(𝓂, steady_state_function = f)`
 
 This function allows users to provide their own steady state solver, which can be useful when:
 - The default numerical solver has difficulty finding the steady state
@@ -1100,73 +1105,71 @@ function my_steady_state(params)
     return [c_ss, k_ss, q_ss, z_ss]  # Order matches get_NSSS_and_parameters(RBC)
 end
 
-set_steady_state!(RBC, my_steady_state)
-
-# Verify the steady state
-get_steady_state(RBC)
+# Use with get_irf, get_steady_state, or simulate
+get_irf(RBC, steady_state_function = my_steady_state)
 ```
 
 # Returns
 - `nothing`
 
-See also: [`get_variables`](@ref), [`get_parameters`](@ref), [`get_steady_state`](@ref)
+See also: [`get_variables`](@ref), [`get_parameters`](@ref), [`get_steady_state`](@ref), [`get_irf`](@ref), [`simulate`](@ref)
 """
 function set_steady_state!(𝓂::ℳ, f::Function; 
                            verbose::Bool = false)
-    # Get the variable order (sorted union of var, exo_past, exo_future)
-    var_order = sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))
-    n_vars = length(var_order)
-    n_calib_params = length(𝓂.calibration_equations_parameters)
+    # # Get the variable order (sorted union of var, exo_past, exo_future)
+    # var_order = sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))
+    # n_vars = length(var_order)
+    # n_calib_params = length(𝓂.calibration_equations_parameters)
     
-    if verbose
-        println("Parameter order (input to custom function):")
-        println("  ", 𝓂.parameters)
-        println("\nOutput order (custom steady state function):")
-        if n_calib_params > 0
-            println("  ", vcat(var_order, 𝓂.calibration_equations_parameters))
-        else
-            println("  ", var_order)
-        end
-    end
+    # if verbose
+    #     println("Parameter order (input to custom function):")
+    #     println("  ", 𝓂.parameters)
+    #     println("\nOutput order (custom steady state function):")
+    #     if n_calib_params > 0
+    #         println("  ", vcat(var_order, 𝓂.calibration_equations_parameters))
+    #     else
+    #         println("  ", var_order)
+    #     end
+    # end
     
-    # Create wrapper function that matches the internal SS_solve_func signature
-    # Internal signature: (parameter_values, 𝓂, tol, verbose, update_cache, solver_parameters) -> (SS_and_pars, (error, iters))
-    function custom_ss_wrapper(parameter_values::Vector{T}, _model, _tol, verbosity, _update_cache, _solver_params) where T
-        # Helper function to return error state
-        error_return() = (zeros(T, n_vars + n_calib_params), (T(1e10), 0))
+    # # Create wrapper function that matches the internal SS_solve_func signature
+    # # Internal signature: (parameter_values, 𝓂, tol, verbose, update_cache, solver_parameters) -> (SS_and_pars, (error, iters))
+    # function custom_ss_wrapper(parameter_values::Vector{T}, _model, _tol, verbosity, _update_cache, _solver_params) where T
+    #     # Helper function to return error state
+    #     error_return() = (zeros(T, n_vars + n_calib_params), (T(1e10), 0))
         
-        try
-            # Call the user function with parameter values
-            ss_and_pars = f(parameter_values)
-            expected_len = n_vars + n_calib_params
+    #     try
+    #         # Call the user function with parameter values
+    #         ss_and_pars = f(parameter_values)
+    #         expected_len = n_vars + n_calib_params
 
-            # Check output length
-            if length(ss_and_pars) != expected_len
-                expected_order = n_calib_params > 0 ?
-                    "variables in order $(var_order) followed by calibrated parameters in order $(𝓂.calibration_equations_parameters)." :
-                    "variables in order $(var_order)."
-                error_msg = "Custom steady state function returned $(length(ss_and_pars)) values, " *
-                            "but expected $(expected_len) values: " * expected_order
-                if verbosity
-                    println(error_msg)
-                end
-                return error_return()
-            end
+    #         # Check output length
+    #         if length(ss_and_pars) != expected_len
+    #             expected_order = n_calib_params > 0 ?
+    #                 "variables in order $(var_order) followed by calibrated parameters in order $(𝓂.calibration_equations_parameters)." :
+    #                 "variables in order $(var_order)."
+    #             error_msg = "Custom steady state function returned $(length(ss_and_pars)) values, " *
+    #                         "but expected $(expected_len) values: " * expected_order
+    #             if verbosity
+    #                 println(error_msg)
+    #             end
+    #             return error_return()
+    #         end
 
-            SS_and_pars = T[ss_and_pars...]
+    #         SS_and_pars = T[ss_and_pars...]
             
-            # Return the steady state with zero error (user function is assumed to be correct)
-            return SS_and_pars, (T(0.0), 0)
-        catch e
-            if verbosity
-                println("Error in custom steady state function: ", e)
-            end
-            return error_return()
-        end
-    end
+    #         # Return the steady state with zero error (user function is assumed to be correct)
+    #         return SS_and_pars, (T(0.0), 0)
+    #     catch e
+    #         if verbosity
+    #             println("Error in custom steady state function: ", e)
+    #         end
+    #         return error_return()
+    #     end
+    # end
     
     # Store the custom function
-    𝓂.custom_steady_state_function = custom_ss_wrapper
+    𝓂.custom_steady_state_function = f
     
     # Mark the solution as outdated
     𝓂.solution.outdated_NSSS = true
@@ -1179,8 +1182,11 @@ end
 
 
 """
-$(SIGNATURES)
-Clear the custom steady state function and revert to using the default solver.
+    clear_steady_state!(𝓂::ℳ)
+
+*Internal function* - Clear the custom steady state function and revert to using the default solver.
+
+This function is not exported. Users should instead pass `steady_state_function = nothing` to functions like `get_irf`, `get_steady_state`, or `simulate` to clear the custom steady state function and revert the model back to the default solver.
 
 # Arguments
 - `𝓂`: Model object
@@ -1190,8 +1196,8 @@ Clear the custom steady state function and revert to using the default solver.
 
 # Examples
 ```julia
-# Remove the custom steady state function
-clear_steady_state!(RBC)
+# Clear the custom steady state function via a high-level call
+irf = get_irf(RBC, steady_state_function = nothing)
 ```
 """
 function clear_steady_state!(𝓂::ℳ)
@@ -9757,15 +9763,36 @@ end
 
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                     parameter_values::Vector{S}; 
-                                    opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
+                                    opts::CalculationOptions = merge_calculation_options(),
+                                    cold_start::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS" begin
     
     # Use custom steady state function if available, otherwise use default solver
     if !isnothing(𝓂.custom_steady_state_function)
-        SS_and_pars, (solution_error, iters) = 𝓂.custom_steady_state_function(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+        SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
+
+        axis1 = vcat(𝓂.var, 𝓂.calibration_equations_parameters)
+
+        vars_in_ss_equations =
+            sort!(collect(setdiff(union(get_symbols.(𝓂.ss_equations)...),
+                                union(𝓂.parameters_in_equations))))
+
+        unknowns = vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+
+        idx = indexin(unknowns, axis1)
+
+        vals = SS_and_pars[idx]
+
+        residual = zeros(length(vals))
+
+        𝓂.SS_check_func(residual, 𝓂.parameter_values, vals)
+
+        solution_error = sum(abs, residual)
+        
+        iters = 0
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
@@ -9785,15 +9812,36 @@ end # dispatch_doctor
 function rrule(::typeof(get_NSSS_and_parameters), 
                 𝓂::ℳ, 
                 parameter_values::Vector{S}; 
-                opts::CalculationOptions = merge_calculation_options()) where S <: Real
+                opts::CalculationOptions = merge_calculation_options(),
+                cold_start::Bool = false) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
 
     # Use custom steady state function if available, otherwise use default solver
     if !isnothing(𝓂.custom_steady_state_function)
-        SS_and_pars, (solution_error, iters) = 𝓂.custom_steady_state_function(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+        SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
+        
+        axis1 = vcat(𝓂.var, 𝓂.calibration_equations_parameters)
+
+        vars_in_ss_equations =
+            sort!(collect(setdiff(union(get_symbols.(𝓂.ss_equations)...),
+                                union(𝓂.parameters_in_equations))))
+
+        unknowns = vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+
+        idx = indexin(unknowns, axis1)
+
+        vals = SS_and_pars[idx]
+
+        residual = zeros(S, length(vals))
+
+        𝓂.SS_check_func(residual, 𝓂.parameter_values, vals)
+
+        solution_error = sum(abs, residual)
+        
+        iters = 0
     else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
 
     # end # timeit_debug
@@ -9880,12 +9928,37 @@ end
 
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
-                                opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
+                                opts::CalculationOptions = merge_calculation_options(),
+                                cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
 
-    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+    if !isnothing(𝓂.custom_steady_state_function)
+        SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
+        
+        axis1 = vcat(𝓂.var, 𝓂.calibration_equations_parameters)
 
+        vars_in_ss_equations =
+            sort!(collect(setdiff(union(get_symbols.(𝓂.ss_equations)...),
+                                union(𝓂.parameters_in_equations))))
+
+        unknowns = vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+
+        idx = indexin(unknowns, axis1)
+
+        vals = SS_and_pars[idx]
+
+        residual = zeros(length(vals))
+
+        𝓂.SS_check_func(residual, 𝓂.parameter_values, vals)
+
+        solution_error = sum(abs, residual)
+        
+        iters = 0
+    else
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
+    end
+    
     ∂SS_and_pars = zeros(S, length(SS_and_pars), N)
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
