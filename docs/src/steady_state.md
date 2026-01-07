@@ -1,43 +1,16 @@
 # Steady State
 
-This guide explains how the steady state is handled in MacroModelling.jl, including delayed parameter declarations and how to override the internal algorithms with a custom steady state function.
+The non stochastic steady state (NSSS) of a DSGE model is the equilibrium point where all variables remain constant over time (in the absence of shocks). Computing the NSSS is a crucial first step before solving the model using perturbation methods.
 
-## Overview
+`MacroModelling.jl` offers an automated way to solving for the NSSS, along with the flexibility to define custom steady state functions when needed.
 
-The steady state of a DSGE model is the equilibrium point where all variables remain constant over time (in the absence of shocks). Computing the steady state is a crucial first step before solving the model using perturbation methods.
+## Automatic Steady State Solver
 
-MacroModelling.jl provides:
-1. **Delayed parameter declaration**: Parameters can be defined implicitly through calibration equations
-2. **Automatic steady state solver**: A sophisticated internal algorithm that solves for the steady state
-3. **Custom steady state functions**: The ability to override the internal solver with your own function
-
-## Delayed Parameter Declaration
-
-In many DSGE models, some parameters are calibrated to match steady state values rather than being set directly. MacroModelling.jl supports this through calibration equations in the `@parameters` macro.
-
-For example, instead of directly specifying the discount factor β, you might want to calibrate it to match a target steady state interest rate:
-
-```julia
-@model Example begin
-    # ... model equations ...
-    1 = β * R[0]  # Euler equation
-end
-
-@parameters Example begin
-    R[ss] = 1.01  # Target steady state interest rate
-    # β is implicitly defined to satisfy R[ss] = 1.01
-end
-```
-
-The `[ss]` notation indicates a steady state target. The solver will find the parameter values that make these targets hold in equilibrium.
-
-## Internal Steady State Algorithm
-
-MacroModelling.jl uses a sophisticated algorithm to solve for the non-stochastic steady state (NSSS). The algorithm proceeds through several steps designed to maximize efficiency and robustness:
+The algorithm proceeds through several steps designed to maximize efficiency and robustness:
 
 ### Step 1: Eliminate Redundant Variables
 
-The algorithm first identifies and eliminates redundant variables from the system. Variables that are simple transformations of other variables (e.g., `y = x + z`) are substituted out, reducing the dimensionality of the problem.
+The algorithm first identifies and eliminates redundant variables from the system. Variables that are necessary in dynamic equations but redundant in steady state are removed to simplify the problem (e.g. `c` is redundant in `1 / c = beta / c * k ^ alpha + (1 - delta)`).
 
 ### Step 2: Partition into Independent Blocks
 
@@ -45,22 +18,21 @@ The reduced system is partitioned into independent blocks that can be solved sep
 
 ### Step 3: Attempt Symbolic Solution
 
-For each block, the algorithm attempts a full or partial symbolic solution using computer algebra (via SymPyPythonCall.jl). When possible, closed-form solutions are obtained, which:
-- Provide exact solutions without numerical error
+For each block, the algorithm attempts a full or partial symbolic solution using computer algebra (using `sympy`). When possible, closed-form solutions are obtained, which:
+- Provide exact solutions
 - Enable faster computation
-- Allow for analytical derivatives
 
 ### Step 4: Create Auxiliary Variables for Domain-Constrained Terms
 
-For terms with domain constraints (e.g., `log(x+y)`, `x^y`), auxiliary variables are created to handle these constraints explicitly. This transformation helps ensure that numerical solutions respect domain requirements.
+For terms with domain constraints (e.g., `log(x+y)`, `x^y`), auxiliary variables are created to handle these constraints explicitly. This transformation helps numerical solvers to find solutions while ensuring that numerical solutions respect domain requirements.
 
 ### Step 5: Custom Nonlinear Equations Solver
 
-For blocks that cannot be solved symbolically, a custom system of nonlinear equations solver is employed. This solver is a Levenberg-Marquardt type algorithm with line-search that includes:
+For blocks that cannot be solved symbolically, a custom system of nonlinear equations solver is employed. This solver is a Levenberg-Marquardt (LM) type algorithm with line-search that includes:
 
-- **Box constraints**: Variables can be constrained to lie within specified bounds
-- **Domain transformation**: A hyperbolic sine transformation is applied to handle unbounded variables while maintaining numerical stability
-- **Adaptive failure recovery**: Upon failure, the solver optimizes over solver parameters and starting points to find a fast solution
+- **Box constraints**
+- **Domain transformation**: A hyperbolic sine transformation is applied that transforms the geometry of the problem and increases the likelihood of finding a solution
+- **Adaptive failure recovery**: Upon failure, the solver optimizes over the LM parameters and starting points to find a solution
 
 ### Step 6: Select Optimal Solver Parameters
 
@@ -68,15 +40,25 @@ The algorithm selects solver parameters and starting points that maximise speed 
 
 ## Custom Steady State Functions
 
-For complex models where the internal solver may struggle, or when you have analytical solutions available, you can provide a custom steady state function. There are two primary ways to specify this, plus a per-call toggle:
+For models where the internal solver fails, or when you have analytical solutions available (potentially faster to compute), you can provide a custom steady state function. There are two primary ways to specify this:
 
 ### Method 1: Via the `@parameters` Macro
 
+After defining the model one can specify a custom steady state function and pass it on to the `@parameters` macro. The function should accept a vector of parameter values and return a vector of variables followed by calibration parameters. The input and output needs to follow the correct ordering of parameters and variables. The order of the parameters can be obtained using `get_parameters(m)`, and the order of the output follows `get_variables(m)` and `get_calibrated_parameters(m)`. Practically, one can call the model and parameter macros without defining the custom steady state function, then get the order from the above functions calls and based on this order define the custom steady state function.
+
 ```julia
+# Define your the model
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
+end
+
 # Define your steady state function
-function my_ss(parameters::Vector{T}, m) where T
-    # parameters is ordered as: m.parameters (e.g., [:α, :β, :δ, :ρ, :std_z])
-    α, β, δ, ρ, std_z = parameters
+function my_ss(parameters)
+    # parameters is ordered as: m.parameters (e.g., [:α, :β, :δ, :ρᶻ, :σᶻ])
+    α, β, δ, ρᶻ, σᶻ = parameters
     
     # Compute steady state values
     k_ss = ((1/β - 1 + δ) / α)^(1/(α-1))
@@ -89,12 +71,18 @@ function my_ss(parameters::Vector{T}, m) where T
 end
 
 @parameters RBC steady_state_function = my_ss begin
-    std_z = 0.01
-    ρ = 0.2
+    σᶻ= 0.01
+    ρᶻ= 0.2
     δ = 0.02
     α = 0.5
     β = 0.95
 end
+```
+
+You can now use the model as usual, and the custom steady state function will be callec automatically:
+
+```julia
+ss = get_steady_state(RBC)
 ```
 
 ### Method 2: Via Function Arguments
@@ -108,100 +96,10 @@ get_steady_state(RBC, steady_state_function = my_ss)
 simulate(RBC, steady_state_function = my_ss)
 ```
 
-### Per-call Toggle: Use or Clear the Custom Function
-
-- To use a custom function for a specific call, pass it as a keyword (once and it becomes permanent thereafter):
-
-```julia
-get_irf(RBC, steady_state_function = my_ss)
-get_steady_state(RBC, steady_state_function = my_ss)
-simulate(RBC, steady_state_function = my_ss)
-```
-
-- To revert to the internal solver and clear any previously set custom function on the model, pass `nothing`:
+To revert to the internal solver and clear any previously set custom function on the model, pass `nothing`:
 
 ```julia
 get_irf(RBC, steady_state_function = nothing)
-```
-
-### Writing a Custom Steady State Function
-
-Your custom function must have the following signature:
-
-```julia
-function my_steady_state(parameters::Vector{T}, m) where T
-    # Input:
-    # - parameters: Vector of parameter values in the order of m.parameters
-    # - m: The model object (used to access model structure)
-    
-    # Your computation here...
-    
-    # Output:
-    # - Vector of steady state values in the order of m.var
-    return steady_state_values
-end
-```
-
-**Important considerations:**
-- Use the type parameter `T` to ensure compatibility with automatic differentiation
-- Access `m.parameters` to see the parameter ordering
-- Access `m.var` to see the required variable ordering for the output
-- The function should work with both `Float64` and dual number types for gradient computation
-
-### For Models with Calibration Equations
-
-If your model has calibrated parameters (parameters determined by steady state conditions), you also need to provide a `calibrated_parameters_function`:
-
-```julia
-function my_calib_params(parameters::Vector{T}, m) where T
-    # Compute calibrated parameter values from free parameters
-    # Return in the order of m.calibrated_parameters
-    return calibrated_values
-end
-
-@parameters Model steady_state_function = my_ss calibrated_parameters_function = my_calib_params begin
-    # parameter definitions
-end
-```
-
-## Example: RBC Model with Custom Steady State
-
-Here's a complete example using the basic RBC model:
-
-```julia
-using MacroModelling
-
-@model RBC begin
-    1/c[0] = (β/c[1]) * (α * exp(z[1]) * k[0]^(α-1) + (1-δ))
-    c[0] + k[0] = (1-δ) * k[-1] + q[0]
-    q[0] = exp(z[0]) * k[-1]^α
-    z[0] = ρ * z[-1] + std_z * eps_z[x]
-end
-
-# Custom steady state function with analytical solution
-function rbc_steady_state(params::Vector{T}, m) where T
-    α, β, δ, ρ, std_z = params
-    
-    # Analytical steady state
-    z_ss = zero(T)
-    k_ss = ((1/β - 1 + δ) / α)^(1/(α-1))
-    q_ss = k_ss^α
-    c_ss = q_ss - δ * k_ss
-    
-    # Return in order: [:c, :k, :q, :z]
-    return [c_ss, k_ss, q_ss, z_ss]
-end
-
-@parameters RBC steady_state_function = rbc_steady_state begin
-    α = 0.5
-    β = 0.95
-    δ = 0.02
-    ρ = 0.2
-    std_z = 0.01
-end
-
-# Verify the steady state
-ss = get_steady_state(RBC)
 ```
 
 ## When to Use Custom Steady State Functions
@@ -214,3 +112,29 @@ Consider using a custom steady state function when:
 4. **Debugging**: To verify that your model equations are correct by comparing against known solutions
 
 The internal solver is robust and works well for most models, so start with the automatic solver and only switch to a custom function if needed.
+
+## Delayed Parameter Declaration
+
+There are cases when one does not want to define all parameter values at the time of model definition. In such cases, one can define a model without parameters (as otherwise defined in the parameter macro) and add them in subsequent function call instead. This is particularly useful if one wants to use parameters from a file, database, or estimation routine. In such cases, one can define the model as follows:
+```julia
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
+end
+```
+
+Then, one can run the parameter macro without specifying parameter values:
+```julia
+@parameters RBC begin
+end
+```
+
+Later, one can define the parameter values when needed. For example, to get the steady state one can define the parameter values as a `Dict`:
+
+```julia
+ss = get_steady_state(RBC, parameters = Dict(:α => 0.5, :β => 0.95, :δ => 0.02, :ρᶻ => 0.2, :σᶻ => 0.01))
+```
+
+The user has the full flexibility to define the parameter values in any way they see fit, and integrate it into their workflow.
