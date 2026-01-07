@@ -292,6 +292,7 @@ mutable struct ℳ
     
     missing_parameters::Vector{Symbol}
     precompile::Bool
+    simplify::Bool
 
     guess::Dict{Symbol, Float64}
 

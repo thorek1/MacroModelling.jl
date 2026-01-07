@@ -33,7 +33,6 @@ backend = 𝒟.AutoForwardDiff()
 import LoopVectorization: @turbo
 # import Polyester
 import NLopt
-import Optim, LineSearches
 # import Zygote
 import SparseArrays: SparseMatrixCSC, SparseVector, AbstractSparseArray, AbstractSparseMatrix, sparse!, spzeros, nnz, issparse, nonzeros #, sparse, droptol!, sparsevec, spdiagm, findnz#, sparse!
 import LinearAlgebra as ℒ
@@ -174,7 +173,6 @@ include("./algorithms/sylvester.jl")
 include("./algorithms/lyapunov.jl")
 include("./algorithms/nonlinear_solver.jl")
 include("./algorithms/quadratic_matrix_equation.jl")
-include("./algorithms/conditional_forecast_lbfgs.jl")
 
 include("./filter/find_shocks.jl")
 include("./filter/inversion.jl")
@@ -5796,22 +5794,48 @@ function calculate_SS_solver_runtime_and_loglikelihood(pars::Vector{Float64}, �
     return log_lik / 1e4 + runtime * 1e3
 end
 
+"""
+    find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
 
-function find_SS_solver_parameters!(𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 250000, tol::Tolerances = Tolerances(), verbosity = 0)
+Find optimal steady state solver parameters using NLopt's ESCH algorithm.
+
+This function optimizes solver parameters to minimize runtime while maintaining solver accuracy.
+It uses the ESCH global optimization algorithm from the NLopt package.
+
+# Arguments
+- `𝓂`: Model structure
+- `maxtime`: Maximum time in seconds for optimization
+- `maxiter`: Maximum number of iterations
+- `tol`: Tolerance structure
+- `verbosity`: Verbosity level for output
+"""
+function find_SS_solver_parameters!(::Val{:ESCH}, 𝓂::ℳ; maxtime::Int = 120, maxiter::Int = 2500000, tol::Tolerances = Tolerances(), verbosity = 0)
     pars = rand(20) .+ 1
     pars[20] -= 1
 
     lbs = fill(eps(), length(pars))
     lbs[20] = -20
 
-    ubs = fill(100.0,length(pars))
+    ubs = fill(100.0, length(pars))
     
-    sol = Optim.optimize(x -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂, tol = tol), 
-                            lbs, ubs, pars, 
-                            Optim.SAMIN(verbosity = verbosity, nt = 5, ns = 5), 
-                            Optim.Options(time_limit = maxtime, iterations = maxiter))::Optim.MultivariateOptimizationResults
+    opt = NLopt.Opt(NLopt.:GN_ESCH, length(pars))
 
-    pars = Optim.minimizer(sol)::Vector{Float64}
+    opt.min_objective = (x,p) -> calculate_SS_solver_runtime_and_loglikelihood(x, 𝓂, tol = tol)
+
+    NLopt.lower_bounds!(opt, lbs)
+    NLopt.upper_bounds!(opt, ubs)
+
+    opt.xtol_abs = eps(Float32)
+    opt.ftol_abs = eps(Float32)
+
+    # opt.maxeval = maxiter
+    opt.maxtime = maxtime
+
+    (minf,x,ret) = NLopt.optimize(opt, pars)
+
+    verbosity > 0 && @info "NLopt return code: $ret"
+
+    pars = x
 
     par_inputs = solver_parameters(pars..., 1, 0.0, 2)
 

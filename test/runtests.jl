@@ -10,7 +10,7 @@ import MacroModelling: clear_solution_caches!
 using Random
 using AxisKeys, SparseArrays
 import Zygote, FiniteDifferences, ForwardDiff
-import StatsPlots, Turing # has to come before Aqua, otherwise exports are not recognised
+import StatsPlots, Turing, Optim # has to come before Aqua, otherwise exports are not recognised
 using Aqua
 import LinearAlgebra as ℒ
 using CSV, DataFrames
