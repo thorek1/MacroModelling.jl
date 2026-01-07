@@ -44,6 +44,7 @@ makedocs(
         "How-to guides" => [
             "Programmatic model writing using for-loops" => "how-to/loops.md",
             "Occasionally binding constraints" => "how-to/obc.md",
+            "Steady State" => "how-to/steady_state.md",
             # "how_to.md"
             ],
         # "Model syntax" => "dsl.md",
