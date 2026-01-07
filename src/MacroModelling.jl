@@ -4676,8 +4676,6 @@ end
 
 
 function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false, avoid_solve::Bool = false)
-    write_ss_check_function!(𝓂)
-
     unknowns = union(Symbolics.calibration_equations_parameters, Symbolics.vars_in_ss_equations)
 
     @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
@@ -5097,8 +5095,6 @@ function solve_steady_state!(𝓂::ℳ;
                             nnz_parallel_threshold::Int = 1000000,
                             min_length::Int = 1000,
                             verbose::Bool = false)
-    write_ss_check_function!(𝓂)
-
     unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(𝓂.ss_aux_equations) + length(𝓂.calibration_equations) "Unable to solve steady state. More unknowns than equations."
@@ -6828,6 +6824,8 @@ function solve!(𝓂::ℳ;
 
             if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
 
+            write_ss_check_function!(𝓂)
+
             solve_steady_state!(𝓂, false, symbolics, verbose = verbose, avoid_solve = false) # 2nd argument is SS_symbolic
 
             𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
@@ -6839,6 +6837,8 @@ function solve!(𝓂::ℳ;
             start_time = time()
 
             if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+            write_ss_check_function!(𝓂)
 
             solve_steady_state!(𝓂, verbose = verbose)
 
