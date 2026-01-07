@@ -6801,9 +6801,7 @@ function solve!(𝓂::ℳ;
     @assert algorithm ∈ all_available_algorithms
     
     # Handle steady_state_function argument
-    # if !isnothing(steady_state_function)
     set_steady_state!(𝓂, steady_state_function)
-    # end
     
     # @timeit_debug timer "Write parameter inputs" begin
 
