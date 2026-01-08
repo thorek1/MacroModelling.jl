@@ -7,7 +7,6 @@ set_preferences!("MacroModelling", "dispatch_doctor_union_limit" => 4)
 using Test
 using MacroModelling
 import MacroModelling: clear_solution_caches!
-using StatsFuns
 using Random
 using AxisKeys, SparseArrays
 import Zygote, FiniteDifferences, ForwardDiff
