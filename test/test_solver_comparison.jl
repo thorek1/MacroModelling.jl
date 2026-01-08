@@ -83,24 +83,52 @@ for algorithm in [:second_order, :pruned_second_order, :third_order, :pruned_thi
             conditional_forecast_solver = :LBFGS,
         )
 
+        forecast_slsqp = get_conditional_forecast(
+            Smets_Wouters_2007,
+            conditions,
+            shocks = shocks,
+            conditions_in_levels = false,
+            algorithm = algorithm,
+            periods = periods,
+            conditional_forecast_solver = :SLSQP,
+        )
+
+        forecast_cobyla = get_conditional_forecast(
+            Smets_Wouters_2007,
+            conditions,
+            shocks = shocks,
+            conditions_in_levels = false,
+            algorithm = algorithm,
+            periods = periods,
+            conditional_forecast_solver = :COBYLA,
+        )
+
         for p in 1:periods
             ln_shocks = forecast_ln[length(sw_vars)+1:end, p]
             lbfgs_shocks = forecast_lbfgs[length(sw_vars)+1:end, p]
+            slsqp_shocks = forecast_slsqp[length(sw_vars)+1:end, p]
+            cobyla_shocks = forecast_cobyla[length(sw_vars)+1:end, p]
+
             ln_conds = forecast_ln[1:length(sw_vars), p]
             lbfgs_conds = forecast_lbfgs[1:length(sw_vars), p]
+            slsqp_conds = forecast_slsqp[1:length(sw_vars), p]
+            cobyla_conds = forecast_cobyla[1:length(sw_vars), p]
 
             println("Algorithm: $algorithm, Period: $p")
+
             println("  Norm of shocks (LagrangeNewton): $(ℒ.norm(ln_shocks))")
             println("  Norm of shocks (LBFGS): $(ℒ.norm(lbfgs_shocks))")
+            println("  Norm of shocks (SLSQP): $(ℒ.norm(slsqp_shocks))")
+            println("  Norm of shocks (COBYLA): $(ℒ.norm(cobyla_shocks))")
+
             println("  Norm of distance to conditions (LagrangeNewton): $(ℒ.norm(ln_conds[findall(.!isnothing.(conditions[:,p]))] - conditions[findall(.!isnothing.(conditions[:,p])),p]))")
             println("  Norm of distance to conditions (LBFGS): $(ℒ.norm(lbfgs_conds[findall(.!isnothing.(conditions[:,p]))] - conditions[findall(.!isnothing.(conditions[:,p])),p]))")
+            println("  Norm of distance to conditions (SLSQP): $(ℒ.norm(slsqp_conds[findall(.!isnothing.(conditions[:,p]))] - conditions[findall(.!isnothing.(conditions[:,p])),p]))")
+            println("  Norm of distance to conditions (COBYLA): $(ℒ.norm(cobyla_conds[findall(.!isnothing.(conditions[:,p]))] - conditions[findall(.!isnothing.(conditions[:,p])),p]))")
            
-            # free_shocks_ln = ln_shocks[free_shocks_by_period[p]]
-            # free_shocks_lbfgs = lbfgs_shocks[free_shocks_by_period[p]]
-
-            # @test ℒ.norm(free_shocks_ln - free_shocks_lbfgs) / max(ℒ.norm(free_shocks_ln), ℒ.norm(free_shocks_lbfgs), 1e-12) < 0.01
-
             @test ℒ.norm(ln_conds[findall(.!isnothing.(conditions[:,p]))] - lbfgs_conds[findall(.!isnothing.(conditions[:,p]))]) / max(ℒ.norm(ln_conds[findall(.!isnothing.(conditions[:,p]))]), ℒ.norm(lbfgs_conds[findall(.!isnothing.(conditions[:,p]))])) < tol
+            @test ℒ.norm(ln_conds[findall(.!isnothing.(conditions[:,p]))] - slsqp_conds[findall(.!isnothing.(conditions[:,p]))]) / max(ℒ.norm(ln_conds[findall(.!isnothing.(conditions[:,p]))]), ℒ.norm(slsqp_conds[findall(.!isnothing.(conditions[:,p]))])) < tol
+            @test ℒ.norm(ln_conds[findall(.!isnothing.(conditions[:,p]))] - cobyla_conds[findall(.!isnothing.(conditions[:,p]))]) / max(ℒ.norm(ln_conds[findall(.!isnothing.(conditions[:,p]))]), ℒ.norm(cobyla_conds[findall(.!isnothing.(conditions[:,p]))])) < tol
         end
     end
 end
