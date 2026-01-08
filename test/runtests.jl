@@ -942,9 +942,8 @@ if test_set == "basic"
             ZZ_avg_fut = A
             log_ZZ_avg = 0.0 # log(1.0)
 
-            # Distributional functions
-            c_logpdf = normlogpdf(c)
-            c_invcdf = norminvcdf(c - 1.0)
+            c_logpdf = (-(abs2(c) + 1.8378770664093453) / 2) # normlogpdf
+            c_invcdf = (-erfcinv(2*(c - 1.0)) * 1.4142135623730951) # norminvcdf
             
             # 4. Return Vector
             return [
