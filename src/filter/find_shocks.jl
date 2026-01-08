@@ -2,6 +2,10 @@
 # - LagrangeNewton: fast, but no guarantee of convergence to global minimum
 # - COBYLA: best known chances of convergence to global minimum; ok speed for third order; lower tol on optimality conditions (1e-7)
 # - SLSQP: relatively slow and not guaranteed to converge to global minimum
+# For higher-order solutions the global minimum-norm shocks problem is NP-hard, since the
+# number of feasible roots that satisfy the constraints grows exponentially and would
+# require exhaustive checking. LagrangeNewton will return the minimum-norm solution whose
+# basin of attraction contains the origin.
 
 # Generalized find_shocks for conditional forecasts
 # This function finds shocks that minimize their squared magnitude while satisfying 
