@@ -8,6 +8,7 @@ using Test
 using MacroModelling
 import MacroModelling: clear_solution_caches!
 using Random
+import SpecialFunctions: erfcinv
 using AxisKeys, SparseArrays
 import Zygote, FiniteDifferences, ForwardDiff
 import StatsPlots, Turing, Optim # has to come before Aqua, otherwise exports are not recognised
