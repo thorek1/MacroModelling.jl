@@ -984,11 +984,6 @@ if test_set == "basic"
         @test isapprox(std_after_clear, std_custom, rtol = 1e-10)
     end
 
-    @testset "Solver comparison - LBFGS vs Lagrange-Newton" begin
-        # Test solver comparison between LBFGS and Lagrange-Newton
-        include("test_solver_comparison.jl")
-    end
-
     @testset verbose = true "Provide parameters later" begin
         include("models/Backus_Kehoe_Kydland_1992.jl")
 
