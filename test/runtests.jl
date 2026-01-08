@@ -7,6 +7,7 @@ set_preferences!("MacroModelling", "dispatch_doctor_union_limit" => 4)
 using Test
 using MacroModelling
 import MacroModelling: clear_solution_caches!
+using StatsFuns
 using Random
 using AxisKeys, SparseArrays
 import Zygote, FiniteDifferences, ForwardDiff
@@ -214,6 +215,7 @@ if test_set == "plots_4"
 
     @testset verbose = true "RBC_CME with calibration equations, parameter definitions, special functions, variables in steady state, and leads/lag > 1 on endogenous and exogenous variables numerical SS" begin
         include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+
         functionality_test(m, Caldara_et_al_2012_estim, plots = plots)
         
         observables = [:R, :k]
@@ -793,7 +795,6 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
-
     @testset verbose = true "Custom steady state function" begin
         # Test custom steady state function with simple RBC model
         @model RBC_custom_ss begin
@@ -881,13 +882,15 @@ if test_set == "basic"
         RBC_func_arg = nothing
     end
 
+    include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
+    
+    global model = m
 
     @testset verbose = true "Custom steady state function with calibration equations and lead/lags" begin
         # Test custom steady state function with RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve model
-        include("models/RBC_CME_calibration_equations_and_parameter_definitions_lead_lags_numsolve.jl")
         
         # Get default steady state
-        default_ss = get_steady_state(m)
+        default_ss = get_steady_state(model)
         
         function custom_steady_state(p::Vector{Float64})
             # 1. Unpack parameters
@@ -965,23 +968,21 @@ if test_set == "basic"
         end
         
         # Get steady state with custom function
-        custom_ss = get_steady_state(m, steady_state_function = custom_steady_state)
+        custom_ss = get_steady_state(model, steady_state_function = custom_steady_state)
         
         # Compare key variables with default (should be essentially the same)
         @test isapprox(default_ss, custom_ss, rtol = 1e-10)
         
         # Test that model can be solved with custom SS function
-        std_custom = get_std(m)
+        std_custom = get_std(model)
 
         # Steady state should still work after clearing
-        after_clear_ss = get_steady_state(m, steady_state_function = nothing)
-        @test isnothing(m.custom_steady_state_function)
+        after_clear_ss = get_steady_state(model, steady_state_function = nothing)
+        @test isnothing(model.custom_steady_state_function)
         @test isapprox(default_ss, after_clear_ss, rtol = 1e-10)
 
-        std_after_clear = get_std(m)
+        std_after_clear = get_std(model)
         @test isapprox(std_after_clear, std_custom, rtol = 1e-10)
-        
-        m = nothing
     end
 
     @testset "Solver comparison - LBFGS vs Lagrange-Newton" begin
