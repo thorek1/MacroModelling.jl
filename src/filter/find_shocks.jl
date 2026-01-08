@@ -906,6 +906,13 @@ end # dispatch_doctor
 
 
 @stable default_mode = "disable" begin
+"""
+Solve for minimum-norm shocks that satisfy linear and quadratic constraints using a
+Lagrange-Newton stepper. For higher-order solutions the global minimum-norm problem is
+NP-hard because the number of feasible roots grows exponentially; any gradient-based
+solver started at the origin (not just LagrangeNewton) will converge to the root whose
+basin contains the origin rather than guaranteeing the global optimum.
+"""
 function find_shocks(::Val{:LagrangeNewton},
                     initial_guess::Vector{Float64},
                     kron_buffer::Vector{Float64},
