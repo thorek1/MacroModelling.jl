@@ -16,6 +16,7 @@ using Aqua
 import LinearAlgebra as ℒ
 using CSV, DataFrames
 using Dates
+using RuntimeGeneratedFunctions
 
 function quarterly_dates(start_date::Date, len::Int)
     dates = Vector{Date}(undef, len)
