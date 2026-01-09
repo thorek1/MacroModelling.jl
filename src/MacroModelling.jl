@@ -1126,7 +1126,7 @@ function set_steady_state!(𝓂::ℳ, f::SteadyStateFunctionType)
                 push!(𝓂.solution.outdated_algorithms, alg)
             end
         end
-    elseif f isa Function
+    elseif f isa Function && f !== 𝓂.custom_steady_state_function
         𝓂.custom_steady_state_function = f 
 
         𝓂.solution.outdated_NSSS = true
