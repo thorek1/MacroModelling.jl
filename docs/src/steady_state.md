@@ -19,6 +19,7 @@ The reduced system is partitioned into independent blocks that can be solved sep
 ### Step 3: Attempt Symbolic Solution
 
 For each block, the algorithm attempts a full or partial symbolic solution using computer algebra (using `sympy`). When possible, closed-form solutions are obtained, which:
+
 - Provide exact solutions
 - Enable faster computation
 
@@ -38,16 +39,31 @@ For blocks that cannot be solved symbolically, a custom system of nonlinear equa
 
 The algorithm selects solver parameters and starting points that maximise speed for the specific model structure. This adaptive approach ensures efficient computation across diverse model specifications.
 
+### Guiding and Validating the Internal Solver
+
+Additional information can guide the automatic solver toward convergence and validate the result:
+
+- Supply starting values via the `guess` argument of `@parameters`, e.g. `@parameters RBC guess = Dict(:k => 3.0, :c => 1.0) begin ... end`.
+- Add bounds directly in the `@parameters` block using inequalities (e.g. `c > 0`, `r < 0.2`, or `1 < π < 1.1`) to restrict the search space and steer the solver toward plausible values.
+- After solving, verify that the steady state satisfies all equations by calling `check_residuals`, for example:
+
+  ```julia
+  ss = get_steady_state(RBC)
+  check_residuals(RBC, ss)
+  ```
+  
+  which returns steady-state equation residuals in absolute value.
+
 ## Custom Steady State Functions
 
-For models where the internal solver fails, or when you have analytical solutions available (potentially faster to compute), you can provide a custom steady state function. There are two primary ways to specify this:
+For models where the internal solver fails, or when analytical solutions are available (often faster to compute), a custom steady state function can be provided. There are two primary ways to specify this:
 
 ### Method 1: Via the `@parameters` Macro
 
 After defining the model one can specify a custom steady state function and pass it on to the `@parameters` macro. The function should accept a vector of parameter values and return a vector of variables followed by calibration parameters. The input and output needs to follow the correct ordering of parameters and variables. The order of the parameters can be obtained using `get_parameters(m)`, and the order of the output follows `get_variables(m)` and `get_calibrated_parameters(m)`. Practically, one can call the model and parameter macros without defining the custom steady state function, then get the order from the above functions calls and based on this order define the custom steady state function.
 
 ```julia
-# Define your the model
+# Define the model
 @model RBC begin
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
@@ -55,7 +71,7 @@ After defining the model one can specify a custom steady state function and pass
     z[0] = ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
 end
 
-# Define your steady state function
+# Define a steady state function
 function my_ss(parameters)
     # parameters is ordered as: m.parameters (e.g., [:α, :β, :δ, :ρᶻ, :σᶻ])
     α, β, δ, ρᶻ, σᶻ = parameters
@@ -79,7 +95,7 @@ end
 end
 ```
 
-You can now use the model as usual, and the custom steady state function will be callec automatically:
+The model can now be used as usual, and the custom steady state function will be called automatically:
 
 ```julia
 ss = get_steady_state(RBC)
@@ -104,18 +120,19 @@ get_irf(RBC, steady_state_function = nothing)
 
 ## When to Use Custom Steady State Functions
 
-Consider using a custom steady state function when:
+Consider a custom steady state function when:
 
-1. **You have an analytical solution**: Analytical solutions are more accurate and faster than numerical solutions
-2. **The internal solver struggles**: Complex models may have multiple equilibria or convergence issues
+1. **Analytical solution available**: Analytical solutions are more accurate and faster than numerical solutions
+2. **Internal solver struggles**: Complex models may have multiple equilibria or convergence issues
 3. **Performance is critical**: For estimation with many likelihood evaluations, custom functions can speed up computation
-4. **Debugging**: To verify that your model equations are correct by comparing against known solutions
+4. **Debugging**: To verify that model equations are correct by comparing against known solutions
 
 The internal solver is robust and works well for most models, so start with the automatic solver and only switch to a custom function if needed.
 
 ## Delayed Parameter Declaration
 
 There are cases when one does not want to define all parameter values at the time of model definition. In such cases, one can define a model without parameters (as otherwise defined in the parameter macro) and add them in subsequent function call instead. This is particularly useful if one wants to use parameters from a file, database, or estimation routine. In such cases, one can define the model as follows:
+
 ```julia
 @model RBC begin
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
@@ -126,6 +143,7 @@ end
 ```
 
 Then, one can run the parameter macro without specifying parameter values:
+
 ```julia
 @parameters RBC begin
 end

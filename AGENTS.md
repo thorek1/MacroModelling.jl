@@ -67,6 +67,10 @@ julia --project -e 'using BenchmarkTools; include("benchmark/benchmarks.jl"); ru
 - `src/filter/`: Kalman and inversion filters
 - `ext/`: optional integrations (Optim, StatsPlots, Turing)
 
+## Writing Style
+
+- Avoid second-person phrasing (“you”) in docs and docstrings.
+
 ## Common Change Points
 
 - New API: add in `src/get_functions.jl` and export from `src/MacroModelling.jl`.

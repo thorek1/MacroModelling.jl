@@ -1,4 +1,4 @@
-# Write your first model - simple RBC
+# First model - simple RBC
 
 This tutorial walks through the steps of writing down a model and analysing it. Prior knowledge of DSGE models and their solution in practical terms (e.g. having used a mod file with dynare) is useful in understanding this tutorial. For the purpose of this tutorial a simplified version of a real business cycle (RBC) model is used. The model laid out below examines capital accumulation, consumption, and random technological progress. Households maximise lifetime utility from consumption, weighing current against future consumption. Firms produce using capital and a stochastic technology factor, setting capital rental rates based on marginal productivity. The model integrates households' decisions, firms' production, and random technological shifts to understand economic growth and dynamics.
 

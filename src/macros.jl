@@ -1010,6 +1010,7 @@ Parameters can be defined in either of the following ways:
 
 # Optional arguments to be placed between `𝓂` and `ex`
 - `guess` [Type: `Dict{Symbol, <:Real}, Dict{String, <:Real}}`]: Guess for the non-stochastic steady state. The keys must be the variable (and calibrated parameters) names and the values the guesses. Missing values are filled with standard starting values.
+- `steady_state_function` [Default: `nothing`, Type: `Union{Function, Missing, Nothing}`]: Custom steady state routine that takes the parameter vector ordered as `get_parameters(𝓂)` and returns `[variables; calibrated parameters]` ordered as `get_variables(𝓂)` and `get_calibrated_parameters(𝓂)`. Overrides the internal solver when provided; pass `nothing` to clear a previously set function.
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non-stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non-stochastic steady state symbolically and fall back to a numerical solution if not possible

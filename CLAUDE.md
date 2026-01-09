@@ -170,6 +170,10 @@ Description here.
 
 The constant `SYMPYWORKSPACE_RESERVED_NAMES` in `MacroModelling.jl` lists names that cannot be used as variables/parameters (mathematical functions like `exp`, `log`, `sin`, etc.).
 
+### Writing Style
+
+- Avoid second-person phrasing (“you”) in docs and docstrings.
+
 ## Testing Patterns
 
 Tests use Julia's `Test` module with `@testset` blocks:
