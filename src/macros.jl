@@ -1608,28 +1608,7 @@ macro parameters(𝓂,ex...)
             
             SS_and_pars, solution_error, found_solution = solve_steady_state!(mod.$𝓂, $steady_state_function, opts, $(QuoteNode(ss_solver_parameters_algorithm)), $ss_solver_parameters_maxtime, silent = $silent)
             
-            start_time = time()
-
-            if !$silent
-                if $perturbation_order == 1
-                    print("Take symbolic derivatives up to first order:\t\t\t\t")
-                elseif $perturbation_order == 2
-                    print("Take symbolic derivatives up to second order:\t\t\t\t")
-                elseif $perturbation_order == 3
-                    print("Take symbolic derivatives up to third order:\t\t\t\t")
-                end
-            end
-
-            write_auxiliary_indices!(mod.$𝓂)
-
-            # time_dynamic_derivs = @elapsed 
-            write_functions_mapping!(mod.$𝓂, $perturbation_order)
-
-            mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-    
-            if !$silent
-                println(round(time() - start_time, digits = 3), " seconds")
-            end
+            write_symbolic_derivatives!(mod.$𝓂; perturbation_order = $perturbation_order, silent = $silent)
         end
 
         if has_missing_parameters && $report_missing_parameters

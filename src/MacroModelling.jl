@@ -5150,6 +5150,34 @@ function solve_steady_state!(𝓂::ℳ,
     return SS_and_pars, solution_error, found_solution
 end
 
+# Centralised helper to write symbolic derivatives and map functions
+function write_symbolic_derivatives!(𝓂::ℳ; perturbation_order::Int = 1, silent::Bool = false)
+    start_time = time()
+
+    if !silent
+        if perturbation_order == 1
+            print("Take symbolic derivatives up to first order:\t\t\t\t")
+        elseif perturbation_order == 2
+            print("Take symbolic derivatives up to second order:\t\t\t\t")
+        elseif perturbation_order == 3
+            print("Take symbolic derivatives up to third order:\t\t\t\t")
+        end
+    end
+
+    𝓂.solution.functions_written = true
+
+    write_auxiliary_indices!(𝓂)
+    write_functions_mapping!(𝓂, perturbation_order)
+
+    𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+
+    if !silent
+        println(round(time() - start_time, digits = 3), " seconds")
+    end
+
+    return nothing
+end
+
 
 function write_steady_state_solver_function!(𝓂::ℳ;
                             cse = true,
@@ -6921,32 +6949,7 @@ function solve!(𝓂::ℳ;
     
         SS_and_pars, solution_error, found_solution = solve_steady_state!(𝓂, steady_state_function, opts, :ESCH, 120.0, silent = silent)
             
-        start_time = time()
-
-        if !silent
-            if perturbation_order == 1
-                print("Take symbolic derivatives up to first order:\t\t\t\t")
-            elseif perturbation_order == 2
-                print("Take symbolic derivatives up to second order:\t\t\t\t")
-            elseif perturbation_order == 3
-                print("Take symbolic derivatives up to third order:\t\t\t\t")
-            end
-
-            𝓂.solution.functions_written = true
-        end
-
-        write_auxiliary_indices!(𝓂)
-
-        # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(𝓂, perturbation_order)
-
-        # @assert false "stop here"
-
-        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-
-        if !silent
-            println(round(time() - start_time, digits = 3), " seconds")
-        end
+        write_symbolic_derivatives!(𝓂; perturbation_order = perturbation_order, silent = silent)
     end
 
     # Check for missing parameters after processing input
