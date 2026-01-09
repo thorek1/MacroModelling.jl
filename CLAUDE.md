@@ -224,3 +224,15 @@ GitHub Actions runs tests across:
 - Architectures: x64, arm64
 
 Test sets are parallelized across the matrix. JET.jl is used for static analysis.
+
+## CRITICAL WORKFLOW REQUIREMENTS
+
+**YOU MUST FOLLOW THESE RULES. THEY ARE NON-NEGOTIABLE.**
+
+1. **NEVER claim something works without running a test to prove it.** After writing any code, immediately write and run a test. If you cannot test it, say so explicitly.
+
+2. **Work modularly.** Complete one module at a time. After each module, report what you built, show test results, and wait for confirmation before proceeding.
+
+3. **Iterate and fix errors yourself.** Do not rely on the user to report errors back to you. Run the code, observe the output, and fix problems before presenting results.
+
+4. **Be explicit about unknowns.** If you're uncertain about something, say so. Don't guess.
