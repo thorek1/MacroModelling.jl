@@ -795,6 +795,108 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
+    function rbc_steady_state(params)
+        std_z, rho, delta, alpha, beta = params
+
+        k_ss = ((1 / beta - 1 + delta) / alpha)^(1 / (alpha - 1))
+        q_ss = k_ss^alpha
+        c_ss = q_ss - delta * k_ss
+        z_ss = 0.0
+
+        return [c_ss, k_ss, q_ss, z_ss]
+    end
+
+    function make_counted_ss()
+        calls = Ref(0)
+
+        function ss(params)
+            calls[] += 1
+            return rbc_steady_state(params)
+        end
+
+        return ss, calls
+    end
+
+    @testset "Custom steady state assignment" begin
+        @model RBC_switch begin
+            1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
+            c[0] + k[0] = (1 - delta) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^alpha
+            z[0] = rho * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_switch begin
+            std_z = 0.01
+            rho = 0.2
+            delta = 0.02
+            alpha = 0.5
+            beta = 0.95
+        end
+
+        custom_ss, custom_calls = make_counted_ss()
+
+        bad_calls = Ref(0)
+        function bad_ss(params)
+            bad_calls[] += 1
+            return zeros(4)
+        end
+
+        custom_calls[] = 0
+        _ = get_steady_state(RBC_switch, steady_state_function = custom_ss)
+        @test custom_calls[] > 0
+
+        @test_throws ArgumentError get_steady_state(RBC_switch, steady_state_function = bad_ss)
+        @test bad_calls[] > 0
+
+        calls_before = custom_calls[]
+        _ = get_steady_state(RBC_switch, steady_state_function = nothing)
+        @test custom_calls[] == calls_before
+        @test isnothing(RBC_switch.custom_steady_state_function)
+
+        MacroModelling.set_steady_state!(RBC_switch, custom_ss)
+        calls_before = custom_calls[]
+        _ = get_steady_state(RBC_switch)
+        @test custom_calls[] > calls_before
+
+        MacroModelling.set_steady_state!(RBC_switch, nothing)
+        calls_before = custom_calls[]
+        _ = get_steady_state(RBC_switch)
+        @test custom_calls[] == calls_before
+    end
+
+    @testset "Macro steady state assignment" begin
+        macro_ss, macro_calls = make_counted_ss()
+
+        @model RBC_macro_switch begin
+            1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
+            c[0] + k[0] = (1 - delta) * k[-1] + q[0]
+            q[0] = exp(z[0]) * k[-1]^alpha
+            z[0] = rho * z[-1] + std_z * eps_z[x]
+        end
+
+        @parameters RBC_macro_switch steady_state_function = macro_ss begin
+            std_z = 0.01
+            rho = 0.2
+            delta = 0.02
+            alpha = 0.5
+            beta = 0.95
+        end
+
+        @test !(RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction)
+
+        _ = get_steady_state(RBC_macro_switch)
+        @test macro_calls[] > 0
+        @test !(RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction)
+
+        MacroModelling.set_steady_state!(RBC_macro_switch, nothing)
+        _ = get_steady_state(RBC_macro_switch)
+        @test isnothing(RBC_macro_switch.custom_steady_state_function)
+        @test RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction
+
+        calls_before = macro_calls[]
+        _ = get_steady_state(RBC_macro_switch)
+        @test macro_calls[] == calls_before
+    end
     @testset verbose = true "Custom steady state function" begin
         # Test custom steady state function with simple RBC model
         @model RBC_custom_ss begin

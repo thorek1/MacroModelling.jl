@@ -129,6 +129,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
@@ -765,6 +766,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
@@ -1754,6 +1756,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $SHOCKS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC))
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $SHOCK_SIZE®
 - $NEGATIVE_SHOCK®
@@ -2416,6 +2419,7 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 - $SHOCKS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC))
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $SHOCK_SIZE®
 - $NEGATIVE_SHOCK®
@@ -3499,6 +3503,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PERIODS®
 - $(VARIABLES®(DEFAULT_VARIABLE_SELECTION))
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -3763,6 +3768,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $ALGORITHM®
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $IGNORE_OBC®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
@@ -4486,6 +4492,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $ALGORITHM®
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $IGNORE_OBC®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
@@ -4744,6 +4751,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $CONDITIONS_IN_LEVELS®
 - $ALGORITHM®
@@ -5200,6 +5208,7 @@ This function shares most of the signature and functionality of [`plot_condition
 - $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $CONDITIONS_IN_LEVELS®
 - $ALGORITHM®

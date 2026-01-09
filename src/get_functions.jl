@@ -11,6 +11,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $FILTER®
 - $ALGORITHM®
 - $DATA_IN_LEVELS®
@@ -174,6 +175,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
 - $DATA_IN_LEVELS®
@@ -299,6 +301,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
 - $DATA_IN_LEVELS®
@@ -426,6 +429,7 @@ docstrings of `get_estimated_variables` and `get_estimated_shocks` for details.
 
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
 - $DATA_IN_LEVELS®
@@ -540,6 +544,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $DATA_IN_LEVELS®
 - $SMOOTH®
 - $QME®
@@ -656,6 +661,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $CONDITIONS_IN_LEVELS®
 - `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
@@ -1165,6 +1171,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $PERIODS®
 - $ALGORITHM®
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $SHOCKS®
 - $NEGATIVE_SHOCK®
@@ -1398,6 +1405,7 @@ Return the (non-stochastic) steady state, calibrated parameters, and derivatives
 - $MODEL®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $DERIVATIVES®
 - $PARAMETER_DERIVATIVES®
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation if no other higher order perturbation algorithm is provided in `algorithm`.
@@ -1699,6 +1707,7 @@ The values of the output represent the NSSS in the case of a linear solution and
 - $MODEL®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $QME®
 - $SYLVESTER®
@@ -1876,6 +1885,7 @@ Function to use when differentiating IRFs with respect to parameters.
 # Arguments
 - $MODEL®
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 # Keyword Arguments
 - $ALGORITHM®
 - $QME®
@@ -2044,6 +2054,7 @@ If occasionally binding constraints are present in the model, they are not taken
 # Keyword Arguments
 - `periods` [Default: `[1:20...,Inf]`, Type: `Union{Vector{Int},Vector{Float64},UnitRange{Int64}}`]: vector of periods for which to calculate the conditional variance decomposition. If the vector contains `Inf`, also the unconditional variance decomposition is calculated (same output as [`get_variance_decomposition`](@ref)).
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $QME®
 - $LYAPUNOV®
 - $TOLERANCES®
@@ -2232,6 +2243,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MODEL®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $QME®
 - $LYAPUNOV®
 - $TOLERANCES®
@@ -2372,6 +2384,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MODEL®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $QME®
 - $LYAPUNOV®
@@ -2490,6 +2503,7 @@ If occasionally binding constraints are present in the model, they are not taken
 # Keyword Arguments
 - `autocorrelation_periods` [Default: `1:5`, Type: `UnitRange{Int}`]: periods for which to return the autocorrelation
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $QME®
 - $LYAPUNOV®
@@ -2626,6 +2640,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MODEL®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
 - `mean` [Default: `false`, Type: `Bool`]: switch to return mean of endogenous variables (the mean for the linearised solutoin is the NSSS)
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
@@ -3642,6 +3657,7 @@ Calculate the residuals of the non-stochastic steady state equations of the mode
 
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $TOLERANCES®
 - $VERBOSE®
 

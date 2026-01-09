@@ -1115,12 +1115,20 @@ get_irf(RBC, steady_state_function = my_steady_state)
 See also: [`get_variables`](@ref), [`get_parameters`](@ref), [`get_steady_state`](@ref), [`get_irf`](@ref), [`simulate`](@ref)
 """
 function set_steady_state!(𝓂::ℳ, f::SteadyStateFunctionType)
+    had_custom = !isnothing(𝓂.custom_steady_state_function)
+
     # Store the custom function
     if isnothing(f)
         𝓂.custom_steady_state_function = nothing
+        if had_custom
+            𝓂.solution.outdated_NSSS = true
+            for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+                push!(𝓂.solution.outdated_algorithms, alg)
+            end
+        end
     elseif f isa Function
         𝓂.custom_steady_state_function = f 
-        
+
         𝓂.solution.outdated_NSSS = true
         for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
             push!(𝓂.solution.outdated_algorithms, alg)
@@ -6781,6 +6789,46 @@ end
 
 @stable default_mode = "disable" begin
 
+function setup_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avoid_solve::Bool = false, symbolic::Bool = false)
+    if !𝓂.precompile
+        start_time = time()
+
+        if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
+
+        symbolics = create_symbols_eqs!(𝓂)
+
+        remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = avoid_solve)
+
+        if !silent println(round(time() - start_time, digits = 3), " seconds") end
+
+        start_time = time()
+
+        if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+        write_ss_check_function!(𝓂)
+
+        solve_steady_state!(𝓂, symbolic, symbolics, verbose = verbose, avoid_solve = avoid_solve)
+
+        𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+        
+        set_up_obc_violation_function!(𝓂)
+
+        if !silent println(round(time() - start_time, digits = 3), " seconds") end
+    else
+        start_time = time()
+
+        if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+        write_ss_check_function!(𝓂)
+
+        solve_steady_state!(𝓂, verbose = verbose)
+
+        if !silent println(round(time() - start_time, digits = 3), " seconds") end
+    end
+
+    return nothing
+end
+
 function solve!(𝓂::ℳ; 
                 parameters::ParameterType = nothing, 
                 steady_state_function::SteadyStateFunctionType = nothing,
@@ -6802,48 +6850,19 @@ function solve!(𝓂::ℳ;
     # @timeit_debug timer "Write parameter inputs" begin
 
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
+
+    if 𝓂.solution.functions_written &&
+        isnothing(𝓂.custom_steady_state_function) &&
+        !(𝓂.SS_solve_func isa RuntimeGeneratedFunctions.RuntimeGeneratedFunction)
+        setup_steady_state_solver!(𝓂, verbose = opts.verbose, silent = silent)
+    end
     
     if !𝓂.solution.functions_written
         verbose = opts.verbose
         
         perturbation_order = 1
-        
-        if !𝓂.precompile
-            start_time = time()
 
-            if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
-
-            symbolics = create_symbols_eqs!(𝓂)
-
-            remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = false) 
-
-            if !silent println(round(time() - start_time, digits = 3), " seconds") end
-
-
-            start_time = time()
-
-            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-            write_ss_check_function!(𝓂)
-
-            solve_steady_state!(𝓂, false, symbolics, verbose = verbose, avoid_solve = false) # 2nd argument is SS_symbolic
-
-            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
-            
-            set_up_obc_violation_function!(𝓂)
-
-            if !silent println(round(time() - start_time, digits = 3), " seconds") end
-        else
-            start_time = time()
-
-            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-            write_ss_check_function!(𝓂)
-
-            solve_steady_state!(𝓂, verbose = verbose)
-
-            if !silent println(round(time() - start_time, digits = 3), " seconds") end
-        end
+        setup_steady_state_solver!(𝓂, verbose = verbose, silent = silent, avoid_solve = false)
     
         start_time = time()
 
@@ -9690,16 +9709,25 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         
         SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
 
-        residual = zeros(length(SS_and_pars))
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
+
+        if length(SS_and_pars) != expected_length
+            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars)) values, expected $expected_length."))
+        end
+
+        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
 
         𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
 
         solution_error = sum(abs, residual)
 
         iters = 0
+
+        if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
+            throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values)"))
+        end
           
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-    
         var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
         calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
@@ -9739,16 +9767,25 @@ function rrule(::typeof(get_NSSS_and_parameters),
     if !isnothing(𝓂.custom_steady_state_function)
         SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
 
-        residual = zeros(length(SS_and_pars))
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
+
+        if length(SS_and_pars) != expected_length
+            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars)) values, expected $expected_length."))
+        end
+
+        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
 
         𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
 
         solution_error = sum(abs, residual)
         
         iters = 0
+
+        if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
+            throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol)."))
+        end
         
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-    
         var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
         calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
@@ -9854,16 +9891,25 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     if !isnothing(𝓂.custom_steady_state_function)
         SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
 
-        residual = zeros(length(SS_and_pars))
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
+
+        if length(SS_and_pars) != expected_length
+            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars)) values, expected $expected_length."))
+        end
+
+        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
 
         𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
 
         solution_error = sum(abs, residual)
         
         iters = 0
+
+        if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
+            throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol)."))
+        end
         
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-    
         var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
         calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])

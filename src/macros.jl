@@ -1010,7 +1010,7 @@ Parameters can be defined in either of the following ways:
 
 # Optional arguments to be placed between `𝓂` and `ex`
 - `guess` [Type: `Dict{Symbol, <:Real}, Dict{String, <:Real}}`]: Guess for the non-stochastic steady state. The keys must be the variable (and calibrated parameters) names and the values the guesses. Missing values are filled with standard starting values.
-- `steady_state_function` [Default: `nothing`, Type: `Union{Function, Missing, Nothing}`]: Custom steady state routine that takes the parameter vector ordered as `get_parameters(𝓂)` and returns `[variables; calibrated parameters]` ordered as `get_variables(𝓂)` and `get_calibrated_parameters(𝓂)`. Overrides the internal solver when provided; pass `nothing` to clear a previously set function.
+- $STEADY_STATE_FUNCTION®
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non-stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non-stochastic steady state symbolically and fall back to a numerical solution if not possible
@@ -1593,42 +1593,7 @@ macro parameters(𝓂,ex...)
             write_ss_check_function!(mod.$𝓂)
         else
             if !has_missing_parameters
-                if !$precompile
-                    start_time = time()
-
-                    if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
-
-                    symbolics = create_symbols_eqs!(mod.$𝓂)
-
-                    remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
-
-                    if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-
-
-                    start_time = time()
-            
-                    if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-                    write_ss_check_function!(mod.$𝓂)
-
-                    solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
-
-                    mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
-                    
-                    set_up_obc_violation_function!(mod.$𝓂)
-
-                    if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-                else
-                    start_time = time()
-                
-                    if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-                    write_ss_check_function!(mod.$𝓂)
-
-                    solve_steady_state!(mod.$𝓂, verbose = $verbose)
-
-                    if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-                end
+                setup_steady_state_solver!(mod.$𝓂, verbose = $verbose, silent = $silent, avoid_solve = !$simplify, symbolic = $symbolic)
             end
         end
         
