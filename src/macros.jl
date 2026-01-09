@@ -1599,9 +1599,6 @@ macro parameters(𝓂,ex...)
         end
 
         if !has_missing_parameters
-            # Mark functions as written even if we skipped SS setup due to missing parameters
-            # This prevents solve! from re-running @parameters with nothing
-
             opts = merge_calculation_options(verbose = $verbose)
             
             SS_and_pars, solution_error, found_solution = solve_steady_state!(mod.$𝓂, opts, $(QuoteNode(ss_solver_parameters_algorithm)), $ss_solver_parameters_maxtime, silent = $silent)
