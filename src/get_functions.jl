@@ -1035,6 +1035,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MODEL®
 - $PARAMETER_VALUES®
 # Keyword Arguments
+- $STEADY_STATE_FUNCTION®
 - $PERIODS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $SHOCKS®
@@ -1079,6 +1080,7 @@ get_irf(RBC, RBC.parameter_values)
 """
 function get_irf(𝓂::ℳ,
                     parameters::Vector{S};
+                    steady_state_function::SteadyStateFunctionType = missing,
                     periods::Int = DEFAULT_PERIODS,
                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC,
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCK_SELECTION,
@@ -1092,7 +1094,9 @@ function get_irf(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
 
-    solve!(𝓂, opts = opts)
+    @ignore_derivatives solve!(𝓂, 
+                                steady_state_function = steady_state_function,
+                                opts = opts)
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
@@ -1885,8 +1889,8 @@ Function to use when differentiating IRFs with respect to parameters.
 # Arguments
 - $MODEL®
 - $PARAMETERS®
-- $STEADY_STATE_FUNCTION®
 # Keyword Arguments
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $QME®
 - $SYLVESTER®
@@ -1926,6 +1930,7 @@ get_solution(RBC, RBC.parameter_values)
 """
 function get_solution(𝓂::ℳ, 
                         parameters::Vector{S}; 
+                        steady_state_function::SteadyStateFunctionType = missing,
                         algorithm::Symbol = DEFAULT_ALGORITHM, 
                         verbose::Bool = DEFAULT_VERBOSE, 
                         tol::Tolerances = Tolerances(),
@@ -1937,7 +1942,10 @@ function get_solution(𝓂::ℳ,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
 
-    @ignore_derivatives solve!(𝓂, opts = opts, algorithm = algorithm)
+    @ignore_derivatives solve!(𝓂, 
+                                opts = opts, 
+                                steady_state_function = steady_state_function,
+                                algorithm = algorithm)
 
     
     if length(𝓂.bounds) > 0
@@ -3306,6 +3314,7 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
 function get_statistics(𝓂,
                         parameter_values::Vector{T};
                         parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.parameters,
+                        steady_state_function::SteadyStateFunctionType = missing, 
                         non_stochastic_steady_state::Union{Symbol_input,String_input} = Symbol[],
                         mean::Union{Symbol_input,String_input} = Symbol[],
                         standard_deviation::Union{Symbol_input,String_input} = Symbol[],
@@ -3360,6 +3369,11 @@ function get_statistics(𝓂,
         algorithm = :pruned_second_order
     end
 
+    @ignore_derivatives solve!(𝓂, 
+                                algorithm = algorithm, 
+                                steady_state_function = steady_state_function,
+                                opts = opts)
+
     if !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
         SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, all_parameters, opts = opts) # timer = timer, 
         
@@ -3371,8 +3385,6 @@ function get_statistics(𝓂,
 
         return ret
     end
-
-    @ignore_derivatives solve!(𝓂, algorithm = algorithm, opts = opts)
 
     if algorithm == :pruned_third_order
 
