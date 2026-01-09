@@ -854,12 +854,12 @@ if test_set == "basic"
         @test custom_calls[] == calls_before
         @test isnothing(RBC_switch.custom_steady_state_function)
 
-        MacroModelling.set_steady_state!(RBC_switch, custom_ss)
+        MacroModelling.set_custom_steady_state_function!(RBC_switch, custom_ss)
         calls_before = custom_calls[]
         _ = get_steady_state(RBC_switch)
         @test custom_calls[] > calls_before
 
-        MacroModelling.set_steady_state!(RBC_switch, nothing)
+        MacroModelling.set_custom_steady_state_function!(RBC_switch, nothing)
         calls_before = custom_calls[]
         _ = get_steady_state(RBC_switch)
         @test custom_calls[] == calls_before
@@ -889,7 +889,7 @@ if test_set == "basic"
         @test macro_calls[] > 0
         @test !(RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction)
 
-        MacroModelling.set_steady_state!(RBC_macro_switch, nothing)
+        MacroModelling.set_custom_steady_state_function!(RBC_macro_switch, nothing)
         _ = get_steady_state(RBC_macro_switch)
         @test isnothing(RBC_macro_switch.custom_steady_state_function)
         @test RBC_macro_switch.SS_solve_func isa RuntimeGeneratedFunction
@@ -955,7 +955,7 @@ if test_set == "basic"
         @test isapprox(irf_after_clear, irf_custom, rtol = 1e-10)
         
         # Test with verbose option (internal function still available but not exported)
-        MacroModelling.set_steady_state!(RBC_custom_ss, my_steady_state_rbc)
+        MacroModelling.set_custom_steady_state_function!(RBC_custom_ss, my_steady_state_rbc)
         @test !isnothing(RBC_custom_ss.custom_steady_state_function)
         
         
