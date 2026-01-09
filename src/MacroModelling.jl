@@ -249,7 +249,7 @@ function InverseGamma  end
 
 # Remove comment for debugging
 # export block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
-# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
+# export create_symbols_eqs!, write_steady_state_solver_function!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
 
 @stable default_mode = "disable" begin
 
@@ -4683,7 +4683,7 @@ function write_ss_check_function!(𝓂::ℳ;
 end
 
 
-function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false, avoid_solve::Bool = false)
+function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false, avoid_solve::Bool = false)
     unknowns = union(Symbolics.calibration_equations_parameters, Symbolics.vars_in_ss_equations)
 
     @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
@@ -5096,7 +5096,62 @@ end
 
 
 
-function solve_steady_state!(𝓂::ℳ;
+function solve_steady_state!(𝓂::ℳ, 
+                            steady_state_function::SteadyStateFunctionType,
+                            opts::CalculationOptions,
+                            ss_solver_parameters_algorithm::Symbol,
+                            ss_solver_parameters_maxtime::Real;
+                            silent::Bool = false)::Tuple{Vector{Float64}, Float64, Bool}
+    """
+    Internal function to solve and cache the steady state.
+    Returns: (SS_and_pars, solution_error, found_solution)
+    """
+    start_time = time()
+    
+    if 𝓂.precompile
+        return Float64[], 0.0, false
+    end
+    
+    if isnothing(steady_state_function)
+        if !silent 
+            print("Find non-stochastic steady state:\t\t\t\t\t") 
+        end
+    end
+    
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts, cold_start = true)
+    
+    found_solution = true
+    
+    if isnothing(steady_state_function)
+        select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
+        
+        if solution_error > opts.tol.NSSS_acceptance_tol
+            found_solution = find_SS_solver_parameters!(Val(ss_solver_parameters_algorithm), 𝓂, tol = opts.tol, verbosity = 0, maxtime = ss_solver_parameters_maxtime, maxiter = 1000000000)
+            
+            if found_solution
+                SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts, cold_start = true)
+            end
+        end
+    end
+    
+    if isnothing(steady_state_function)
+        if !silent 
+            println(round(time() - start_time, digits = 3), " seconds") 
+        end
+    end
+    
+    if !found_solution
+        @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
+    end
+    
+    𝓂.solution.non_stochastic_steady_state = SS_and_pars
+    𝓂.solution.outdated_NSSS = false
+    
+    return SS_and_pars, solution_error, found_solution
+end
+
+
+function write_steady_state_solver_function!(𝓂::ℳ;
                             cse = true,
                             skipzeros = true,
                             density_threshold::Float64 = .1,
@@ -6789,7 +6844,7 @@ end
 
 @stable default_mode = "disable" begin
 
-function setup_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avoid_solve::Bool = false, symbolic::Bool = false)
+function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avoid_solve::Bool = false, symbolic::Bool = false)
     if !𝓂.precompile
         start_time = time()
 
@@ -6807,7 +6862,7 @@ function setup_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avoi
 
         write_ss_check_function!(𝓂)
 
-        solve_steady_state!(𝓂, symbolic, symbolics, verbose = verbose, avoid_solve = avoid_solve)
+        write_steady_state_solver_function!(𝓂, symbolic, symbolics, verbose = verbose, avoid_solve = avoid_solve)
 
         𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
         
@@ -6821,7 +6876,7 @@ function setup_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avoi
 
         write_ss_check_function!(𝓂)
 
-        solve_steady_state!(𝓂, verbose = verbose)
+        write_steady_state_solver_function!(𝓂, verbose = verbose)
 
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
     end
@@ -6854,7 +6909,7 @@ function solve!(𝓂::ℳ;
     if 𝓂.solution.functions_written &&
         isnothing(𝓂.custom_steady_state_function) &&
         !(𝓂.SS_solve_func isa RuntimeGeneratedFunctions.RuntimeGeneratedFunction)
-        setup_steady_state_solver!(𝓂, verbose = opts.verbose, silent = silent)
+        set_up_steady_state_solver!(𝓂, verbose = opts.verbose, silent = silent)
     end
     
     if !𝓂.solution.functions_written
@@ -6862,12 +6917,10 @@ function solve!(𝓂::ℳ;
         
         perturbation_order = 1
 
-        setup_steady_state_solver!(𝓂, verbose = verbose, silent = silent, avoid_solve = false)
+        set_up_steady_state_solver!(𝓂, verbose = verbose, silent = silent, avoid_solve = false)
     
-        start_time = time()
-
-        opts = merge_calculation_options(verbose = verbose)
-
+        SS_and_pars, solution_error, found_solution = solve_steady_state!(𝓂, steady_state_function, opts, :ESCH, 120.0, silent = silent)
+            
         start_time = time()
 
         if !silent
@@ -8199,7 +8252,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         𝓂.parameter_values = vcat(declared_values, missing_values, remaining_missing_values)
         
         # Clear the NSSS_solver_cache since parameter order/count has changed
-        # It will be rebuilt when solve_steady_state! is called with correct parameter count
+        # It will be rebuilt when write_steady_state_solver_function! is called with correct parameter count
         while length(𝓂.NSSS_solver_cache) > 0
             pop!(𝓂.NSSS_solver_cache)
         end
@@ -10150,7 +10203,7 @@ end
 
 end # dispatch_doctor
 
-# @setup_workload begin
+# @set_up_workload begin
 #     # Putting some things in `setup` can reduce the size of the
 #     # precompile file and potentially make loading faster.
 #     @model FS2000 precompile = true begin

@@ -1593,7 +1593,7 @@ macro parameters(𝓂,ex...)
             write_ss_check_function!(mod.$𝓂)
         else
             if !has_missing_parameters
-                setup_steady_state_solver!(mod.$𝓂, verbose = $verbose, silent = $silent, avoid_solve = !$simplify, symbolic = $symbolic)
+                set_up_steady_state_solver!(mod.$𝓂, verbose = $verbose, silent = $silent, avoid_solve = !$simplify, symbolic = $symbolic)
             end
         end
         
@@ -1604,51 +1604,9 @@ macro parameters(𝓂,ex...)
             # This prevents solve! from re-running @parameters with nothing
             mod.$𝓂.solution.functions_written = true
 
-            start_time = time()
-    
             opts = merge_calculation_options(verbose = $verbose)
-
-            if !$precompile 
-                if isnothing($steady_state_function)
-                    if !$silent 
-                        print("Find non-stochastic steady state:\t\t\t\t\t") 
-                    end
-                end
-                # time_SS_real_solve = @elapsed 
-                SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(mod.$𝓂, mod.$𝓂.parameter_values, opts = opts, cold_start = true)
-                # SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
-
-                found_solution = true
-
-                if isnothing($steady_state_function)
-                    select_fastest_SS_solver_parameters!(mod.$𝓂, tol = opts.tol)
-
-                    if solution_error > opts.tol.NSSS_acceptance_tol
-                        # start_time = time()
-                        
-                        found_solution = find_SS_solver_parameters!($(Val(ss_solver_parameters_algorithm)), mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = $ss_solver_parameters_maxtime, maxiter = 1000000000)
-                        # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
-                        if found_solution
-                            SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(mod.$𝓂, mod.$𝓂.parameter_values, opts = opts, cold_start = true)
-                            # SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
-                        end
-                    end
-                end
-                
-
-                if isnothing($steady_state_function)
-                    if !$silent 
-                        println(round(time() - start_time, digits = 3), " seconds") 
-                    end
-                end
-
-                if !found_solution
-                    @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
-                end
-
-                mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
-                mod.$𝓂.solution.outdated_NSSS = false
-            end
+            
+            SS_and_pars, solution_error, found_solution = solve_steady_state!(mod.$𝓂, $steady_state_function, opts, $(QuoteNode(ss_solver_parameters_algorithm)), $ss_solver_parameters_maxtime, silent = $silent)
             
             start_time = time()
 
