@@ -1038,7 +1038,7 @@ end
 
 
 """
-    set_steady_state!(𝓂::ℳ, f::Function)
+    set_custom_steady_state_function!(𝓂::ℳ, f::Function)
 
 *Internal function* - Set a custom function to calculate the steady state of the model.
 
@@ -1114,7 +1114,7 @@ get_irf(RBC, steady_state_function = my_steady_state)
 
 See also: [`get_variables`](@ref), [`get_parameters`](@ref), [`get_steady_state`](@ref), [`get_irf`](@ref), [`simulate`](@ref)
 """
-function set_steady_state!(𝓂::ℳ, f::SteadyStateFunctionType)
+function set_custom_steady_state_function!(𝓂::ℳ, f::SteadyStateFunctionType)
     had_custom = !isnothing(𝓂.custom_steady_state_function)
 
     # Store the custom function
@@ -5097,7 +5097,6 @@ end
 
 
 function solve_steady_state!(𝓂::ℳ, 
-                            steady_state_function::SteadyStateFunctionType,
                             opts::CalculationOptions,
                             ss_solver_parameters_algorithm::Symbol,
                             ss_solver_parameters_maxtime::Real;
@@ -5112,7 +5111,7 @@ function solve_steady_state!(𝓂::ℳ,
         return Float64[], 0.0, false
     end
     
-    if isnothing(steady_state_function)
+    if !(𝓂.custom_steady_state_function isa Function)
         if !silent 
             print("Find non-stochastic steady state:\t\t\t\t\t") 
         end
@@ -5122,7 +5121,7 @@ function solve_steady_state!(𝓂::ℳ,
     
     found_solution = true
     
-    if isnothing(steady_state_function)
+    if !(𝓂.custom_steady_state_function isa Function)
         select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
         
         if solution_error > opts.tol.NSSS_acceptance_tol
@@ -5134,7 +5133,7 @@ function solve_steady_state!(𝓂::ℳ,
         end
     end
     
-    if isnothing(steady_state_function)
+    if !(𝓂.custom_steady_state_function isa Function)
         if !silent 
             println(round(time() - start_time, digits = 3), " seconds") 
         end
@@ -5163,8 +5162,6 @@ function write_symbolic_derivatives!(𝓂::ℳ; perturbation_order::Int = 1, sil
             print("Take symbolic derivatives up to third order:\t\t\t\t")
         end
     end
-
-    𝓂.solution.functions_written = true
 
     write_auxiliary_indices!(𝓂)
     write_functions_mapping!(𝓂, perturbation_order)
@@ -6928,15 +6925,16 @@ function solve!(𝓂::ℳ;
     @assert algorithm ∈ all_available_algorithms
     
     # Handle steady_state_function argument
-    set_steady_state!(𝓂, steady_state_function)
+    set_custom_steady_state_function!(𝓂, steady_state_function)
     
     # @timeit_debug timer "Write parameter inputs" begin
 
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
-
+    
     if 𝓂.solution.functions_written &&
         isnothing(𝓂.custom_steady_state_function) &&
         !(𝓂.SS_solve_func isa RuntimeGeneratedFunctions.RuntimeGeneratedFunction)
+
         set_up_steady_state_solver!(𝓂, verbose = opts.verbose, silent = silent)
     end
     
@@ -6947,9 +6945,11 @@ function solve!(𝓂::ℳ;
 
         set_up_steady_state_solver!(𝓂, verbose = verbose, silent = silent, avoid_solve = false)
     
-        SS_and_pars, solution_error, found_solution = solve_steady_state!(𝓂, steady_state_function, opts, :ESCH, 120.0, silent = silent)
+        SS_and_pars, solution_error, found_solution = solve_steady_state!(𝓂, opts, :ESCH, 120.0, silent = silent)
             
         write_symbolic_derivatives!(𝓂; perturbation_order = perturbation_order, silent = silent)
+
+        𝓂.solution.functions_written = true
     end
 
     # Check for missing parameters after processing input

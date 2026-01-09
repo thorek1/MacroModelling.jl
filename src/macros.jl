@@ -1583,9 +1583,10 @@ macro parameters(𝓂,ex...)
         
         # Set custom steady state function if provided
         # if !isnothing($steady_state_function)
-        set_steady_state!(mod.$𝓂, $steady_state_function)
+        set_custom_steady_state_function!(mod.$𝓂, $steady_state_function)
         # end
 
+        mod.$𝓂.solution.functions_written = false
 
         # time_symbolics = @elapsed 
         # time_rm_red_SS_vars = @elapsed
@@ -1596,19 +1597,18 @@ macro parameters(𝓂,ex...)
                 set_up_steady_state_solver!(mod.$𝓂, verbose = $verbose, silent = $silent, avoid_solve = !$simplify, symbolic = $symbolic)
             end
         end
-        
-        mod.$𝓂.solution.functions_written = false
 
         if !has_missing_parameters
             # Mark functions as written even if we skipped SS setup due to missing parameters
             # This prevents solve! from re-running @parameters with nothing
-            mod.$𝓂.solution.functions_written = true
 
             opts = merge_calculation_options(verbose = $verbose)
             
-            SS_and_pars, solution_error, found_solution = solve_steady_state!(mod.$𝓂, $steady_state_function, opts, $(QuoteNode(ss_solver_parameters_algorithm)), $ss_solver_parameters_maxtime, silent = $silent)
+            SS_and_pars, solution_error, found_solution = solve_steady_state!(mod.$𝓂, opts, $(QuoteNode(ss_solver_parameters_algorithm)), $ss_solver_parameters_maxtime, silent = $silent)
             
             write_symbolic_derivatives!(mod.$𝓂; perturbation_order = $perturbation_order, silent = $silent)
+
+            mod.$𝓂.solution.functions_written = true
         end
 
         if has_missing_parameters && $report_missing_parameters
