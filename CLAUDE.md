@@ -233,6 +233,6 @@ Test sets are parallelized across the matrix. JET.jl is used for static analysis
 
 2. **Work modularly.** Complete one module at a time. After each module, report what you built, show test results, and wait for confirmation before proceeding.
 
-3. **Iterate and fix errors yourself.** Do not rely on the user to report errors back to you. Run the code, observe the output, and fix problems before presenting results.
+3. **Iterate and fix errors yourself.** Do not rely on the user to report errors back to you. Run the code, observe the output.
 
 4. **Be explicit about unknowns.** If you're uncertain about something, say so. Don't guess.

@@ -21,6 +21,7 @@ like `[0]` (present), `[1]` (future), `[-1]` (past), and `[x]` (shock).
 
 - Julia 1.10+ is required (see `README.md` and `docs/src/tutorials/install.md`).
 - Typical REPL setup:
+
   ```julia
   using Pkg
   Pkg.activate(".")
@@ -83,7 +84,7 @@ julia --project -e 'using BenchmarkTools; include("benchmark/benchmarks.jl"); ru
 
 1. **NEVER claim something works without running a test to prove it.** After writing any code, immediately write and run a test. If you cannot test it, say so explicitly.
 
-2. **Work modularly.** Complete one module at a time. After each module, report what you built, show test results, and wait for confirmation before proceeding.
+2. **Work modularly.** Complete one module at a time. After each module, report what you built, show test results.
 
 3. **Iterate and fix errors yourself.** Do not rely on the user to report errors back to you. Run the code, observe the output, and fix problems before presenting results.
 
