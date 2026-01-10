@@ -914,6 +914,7 @@ if test_set == "basic"
         _ = get_steady_state(RBC_macro_switch)
         @test macro_calls[] == calls_before
     end
+    
     @testset verbose = true "Custom steady state function" begin
         # Test custom steady state function with simple RBC model
         @model RBC_custom_ss begin

@@ -9907,18 +9907,13 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
     if has_inplace
         output = get_custom_steady_state_buffer!(𝓂, expected_length)
 
-        result = try 
+        try 
             𝓂.custom_steady_state_function(output, parameter_values)
         catch
         end
-
-        if result === nothing
-            result = output
-        elseif !(result isa AbstractVector)
-            throw(ArgumentError("Custom steady state function with in-place signature returned $(typeof(result)); expected AbstractVector or nothing."))
-        end
-    elseif applicable(𝓂.custom_steady_state_function, parameter_values)
         
+        result = output
+    elseif applicable(𝓂.custom_steady_state_function, parameter_values)
         result = try
             𝓂.custom_steady_state_function(parameter_values)
         catch
