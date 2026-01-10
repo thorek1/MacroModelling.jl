@@ -10206,7 +10206,7 @@ end
 
 end # dispatch_doctor
 
-# @set_up_workload begin
+# @setup_workload begin
 #     # Putting some things in `setup` can reduce the size of the
 #     # precompile file and potentially make loading faster.
 #     @model FS2000 precompile = true begin
