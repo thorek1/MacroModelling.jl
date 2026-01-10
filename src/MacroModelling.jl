@@ -3522,7 +3522,7 @@ end
 """
     populate_computational_constants!(𝓂::ℳ)
 
-Populate the computational constants cache with BitVectors and identity matrices.
+Populate the computational constants cache with BitVectors, kronecker products, and identity matrices.
 This is called lazily the first time these constants are needed.
 """
 function populate_computational_constants!(𝓂::ℳ)
@@ -3533,8 +3533,12 @@ function populate_computational_constants!(𝓂::ℳ)
     s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ + 1), zeros(Bool, nᵉ)))
     s_in_s = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
     
+    # Precompute kronecker products (used 8 and 6 times respectively)
+    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    
     # Replace the entire cache with a new immutable instance
-    𝓂.caches.computational_constants = computational_constants_cache(s_in_s⁺, s_in_s, nˢ)
+    𝓂.caches.computational_constants = computational_constants_cache(s_in_s⁺, s_in_s, kron_s⁺_s⁺, kron_s⁺_s, nˢ)
     
     return nothing
 end
@@ -6372,11 +6376,10 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         state = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
         converged = true
     else
-        nᵉ = 𝓂.timings.nExo
-
-        s_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-
-        kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+        # Get cached computational constants
+        cc = get_computational_constants(𝓂)
+        s_in_s⁺ = @ignore_derivatives cc.s_in_s⁺
+        kron_s⁺_s⁺ = @ignore_derivatives cc.kron_s⁺_s⁺
         
         A = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed]
         B̂ = 𝐒₂[:,kron_s⁺_s⁺]
@@ -6423,9 +6426,9 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     s_in_s = cc.s_in_s
     I_nPast = ℒ.I(cc.nPast)
     
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_s⁺_s⁺ = cc.kron_s⁺_s⁺
     
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    kron_s⁺_s = cc.kron_s⁺_s
     
     A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
     B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
@@ -6485,9 +6488,9 @@ s_in_s⁺ = cc.s_in_s⁺
 s_in_s = cc.s_in_s
 I_nPast = ℒ.I(cc.nPast)
     
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_s⁺_s⁺ = cc.kron_s⁺_s⁺
     
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    kron_s⁺_s = cc.kron_s⁺_s
     
     A = 𝐒₁̂[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
     B = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
@@ -6558,9 +6561,9 @@ s_in_s⁺ = cc.s_in_s⁺
 s_in_s = cc.s_in_s
 I_nPast = ℒ.I(cc.nPast)
     
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_s⁺_s⁺ = cc.kron_s⁺_s⁺
     
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    kron_s⁺_s = cc.kron_s⁺_s
     
     A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
     B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
@@ -6723,11 +6726,10 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         state = 𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * SSSstates + 𝐒₂ * ℒ.kron(aug_state₁, aug_state₁) / 2
         converged = true
     else
-        nᵉ = 𝓂.timings.nExo
-
-        s_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-
-        kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+        # Get cached computational constants
+        cc = get_computational_constants(𝓂)
+        s_in_s⁺ = @ignore_derivatives cc.s_in_s⁺
+        kron_s⁺_s⁺ = @ignore_derivatives cc.kron_s⁺_s⁺
         
         kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
         
@@ -6774,9 +6776,9 @@ s_in_s⁺ = cc.s_in_s⁺
 s_in_s = cc.s_in_s
 I_nPast = ℒ.I(cc.nPast)
     
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_s⁺_s⁺ = cc.kron_s⁺_s⁺
     
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    kron_s⁺_s = cc.kron_s⁺_s
     
     kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
     
@@ -6831,9 +6833,9 @@ s_in_s⁺ = cc.s_in_s⁺
 s_in_s = cc.s_in_s
 I_nPast = ℒ.I(cc.nPast)
     
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_s⁺_s⁺ = cc.kron_s⁺_s⁺
     
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    kron_s⁺_s = cc.kron_s⁺_s
     
     kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
     
@@ -6909,9 +6911,9 @@ s_in_s⁺ = cc.s_in_s⁺
 s_in_s = cc.s_in_s
 I_nPast = ℒ.I(cc.nPast)
     
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    kron_s⁺_s⁺ = cc.kron_s⁺_s⁺
     
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    kron_s⁺_s = cc.kron_s⁺_s
     
     kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
     

@@ -44,12 +44,16 @@ struct name_display_cache
 end
 
 # Cache for model-constant computational objects
-# Stores precomputed BitVectors and size information for identity matrices
+# Stores precomputed BitVectors, kronecker products, and size information
 struct computational_constants_cache
     # BitVector for state selection: [ones(nPast+1), zeros(nExo)]
     s_in_s⁺::BitVector
     # BitVector for state selection: [ones(nPast), zeros(nExo+1)]  
     s_in_s::BitVector
+    # Kronecker product: kron(s_in_s⁺, s_in_s⁺)
+    kron_s⁺_s⁺::BitVector
+    # Kronecker product: kron(s_in_s⁺, s_in_s)
+    kron_s⁺_s::BitVector
     # Size for identity matrix of past states (store size, not the matrix itself)
     nPast::Int
 end
@@ -96,7 +100,7 @@ function Caches(;T::Type = Float64, S::Type = Float64)
     caches( Higher_order_caches(T = T, S = S),
             Higher_order_caches(T = T, S = S),
             name_display_cache([], [], [], false, false),  # Empty cache, populated on first use
-            computational_constants_cache(BitVector(), BitVector(), 0))  # Empty cache, populated on first use
+            computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0))  # Empty cache, populated on first use
 end
 
 
