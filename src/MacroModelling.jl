@@ -9735,7 +9735,6 @@ function get_custom_steady_state_buffer!(𝓂::ℳ, expected_length::Int)
 end
 
 function evaluate_custom_steady_state_function(𝓂::ℳ,
-                                                f::Function,
                                                 parameter_values::AbstractVector{S},
                                                 expected_length::Int,
                                                 expected_parameter_length::Int) where {S <: Real}
@@ -9744,13 +9743,13 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
     end
 
     result = nothing
-    has_inplace = hasmethod(f, Tuple{typeof(parameter_values), typeof(parameter_values)})
+    has_inplace = hasmethod(𝓂.custom_steady_state_function, Tuple{typeof(parameter_values), typeof(parameter_values)})
 
     if has_inplace
         output = get_custom_steady_state_buffer!(𝓂, expected_length)
 
         result = try 
-            f(output, parameter_values)
+            𝓂.custom_steady_state_function(output, parameter_values)
         catch
         end
 
@@ -9759,10 +9758,10 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
         elseif !(result isa AbstractVector)
             throw(ArgumentError("Custom steady state function with in-place signature returned $(typeof(result)); expected AbstractVector or nothing."))
         end
-    elseif applicable(f, parameter_values)
+    elseif applicable(𝓂.custom_steady_state_function, parameter_values)
         
         result = try
-            f(parameter_values)
+            𝓂.custom_steady_state_function(parameter_values)
         catch
             fill(NaN, expected_length)
         end
@@ -9822,14 +9821,13 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     # @timeit_debug timer "Calculate NSSS" begin
     
     # Use custom steady state function if available, otherwise use default solver
-    if !isnothing(𝓂.custom_steady_state_function)
+    if 𝓂.custom_steady_state_function isa Function
         vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
 
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
         SS_and_pars_tmp = evaluate_custom_steady_state_function(
             𝓂,
-            𝓂.custom_steady_state_function,
             parameter_values,
             expected_length,
             length(𝓂.parameters),
@@ -9885,14 +9883,13 @@ function rrule(::typeof(get_NSSS_and_parameters),
     # @timeit_debug timer "Calculate NSSS - forward" begin
 
     # Use custom steady state function if available, otherwise use default solver
-    if !isnothing(𝓂.custom_steady_state_function)
+    if 𝓂.custom_steady_state_function isa Function
         vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
 
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
         SS_and_pars_tmp = evaluate_custom_steady_state_function(
             𝓂,
-            𝓂.custom_steady_state_function,
             parameter_values,
             expected_length,
             length(𝓂.parameters),
@@ -10014,14 +10011,13 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
 
-    if !isnothing(𝓂.custom_steady_state_function)
+    if 𝓂.custom_steady_state_function isa Function
         vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
 
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
         SS_and_pars_tmp = evaluate_custom_steady_state_function(
             𝓂,
-            𝓂.custom_steady_state_function,
             parameter_values,
             expected_length,
             length(𝓂.parameters),
