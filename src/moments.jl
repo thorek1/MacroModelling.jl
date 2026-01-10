@@ -18,7 +18,7 @@ function calculate_covariance(parameters::Vector{R},
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
-    A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+    A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * get_computational_constants(𝓂).diag_nVars[𝓂.timings.past_not_future_and_mixed_idx,:]
 
     C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
     
@@ -88,9 +88,9 @@ function calculate_mean(parameters::Vector{T},
                 nᵉ = 𝓂.timings.nExo
                 nˢ = 𝓂.timings.nPast_not_future_and_mixed
 
-                s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-                e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
-                v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
+                s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+                e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+                v_in_s⁺ = get_computational_constants(𝓂).v_in_s⁺
                 
                 kron_states     = ℒ.kron(s_in_s⁺, s_in_s⁺)
                 kron_shocks     = ℒ.kron(e_in_s⁺, e_in_s⁺)
@@ -193,9 +193,9 @@ function calculate_second_order_moments(parameters::Vector{R},
                 𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
             end
 
-            s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-            e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
-            v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
+            s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+            e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+            v_in_s⁺ = get_computational_constants(𝓂).v_in_s⁺
 
             kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
             kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
@@ -330,9 +330,9 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                 𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
             end
 
-            s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-            e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
-            v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
+            s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+            e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+            v_in_s⁺ = get_computational_constants(𝓂).v_in_s⁺
 
             kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
             kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)

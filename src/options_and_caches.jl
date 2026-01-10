@@ -67,6 +67,11 @@ struct computational_constants_cache
     kron_s⁺_s::BitVector
     # Size for identity matrix of past states (store size, not the matrix itself)
     nPast::Int
+    # Additional BitVectors for moments calculations
+    e_in_s⁺::BitVector  # [zeros(nPast+1), ones(nExo)]
+    v_in_s⁺::BitVector  # [zeros(nPast), 1, zeros(nExo)]
+    # Diagonal matrix for state selection
+    diag_nVars::ℒ.Diagonal{Float64, Vector{Float64}}
 end
 
 mutable struct caches#{F <: Real, G <: AbstractFloat}
@@ -113,7 +118,7 @@ function Caches(;T::Type = Float64, S::Type = Float64)
             Higher_order_caches(T = T, S = S),
             name_display_cache([], [], [], false, false),  # Empty cache, populated on first use
             model_structure_cache(Symbol[], Symbol[], Symbol[]),  # Empty cache, populated on first use
-            computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0))  # Empty cache, populated on first use
+            computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, BitVector(), BitVector(), ℒ.Diagonal(Float64[])))  # Empty cache, populated on first use
 end
 
 

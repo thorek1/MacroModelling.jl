@@ -3537,8 +3537,15 @@ function populate_computational_constants!(𝓂::ℳ)
     kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
     kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
     
+    # Additional BitVectors for moments calculations
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
+    v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
+    
+    # Diagonal matrix for state selection
+    diag_nVars = ℒ.diagm(ones(𝓂.timings.nVars))
+    
     # Replace the entire cache with a new immutable instance
-    𝓂.caches.computational_constants = computational_constants_cache(s_in_s⁺, s_in_s, kron_s⁺_s⁺, kron_s⁺_s, nˢ)
+    𝓂.caches.computational_constants = computational_constants_cache(s_in_s⁺, s_in_s, kron_s⁺_s⁺, kron_s⁺_s, nˢ, e_in_s⁺, v_in_s⁺, diag_nVars)
     
     return nothing
 end
