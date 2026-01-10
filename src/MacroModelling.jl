@@ -9760,12 +9760,13 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
             throw(ArgumentError("Custom steady state function with in-place signature returned $(typeof(result)); expected AbstractVector or nothing."))
         end
     elseif applicable(f, parameter_values)
+        
         result = try
             f(parameter_values)
         catch
             fill(NaN, expected_length)
         end
-
+        
         if !(result isa AbstractVector)
             throw(ArgumentError("Custom steady state function returned $(typeof(result)); expected an AbstractVector."))
         end
@@ -9776,7 +9777,7 @@ function evaluate_custom_steady_state_function(𝓂::ℳ,
     if length(result) != expected_length
         throw(ArgumentError("Custom steady state function returned $(length(result)) values, expected $expected_length."))
     end
-
+    
     return result
 end
 
@@ -9851,9 +9852,11 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         extended_SS_and_pars = [map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.var)...,𝓂.calibration_equations_parameters...]
 
         SS_and_pars = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
-        
+
         for (i,v) in enumerate(extended_SS_and_pars)
-            SS_and_pars[i] = SS_and_pars_tmp[indexin([v], vars_in_ss_equations)[1]]
+            idx = indexin([v], vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))[1]
+            isnothing(idx) && continue
+            SS_and_pars[i] = SS_and_pars_tmp[idx]
         end
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
@@ -9914,7 +9917,9 @@ function rrule(::typeof(get_NSSS_and_parameters),
         SS_and_pars = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
         
         for (i,v) in enumerate(extended_SS_and_pars)
-            SS_and_pars[i] = SS_and_pars_tmp[indexin([v], vars_in_ss_equations)[1]]
+            idx = indexin([v], vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))[1]
+            isnothing(idx) && continue
+            SS_and_pars[i] = SS_and_pars_tmp[idx]
         end
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
@@ -10041,7 +10046,9 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         SS_and_pars = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
         
         for (i,v) in enumerate(extended_SS_and_pars)
-            SS_and_pars[i] = SS_and_pars_tmp[indexin([v], vars_in_ss_equations)[1]]
+            idx = indexin([v], vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))[1]
+            isnothing(idx) && continue
+            SS_and_pars[i] = SS_and_pars_tmp[idx]
         end
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
