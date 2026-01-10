@@ -43,6 +43,17 @@ struct name_display_cache
     exo_has_curly::Bool
 end
 
+# Cache for model structure information
+# Stores precomputed lists and labels that depend only on model structure
+struct model_structure_cache
+    # SS_and_pars_names: processed variable names + calibration parameters
+    SS_and_pars_names::Vector{Symbol}
+    # all_variables: sorted union of var, aux, exo_present
+    all_variables::Vector{Symbol}
+    # NSSS_labels: sorted union of exo_present, var + calibration parameters
+    NSSS_labels::Vector{Symbol}
+end
+
 # Cache for model-constant computational objects
 # Stores precomputed BitVectors, kronecker products, and size information
 struct computational_constants_cache
@@ -62,6 +73,7 @@ mutable struct caches#{F <: Real, G <: AbstractFloat}
     second_order_caches::higher_order_caches#{F, G}
     third_order_caches::higher_order_caches#{F, G}
     name_display_cache::name_display_cache
+    model_structure_cache::model_structure_cache
     computational_constants::computational_constants_cache
 end
 
@@ -100,6 +112,7 @@ function Caches(;T::Type = Float64, S::Type = Float64)
     caches( Higher_order_caches(T = T, S = S),
             Higher_order_caches(T = T, S = S),
             name_display_cache([], [], [], false, false),  # Empty cache, populated on first use
+            model_structure_cache(Symbol[], Symbol[], Symbol[]),  # Empty cache, populated on first use
             computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0))  # Empty cache, populated on first use
 end
 

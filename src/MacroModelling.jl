@@ -853,7 +853,7 @@ function set_up_obc_violation_function!(𝓂)
 
     dyn_var_present = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_present_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
-    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+    SS_and_pars_names = get_model_structure(𝓂).SS_and_pars_names
 
     dyn_var_present_idx = indexin(dyn_var_present   , SS_and_pars_names)
 
@@ -3543,6 +3543,45 @@ function populate_computational_constants!(𝓂::ℳ)
     return nothing
 end
 
+"""
+    get_model_structure(𝓂::ℳ)
+
+Get cached model structure information (SS_and_pars_names, all_variables, NSSS_labels).
+This function is called lazily and caches the result in the model struct.
+"""
+function get_model_structure(𝓂::ℳ)
+    if isempty(𝓂.caches.model_structure_cache.SS_and_pars_names)
+        populate_model_structure_cache!(𝓂)
+    end
+    return 𝓂.caches.model_structure_cache
+end
+
+"""
+    populate_model_structure_cache!(𝓂::ℳ)
+
+Populate the model structure cache with processed variable lists and labels.
+This is called lazily the first time these structures are needed.
+"""
+function populate_model_structure_cache!(𝓂::ℳ)
+    # SS_and_pars_names: used in multiple places
+    SS_and_pars_names = vcat(
+        Symbol.(replace.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))), 
+                r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 
+        𝓂.calibration_equations_parameters
+    )
+    
+    # all_variables: sorted union of var, aux, exo_present
+    all_variables = sort(union(𝓂.var, 𝓂.aux, 𝓂.exo_present))
+    
+    # NSSS_labels: sorted union of exo_present, var + calibration parameters
+    NSSS_labels = [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
+    
+    # Replace the entire cache with a new immutable instance
+    𝓂.caches.model_structure_cache = model_structure_cache(SS_and_pars_names, all_variables, NSSS_labels)
+    
+    return nothing
+end
+
 
 function get_possible_indices_for_name(name::Symbol, all_names::Vector{Symbol})
     indices = filter(x -> length(x) < 3 && x[1] == name, decompose_name.(all_names))
@@ -3644,13 +3683,13 @@ end
 
 
 function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
-    all_variables = @ignore_derivatives sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
+    all_variables = @ignore_derivatives get_model_structure(𝓂).all_variables
 
     ignore_derivatives() do
         all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
     end
 
-    NSSS_labels = @ignore_derivatives [sort(union(𝓂.exo_present,𝓂.var))...,𝓂.calibration_equations_parameters...]
+    NSSS_labels = @ignore_derivatives get_model_structure(𝓂).NSSS_labels
 
     X = zeros(Int, length(all_variables), length(SS_and_pars))
 
@@ -9965,7 +10004,7 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
         
-    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+    SS_and_pars_names = get_model_structure(𝓂).SS_and_pars_names
 
     SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
 
@@ -10088,7 +10127,7 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     else
         SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
             
-        SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+        SS_and_pars_names = get_model_structure(𝓂).SS_and_pars_names
         
         SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
 
