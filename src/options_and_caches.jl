@@ -30,17 +30,17 @@ end
 
 # Cache for model-constant display names
 # Stores precomputed variable and shock names that depend only on model structure
-mutable struct name_display_cache
+struct name_display_cache
     # Processed variable names (with curly brackets formatted)
-    var_axis::Union{Nothing, Vector}
+    var_axis::Vector
     # Processed shock names (with curly brackets formatted, WITHOUT ₍ₓ₎ suffix)
-    exo_axis_plain::Union{Nothing, Vector}
+    exo_axis_plain::Vector
     # Processed shock names (with curly brackets formatted and WITH ₍ₓ₎ suffix)
-    exo_axis_with_subscript::Union{Nothing, Vector}
+    exo_axis_with_subscript::Vector
     # Flag indicating if variables contain curly brackets
-    var_has_curly::Union{Nothing, Bool}
+    var_has_curly::Bool
     # Flag indicating if shocks contain curly brackets
-    exo_has_curly::Union{Nothing, Bool}
+    exo_has_curly::Bool
 end
 
 mutable struct caches#{F <: Real, G <: AbstractFloat}
@@ -83,7 +83,7 @@ end
 function Caches(;T::Type = Float64, S::Type = Float64)
     caches( Higher_order_caches(T = T, S = S),
             Higher_order_caches(T = T, S = S),
-            name_display_cache(nothing, nothing, nothing, nothing, nothing))  # Initialized lazily
+            name_display_cache([], [], [], false, false))  # Empty cache, populated on first use
 end
 
 

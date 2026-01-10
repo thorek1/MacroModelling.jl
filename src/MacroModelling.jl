@@ -3453,7 +3453,7 @@ Get cached or compute variable axis names with curly bracket formatting.
 This function is called lazily and caches the result in the model struct.
 """
 function get_var_axis(𝓂::ℳ)
-    if 𝓂.caches.name_display_cache.var_axis === nothing
+    if isempty(𝓂.caches.name_display_cache.var_axis)
         populate_name_display_cache!(𝓂)
     end
     return 𝓂.caches.name_display_cache.var_axis
@@ -3467,7 +3467,7 @@ By default includes ₍ₓ₎ suffix; set with_subscript=false to exclude it.
 This function is called lazily and caches the result in the model struct.
 """
 function get_exo_axis(𝓂::ℳ; with_subscript::Bool = true)
-    if 𝓂.caches.name_display_cache.exo_axis_plain === nothing
+    if isempty(𝓂.caches.name_display_cache.exo_axis_plain)
         populate_name_display_cache!(𝓂)
     end
     return with_subscript ? 𝓂.caches.name_display_cache.exo_axis_with_subscript : 𝓂.caches.name_display_cache.exo_axis_plain
@@ -3500,12 +3500,8 @@ function populate_name_display_cache!(𝓂::ℳ)
         exo_axis_with_subscript = map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo)
     end
     
-    # Store in cache
-    𝓂.caches.name_display_cache.var_axis = var_axis
-    𝓂.caches.name_display_cache.exo_axis_plain = exo_axis_plain
-    𝓂.caches.name_display_cache.exo_axis_with_subscript = exo_axis_with_subscript
-    𝓂.caches.name_display_cache.var_has_curly = var_has_curly
-    𝓂.caches.name_display_cache.exo_has_curly = exo_has_curly
+    # Replace the entire cache with a new immutable instance
+    𝓂.caches.name_display_cache = name_display_cache(var_axis, exo_axis_plain, exo_axis_with_subscript, var_has_curly, exo_has_curly)
     
     return nothing
 end
