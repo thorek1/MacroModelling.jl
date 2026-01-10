@@ -31,7 +31,7 @@ For terms with domain constraints (e.g., `log(x+y)`, `x^y`), auxiliary variables
 
 For blocks that cannot be solved symbolically, a custom system of nonlinear equations solver is employed. This solver is a Levenberg-Marquardt (LM) type algorithm with line-search that includes:
 
-- **Box constraints**
+- **Box constraints**: Respect the domain constraints of variables as well as user defined bounds from the `@parameters` macro (e.g. `c > 0`, `r < 0.2`, or `1 < π < 1.1`). User defined bounds can be helpful to guide the solver toward plausible values.
 - **Domain transformation**: A hyperbolic sine transformation is applied that transforms the geometry of the problem and increases the likelihood of finding a solution
 - **Adaptive failure recovery**: Upon failure, the solver optimizes over the LM parameters and starting points to find a solution
 

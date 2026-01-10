@@ -77,6 +77,40 @@ plot_irf(RBC)
 
 ![RBC IRF](docs/src/assets/irf__RBC__eps_z__1.png)
 
+#### Custom steady state function
+
+By default, the package automatically solves for the non-stochastic steady state. For complex models, you can provide a custom steady state function to ensure efficient computation or in case the automatic solver fails:
+
+```julia
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end;
+
+function rbc_steady_state(params)
+    std_z, rho, delta, alpha, beta = params
+
+    k_ss = ((1 / beta - 1 + delta) / alpha)^(1 / (alpha - 1))
+    q_ss = k_ss^alpha
+    c_ss = q_ss - delta * k_ss
+    z_ss = 0.0
+
+    return [c_ss, k_ss, q_ss, z_ss]
+end
+
+@parameters RBC steady_state_function = rbc_steady_state begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end;
+```
+
 #### Delayed parameter definition
 
 Parameters do not need to be defined upfront in the `@parameters` block. You can define the model first and provide parameter values later when calling functions. This is useful for loading parameter values from external sources (e.g., CSV files).
@@ -104,6 +138,15 @@ plot_irf(RBC_delayed, parameters = (:std_z => 0.01, :ρ => 0.2, :δ => 0.02, :α
 ![RBC IRF](docs/src/assets/irf__RBC__eps_z__1.png)
 
 Note: Calibration equations (using `|` syntax) and parameters defined as functions of other parameters must be declared in the `@parameters` block.
+
+Steady state options:
+
+- Automatic solver (default) from the model equations.
+- Custom steady state function.
+
+Parameter values can also be supplied later (delayed parameter definition) as illustrated above.
+
+See the documentation for more details on the [steady state](https://thorek1.github.io/MacroModelling.jl/stable/steady_state/).
 
 ## Models
 
