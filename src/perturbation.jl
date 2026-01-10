@@ -117,100 +117,7 @@ end
 
 end # dispatch_doctor 
 
-
 @stable default_mode = "disable" begin
-
-function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
-                                        T::timings, 
-                                        opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
-    ∇̂₁ = ℱ.value.(∇₁)
-
-    expand = [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:], ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
-
-    A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; T = T, opts = opts, initial_guess = initial_guess)
-
-    if !solved 
-        return ∇₁, qme_sol, false
-    end
-
-    X = 𝐒₁[:,1:end-T.nExo] * expand[2]
-    
-    AXB = A * X + B
-    
-    AXBfact = RF.lu(AXB, check = false)
-
-    if !ℒ.issuccess(AXBfact)
-        AXBfact = ℒ.svd(AXB)
-    end
-
-    invAXB = inv(AXBfact)
-
-    AA = invAXB * A
-
-    X² = X * X
-
-    X̃ = zeros(length(𝐒₁[:,1:end-T.nExo]), N)
-
-    p = zero(∇̂₁)
-
-    initial_guess = zero(invAXB)
-
-    # https://arxiv.org/abs/2011.11430  
-    for i in 1:N
-        p .= ℱ.partials.(∇₁, i)
-
-        dA = p[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-        dB = p[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-        dC = p[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
-        
-        CC = invAXB * (dA * X² + dC + dB * X)
-
-        if ℒ.norm(CC) < eps() continue end
-
-        dX, solved = solve_sylvester_equation(AA, -X, -CC, 
-                                                initial_guess = initial_guess,
-                                                sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.tol.sylvester_tol,
-                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
-                                                verbose = opts.verbose)
-
-        # if !solved
-        #     dX, solved = solve_sylvester_equation(AA, -X, -CC, 
-        #                                             sylvester_algorithm = :bicgstab, # more robust than sylvester
-        #                                             initial_guess = initial_guess, 
-        #                                             verbose = verbose)
-
-        #     if !solved
-        #         return ∇₁, qme_sol, false
-        #     end
-        # end
-    
-        initial_guess = dX
-
-        X̃[:,i] = vec(dX[:,T.past_not_future_and_mixed_idx])
-    end
-
-    x = reshape(map(𝐒₁[:,1:end-T.nExo], eachrow(X̃)) do v, p
-            ℱ.Dual{Z}(v, p...) # Z is the tag
-        end, size(𝐒₁[:,1:end-T.nExo]))
-
-    Jm = @view(ℒ.diagm(ones(S,T.nVars))[T.past_not_future_and_mixed_idx,:])
-    
-    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(S,T.nVars))[T.future_not_past_and_mixed_idx,:]
-    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
-
-    B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
-
-    return hcat(x, B), qme_sol, solved
-end 
-
-
-
 
 
 function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
@@ -276,6 +183,97 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 
     # end # timeit_debug
 
+    # @timeit_debug timer "Setup second order matrices" begin
+    # @timeit_debug timer "A" begin
+
+    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
+
+    A = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₁₊
+    
+    # end # timeit_debug
+    # @timeit_debug timer "C" begin
+
+    # ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = ∇₂ * (ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋) + ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎) * M₂.𝛔) * M₂.𝐂₂ 
+    ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹ = mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, M₂.𝐂₂) + mat_mult_kron(∇₂, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎, M₂.𝛔 * M₂.𝐂₂)
+    
+    C = ∇₁₊𝐒₁➕∇₁₀lu \ ∇₂⎸k⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋➕𝛔k𝐒₁₊╱𝟎⎹
+
+    # end # timeit_debug
+    # @timeit_debug timer "B" begin
+
+    # 𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
+
+    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0)
+    B = mat_mult_kron(M₂.𝐔₂, 𝐒₁₋╱𝟏ₑ, 𝐒₁₋╱𝟏ₑ, M₂.𝐂₂) + M₂.𝐔₂ * M₂.𝛔 * M₂.𝐂₂
+
+    # end # timeit_debug
+    # end # timeit_debug
+    # @timeit_debug timer "Solve sylvester equation" begin
+
+    𝐒₂, solved = solve_sylvester_equation(A, B, C, 
+                                            initial_guess = initial_guess,
+                                            sylvester_algorithm = opts.sylvester_algorithm²,
+                                            tol = opts.tol.sylvester_tol,
+                                            𝕊ℂ = ℂ.sylvester_caches,
+                                            acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                            verbose = opts.verbose) # timer = timer)
+
+    # end # timeit_debug
+    # # @timeit_debug timer "Refine sylvester equation" begin
+
+    # # if !solved && !(sylvester_algorithm == :doubling)
+    # #     𝐒₂, solved = solve_sylvester_equation(A, B, C, 
+    # #                                             # init = 𝐒₂, 
+    # #                                             # sylvester_algorithm = :gmres, 
+    # #                                             initial_guess = initial_guess,
+    # #                                             sylvester_algorithm = :doubling, 
+    # #                                             verbose = verbose, 
+    # #                                             # tol = tol, 
+    # #                                             timer = timer)
+    # # end
+
+    # # end # timeit_debug
+    # @timeit_debug timer "Post-process" begin
+
+    # 𝐒₂ *= M₂.𝐔₂
+
+    𝐒₂ = choose_matrix_format(𝐒₂, multithreaded = false)
+
+    # end # timeit_debug
+    # end # timeit_debug
+
+    return 𝐒₂, solved
+end
+
+end # dispatch_doctor
+
+@stable default_mode = "disable" begin
+
+function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
+                                            ∇₂::SparseMatrixCSC{S}, #second order derivatives
+                                            ∇₃::SparseMatrixCSC{S}, #third order derivatives
+                                            𝑺₁::AbstractMatrix{S}, #first order solution
+                                            𝐒₂::SparseMatrixCSC{S}, #second order solution
+                                            M₂::second_order_auxiliary_matrices,  # aux matrices second order
+                                            M₃::third_order_auxiliary_matrices,   # aux matrices third order
+                                            ℂC::caches;
+                                            T::timings,
+                                            initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                            opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
+    if !(eltype(ℂC.third_order_caches.Ŝ) == S)
+        ℂC.third_order_caches = Higher_order_caches(T = S)
+    end
+    ℂ = ℂC.third_order_caches
+
+    # @timeit_debug timer "Calculate third order solution" begin
+    # inspired by Levintal
+
+    # Indices and number of variables
+    i₊ = T.future_not_past_and_mixed_idx;
+    i₋ = T.past_not_future_and_mixed_idx;
+
+    n₋ = T.nPast_not_future_and_mixed
+    n₊ = T.nFuture_not_past_and_mixed
     nₑ = T.nExo;
     n = T.nVars
     nₑ₋ = n₋ + 1 + nₑ
@@ -496,196 +494,3 @@ function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order
 end
 
 end # dispatch_doctor
-
-function rrule(::typeof(calculate_third_order_solution), 
-                ∇₁::AbstractMatrix{S}, #first order derivatives
-                ∇₂::SparseMatrixCSC{S}, #second order derivatives
-                ∇₃::SparseMatrixCSC{S}, #third order derivatives
-                𝑺₁::AbstractMatrix{S}, #first order solution
-                𝐒₂::SparseMatrixCSC{S}, #second order solution
-                M₂::second_order_auxiliary_matrices,  # aux matrices second order
-                M₃::third_order_auxiliary_matrices,   # aux matrices third order
-                ℂC::caches;
-                T::timings,
-                initial_guess::AbstractMatrix{Float64} = zeros(0,0),
-                opts::CalculationOptions = merge_calculation_options()) where S <: AbstractFloat 
-    if !(eltype(ℂC.third_order_caches.Ŝ) == S)
-        ℂC.third_order_caches = Higher_order_caches(T = S)
-    end
-    ℂ = ℂC.third_order_caches
-
-    # @timeit_debug timer "Third order solution - forward" begin
-    # inspired by Levintal
-
-    # Indices and number of variables
-    i₊ = T.future_not_past_and_mixed_idx;
-    i₋ = T.past_not_future_and_mixed_idx;
-
-    n₋ = T.nPast_not_future_and_mixed
-    n₊ = T.nFuture_not_past_and_mixed
-    nₑ = T.nExo;
-    n = T.nVars
-    nₑ₋ = n₋ + 1 + nₑ
-
-    # @timeit_debug timer "Setup matrices" begin
-
-    # 1st order solution
-    𝐒₁ = @views [𝑺₁[:,1:n₋] zeros(n) 𝑺₁[:,n₋+1:end]]# |> sparse
-    
-    𝐒₁₋╱𝟏ₑ = @views [𝐒₁[i₋,:]; zeros(nₑ + 1, n₋) ℒ.I(nₑ + 1)[1,:] zeros(nₑ + 1, nₑ)]
-
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 1.0, min_length = 10)
-
-    ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋ = @views [(𝐒₁ * 𝐒₁₋╱𝟏ₑ)[i₊,:]
-                                𝐒₁
-                                ℒ.I(nₑ₋)[[range(1,n₋)...,n₋ + 1 .+ range(1,nₑ)...],:]] #|> sparse
-
-    𝐒₁₊╱𝟎 = @views [𝐒₁[i₊,:]
-                    zeros(n₋ + n + nₑ, nₑ₋)]# |> sparse
-    𝐒₁₊╱𝟎 = choose_matrix_format(𝐒₁₊╱𝟎, density_threshold = 1.0, min_length = 10)
-
-    ∇₁₊𝐒₁➕∇₁₀ = @views -∇₁[:,1:n₊] * 𝐒₁[i₊,1:n₋] * ℒ.I(n)[i₋,:] - ∇₁[:,range(1,n) .+ n₊]
-
-    # end # timeit_debug
-    # @timeit_debug timer "Invert matrix" begin
-
-    ∇₁₊𝐒₁➕∇₁₀lu = ℒ.lu(∇₁₊𝐒₁➕∇₁₀, check = false)
-
-    if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
-        if opts.verbose println("Second order solution: inversion failed") end
-        return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
-    end
-
-    spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
-    spinv = choose_matrix_format(spinv)
-
-    # end # timeit_debug
-    
-    ∇₁₊ = @views ∇₁[:,1:n₊] * ℒ.I(n)[i₊,:]
-
-    A = spinv * ∇₁₊
-
-    # tmpkron = ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔)
-    tmpkron = choose_matrix_format(ℒ.kron(𝐒₁₋╱𝟏ₑ,M₂.𝛔), density_threshold = 1.0, tol = opts.tol.droptol)
-    kron𝐒₁₋╱𝟏ₑ = ℒ.kron(𝐒₁₋╱𝟏ₑ,𝐒₁₋╱𝟏ₑ)
-    
-    # @timeit_debug timer "Setup B" begin
-    # @timeit_debug timer "Add tmpkron" begin
-
-    B = tmpkron
-
-    # end # timeit_debug
-    # @timeit_debug timer "Step 1" begin
-
-    B += M₃.𝐏₁ₗ̄ * tmpkron * M₃.𝐏₁ᵣ̃
-
-    # end # timeit_debug
-    # @timeit_debug timer "Step 2" begin
-
-    B += M₃.𝐏₂ₗ̄ * tmpkron * M₃.𝐏₂ᵣ̃
-
-    # end # timeit_debug
-    # @timeit_debug timer "Mult" begin
-
-    B *= M₃.𝐂₃
-    B = choose_matrix_format(M₃.𝐔₃ * B, tol = opts.tol.droptol, multithreaded = false)
-
-    # end # timeit_debug
-    # @timeit_debug timer "3rd Kronecker power" begin
-
-    B += compressed_kron³(𝐒₁₋╱𝟏ₑ, tol = opts.tol.droptol, sparse_preallocation = ℂ.tmp_sparse_prealloc1)#, timer = timer)
-
-    # end # timeit_debug
-    # end # timeit_debug
-    # @timeit_debug timer "Setup C" begin
-    # @timeit_debug timer "Initialise smaller matrices" begin
-
-    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = @views [(𝐒₂ * kron𝐒₁₋╱𝟏ₑ + 𝐒₁ * [𝐒₂[i₋,:] ; zeros(nₑ + 1, nₑ₋^2)])[i₊,:]
-            𝐒₂
-            zeros(n₋ + nₑ, nₑ₋^2)];
-            
-    ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎 = choose_matrix_format(⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, density_threshold = 0.0, min_length = 10, tol = opts.tol.droptol)
-        
-    𝐒₂₊╱𝟎 = @views [𝐒₂[i₊,:] 
-            zeros(n₋ + n + nₑ, nₑ₋^2)];
-
-    aux = M₃.𝐒𝐏 * ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋
-
-    # end # timeit_debug
-    # @timeit_debug timer "∇₃" begin
-
-    # tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    # tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, tmpkron0 * M₂.𝛔)
-
-    if length(ℂ.tmpkron0) > 0 && eltype(ℂ.tmpkron0) == S
-        ℒ.kron!(ℂ.tmpkron0, 𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    else
-        ℂ.tmpkron0 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₁₊╱𝟎)
-    end
-
-    if length(ℂ.tmpkron22) > 0 && eltype(ℂ.tmpkron22) == S
-        ℒ.kron!(ℂ.tmpkron22, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
-    else
-        ℂ.tmpkron22 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ℂ.tmpkron0 * M₂.𝛔)
-    end
-
-    𝐔∇₃ = ∇₃ * M₃.𝐔∇₃
-
-    𝐗₃ = 𝐔∇₃ * ℂ.tmpkron22 + 𝐔∇₃ * M₃.𝐏₁ₗ̂ * ℂ.tmpkron22 * M₃.𝐏₁ᵣ̃ + 𝐔∇₃ * M₃.𝐏₂ₗ̂ * ℂ.tmpkron22 * M₃.𝐏₂ᵣ̃
-    
-    # end # timeit_debug
-    # @timeit_debug timer "∇₂ & ∇₁₊" begin
-
-    𝐒₂₊╱𝟎 = choose_matrix_format(𝐒₂₊╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
-
-    if length(ℂ.tmpkron1) > 0 && eltype(ℂ.tmpkron1) == S
-        ℒ.kron!(ℂ.tmpkron1, 𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-    else
-        ℂ.tmpkron1 = ℒ.kron(𝐒₁₊╱𝟎, 𝐒₂₊╱𝟎)
-    end
-
-    if length(ℂ.tmpkron2) > 0 && eltype(ℂ.tmpkron2) == S
-        ℒ.kron!(ℂ.tmpkron2, M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
-    else
-        ℂ.tmpkron2 = ℒ.kron(M₂.𝛔, 𝐒₁₋╱𝟏ₑ)
-    end
-    
-    ∇₁₊ = choose_matrix_format(∇₁₊, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
-
-    𝐒₂₋╱𝟎 = [𝐒₂[i₋,:] ; zeros(size(𝐒₁)[2] - n₋, nₑ₋^2)]
-
-    𝐒₂₋╱𝟎 = choose_matrix_format(𝐒₂₋╱𝟎, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
-
-    # @timeit_debug timer "Step 1" begin
-    out2 = ∇₂ * ℂ.tmpkron1 * ℂ.tmpkron2 # this help
-
-    # end # timeit_debug
-    # @timeit_debug timer "Step 2" begin
-
-    # end # timeit_debug  
-    # @timeit_debug timer "Step 3" begin
-
-    out2 += ∇₂ * ℂ.tmpkron1 * M₃.𝐏₁ₗ * ℂ.tmpkron2 * M₃.𝐏₁ᵣ# |> findnz
-
-    # end # timeit_debug
-    # @timeit_debug timer "Step 4" begin
-
-    out2 += mat_mult_kron(∇₂, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, ⎸𝐒₂k𝐒₁₋╱𝟏ₑ➕𝐒₁𝐒₂₋⎹╱𝐒₂╱𝟎, sparse = true, sparse_preallocation = ℂ.tmp_sparse_prealloc2)# |> findnz
-
-    # out2 += ∇₂ * ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎 * M₂.𝛔)# |> findnz
-    𝐒₂₊╱𝟎𝛔 = 𝐒₂₊╱𝟎 * M₂.𝛔
-    
-    if length(ℂ.tmpkron11) > 0 && eltype(ℂ.tmpkron11) == S
-        ℒ.kron!(ℂ.tmpkron11, ⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
-    else
-        ℂ.tmpkron11 = ℒ.kron(⎸𝐒₁𝐒₁₋╱𝟏ₑ⎹╱𝐒₁╱𝟏ₑ₋, 𝐒₂₊╱𝟎𝛔)
-    end
-    out2 += ∇₂ * ℂ.tmpkron11# |> findnz
-
-    # end # timeit_debug
-    # @timeit_debug timer "Step 5" begin
-
-    𝐒₁₋╱𝟏ₑ = choose_matrix_format(𝐒₁₋╱𝟏ₑ, density_threshold = 0.0, tol = opts.tol.droptol)
-    if length(ℂ.tmpkron12) > 0 && eltype(ℂ.tmpkron12) == S
-        ℒ.kron!(ℂ.tmpkron12, 𝐒₁₋╱𝟏ₑ, 𝐒₂₋╱𝟎)
-    else

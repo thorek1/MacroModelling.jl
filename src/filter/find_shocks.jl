@@ -1052,7 +1052,6 @@ end
 end # dispatch_doctor
 
 
-
 @stable default_mode = "disable" begin
 
 function find_shocks(::Val{:LagrangeNewton},
@@ -1223,8 +1222,6 @@ end
 
 
 end # dispatch_doctor
-
-
 
 
 

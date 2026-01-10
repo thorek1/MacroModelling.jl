@@ -1,112 +1,101 @@
-# ForwardDiff Dual number support for MacroModelling.jl
-# This file contains function definitions that handle ForwardDiff.Dual types
-# for automatic differentiation using forward mode.
 
-# These functions are included directly in the main module (not an extension)
-# because they are essential for the package's core functionality.
+function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
+                                        T::timings, 
+                                        opts::CalculationOptions = merge_calculation_options(),
+                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
+    ∇̂₁ = ℱ.value.(∇₁)
 
-# Note: ℱ is aliased to ForwardDiff in the main module
-# All functions here handle ℱ.Dual{Z,S,N} types where:
-# - Z is the tag
-# - S is the value type  
-# - N is the number of partials
+    expand = [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:], ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
+
+    A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+    B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; T = T, opts = opts, initial_guess = initial_guess)
+
+    if !solved 
+        return ∇₁, qme_sol, false
+    end
+
+    X = 𝐒₁[:,1:end-T.nExo] * expand[2]
+    
+    AXB = A * X + B
+    
+    AXBfact = RF.lu(AXB, check = false)
+
+    if !ℒ.issuccess(AXBfact)
+        AXBfact = ℒ.svd(AXB)
+    end
+
+    invAXB = inv(AXBfact)
+
+    AA = invAXB * A
+
+    X² = X * X
+
+    X̃ = zeros(length(𝐒₁[:,1:end-T.nExo]), N)
+
+    p = zero(∇̂₁)
+
+    initial_guess = zero(invAXB)
+
+    # https://arxiv.org/abs/2011.11430  
+    for i in 1:N
+        p .= ℱ.partials.(∇₁, i)
+
+        dA = p[:,1:T.nFuture_not_past_and_mixed] * expand[1]
+        dB = p[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+        dC = p[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+        
+        CC = invAXB * (dA * X² + dC + dB * X)
+
+        if ℒ.norm(CC) < eps() continue end
+
+        dX, solved = solve_sylvester_equation(AA, -X, -CC, 
+                                                initial_guess = initial_guess,
+                                                sylvester_algorithm = opts.sylvester_algorithm²,
+                                                tol = opts.tol.sylvester_tol,
+                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
+                                                verbose = opts.verbose)
+
+        # if !solved
+        #     dX, solved = solve_sylvester_equation(AA, -X, -CC, 
+        #                                             sylvester_algorithm = :bicgstab, # more robust than sylvester
+        #                                             initial_guess = initial_guess, 
+        #                                             verbose = verbose)
+
+        #     if !solved
+        #         return ∇₁, qme_sol, false
+        #     end
+        # end
+    
+        initial_guess = dX
+
+        X̃[:,i] = vec(dX[:,T.past_not_future_and_mixed_idx])
+    end
+
+    x = reshape(map(𝐒₁[:,1:end-T.nExo], eachrow(X̃)) do v, p
+            ℱ.Dual{Z}(v, p...) # Z is the tag
+        end, size(𝐒₁[:,1:end-T.nExo]))
+
+    Jm = @view(ℒ.diagm(ones(S,T.nVars))[T.past_not_future_and_mixed_idx,:])
+    
+    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(S,T.nVars))[T.future_not_past_and_mixed_idx,:]
+    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+
+    B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
+
+    return hcat(x, B), qme_sol, solved
+end 
 
 
-# ========== src/MacroModelling.jl ==========
-
-# Lines 1846-1935
 function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {Z,S,N,T <: Real, F <: AbstractFloat}
     sparse(Ŝ)
 end
 
 
-function compressed_kron³(a::AbstractMatrix{T};
-                    rowmask::Vector{Int} = Int[],
-                    colmask::Vector{Int} = Int[],
-                    # timer::TimerOutput = TimerOutput(),
-                    tol::AbstractFloat = eps(),
-                    sparse_preallocation::Tuple{Vector{Int}, Vector{Int}, Vector{T}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{T}} = (Int[], Int[], T[], Int[], Int[], Int[], T[])) where T <: Real
-    # @timeit_debug timer "Compressed 3rd kronecker power" begin
-          
-    # @timeit_debug timer "Preallocation" begin
-    
-    a_is_adjoint = typeof(a) <: ℒ.Adjoint{T,Matrix{T}}
-    
-    if a_is_adjoint
-        â = copy(a')
-        a = sparse(a')
-        
-        rmask = colmask
-        colmask = rowmask
-        rowmask = rmask
-    elseif typeof(a) <: DenseMatrix{T}
-        â = copy(a)
-        a = sparse(a)
-    else
-        â = convert(Matrix, a)  # Convert to dense matrix for faster access
-    end
-    # Get the number of rows and columns
-    n_rows, n_cols = size(a)
-    
-    # Calculate the number of unique triplet indices for rows and columns
-    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6    # For rows: i ≤ j ≤ k
-    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6    # For columns: i ≤ j ≤ k
 
-    if rowmask == Int[0] || colmask == Int[0]
-        if a_is_adjoint
-            return spzeros(T, m3_cols, m3_rows)
-        else
-            return spzeros(T, m3_rows, m3_cols)
-        end
-    end
-    # Initialize arrays to collect indices and values
-    # Estimate an upper bound for non-zero entries to preallocate arrays
-    lennz = nnz(a) # a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
-
-    m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
-    m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
-
-    m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 3 : 4
-
-    if length(sparse_preallocation[1]) == 0
-        estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp, 10000))
-
-        resize!(sparse_preallocation[1], estimated_nnz)
-        resize!(sparse_preallocation[2], estimated_nnz)
-        resize!(sparse_preallocation[3], estimated_nnz)
-
-        I = sparse_preallocation[1]
-        J = sparse_preallocation[2]
-        V = sparse_preallocation[3]
-    else
-        estimated_nnz = length(sparse_preallocation[3])
-
-        resize!(sparse_preallocation[1], estimated_nnz)
-
-        I = sparse_preallocation[1]
-        J = sparse_preallocation[2]
-        V = sparse_preallocation[3]
-    end
-
-    # k = Threads.Atomic{Int}(0)  # Counter for non-zero entries
-    # k̄ = Threads.Atomic{Int}(0)  # effectively slower than the non-threaded version
-
-    k = 0
-
-    # end # timeit_debug
-
-    # @timeit_debug timer "findnz" begin
-                
-    # Find unique non-zero row and column indices
-    rowinds, colinds, _ = findnz(a)
-    ui = unique(rowinds)
-    uj = unique(colinds)
-       
-    # end # timeit_debug
-
-    # @timeit_debug timer "Loop" begin
-
-# Lines 6378-6446
+function calculate_second_order_stochastic_steady_state(::Val{:newton}, 
                                                         𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
                                                         𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
                                                         x::Vector{ℱ.Dual{Z,S,N}},
@@ -177,7 +166,8 @@ function compressed_kron³(a::AbstractMatrix{T};
     end, size(x̂)), solved
 end
 
-# Lines 6721-6797
+
+function calculate_third_order_stochastic_steady_state(::Val{:newton}, 
                                                         𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
                                                         𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
                                                         𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
@@ -256,7 +246,7 @@ end
     end, size(x̂)), solved
 end
 
-# Lines 8683-8735
+
 function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Dual{Z,S,N}}; tol::AbstractFloat = eps()) where {Z,S,N}
     nrows = length(V)
     ncols = length(V.nzval[1].partials)
@@ -283,35 +273,8 @@ function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Du
 end
 
 
-function compute_irf_responses(𝓂::ℳ,
-                                state_update::Function,
-                                initial_state::Union{Vector{Vector{Float64}},Vector{Float64}},
-                                level::Vector{Float64};
-                                periods::Int,
-                                shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}},
-                                variables::Union{Symbol_input,String_input},
-                                shock_size::Real,
-                                negative_shock::Bool,
-                                generalised_irf::Bool,
-                                generalised_irf_warmup_iterations::Int,
-                                generalised_irf_draws::Int,
-                                enforce_obc::Bool,
-                                algorithm::Symbol)
 
-    if enforce_obc
-        function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
-            unconditional_forecast_horizon = 𝓂.max_obc_horizon
-
-            reference_ss = 𝓂.solution.non_stochastic_steady_state
-
-            obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
-
-            periods_per_shock = 𝓂.max_obc_horizon + 1
-
-            num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
-
-
-# Lines 9941-10061
+function get_NSSS_and_parameters(𝓂::ℳ, 
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
                                 opts::CalculationOptions = merge_calculation_options(),
                                 cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
@@ -434,146 +397,74 @@ function compute_irf_responses(𝓂::ℳ,
     end, size(SS_and_pars)), (solution_error, iters)
 end
 
-# ========== src/perturbation.jl ==========
 
-# Lines 279-369
-function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
-                                        T::timings, 
-                                        opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
-    ∇̂₁ = ℱ.value.(∇₁)
 
-    expand = [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:], ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
+function run_kalman_iterations(A::Matrix{S}, 
+                                𝐁::Matrix{S}, 
+                                C::Matrix{Float64}, 
+                                P::Matrix{S}, 
+                                data_in_deviations::Matrix{S}; 
+                                presample_periods::Int = 0,
+                                on_failure_loglikelihood::U = -Inf,
+                                # timer::TimerOutput = TimerOutput(),
+                                verbose::Bool = false)::S where {S <: ℱ.Dual, U <: AbstractFloat}
+    # @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
+    u = zeros(S, size(C,2))
 
-    A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    z = C * u
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; T = T, opts = opts, initial_guess = initial_guess)
+    loglik = S(0.0)
 
-    if !solved 
-        return ∇₁, qme_sol, false
+    F = similar(C * C')
+
+    K = similar(C')
+
+    for t in 1:size(data_in_deviations, 2)
+        if !all(isfinite.(z)) 
+            if verbose println("KF not finite at step $t") end
+            return on_failure_loglikelihood 
+        end
+
+        v = data_in_deviations[:, t] - z
+
+        F = C * P * C'
+
+        luF = ℒ.lu(F, check = false) ###
+
+        if !ℒ.issuccess(luF)
+            if verbose println("KF factorisation failed step $t") end
+            return on_failure_loglikelihood
+        end
+
+        Fdet = ℒ.det(luF)
+
+        # Early return if determinant is too small, indicating numerical instability.
+        if Fdet < eps(Float64)
+            if verbose println("KF factorisation failed step $t") end
+            return on_failure_loglikelihood
+        end
+
+        invF = inv(luF) ###
+
+        if t > presample_periods
+            loglik += log(Fdet) + ℒ.dot(v, invF, v)###
+        end
+
+        K = P * C' * invF
+
+        P = A * (P - K * C * P) * A' + 𝐁
+
+        u = A * (u + K * v)
+
+        z = C * u
     end
 
-    X = 𝐒₁[:,1:end-T.nExo] * expand[2]
-    
-    AXB = A * X + B
-    
-    AXBfact = RF.lu(AXB, check = false)
+    # end # timeit_debug
 
-    if !ℒ.issuccess(AXBfact)
-        AXBfact = ℒ.svd(AXB)
-    end
-
-    invAXB = inv(AXBfact)
-
-    AA = invAXB * A
-
-    X² = X * X
-
-    X̃ = zeros(length(𝐒₁[:,1:end-T.nExo]), N)
-
-    p = zero(∇̂₁)
-
-    initial_guess = zero(invAXB)
-
-    # https://arxiv.org/abs/2011.11430  
-    for i in 1:N
-        p .= ℱ.partials.(∇₁, i)
-
-        dA = p[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-        dB = p[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-        dC = p[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
-        
-        CC = invAXB * (dA * X² + dC + dB * X)
-
-        if ℒ.norm(CC) < eps() continue end
-
-        dX, solved = solve_sylvester_equation(AA, -X, -CC, 
-                                                initial_guess = initial_guess,
-                                                sylvester_algorithm = opts.sylvester_algorithm²,
-                                                tol = opts.tol.sylvester_tol,
-                                                acceptance_tol = opts.tol.sylvester_acceptance_tol,
-                                                verbose = opts.verbose)
-
-        # if !solved
-        #     dX, solved = solve_sylvester_equation(AA, -X, -CC, 
-        #                                             sylvester_algorithm = :bicgstab, # more robust than sylvester
-        #                                             initial_guess = initial_guess, 
-        #                                             verbose = verbose)
-
-        #     if !solved
-        #         return ∇₁, qme_sol, false
-        #     end
-        # end
-    
-        initial_guess = dX
-
-        X̃[:,i] = vec(dX[:,T.past_not_future_and_mixed_idx])
-    end
-
-    x = reshape(map(𝐒₁[:,1:end-T.nExo], eachrow(X̃)) do v, p
-            ℱ.Dual{Z}(v, p...) # Z is the tag
-        end, size(𝐒₁[:,1:end-T.nExo]))
-
-    Jm = @view(ℒ.diagm(ones(S,T.nVars))[T.past_not_future_and_mixed_idx,:])
-    
-    ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(S,T.nVars))[T.future_not_past_and_mixed_idx,:]
-    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
-
-    B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
-
-    return hcat(x, B), qme_sol, solved
-end 
-
-
-
-
-# ========== src/algorithms/lyapunov.jl ==========
-
-# Lines 113-150
-function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}};
-                                    lyapunov_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-14,
-                                    acceptance_tol::AbstractFloat = 1e-12,
-                                    # timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-
-    Ã = copy(Â)
-    C̃ = copy(Ĉ)
-    
-    P̃ = zeros(length(P̂), N)
-    
-    # https://arxiv.org/abs/2011.11430  
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        C̃ .= ℱ.partials.(C, i)
-
-        X = Ã * P̂ * Â' + Â * P̂ * Ã' + C̃
-
-        if ℒ.norm(X) < eps() continue end
-
-        P, slvd = solve_lyapunov_equation(Â, X, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-        
-        solved = solved && slvd
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
+    return -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 end
 
-# ========== src/algorithms/sylvester.jl ==========
 
-# Lines 283-370
 function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     B::AbstractMatrix{ℱ.Dual{Z,S,N}},
                                     C::AbstractMatrix{ℱ.Dual{Z,S,N}};
@@ -628,44 +519,6 @@ function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 end
 
 
-
-function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
-                                    B::AbstractSparseMatrix{T},
-                                    C::AbstractSparseMatrix{T},
-                                    ::Val{:doubling};
-                                    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
-                                    # timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false,
-                                    tol::Float64 = 1e-14)::Tuple{AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
-                                    # see doi:10.1016/j.aml.2009.01.012
-    # guess_provided = true
-    
-    if length(initial_guess) == 0
-        # guess_provided = false
-        initial_guess = zero(C)
-    end
-    
-    𝐀  = copy(A)
-    𝐁  = copy(B)
-    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
-    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
-
-    # ℒ.rmul!(𝐂, -1)
-
-    max_iter = 500
-
-    iters = max_iter
-
-    for i in 1:max_iter
-        𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
-
-        𝐀 = 𝐀^2
-        𝐁 = 𝐁^2
-
-# ========== src/algorithms/quadratic_matrix_equation.jl ==========
-
-# Lines 509-649
 function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         B::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
@@ -726,4 +579,42 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
     end, size(X)), solved
 end
 
-end # dispatch_doctor
+
+function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
+                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}};
+                                    lyapunov_algorithm::Symbol = :doubling,
+                                    tol::AbstractFloat = 1e-14,
+                                    acceptance_tol::AbstractFloat = 1e-12,
+                                    # timer::TimerOutput = TimerOutput(),
+                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
+    # unpack: AoS -> SoA
+    Â = ℱ.value.(A)
+    Ĉ = ℱ.value.(C)
+
+    P̂, solved = solve_lyapunov_equation(Â, Ĉ, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+
+    Ã = copy(Â)
+    C̃ = copy(Ĉ)
+    
+    P̃ = zeros(length(P̂), N)
+    
+    # https://arxiv.org/abs/2011.11430  
+    for i in 1:N
+        Ã .= ℱ.partials.(A, i)
+        C̃ .= ℱ.partials.(C, i)
+
+        X = Ã * P̂ * Â' + Â * P̂ * Ã' + C̃
+
+        if ℒ.norm(X) < eps() continue end
+
+        P, slvd = solve_lyapunov_equation(Â, X, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+        
+        solved = solved && slvd
+
+        P̃[:,i] = vec(P)
+    end
+    
+    return reshape(map(P̂, eachrow(P̃)) do v, p
+        ℱ.Dual{Z}(v, p...) # Z is the tag
+    end, size(P̂)), solved
+end

@@ -398,7 +398,6 @@ end
 
 end # dispatch_doctor
 
-
 @stable default_mode = "disable" begin
 
 
@@ -627,8 +626,6 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
 end
 
 end # dispatch_doctor
-
-
 
 @stable default_mode = "disable" begin
 
@@ -1061,7 +1058,6 @@ end # dispatch_doctor
 
 
 
-
 @stable default_mode = "disable" begin
 
 
@@ -1386,8 +1382,6 @@ end
 
 
 end # dispatch_doctor
-
-
 
 @stable default_mode = "disable" begin
 

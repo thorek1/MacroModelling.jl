@@ -1,396 +1,4 @@
-# ChainRules rrule definitions for MacroModelling.jl
-# This file contains all reverse-mode automatic differentiation rules
-# for use with Zygote and other ChainRulesCore-compatible AD systems.
 
-# These rrules enable efficient gradient computation for DSGE model operations
-# including perturbation solutions, Kalman filtering, and steady state calculations.
-
-# =============================================================================
-# Basic operations
-# =============================================================================
-
-function rrule(::typeof(mul_reverse_AD!),
-                C::Matrix{S},
-                A::AbstractMatrix{M},
-                B::AbstractMatrix{N}) where {S <: Real, M <: Real, N <: Real}
-    project_A = ProjectTo(A)
-    project_B = ProjectTo(B)
-
-    function times_pullback(ȳ)
-        Ȳ = unthunk(ȳ)
-        dA = @thunk(project_A(Ȳ * B'))
-        dB = @thunk(project_B(A' * Ȳ))
-        return NoTangent(), NoTangent(), dA, dB
-    end
-
-    return ℒ.mul!(C,A,B), times_pullback
-end
-
-
-function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {T <: Real, F <: AbstractFloat}
-    project_Ŝ = ProjectTo(Ŝ)
-
-    function sparse_preallocated_pullback(Ω̄)
-        ΔΩ = unthunk(Ω̄)
-        ΔŜ = project_Ŝ(ΔΩ)
-        return NoTangent(), ΔŜ, NoTangent()
-    end
-
-    return sparse_preallocated!(Ŝ, ℂ = ℂ), sparse_preallocated_pullback
-end
-
-
-# ========== src/MacroModelling.jl ==========
-
-# Lines 6450-6524
-function rrule(::typeof(calculate_second_order_stochastic_steady_state),
-                                                        ::Val{:newton}, 
-                                                        𝐒₁::Matrix{Float64}, 
-                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
-                                                        x::Vector{Float64},
-                                                        𝓂::ℳ;
-                                                        # timer::TimerOutput = TimerOutput(),
-                                                        tol::AbstractFloat = 1e-14)
-    # @timeit_debug timer "Calculate SSS - forward" begin
-    # @timeit_debug timer "Setup indices" begin
-
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
-    
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-    
-    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    
-    # end # timeit_debug
-      
-    # @timeit_debug timer "Iterations" begin
-
-    max_iters = 100
-    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
-
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
-            return x, false
-        end
-        
-        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 - x)
-
-        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
-            break
-        end
-        
-        # x += Δx
-        ℒ.axpy!(-1, Δx, x)
-    end
-
-    solved = isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)         
-
-    # println(x)
-
-    ∂𝐒₁ =  zero(𝐒₁)
-    ∂𝐒₂ =  zero(𝐒₂)
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    function second_order_stochastic_steady_state_pullback(∂x)
-        # @timeit_debug timer "Calculate SSS - pullback" begin
-
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
-
-        ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed] = S' * x'
-        
-        ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
-
-        # end # timeit_debug
-
-        return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent()
-    end
-
-    return (x, solved), second_order_stochastic_steady_state_pullback
-end
-
-# Lines 6801-6868
-function rrule(::typeof(calculate_third_order_stochastic_steady_state),
-                                                        ::Val{:newton}, 
-                                                        𝐒₁::Matrix{Float64}, 
-                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
-                                                        𝐒₃::AbstractSparseMatrix{Float64},
-                                                        x::Vector{Float64},
-                                                        𝓂::ℳ;
-                                                        tol::AbstractFloat = 1e-14)
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
-    
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-    
-    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
-    
-    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
-    
-    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
-
-    max_iters = 100
-    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
-        
-        ∂x̂ = ℒ.lu!(∂x, check = false)
-        
-        if !ℒ.issuccess(∂x̂)
-            return x, false
-        end
-        
-        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6 - x)
-
-        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)
-            break
-        end
-        
-        # x += Δx
-        ℒ.axpy!(-1, Δx, x)
-    end
-
-    solved = isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)         
-
-    ∂𝐒₁ =  zero(𝐒₁)
-    ∂𝐒₂ =  zero(𝐒₂)
-    ∂𝐒₃ =  zero(𝐒₃)
-
-    function third_order_stochastic_steady_state_pullback(∂x)
-        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
-
-        ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed] = S' * x'
-        
-        ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
-
-        ∂𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))' / 6
-
-        return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, ∂𝐒₃, NoTangent(), NoTangent(), NoTangent()
-    end
-
-    return (x, solved), third_order_stochastic_steady_state_pullback
-end
-
-# Lines 8566-8591
-function rrule(::typeof(calculate_jacobian), 
-                parameters, 
-                SS_and_pars, 
-                𝓂)#;
-                # timer::TimerOutput = TimerOutput())
-    # @timeit_debug timer "Calculate jacobian - forward" begin
-
-    jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
-
-    function calculate_jacobian_pullback(∂∇₁)
-        # @timeit_debug timer "Calculate jacobian - reverse" begin
-
-        𝓂.jacobian_parameters[2](𝓂.jacobian_parameters[1], parameters, SS_and_pars)
-        𝓂.jacobian_SS_and_pars[2](𝓂.jacobian_SS_and_pars[1], parameters, SS_and_pars)
-
-        ∂parameters = 𝓂.jacobian_parameters[1]' * vec(∂∇₁)
-        ∂SS_and_pars = 𝓂.jacobian_SS_and_pars[1]' * vec(∂∇₁)
-
-        # end # timeit_debug
-        # end # timeit_debug
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
-    end
-
-    return jacobian, calculate_jacobian_pullback
-end
-
-# Lines 8614-8633
-function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
-    hessian = calculate_hessian(parameters, SS_and_pars, 𝓂)
-
-    function calculate_hessian_pullback(∂∇₂)
-        # @timeit_debug timer "Calculate hessian - reverse" begin
-
-        𝓂.hessian_parameters[2](𝓂.hessian_parameters[1], parameters, SS_and_pars)
-        𝓂.hessian_SS_and_pars[2](𝓂.hessian_SS_and_pars[1], parameters, SS_and_pars)
-
-        ∂parameters = 𝓂.hessian_parameters[1]' * vec(∂∇₂)
-        ∂SS_and_pars = 𝓂.hessian_SS_and_pars[1]' * vec(∂∇₂)
-
-        # end # timeit_debug
-        # end # timeit_debug
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
-    end
-
-    return hessian, calculate_hessian_pullback
-end
-
-# Lines 8658-8679
-function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_pars, 𝓂) # ;
-    # timer::TimerOutput = TimerOutput())
-    # @timeit_debug timer "3rd order derivatives - forward" begin
-    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)
-    # end # timeit_debug
-
-    function calculate_third_order_derivatives_pullback(∂∇₃)
-        # @timeit_debug timer "3rd order derivatives - pullback" begin
-        𝓂.third_order_derivatives_parameters[2](𝓂.third_order_derivatives_parameters[1], parameters, SS_and_pars)
-        𝓂.third_order_derivatives_SS_and_pars[2](𝓂.third_order_derivatives_SS_and_pars[1], parameters, SS_and_pars)
-
-        ∂parameters = 𝓂.third_order_derivatives_parameters[1]' * vec(∂∇₃)
-        ∂SS_and_pars = 𝓂.third_order_derivatives_SS_and_pars[1]' * vec(∂∇₃)
-
-        # end # timeit_debug
-        # end # timeit_debug
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
-    end
-
-    return third_order_derivatives, calculate_third_order_derivatives_pullback
-end
-
-# Lines 9814-9936
-function rrule(::typeof(get_NSSS_and_parameters), 
-                𝓂::ℳ, 
-                parameter_values::Vector{S}; 
-                opts::CalculationOptions = merge_calculation_options(),
-                cold_start::Bool = false) where S <: Real
-                # timer::TimerOutput = TimerOutput(),
-    # @timeit_debug timer "Calculate NSSS - forward" begin
-
-    # Use custom steady state function if available, otherwise use default solver
-    if !isnothing(𝓂.custom_steady_state_function)
-        SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
-
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
-
-        if length(SS_and_pars) != expected_length
-            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars)) values, expected $expected_length."))
-        end
-
-        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
-
-        𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
-
-        solution_error = sum(abs, residual)
-        
-        iters = 0
-
-        if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-            throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol)."))
-        end
-        
-        var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
-
-        calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
-
-        SS_and_pars_tmp = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
-
-        SS_and_pars_tmp[[var_idx..., calib_idx...]] = SS_and_pars
-
-        SS_and_pars = SS_and_pars_tmp
-    else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
-    end
-
-    # end # timeit_debug
-
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
-        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    end
-
-    # @timeit_debug timer "Calculate NSSS - pullback" begin
-
-    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-        
-    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
-
-    SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
-
-    # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
-    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-
-    ∂ = parameter_values
-    C = SS_and_pars[indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag)] # [dyn_ss_idx])
-
-    if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
-        if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
-            jac_buffer.nzval .= 0
-        else
-            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
-        end
-    else
-        jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
-    end
-
-    𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
-
-    ∂SS_equations_∂parameters = jac_buffer
-
-    
-    if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(SS_and_pars)
-        if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
-            jac_buffer.nzval .= 0
-        else
-            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
-        end
-    else
-        jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
-    end
-
-    𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
-
-    ∂SS_equations_∂SS_and_pars = jac_buffer
-
-    ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
-
-    if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-        return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    end
-
-    JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
-
-    jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.parameters))
-    
-    for (i,v) in enumerate(SS_and_pars_names)
-        if v in unknowns
-            jvp[i,:] = JVP[indexin([v], unknowns),:]
-        end
-    end
-
-    # end # timeit_debug
-    # end # timeit_debug
-
-    # try block-gmres here
-    function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
-        # println(∂SS_and_pars)
-        return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
-    end
-
-
-    return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
-end
-
-# ========== src/perturbation.jl ==========
-
-# Lines 120-275
 function rrule(::typeof(calculate_first_order_solution), 
                 ∇₁::Matrix{R};
                 T::timings, 
@@ -548,7 +156,8 @@ function rrule(::typeof(calculate_first_order_solution),
     return (hcat(𝐒ᵗ, ∇̂ₑ), sol, solved), first_order_solution_pullback
 end
 
-# Lines 499-765
+
+
 function rrule(::typeof(calculate_second_order_solution), 
                     ∇₁::AbstractMatrix{S}, #first order derivatives
                     ∇₂::SparseMatrixCSC{S}, #second order derivatives
@@ -817,7 +426,8 @@ function rrule(::typeof(calculate_second_order_solution),
     return (𝐒₂, solved), second_order_solution_pullback
 end
 
-# Lines 1015-1583
+
+
 function rrule(::typeof(calculate_third_order_solution), 
                 ∇₁::AbstractMatrix{S}, #first order derivatives
                 ∇₂::SparseMatrixCSC{S}, #second order derivatives
@@ -1388,85 +998,385 @@ function rrule(::typeof(calculate_third_order_solution),
     return (𝐒₃, solved), third_order_solution_pullback
 end
 
-# ========== src/algorithms/lyapunov.jl ==========
 
-# Lines 83-109
-function rrule(::typeof(solve_lyapunov_equation),
-                A::AbstractMatrix{Float64},
-                C::AbstractMatrix{Float64};
-                lyapunov_algorithm::Symbol = :doubling,
-                tol::AbstractFloat = 1e-14,
-                acceptance_tol::AbstractFloat = 1e-12,
+function rrule( ::typeof(mul_reverse_AD!),
+                C::Matrix{S},
+                A::AbstractMatrix{M},
+                B::AbstractMatrix{N}) where {S <: Real, M <: Real, N <: Real}
+    project_A = ProjectTo(A)
+    project_B = ProjectTo(B)
+
+    function times_pullback(ȳ)
+        Ȳ = unthunk(ȳ)
+        dA = @thunk(project_A(Ȳ * B'))
+        dB = @thunk(project_B(A' * Ȳ))
+        return NoTangent(), NoTangent(), dA, dB
+    end
+
+    return ℒ.mul!(C,A,B), times_pullback
+end
+
+
+function rrule(::typeof(sparse_preallocated!), Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {T <: Real, F <: AbstractFloat}
+    project_Ŝ = ProjectTo(Ŝ)
+
+    function sparse_preallocated_pullback(Ω̄)
+        ΔΩ = unthunk(Ω̄)
+        ΔŜ = project_Ŝ(ΔΩ)
+        return NoTangent(), ΔŜ, NoTangent()
+    end
+
+    return sparse_preallocated!(Ŝ, ℂ = ℂ), sparse_preallocated_pullback
+end
+
+
+function rrule(::typeof(calculate_second_order_stochastic_steady_state),
+                                                        ::Val{:newton}, 
+                                                        𝐒₁::Matrix{Float64}, 
+                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
+                                                        x::Vector{Float64},
+                                                        𝓂::ℳ;
+                                                        # timer::TimerOutput = TimerOutput(),
+                                                        tol::AbstractFloat = 1e-14)
+    # @timeit_debug timer "Calculate SSS - forward" begin
+    # @timeit_debug timer "Setup indices" begin
+
+    nᵉ = 𝓂.timings.nExo
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
+    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    
+    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    
+    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    
+    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+    B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    
+    # end # timeit_debug
+      
+    # @timeit_debug timer "Iterations" begin
+
+    max_iters = 100
+    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+    for i in 1:max_iters
+        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+
+        ∂x̂ = ℒ.lu!(∂x, check = false)
+        
+        if !ℒ.issuccess(∂x̂)
+            return x, false
+        end
+        
+        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 - x)
+
+        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)
+            break
+        end
+        
+        # x += Δx
+        ℒ.axpy!(-1, Δx, x)
+    end
+
+    solved = isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2, x, rtol = tol)         
+
+    # println(x)
+
+    ∂𝐒₁ =  zero(𝐒₁)
+    ∂𝐒₂ =  zero(𝐒₂)
+
+    # end # timeit_debug
+    # end # timeit_debug
+
+    function second_order_stochastic_steady_state_pullback(∂x)
+        # @timeit_debug timer "Calculate SSS - pullback" begin
+
+        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+
+        ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed] = S' * x'
+        
+        ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
+
+        # end # timeit_debug
+
+        return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent()
+    end
+
+    return (x, solved), second_order_stochastic_steady_state_pullback
+end
+
+
+function rrule(::typeof(calculate_third_order_stochastic_steady_state),
+                                                        ::Val{:newton}, 
+                                                        𝐒₁::Matrix{Float64}, 
+                                                        𝐒₂::AbstractSparseMatrix{Float64}, 
+                                                        𝐒₃::AbstractSparseMatrix{Float64},
+                                                        x::Vector{Float64},
+                                                        𝓂::ℳ;
+                                                        tol::AbstractFloat = 1e-14)
+    nᵉ = 𝓂.timings.nExo
+
+    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
+    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    
+    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+    
+    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+    
+    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
+    
+    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
+    
+    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+    B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    C = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
+    Ĉ = 𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+
+    max_iters = 100
+    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
+    for i in 1:max_iters
+        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+        
+        ∂x̂ = ℒ.lu!(∂x, check = false)
+        
+        if !ℒ.issuccess(∂x̂)
+            return x, false
+        end
+        
+        Δx = ∂x̂ \ (A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6 - x)
+
+        if i > 5 && isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)
+            break
+        end
+        
+        # x += Δx
+        ℒ.axpy!(-1, Δx, x)
+    end
+
+    solved = isapprox(A * x + B̂ * ℒ.kron(vcat(x,1), vcat(x,1)) / 2 + Ĉ * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1))) / 6, x, rtol = tol)         
+
+    ∂𝐒₁ =  zero(𝐒₁)
+    ∂𝐒₂ =  zero(𝐒₂)
+    ∂𝐒₃ =  zero(𝐒₃)
+
+    function third_order_stochastic_steady_state_pullback(∂x)
+        S = -∂x[1]' / (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+
+        ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed] = S' * x'
+        
+        ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), vcat(x,1))' / 2
+
+        ∂𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺] = S' * ℒ.kron(vcat(x,1), ℒ.kron(vcat(x,1), vcat(x,1)))' / 6
+
+        return NoTangent(), NoTangent(), ∂𝐒₁, ∂𝐒₂, ∂𝐒₃, NoTangent(), NoTangent(), NoTangent()
+    end
+
+    return (x, solved), third_order_stochastic_steady_state_pullback
+end
+
+
+function rrule(::typeof(calculate_jacobian), 
+                parameters, 
+                SS_and_pars, 
+                𝓂)#;
+                # timer::TimerOutput = TimerOutput())
+    # @timeit_debug timer "Calculate jacobian - forward" begin
+
+    jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
+
+    function calculate_jacobian_pullback(∂∇₁)
+        # @timeit_debug timer "Calculate jacobian - reverse" begin
+
+        𝓂.jacobian_parameters[2](𝓂.jacobian_parameters[1], parameters, SS_and_pars)
+        𝓂.jacobian_SS_and_pars[2](𝓂.jacobian_SS_and_pars[1], parameters, SS_and_pars)
+
+        ∂parameters = 𝓂.jacobian_parameters[1]' * vec(∂∇₁)
+        ∂SS_and_pars = 𝓂.jacobian_SS_and_pars[1]' * vec(∂∇₁)
+
+        # end # timeit_debug
+        # end # timeit_debug
+
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
+    end
+
+    return jacobian, calculate_jacobian_pullback
+end
+
+
+function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
+    hessian = calculate_hessian(parameters, SS_and_pars, 𝓂)
+
+    function calculate_hessian_pullback(∂∇₂)
+        # @timeit_debug timer "Calculate hessian - reverse" begin
+
+        𝓂.hessian_parameters[2](𝓂.hessian_parameters[1], parameters, SS_and_pars)
+        𝓂.hessian_SS_and_pars[2](𝓂.hessian_SS_and_pars[1], parameters, SS_and_pars)
+
+        ∂parameters = 𝓂.hessian_parameters[1]' * vec(∂∇₂)
+        ∂SS_and_pars = 𝓂.hessian_SS_and_pars[1]' * vec(∂∇₂)
+
+        # end # timeit_debug
+        # end # timeit_debug
+
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
+    end
+
+    return hessian, calculate_hessian_pullback
+end
+
+
+function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_pars, 𝓂) # ;
+    # timer::TimerOutput = TimerOutput())
+    # @timeit_debug timer "3rd order derivatives - forward" begin
+    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)
+    # end # timeit_debug
+
+    function calculate_third_order_derivatives_pullback(∂∇₃)
+        # @timeit_debug timer "3rd order derivatives - pullback" begin
+        𝓂.third_order_derivatives_parameters[2](𝓂.third_order_derivatives_parameters[1], parameters, SS_and_pars)
+        𝓂.third_order_derivatives_SS_and_pars[2](𝓂.third_order_derivatives_SS_and_pars[1], parameters, SS_and_pars)
+
+        ∂parameters = 𝓂.third_order_derivatives_parameters[1]' * vec(∂∇₃)
+        ∂SS_and_pars = 𝓂.third_order_derivatives_SS_and_pars[1]' * vec(∂∇₃)
+
+        # end # timeit_debug
+        # end # timeit_debug
+
+        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
+    end
+
+    return third_order_derivatives, calculate_third_order_derivatives_pullback
+end
+
+
+function rrule(::typeof(get_NSSS_and_parameters), 
+                𝓂::ℳ, 
+                parameter_values::Vector{S}; 
+                opts::CalculationOptions = merge_calculation_options(),
+                cold_start::Bool = false) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
-                verbose::Bool = false)
+    # @timeit_debug timer "Calculate NSSS - forward" begin
 
-    P, solved = solve_lyapunov_equation(A, C, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+    # Use custom steady state function if available, otherwise use default solver
+    if !isnothing(𝓂.custom_steady_state_function)
+        SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
 
-    # pullback 
-    # https://arxiv.org/abs/2011.11430  
-    function solve_lyapunov_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
-        ∂C, slvd = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
-    
-        solved = solved && slvd
+        if length(SS_and_pars) != expected_length
+            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars)) values, expected $expected_length."))
+        end
 
-        ∂A = ∂C * A * P' + ∂C' * A * P
+        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
 
-        return NoTangent(), ∂A, ∂C, NoTangent()
-    end
-    
-    return (P, solved), solve_lyapunov_equation_pullback
-end
+        𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
 
-# ========== src/algorithms/sylvester.jl ==========
+        solution_error = sum(abs, residual)
+        
+        iters = 0
 
-# Lines 239-279
-function rrule(::typeof(solve_sylvester_equation),
-    A::M,
-    B::N,
-    C::O;
-    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-    sylvester_algorithm::Symbol = :doubling,
-    acceptance_tol::AbstractFloat = 1e-10,
-    tol::AbstractFloat = 1e-14,
-    𝕊ℂ::sylvester_caches = Sylvester_caches(),
-    # timer::TimerOutput = TimerOutput(),
-    verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
+        if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
+            throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol)."))
+        end
+        
+        var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
-    P, solved = solve_sylvester_equation(A, B, C, 
-                                        sylvester_algorithm = sylvester_algorithm, 
-                                        tol = tol, 
-                                        𝕊ℂ = 𝕊ℂ,
-                                        verbose = verbose, 
-                                        initial_guess = initial_guess)
+        calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
 
-                                        println("C norm: $(ℒ.norm(C))")
-    # pullback
-    function solve_sylvester_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+        SS_and_pars_tmp = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
 
-        ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 
-                                            sylvester_algorithm = sylvester_algorithm, 
-                                            tol = tol, 
-                                            𝕊ℂ = 𝕊ℂ,
-                                            verbose = verbose)
+        SS_and_pars_tmp[[var_idx..., calib_idx...]] = SS_and_pars
 
-        solved = solved && slvd
-
-        ∂A = ∂C * B' * P'
-
-        ∂B = P' * A' * ∂C
-
-        return NoTangent(), ∂A, ∂B, ∂C, NoTangent()
+        SS_and_pars = SS_and_pars_tmp
+    else
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
 
-    return (P, solved), solve_sylvester_equation_pullback
+    # end # timeit_debug
+
+    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
+
+    # @timeit_debug timer "Calculate NSSS - pullback" begin
+
+    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+        
+    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+
+    SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+
+    # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
+    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
+
+    ∂ = parameter_values
+    C = SS_and_pars[indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag)] # [dyn_ss_idx])
+
+    if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
+        if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
+            jac_buffer.nzval .= 0
+        else
+            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
+        end
+    else
+        jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
+    end
+
+    𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
+
+    ∂SS_equations_∂parameters = jac_buffer
+
+    
+    if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(SS_and_pars)
+        if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
+            jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
+            jac_buffer.nzval .= 0
+        else
+            jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
+        end
+    else
+        jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
+    end
+
+    𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
+
+    ∂SS_equations_∂SS_and_pars = jac_buffer
+
+    ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
+
+    if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
+        return (SS_and_pars, (10.0, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
+    end
+
+    JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
+
+    jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.parameters))
+    
+    for (i,v) in enumerate(SS_and_pars_names)
+        if v in unknowns
+            jvp[i,:] = JVP[indexin([v], unknowns),:]
+        end
+    end
+
+    # end # timeit_debug
+    # end # timeit_debug
+
+    # try block-gmres here
+    function get_non_stochastic_steady_state_pullback(∂SS_and_pars)
+        # println(∂SS_and_pars)
+        return NoTangent(), NoTangent(), jvp' * ∂SS_and_pars[1], NoTangent()
+    end
+
+
+    return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
 end
 
-# ========== src/filter/kalman.jl ==========
 
-# Lines 290-561
+
 function rrule(::typeof(run_kalman_iterations), 
                     A, 
                     𝐁, 
@@ -1740,9 +1650,8 @@ function rrule(::typeof(run_kalman_iterations),
     return llh, kalman_pullback
 end
 
-# ========== src/filter/inversion.jl ==========
 
-# Lines 163-331
+
 function rrule(::typeof(calculate_inversion_filter_loglikelihood), 
                 ::Val{:first_order}, 
                 state::Vector{Vector{Float64}}, 
@@ -1913,7 +1822,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_pullback
 end
 
-# Lines 570-1036
+
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ::Val{:pruned_second_order},
                 state::Vector{Vector{Float64}}, 
@@ -2382,7 +2291,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-# Lines 1267-1703
+
+
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ::Val{:second_order},
                 state::Vector{Float64}, 
@@ -2821,7 +2731,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-# Lines 2136-2682
+
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ::Val{:pruned_third_order},
                 state::Vector{Vector{Float64}}, 
@@ -3370,7 +3280,8 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-# Lines 3010-3462
+
+
 function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 ::Val{:third_order},
                 state::Vector{Float64}, 
@@ -3825,9 +3736,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     return llh, inversion_filter_loglikelihood_pullback
 end
 
-# ========== src/filter/find_shocks.jl ==========
 
-# Lines 1054-1112
 function rrule(::typeof(find_shocks),
                 ::Val{:LagrangeNewton},
                 initial_guess::Vector{Float64},
@@ -3888,7 +3797,7 @@ function rrule(::typeof(find_shocks),
     return (x, matched), find_shocks_pullback
 end
 
-# Lines 1287-1350
+
 function rrule(::typeof(find_shocks),
                 ::Val{:LagrangeNewton},
                 initial_guess::Vector{Float64},
@@ -3952,4 +3861,78 @@ function rrule(::typeof(find_shocks),
     end
 
     return (x, matched), find_shocks_pullback
+end
+
+
+
+function rrule(::typeof(solve_sylvester_equation),
+    A::M,
+    B::N,
+    C::O;
+    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+    sylvester_algorithm::Symbol = :doubling,
+    acceptance_tol::AbstractFloat = 1e-10,
+    tol::AbstractFloat = 1e-14,
+    𝕊ℂ::sylvester_caches = Sylvester_caches(),
+    # timer::TimerOutput = TimerOutput(),
+    verbose::Bool = false) where {M <: AbstractMatrix{Float64}, N <: AbstractMatrix{Float64}, O <: AbstractMatrix{Float64}}
+
+    P, solved = solve_sylvester_equation(A, B, C, 
+                                        sylvester_algorithm = sylvester_algorithm, 
+                                        tol = tol, 
+                                        𝕊ℂ = 𝕊ℂ,
+                                        verbose = verbose, 
+                                        initial_guess = initial_guess)
+
+                                        println("C norm: $(ℒ.norm(C))")
+    # pullback
+    function solve_sylvester_equation_pullback(∂P)
+        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+
+        ∂C, slvd = solve_sylvester_equation(A', B', ∂P[1], 
+                                            sylvester_algorithm = sylvester_algorithm, 
+                                            tol = tol, 
+                                            𝕊ℂ = 𝕊ℂ,
+                                            verbose = verbose)
+
+        solved = solved && slvd
+
+        ∂A = ∂C * B' * P'
+
+        ∂B = P' * A' * ∂C
+
+        return NoTangent(), ∂A, ∂B, ∂C, NoTangent()
+    end
+
+    return (P, solved), solve_sylvester_equation_pullback
+end
+
+
+
+function rrule(::typeof(solve_lyapunov_equation),
+                A::AbstractMatrix{Float64},
+                C::AbstractMatrix{Float64};
+                lyapunov_algorithm::Symbol = :doubling,
+                tol::AbstractFloat = 1e-14,
+                acceptance_tol::AbstractFloat = 1e-12,
+                # timer::TimerOutput = TimerOutput(),
+                verbose::Bool = false)
+
+    P, solved = solve_lyapunov_equation(A, C, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
+
+    # pullback 
+    # https://arxiv.org/abs/2011.11430  
+    function solve_lyapunov_equation_pullback(∂P)
+        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
+
+        ∂C, slvd = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
+    
+        solved = solved && slvd
+
+        ∂A = ∂C * A * P' + ∂C' * A * P
+
+        return NoTangent(), ∂A, ∂C, NoTangent()
+    end
+    
+    return (P, solved), solve_lyapunov_equation_pullback
 end

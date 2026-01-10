@@ -432,10 +432,9 @@ end
 
 
 function mul_reverse_AD!(   C::Matrix{S},
-        return NoTangent(), NoTangent(), dA, dB
-    end
-
-    return ℒ.mul!(C,A,B), times_pullback
+                            A::AbstractMatrix{M},
+                            B::AbstractMatrix{N}) where {S <: Real, M <: Real, N <: Real}
+    ℒ.mul!(C,A,B)
 end
 
 
@@ -1814,16 +1813,12 @@ function sparse_preallocated!(Ŝ::Matrix{T}; ℂ::higher_order_caches{T,F} = Hi
     out = sparse!(I, J, V, m, n, +, klasttouch, csrrowptr, csrcolval, csrnzval, I, J, V)
 
     return out
-    end
-
-    return sparse_preallocated!(Ŝ, ℂ = ℂ), sparse_preallocated_pullback
 end
+
+end # dispatch_doctor
 
 @stable default_mode = "disable" begin
 
-function sparse_preallocated!(Ŝ::Matrix{ℱ.Dual{Z,S,N}}; ℂ::higher_order_caches{T,F} = Higher_order_caches()) where {Z,S,N,T <: Real, F <: AbstractFloat}
-    sparse(Ŝ)
-end
 
 
 function compressed_kron³(a::AbstractMatrix{T};
@@ -1843,6 +1838,96 @@ function compressed_kron³(a::AbstractMatrix{T};
         a = sparse(a')
         
         rmask = colmask
+        colmask = rowmask
+        rowmask = rmask
+    elseif typeof(a) <: DenseMatrix{T}
+        â = copy(a)
+        a = sparse(a)
+    else
+        â = convert(Matrix, a)  # Convert to dense matrix for faster access
+    end
+    # Get the number of rows and columns
+    n_rows, n_cols = size(a)
+    
+    # Calculate the number of unique triplet indices for rows and columns
+    m3_rows = n_rows * (n_rows + 1) * (n_rows + 2) ÷ 6    # For rows: i ≤ j ≤ k
+    m3_cols = n_cols * (n_cols + 1) * (n_cols + 2) ÷ 6    # For columns: i ≤ j ≤ k
+
+    if rowmask == Int[0] || colmask == Int[0]
+        if a_is_adjoint
+            return spzeros(T, m3_cols, m3_rows)
+        else
+            return spzeros(T, m3_rows, m3_cols)
+        end
+    end
+    # Initialize arrays to collect indices and values
+    # Estimate an upper bound for non-zero entries to preallocate arrays
+    lennz = nnz(a) # a isa ThreadedSparseArrays.ThreadedSparseMatrixCSC ? length(a.A.nzval) : length(a.nzval)
+
+    m3_c = length(colmask) > 0 ? length(colmask) : m3_cols
+    m3_r = length(rowmask) > 0 ? length(rowmask) : m3_rows
+
+    m3_exp = (length(colmask) > 0 || length(rowmask) > 0) ? 3 : 4
+
+    if length(sparse_preallocation[1]) == 0
+        estimated_nnz = floor(Int, max(m3_r * m3_c * (lennz / length(a)) ^ m3_exp, 10000))
+
+        resize!(sparse_preallocation[1], estimated_nnz)
+        resize!(sparse_preallocation[2], estimated_nnz)
+        resize!(sparse_preallocation[3], estimated_nnz)
+
+        I = sparse_preallocation[1]
+        J = sparse_preallocation[2]
+        V = sparse_preallocation[3]
+    else
+        estimated_nnz = length(sparse_preallocation[3])
+
+        resize!(sparse_preallocation[1], estimated_nnz)
+
+        I = sparse_preallocation[1]
+        J = sparse_preallocation[2]
+        V = sparse_preallocation[3]
+    end
+
+    # k = Threads.Atomic{Int}(0)  # Counter for non-zero entries
+    # k̄ = Threads.Atomic{Int}(0)  # effectively slower than the non-threaded version
+
+    k = 0
+
+    # end # timeit_debug
+
+    # @timeit_debug timer "findnz" begin
+                
+    # Find unique non-zero row and column indices
+    rowinds, colinds, _ = findnz(a)
+    ui = unique(rowinds)
+    uj = unique(colinds)
+       
+    # end # timeit_debug
+
+    # @timeit_debug timer "Loop" begin
+    # Triple nested loops for (i1 ≤ j1 ≤ k1) and (i2 ≤ j2 ≤ k2)
+    # Polyester.@batch threadlocal=(Vector{Int}(), Vector{Int}(), Vector{T}()) for i1 in ui
+    # Polyester.@batch minbatch = 10 for i1 in ui
+    # Threads.@threads for i1 in ui
+    norowmask = length(rowmask) == 0
+    nocolmask = length(colmask) == 0
+
+    for i1 in ui
+        for j1 in ui
+            if j1 ≤ i1
+                for k1 in ui
+                    if k1 ≤ j1
+
+                        row = (i1-1) * i1 * (i1+1) ÷ 6 + (j1-1) * j1 ÷ 2 + k1
+
+                        if norowmask || row in rowmask
+                            for i2 in uj
+                                for j2 in uj
+                                    if j2 ≤ i2
+                                        for k2 in uj
+                                            if k2 ≤ j2
+
                                                 col = (i2-1) * i2 * (i2+1) ÷ 6 + (j2-1) * j2 ÷ 2 + k2
 
                                                 if nocolmask || col in colmask
@@ -6261,30 +6346,27 @@ end
 
 
 
+end # dispatch_doctor
 
-function calculate_second_order_stochastic_steady_state(::Val{:newton}, 
-                                                        𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
-                                                        x::Vector{ℱ.Dual{Z,S,N}},
-                                                        𝓂::ℳ;
+
+@stable default_mode = "disable" begin
+
+function calculate_third_order_stochastic_steady_state( parameters::Vector{M}, 
+                                                        𝓂::ℳ; 
+                                                        opts::CalculationOptions = merge_calculation_options(),
+                                                        pruning::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}} where M <: Real
                                                         # timer::TimerOutput = TimerOutput(),
-                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
+                                                        # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
+    
+    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
+        if opts.verbose println("NSSS not found") end
+        return zeros(𝓂.timings.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+    end
+    
+    all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    𝐒₁̂ = ℱ.value.(𝐒₁)
-    𝐒₂̂ = ℱ.value.(𝐒₂)
-    x̂ = ℱ.value.(x)
-    
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
-    
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-    
-    A = 𝐒₁̂[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
+    ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
     
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                         T = 𝓂.timings, 
@@ -6461,85 +6543,82 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
 end
 
 
-function calculate_third_order_stochastic_steady_state(::Val{:newton}, 
-                                                        𝐒₁::Matrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₂::AbstractSparseMatrix{ℱ.Dual{Z,S,N}}, 
-                                                        𝐒₃::AbstractSparseMatrix{ℱ.Dual{Z,S,N}},
-                                                        x::Vector{ℱ.Dual{Z,S,N}},
-                                                        𝓂::ℳ;
-                                                        tol::AbstractFloat = 1e-14)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-    𝐒₁̂ = ℱ.value.(𝐒₁)
-    𝐒₂̂ = ℱ.value.(𝐒₂)
-    𝐒₃̂ = ℱ.value.(𝐒₃)
-    x̂ = ℱ.value.(x)
-    
-    nᵉ = 𝓂.timings.nExo
+end # dispatch_doctor
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
-    
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-    
-    kron_s⁺_s⁺_s⁺ = ℒ.kron(s_in_s⁺, kron_s⁺_s⁺)
-    
-    kron_s_s⁺_s⁺ = ℒ.kron(kron_s⁺_s⁺, s_in_s)
-    
-    A = 𝐒₁̂[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-    C = 𝐒₃̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s_s⁺_s⁺]
-    Ĉ = 𝐒₃̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
+@stable default_mode = "disable" begin
 
-    ∂x̄  = zeros(S, length(x̂), N)
-    
-    max_iters = 100
-    # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
-    for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avoid_solve::Bool = false, symbolic::Bool = false)
+    if !𝓂.precompile
+        start_time = time()
 
-        ∂x̂ = ℒ.lu!(∂x, check = false)
+        if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
+
+        symbolics = create_symbols_eqs!(𝓂)
+
+        remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = avoid_solve)
+
+        if !silent println(round(time() - start_time, digits = 3), " seconds") end
+
+        start_time = time()
+
+        if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+        write_ss_check_function!(𝓂)
+
+        write_steady_state_solver_function!(𝓂, symbolic, symbolics, verbose = verbose, avoid_solve = avoid_solve)
+
+        𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
         
-        if !ℒ.issuccess(∂x̂)
-            break
-        end
-        
-        Δx = ∂x̂ \ (A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6 - x̂)
+        set_up_obc_violation_function!(𝓂)
 
-        if i > 5 && isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
-            break
-        end
-        
-        # x̂ += Δx
-        ℒ.axpy!(-1, Δx, x̂)
+        if !silent println(round(time() - start_time, digits = 3), " seconds") end
+    else
+        start_time = time()
+
+        if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+        write_ss_check_function!(𝓂)
+
+        write_steady_state_solver_function!(𝓂, verbose = verbose)
+
+        if !silent println(round(time() - start_time, digits = 3), " seconds") end
     end
 
-    solved = isapprox(A * x̂ + B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6, x̂, rtol = tol)
-    
-    if solved
-        for i in 1:N
-            ∂𝐒₁ = ℱ.partials.(𝐒₁, i)
-            ∂𝐒₂ = ℱ.partials.(𝐒₂, i)
-            ∂𝐒₃ = ℱ.partials.(𝐒₃, i)
-
-            ∂A = ∂𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-            ∂B̂ = ∂𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
-            ∂Ĉ = ∂𝐒₃[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺_s⁺]
-
-            tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + ∂Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6
-
-            TMP = A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
-
-            ∂x̄[:,i] = -TMP \ tmp
-        end
-    end
-    
-    return reshape(map(x̂, eachrow(∂x̄)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(x̂)), solved
+    return nothing
 end
 
+function solve!(𝓂::ℳ; 
+                parameters::ParameterType = nothing, 
+                steady_state_function::SteadyStateFunctionType = missing,
+                dynamics::Bool = false, 
+                algorithm::Symbol = :first_order, 
+                opts::CalculationOptions = merge_calculation_options(),
+                obc::Bool = false,
+                silent::Bool = false) #,
+                # quadratic_matrix_equation_algorithm::Symbol = :schur,
+                # verbose::Bool = false,
+                # timer::TimerOutput = TimerOutput(),
+                # tol::AbstractFloat = 1e-12)
+
+    @assert algorithm ∈ all_available_algorithms
+    
+    # Handle steady_state_function argument
+    set_custom_steady_state_function!(𝓂, steady_state_function)
+    
+    # @timeit_debug timer "Write parameter inputs" begin
+
+    write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
+    
+    if 𝓂.solution.functions_written &&
+        isnothing(𝓂.custom_steady_state_function) &&
+        !(𝓂.SS_solve_func isa RuntimeGeneratedFunctions.RuntimeGeneratedFunction)
+
+        set_up_steady_state_solver!(𝓂, verbose = opts.verbose, silent = silent)
+    end
+    
+    if !𝓂.solution.functions_written
+        verbose = opts.verbose
+        
         perturbation_order = 1
 
         set_up_steady_state_solver!(𝓂, verbose = verbose, silent = silent, avoid_solve = false)
@@ -8162,33 +8241,6 @@ end
 
 end # dispatch_doctor
 
-function rrule(::typeof(calculate_jacobian), 
-                parameters, 
-                SS_and_pars, 
-                𝓂)#;
-                # timer::TimerOutput = TimerOutput())
-    # @timeit_debug timer "Calculate jacobian - forward" begin
-
-    jacobian = calculate_jacobian(parameters, SS_and_pars, 𝓂)
-
-    function calculate_jacobian_pullback(∂∇₁)
-        # @timeit_debug timer "Calculate jacobian - reverse" begin
-
-        𝓂.jacobian_parameters[2](𝓂.jacobian_parameters[1], parameters, SS_and_pars)
-        𝓂.jacobian_SS_and_pars[2](𝓂.jacobian_SS_and_pars[1], parameters, SS_and_pars)
-
-        ∂parameters = 𝓂.jacobian_parameters[1]' * vec(∂∇₁)
-        ∂SS_and_pars = 𝓂.jacobian_SS_and_pars[1]' * vec(∂∇₁)
-
-        # end # timeit_debug
-        # end # timeit_debug
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
-    end
-
-    return jacobian, calculate_jacobian_pullback
-end
-
 @stable default_mode = "disable" begin
 
 function calculate_hessian(parameters::Vector{M}, SS_and_pars::Vector{N}, 𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
@@ -8210,17 +8262,22 @@ end
 
 end # dispatch_doctor
 
-function rrule(::typeof(calculate_hessian), parameters, SS_and_pars, 𝓂)
-    hessian = calculate_hessian(parameters, SS_and_pars, 𝓂)
+@stable default_mode = "disable" begin
 
-    function calculate_hessian_pullback(∂∇₂)
-        # @timeit_debug timer "Calculate hessian - reverse" begin
+function calculate_third_order_derivatives(parameters::Vector{M}, 
+                                            SS_and_pars::Vector{N}, 
+                                            𝓂::ℳ)::SparseMatrixCSC{M, Int} where {M,N}
+    if eltype(𝓂.third_order_derivatives[1]) != M
+        if 𝓂.third_order_derivatives[1] isa SparseMatrixCSC
+            third_buffer = similar(𝓂.third_order_derivatives[1],M)
+            third_buffer.nzval .= 0
+        else
+            third_buffer = zeros(M, size(𝓂.third_order_derivatives[1]))
+        end
+    else
+        third_buffer = 𝓂.third_order_derivatives[1]
+    end
 
-        𝓂.hessian_parameters[2](𝓂.hessian_parameters[1], parameters, SS_and_pars)
-        𝓂.hessian_SS_and_pars[2](𝓂.hessian_SS_and_pars[1], parameters, SS_and_pars)
-
-        ∂parameters = 𝓂.hessian_parameters[1]' * vec(∂∇₂)
-        ∂SS_and_pars = 𝓂.hessian_SS_and_pars[1]' * vec(∂∇₂)
     𝓂.third_order_derivatives[2](third_buffer, parameters, SS_and_pars)
     
     return third_buffer
@@ -8228,35 +8285,7 @@ end
 
 end # dispatch_doctor
 
-function rrule(::typeof(calculate_third_order_derivatives), parameters, SS_and_pars, 𝓂) # ;
-    # timer::TimerOutput = TimerOutput())
-    # @timeit_debug timer "3rd order derivatives - forward" begin
-    third_order_derivatives = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)
-    # end # timeit_debug
-
-    function calculate_third_order_derivatives_pullback(∂∇₃)
-        # @timeit_debug timer "3rd order derivatives - pullback" begin
-        𝓂.third_order_derivatives_parameters[2](𝓂.third_order_derivatives_parameters[1], parameters, SS_and_pars)
-        𝓂.third_order_derivatives_SS_and_pars[2](𝓂.third_order_derivatives_SS_and_pars[1], parameters, SS_and_pars)
-
-        ∂parameters = 𝓂.third_order_derivatives_parameters[1]' * vec(∂∇₃)
-        ∂SS_and_pars = 𝓂.third_order_derivatives_SS_and_pars[1]' * vec(∂∇₃)
-
-        # end # timeit_debug
-        # end # timeit_debug
-
-        return NoTangent(), ∂parameters, ∂SS_and_pars, NoTangent()
-    end
-
-    return third_order_derivatives, calculate_third_order_derivatives_pullback
-        end
-    end
-
-    vvals = sparsevec(V.nzind,[i.value for i in V.nzval],nrows)
-    ps = sparse(rows,cols,prtls,nrows,ncols)
-
-    return vvals, ps
-end
+@stable default_mode = "disable" begin
 
 
 function compute_irf_responses(𝓂::ℳ,
@@ -8271,6 +8300,28 @@ function compute_irf_responses(𝓂::ℳ,
                                 generalised_irf::Bool,
                                 generalised_irf_warmup_iterations::Int,
                                 generalised_irf_draws::Int,
+                                enforce_obc::Bool,
+                                algorithm::Symbol)
+
+    if enforce_obc
+        function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
+            unconditional_forecast_horizon = 𝓂.max_obc_horizon
+
+            reference_ss = 𝓂.solution.non_stochastic_steady_state
+
+            obc_shock_idx = contains.(string.(𝓂.timings.exo),"ᵒᵇᶜ")
+
+            periods_per_shock = 𝓂.max_obc_horizon + 1
+
+            num_shocks = sum(obc_shock_idx) ÷ periods_per_shock
+
+            p = (present_states, state_update, reference_ss, 𝓂, algorithm, unconditional_forecast_horizon, present_shocks)
+
+            constraints_violated = any(𝓂.obc_violation_function(zeros(num_shocks*periods_per_shock), p) .> eps(Float32))
+
+            if constraints_violated
+                opt = NLopt.Opt(NLopt.:LD_SLSQP, num_shocks*periods_per_shock)
+
                 opt.min_objective = obc_objective_optim_fun
 
                 opt.xtol_abs = eps(Float32)
@@ -8453,6 +8504,59 @@ function irf(state_update::Function,
 
         for (i,ii) in enumerate(shock_idx)
             if shocks ∉ [:simulate, :none] && shocks isa Union{Symbol_input,String_input}
+                shock_history = zeros(T.nExo,periods)
+                shock_history[ii,1] = negative_shock ? -shock_size : shock_size
+            end
+
+            past_states = initial_state
+            
+            for t in 1:periods
+                past_states, past_shocks, solved = obc_state_update(past_states, shock_history[:,t], state_update)
+
+                if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
+
+                always_solved = always_solved && solved
+
+                if !always_solved break end
+
+                Y[:,t,i] = pruning ? sum(past_states) : past_states
+
+                shock_history[:,t] = past_shocks
+            end
+        end
+
+        axis2 = shocks isa Union{Symbol_input,String_input} ? 
+                    shock_idx isa Int ? 
+                        [T.exo[shock_idx]] : 
+                    T.exo[shock_idx] : 
+                [:Shock_matrix]
+
+        if any(x -> contains(string(x), "◖"), axis2)
+            axis2_decomposed = decompose_name.(axis2)
+            axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+        end
+    
+        return KeyedArray(Y[var_idx,:,:] .+ level[var_idx];  Variables = axis1, Periods = 1:periods, Shocks = axis2)
+    end
+end
+
+
+
+
+function irf(state_update::Function, 
+    initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
+    level::Vector{Float64},
+    T::timings; 
+    periods::Int = 40, 
+    shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
+    variables::Union{Symbol_input,String_input} = :all, 
+    shock_size::Real = 1,
+    negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+
+    pruning = initial_state isa Vector{Vector{Float64}}
+
+    shocks = shocks isa KeyedArray ? axiskeys(shocks,1) isa Vector{String} ? rekey(shocks, 1 => axiskeys(shocks,1) .|> Meta.parse .|> replace_indices) : shocks : shocks
+
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
     if shocks isa Matrix{Float64}
@@ -9289,131 +9393,7 @@ end
 
 end # dispatch_doctor
 
-function rrule(::typeof(get_NSSS_and_parameters), 
-                𝓂::ℳ, 
-                parameter_values::Vector{S}; 
-                opts::CalculationOptions = merge_calculation_options(),
-                cold_start::Bool = false) where S <: Real
-                # timer::TimerOutput = TimerOutput(),
-    # @timeit_debug timer "Calculate NSSS - forward" begin
-
-    # Use custom steady state function if available, otherwise use default solver
-    if !isnothing(𝓂.custom_steady_state_function)
-        SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
-
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
-
-        if length(SS_and_pars) != expected_length
-            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars)) values, expected $expected_length."))
-        end
-
-        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
-
-        𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
-
-        solution_error = sum(abs, residual)
-        
-        iters = 0
-
-        if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-            throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol)."))
-        end
-        
-        var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
-
-        calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
-
-        SS_and_pars_tmp = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
-
-        SS_and_pars_tmp[[var_idx..., calib_idx...]] = SS_and_pars
-
-        SS_and_pars = SS_and_pars_tmp
-    else
-        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
-    end
-
-    # end # timeit_debug
-
-    if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
-        return (SS_and_pars, (solution_error, iters)), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent())
-    end
-
-    # @timeit_debug timer "Calculate NSSS - pullback" begin
-
-    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-        
-    SS_and_pars_names = vcat(Symbol.(replace.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
-
-    SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
-
-    # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
-    unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
-
-    ∂ = parameter_values
-    C = SS_and_pars[indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag)] # [dyn_ss_idx])
-
-    if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
-        if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
-            jac_buffer = similar(𝓂.∂SS_equations_∂parameters[1], eltype(parameter_values))
-            jac_buffer.nzval .= 0
-        else
-            jac_buffer = zeros(eltype(parameter_values), size(𝓂.∂SS_equations_∂parameters[1]))
-        end
-    else
-        jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
-            jac_buffer = 𝓂.∂SS_equations_∂parameters[1]
-        end
-
-        𝓂.∂SS_equations_∂parameters[2](jac_buffer, ∂, C)
-
-        ∂SS_equations_∂parameters = jac_buffer
-
-        
-        if eltype(𝓂.∂SS_equations_∂SS_and_pars[1]) != eltype(parameter_values)
-            if 𝓂.∂SS_equations_∂SS_and_pars[1] isa SparseMatrixCSC
-                jac_buffer = similar(𝓂.∂SS_equations_∂SS_and_pars[1], eltype(SS_and_pars))
-                jac_buffer.nzval .= 0
-            else
-                jac_buffer = zeros(eltype(SS_and_pars), size(𝓂.∂SS_equations_∂SS_and_pars[1]))
-            end
-        else
-            jac_buffer = 𝓂.∂SS_equations_∂SS_and_pars[1]
-        end
-
-        𝓂.∂SS_equations_∂SS_and_pars[2](jac_buffer, ∂, C)
-
-        ∂SS_equations_∂SS_and_pars = jac_buffer
-
-        ∂SS_equations_∂SS_and_pars_lu = RF.lu(∂SS_equations_∂SS_and_pars, check = false)
-
-        if !ℒ.issuccess(∂SS_equations_∂SS_and_pars_lu)
-            if opts.verbose println("Failed to calculate implicit derivative of NSSS") end
-            
-            solution_error = S(10.0)
-        else
-            JVP = -(∂SS_equations_∂SS_and_pars_lu \ ∂SS_equations_∂parameters)#[indexin(SS_and_pars_names, unknowns),:]
-
-            jvp = zeros(length(SS_and_pars_names_lead_lag), length(𝓂.parameters))
-            
-            for (i,v) in enumerate(SS_and_pars_names)
-                if v in unknowns
-                    jvp[i,:] = JVP[indexin([v], unknowns),:]
-                end
-            end
-
-            for i in 1:N
-                parameter_values_partials = ℱ.partials.(parameter_values_dual, i)
-
-                ∂SS_and_pars[:,i] = jvp * parameter_values_partials
-            end
-        end
-    end
-    
-    return reshape(map(SS_and_pars, eachrow(∂SS_and_pars)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(SS_and_pars)), (solution_error, iters)
-end
+@stable default_mode = "disable" begin
 
 
 

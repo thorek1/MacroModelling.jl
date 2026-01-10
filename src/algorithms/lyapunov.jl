@@ -80,36 +80,34 @@ end
 
 end # dispatch_doctor
 
-
 @stable default_mode = "disable" begin
 
-function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}};
-                                    lyapunov_algorithm::Symbol = :doubling,
-                                    tol::AbstractFloat = 1e-14,
-                                    acceptance_tol::AbstractFloat = 1e-12,
+
+
+function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                    C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
+                                    ::Val{:bartels_stewart};
                                     # timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_lyapunov_equation(Â, Ĉ, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-
-    Ã = copy(Â)
-    C̃ = copy(Ĉ)
+                                    tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
+    𝐂 = try 
+        MatrixEquations.lyapd(A, C)::Matrix{T}
+    catch
+        return C, 0, 1.0
+    end
     
-    P̃ = zeros(length(P̂), N)
+    # 𝐂¹ = A * 𝐂 * A' + C
+
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom   
     
-    # https://arxiv.org/abs/2011.11430  
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        C̃ .= ℱ.partials.(C, i)
+    reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
 
-        X = Ã * P̂ * Â' + Â * P̂ * Ã' + C̃
+    # if reached_tol > tol
+    #     println("Lyapunov: lyapunov $reached_tol")
+    # end
 
-        if ℒ.norm(X) < eps() continue end
-
+    return 𝐂, 0, reached_tol # return info on convergence
 end
 
 

@@ -236,50 +236,84 @@ end
 end # dispatch_doctor
 
 
-
 @stable default_mode = "disable" begin
 
-function solve_sylvester_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    B::AbstractMatrix{ℱ.Dual{Z,S,N}},
-                                    C::AbstractMatrix{ℱ.Dual{Z,S,N}};
+
+
+function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
+                                    B::AbstractSparseMatrix{T},
+                                    C::AbstractSparseMatrix{T},
+                                    ::Val{:doubling};
                                     initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
-                                    sylvester_algorithm::Symbol = :doubling,
-                                    acceptance_tol::AbstractFloat = 1e-10,
                                     𝕊ℂ::sylvester_caches = Sylvester_caches(),
-                                    tol::AbstractFloat = 1e-14,
                                     # timer::TimerOutput = TimerOutput(),
-                                    verbose::Bool = false)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Bool} where {Z,S,N}
-    # unpack: AoS -> SoA
-    Â = ℱ.value.(A)
-    B̂ = ℱ.value.(B)
-    Ĉ = ℱ.value.(C)
-
-    P̂, solved = solve_sylvester_equation(Â, B̂, Ĉ, 
-                                        sylvester_algorithm = sylvester_algorithm, 
-                                        tol = tol, 
-                                        𝕊ℂ = 𝕊ℂ,
-                                        verbose = verbose, 
-                                        initial_guess = initial_guess)
-
-    Ã = copy(Â)
-    B̃ = copy(B̂)
-    C̃ = copy(Ĉ)
+                                    verbose::Bool = false,
+                                    tol::Float64 = 1e-14)::Tuple{AbstractSparseMatrix{T}, Int, T} where T <: AbstractFloat
+                                    # see doi:10.1016/j.aml.2009.01.012
+    # guess_provided = true
     
-    P̃ = zeros(S, length(P̂), N)
+    if length(initial_guess) == 0
+        # guess_provided = false
+        initial_guess = zero(C)
+    end
     
-    for i in 1:N
-        Ã .= ℱ.partials.(A, i)
-        B̃ .= ℱ.partials.(B, i)
-        C̃ .= ℱ.partials.(C, i)
+    𝐀  = copy(A)
+    𝐁  = copy(B)
+    # 𝐂  = length(init) == 0 ? copy(C) : copy(init)
+    𝐂  = A * initial_guess * B + C - initial_guess #copy(C)
 
-        X = Ã * P̂ * B̂ + Â * P̂ * B̃ + C̃
-        
-        if ℒ.norm(X) < eps() continue end
+    # ℒ.rmul!(𝐂, -1)
 
-        P, slvd = solve_sylvester_equation(Â, B̂, X, 
-                                            sylvester_algorithm = sylvester_algorithm, 
-                                            𝕊ℂ = 𝕊ℂ,
-                                            tol = tol, 
+    max_iter = 500
+
+    iters = max_iter
+
+    for i in 1:max_iter
+        𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+        𝐀 = 𝐀^2
+        𝐁 = 𝐁^2
+
+        droptol!(𝐀, eps())
+        droptol!(𝐁, eps())
+
+        if i % 2 == 0
+            normdiff = ℒ.norm(𝐂¹ - 𝐂)
+            if !isfinite(normdiff) || normdiff / max(ℒ.norm(𝐂), ℒ.norm(𝐂¹)) < tol
+            # if isapprox(𝐂¹, 𝐂, rtol = tol)
+                iters = i
+                break 
+            end
+        end
+
+        𝐂 = 𝐂¹
+    end
+
+    # 𝐂¹ = 𝐀 * 𝐂 * 𝐁 + 𝐂
+
+    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
+
+    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom
+
+    𝐂 += initial_guess
+
+    reached_tol = ℒ.norm(A * 𝐂 * B + C - 𝐂) / max(ℒ.norm(𝐂), ℒ.norm(C))
+
+    # if reached_tol > tol
+    #     println("Sylvester: doubling $reached_tol")
+    # end
+
+    return 𝐂, iters, reached_tol # return info on convergence
+end
+
+
+
+function solve_sylvester_equation(  A::AbstractSparseMatrix{T},
+                                    B::AbstractSparseMatrix{T},
+                                    C::Matrix{T},
+                                    ::Val{:doubling};
+                                    initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                    𝕊ℂ::sylvester_caches = Sylvester_caches(),
                                     # timer::TimerOutput = TimerOutput(),
                                     verbose::Bool = false,
                                     tol::Float64 = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
