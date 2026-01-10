@@ -1518,10 +1518,7 @@ function get_steady_state(𝓂::ℳ;
 
     axis1 = [vars_in_ss_equations..., (return_variables_only ? [] : 𝓂.calibration_equations_parameters)...]
 
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-    end
+    axis1 = get_var_axis(𝓂)
 
     axis2 = vcat(:Steady_state, 𝓂.parameters[param_idx])
 
@@ -2170,10 +2167,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     axis1 = 𝓂.var
 
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-    end
+    axis1 = get_var_axis(𝓂)
 
     axis2 = get_exo_axis(𝓂, with_subscript = false)
 
@@ -2317,10 +2311,7 @@ function get_variance_decomposition(𝓂::ℳ;
     
     axis1 = 𝓂.var
 
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-    end
+    axis1 = get_var_axis(𝓂)
 
     axis2 = get_exo_axis(𝓂, with_subscript = false)
 
@@ -2433,10 +2424,7 @@ function get_correlation(𝓂::ℳ;
     
     axis1 = 𝓂.var
 
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-    end
+    axis1 = get_var_axis(𝓂)
 
     KeyedArray(collect(corr); Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
 end
@@ -2571,10 +2559,7 @@ function get_autocorrelation(𝓂::ℳ;
     
     axis1 = 𝓂.var
 
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-    end
+    axis1 = get_var_axis(𝓂)
 
     KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_periods = autocorrelation_periods)
 end
@@ -2751,10 +2736,7 @@ function get_moments(𝓂::ℳ;
 
     axis1 = 𝓂.var
 
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-    end
+    axis1 = get_var_axis(𝓂)
 
     axis2 = get_exo_axis(𝓂, with_subscript = false)
 

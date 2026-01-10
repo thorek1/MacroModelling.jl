@@ -3547,8 +3547,18 @@ function populate_computational_constants!(𝓂::ℳ)
     # Diagonal matrix for state selection
     diag_nVars = ℒ.diagm(ones(𝓂.timings.nVars))
     
+    # Additional kron products for moments and filter calculations
+    kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)  # Same as kron_s⁺_s⁺ but named for clarity
+    kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
+    kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
+    kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
+    kron_e_s = ℒ.kron(e_in_s⁺, s_in_s⁺)
+    
     # Replace the entire cache with a new immutable instance
-    𝓂.caches.computational_constants = computational_constants_cache(s_in_s⁺, s_in_s, kron_s⁺_s⁺, kron_s⁺_s, nˢ, e_in_s⁺, v_in_s⁺, diag_nVars)
+    𝓂.caches.computational_constants = computational_constants_cache(
+        s_in_s⁺, s_in_s, kron_s⁺_s⁺, kron_s⁺_s, nˢ, e_in_s⁺, v_in_s⁺, diag_nVars,
+        kron_s_s, kron_e_e, kron_v_v, kron_s_e, kron_e_s
+    )
     
     return nothing
 end
@@ -3586,8 +3596,13 @@ function populate_model_structure_cache!(𝓂::ℳ)
     # NSSS_labels: sorted union of exo_present, var + calibration parameters
     NSSS_labels = [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
     
+    # Precompute aux indices and processed names
+    aux_indices = indexin(𝓂.aux, all_variables)
+    processed_all_variables = copy(all_variables)
+    processed_all_variables[aux_indices] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.aux)
+    
     # Replace the entire cache with a new immutable instance
-    𝓂.caches.model_structure_cache = model_structure_cache(SS_and_pars_names, all_variables, NSSS_labels)
+    𝓂.caches.model_structure_cache = model_structure_cache(SS_and_pars_names, all_variables, NSSS_labels, aux_indices, processed_all_variables)
     
     return nothing
 end
@@ -3695,9 +3710,7 @@ end
 function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
     all_variables = @ignore_derivatives get_model_structure(𝓂).all_variables
 
-    ignore_derivatives() do
-        all_variables[indexin(𝓂.aux,all_variables)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-    end
+    all_variables = @ignore_derivatives get_model_structure(𝓂).processed_all_variables
 
     NSSS_labels = @ignore_derivatives get_model_structure(𝓂).NSSS_labels
 

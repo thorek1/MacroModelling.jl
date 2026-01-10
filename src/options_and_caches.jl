@@ -52,6 +52,10 @@ struct model_structure_cache
     all_variables::Vector{Symbol}
     # NSSS_labels: sorted union of exo_present, var + calibration parameters
     NSSS_labels::Vector{Symbol}
+    # aux_indices_in_all_variables: indexin(𝓂.aux, all_variables)
+    aux_indices::Vector{Int}
+    # processed_all_variables: all_variables with aux names cleaned
+    processed_all_variables::Vector{Symbol}
 end
 
 # Cache for model-constant computational objects
@@ -72,6 +76,12 @@ struct computational_constants_cache
     v_in_s⁺::BitVector  # [zeros(nPast), 1, zeros(nExo)]
     # Diagonal matrix for state selection
     diag_nVars::ℒ.Diagonal{Float64, Vector{Float64}}
+    # Additional kron products for moments and filter calculations
+    kron_s_s::BitVector  # kron(s_in_s⁺, s_in_s⁺) - same as kron_s⁺_s⁺ but used with s_in_s naming
+    kron_e_e::BitVector  # kron(e_in_s⁺, e_in_s⁺)
+    kron_v_v::BitVector  # kron(v_in_s⁺, v_in_s⁺)
+    kron_s_e::BitVector  # kron(s_in_s⁺, e_in_s⁺)
+    kron_e_s::BitVector  # kron(e_in_s⁺, s_in_s⁺)
 end
 
 mutable struct caches#{F <: Real, G <: AbstractFloat}
@@ -117,9 +127,11 @@ end
 function Caches(;T::Type = Float64, S::Type = Float64)
     caches( Higher_order_caches(T = T, S = S),
             Higher_order_caches(T = T, S = S),
-            name_display_cache([], [], [], false, false),  # Empty cache, populated on first use
-            model_structure_cache(Symbol[], Symbol[], Symbol[]),  # Empty cache, populated on first use
-            computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, BitVector(), BitVector(), ℒ.Diagonal(Float64[])))  # Empty cache, populated on first use
+            name_display_cache([], [], [], false, false),
+            model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[]),
+            computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, 
+                                         BitVector(), BitVector(), ℒ.Diagonal(Float64[]),
+                                         BitVector(), BitVector(), BitVector(), BitVector(), BitVector()),
             Float64[])
 end
 
