@@ -886,6 +886,7 @@ macro model(𝓂,ex...)
                         $SS_solve_func,
                         # $SS_calib_func,
                         $SS_check_func,
+                        nothing, # custom_steady_state_function
                         $∂SS_equations_∂parameters,
                         $∂SS_equations_∂SS_and_pars,
                         $SS_dependencies,
@@ -1009,6 +1010,7 @@ Parameters can be defined in either of the following ways:
 
 # Optional arguments to be placed between `𝓂` and `ex`
 - `guess` [Type: `Dict{Symbol, <:Real}, Dict{String, <:Real}}`]: Guess for the non-stochastic steady state. The keys must be the variable (and calibrated parameters) names and the values the guesses. Missing values are filled with standard starting values.
+- $STEADY_STATE_FUNCTION®
 - `verbose` [Default: `false`, Type: `Bool`]: print more information about how the non-stochastic steady state is solved
 - `silent` [Default: `false`, Type: `Bool`]: do not print any information
 - `symbolic` [Default: `false`, Type: `Bool`]: try to solve the non-stochastic steady state symbolically and fall back to a numerical solution if not possible
@@ -1099,6 +1101,7 @@ macro parameters(𝓂,ex...)
     perturbation_order = 1
     guess = Dict{Symbol,Float64}()
     simplify = true
+    steady_state_function = nothing
     ss_solver_parameters_algorithm = :ESCH
     ss_solver_parameters_maxtime = 120.0
 
@@ -1124,6 +1127,8 @@ macro parameters(𝓂,ex...)
                         ss_solver_parameters_algorithm = x.args[2] isa QuoteNode ? x.args[2].value : x.args[2] :
                     (x.args[1] == :simplify && x.args[2] isa Bool) ?
                         simplify = x.args[2] :
+                    (x.args[1] == :steady_state_function && x.args[2] isa Symbol) ? # allow Symbol, anonymous fn, or any callable expr
+                        steady_state_function = esc(x.args[2]) :
                     (x.args[1] == :ss_solver_parameters_maxtime && x.args[2] isa Real) ?
                         ss_solver_parameters_maxtime = x.args[2] :
                     begin
@@ -1134,10 +1139,8 @@ macro parameters(𝓂,ex...)
             x,
         exp)
     end
-
-    if ss_solver_parameters_algorithm ∉ [:ESCH, :SAMIN]
-        @warn "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $ss_solver_parameters_algorithm. Using default :ESCH."
-    end
+    
+    @assert ss_solver_parameters_algorithm ∈ [:ESCH, :SAMIN] "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $ss_solver_parameters_algorithm. Using default :ESCH."
     
     parameter_definitions = replace_indices(ex[end])
 
@@ -1576,109 +1579,31 @@ macro parameters(𝓂,ex...)
         mod.$𝓂.precompile = $precompile
         mod.$𝓂.simplify = $simplify
         
+        # Set custom steady state function if provided
+        # if !isnothing($steady_state_function)
+        set_custom_steady_state_function!(mod.$𝓂, $steady_state_function)
+        # end
+
+        mod.$𝓂.solution.functions_written = false
+
         # time_symbolics = @elapsed 
-        # time_rm_red_SS_vars = @elapsed 
-        if !has_missing_parameters
-            if !$precompile
-                start_time = time()
-
-                if !$silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
-
-                symbolics = create_symbols_eqs!(mod.$𝓂)
-
-                remove_redundant_SS_vars!(mod.$𝓂, symbolics, avoid_solve = !$simplify) 
-
-                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-
-
-                start_time = time()
-        
-                if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-                solve_steady_state!(mod.$𝓂, $symbolic, symbolics, verbose = $verbose, avoid_solve = !$simplify) # 2nd argument is SS_symbolic
-
-                mod.$𝓂.obc_violation_equations = write_obc_violation_equations(mod.$𝓂)
-                
-                set_up_obc_violation_function!(mod.$𝓂)
-
-                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
-            else
-                start_time = time()
-            
-                if !$silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-                solve_steady_state!(mod.$𝓂, verbose = $verbose)
-
-                if !$silent println(round(time() - start_time, digits = 3), " seconds") end
+        # time_rm_red_SS_vars = @elapsed
+        if !isnothing($steady_state_function)
+            write_ss_check_function!(mod.$𝓂)
+        else
+            if !has_missing_parameters
+                set_up_steady_state_solver!(mod.$𝓂, verbose = $verbose, silent = $silent, avoid_solve = !$simplify, symbolic = $symbolic)
             end
         end
-        
-        mod.$𝓂.solution.functions_written = false
-        
+
         if !has_missing_parameters
-            # Mark functions as written even if we skipped SS setup due to missing parameters
-            # This prevents solve! from re-running @parameters with nothing
-            mod.$𝓂.solution.functions_written = true
-
-            start_time = time()
-    
             opts = merge_calculation_options(verbose = $verbose)
-
-            if !$precompile 
-                if !$silent 
-                    print("Find non-stochastic steady state:\t\t\t\t\t") 
-                end
-                # time_SS_real_solve = @elapsed 
-                SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
-
-                select_fastest_SS_solver_parameters!(mod.$𝓂, tol = opts.tol)
-
-                found_solution = true
-
-                if solution_error > opts.tol.NSSS_acceptance_tol
-                    # start_time = time()
-                    
-                    found_solution = find_SS_solver_parameters!($(Val(ss_solver_parameters_algorithm)), mod.$𝓂, tol = opts.tol, verbosity = 0, maxtime = $ss_solver_parameters_maxtime, maxiter = 1000000000)
-                    # println("Find SS solver parameters which solve for the NSSS:\t",round(time() - start_time, digits = 3), " seconds")
-                    if found_solution
-                        SS_and_pars, (solution_error, iters) = mod.$𝓂.SS_solve_func(mod.$𝓂.parameter_values, mod.$𝓂, opts.tol, opts.verbose, true, mod.$𝓂.solver_parameters)
-                    end
-                end
-                
-                if !$silent 
-                    println(round(time() - start_time, digits = 3), " seconds") 
-                end
-
-                if !found_solution
-                    @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
-                end
-
-                mod.$𝓂.solution.non_stochastic_steady_state = SS_and_pars
-                mod.$𝓂.solution.outdated_NSSS = false
-            end
             
-            start_time = time()
+            SS_and_pars, solution_error, found_solution = solve_steady_state!(mod.$𝓂, opts, $(QuoteNode(ss_solver_parameters_algorithm)), $ss_solver_parameters_maxtime, silent = $silent)
+            
+            write_symbolic_derivatives!(mod.$𝓂; perturbation_order = $perturbation_order, silent = $silent)
 
-            if !$silent
-                if $perturbation_order == 1
-                    print("Take symbolic derivatives up to first order:\t\t\t\t")
-                elseif $perturbation_order == 2
-                    print("Take symbolic derivatives up to second order:\t\t\t\t")
-                elseif $perturbation_order == 3
-                    print("Take symbolic derivatives up to third order:\t\t\t\t")
-                end
-            end
-
-            write_auxiliary_indices!(mod.$𝓂)
-
-            # time_dynamic_derivs = @elapsed 
-            write_functions_mapping!(mod.$𝓂, $perturbation_order)
-
-            mod.$𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-    
-            if !$silent
-                println(round(time() - start_time, digits = 3), " seconds")
-            end
+            mod.$𝓂.solution.functions_written = true
         end
 
         if has_missing_parameters && $report_missing_parameters

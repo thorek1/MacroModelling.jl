@@ -11,6 +11,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $FILTER®
 - $ALGORITHM®
 - $DATA_IN_LEVELS®
@@ -78,6 +79,7 @@ And data, 4×2×40 Array{Float64, 3}:
 function get_shock_decomposition(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
+                                steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
                                 data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
@@ -99,7 +101,8 @@ function get_shock_decomposition(𝓂::ℳ,
     filter, smooth, algorithm, _, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
     solve!(𝓂, 
-            parameters = parameters, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
             opts = opts, 
             dynamics = true, 
             algorithm = algorithm)
@@ -172,6 +175,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
 - $DATA_IN_LEVELS®
@@ -219,6 +223,7 @@ And data, 1×40 Matrix{Float64}:
 function get_estimated_shocks(𝓂::ℳ,
                             data::KeyedArray{Float64};
                             parameters::ParameterType = nothing,
+                            steady_state_function::SteadyStateFunctionType = missing,
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
                             filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
                             warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -240,7 +245,8 @@ function get_estimated_shocks(𝓂::ℳ,
     filter, smooth, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
     solve!(𝓂, 
-            parameters = parameters, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
             algorithm = algorithm, 
             opts = opts,
             dynamics = true)
@@ -295,6 +301,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
 - $DATA_IN_LEVELS®
@@ -346,6 +353,7 @@ And data, 4×40 Matrix{Float64}:
 function get_estimated_variables(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
+                                steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -368,7 +376,8 @@ function get_estimated_variables(𝓂::ℳ,
     filter, smooth, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
     solve!(𝓂, 
-            parameters = parameters, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
             algorithm = algorithm, 
             opts = opts,
             dynamics = true)
@@ -420,6 +429,7 @@ docstrings of `get_estimated_variables` and `get_estimated_shocks` for details.
 
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
 - $DATA_IN_LEVELS®
@@ -472,6 +482,7 @@ And data, 5×40 Matrix{Float64}:
 function get_model_estimates(𝓂::ℳ,
                              data::KeyedArray{Float64};
                              parameters::ParameterType = nothing,
+                             steady_state_function::SteadyStateFunctionType = missing,
                              algorithm::Symbol = DEFAULT_ALGORITHM,
                              filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
                              warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -486,6 +497,7 @@ function get_model_estimates(𝓂::ℳ,
 
     vars = get_estimated_variables(𝓂, data;
                                    parameters = parameters,
+                                   steady_state_function = steady_state_function,
                                    algorithm = algorithm,
                                    filter = filter,
                                    warmup_iterations = warmup_iterations,
@@ -500,6 +512,7 @@ function get_model_estimates(𝓂::ℳ,
 
     shks = get_estimated_shocks(𝓂, data;
                                 parameters = parameters,
+                                steady_state_function = steady_state_function,
                                 algorithm = algorithm,
                                 filter = filter,
                                 warmup_iterations = warmup_iterations,
@@ -531,6 +544,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $DATA_IN_LEVELS®
 - $SMOOTH®
 - $QME®
@@ -578,6 +592,7 @@ And data, 4×40 Matrix{Float64}:
 function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                     data::KeyedArray{Float64};
                                                     parameters::ParameterType = nothing,
+                                                    steady_state_function::SteadyStateFunctionType = missing,
                                                     data_in_levels::Bool = DEFAULT_DATA_IN_LEVELS,
                                                     smooth::Bool = DEFAULT_SMOOTH_FLAG,
                                                     verbose::Bool = DEFAULT_VERBOSE,
@@ -593,7 +608,8 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
     algorithm = :first_order
 
     solve!(𝓂, 
-            parameters = parameters, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
             opts = opts,
             dynamics = true)
 
@@ -645,6 +661,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $CONDITIONS_IN_LEVELS®
 - `levels` [Default: `false`, Type: `Bool`]: $LEVELS®
@@ -735,6 +752,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                 initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                                 periods::Int = DEFAULT_PERIODS, 
                                 parameters::ParameterType = nothing,
+                                steady_state_function::SteadyStateFunctionType = missing,
                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                 conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -812,7 +830,8 @@ function get_conditional_forecast(𝓂::ℳ,
     end
 
     solve!(𝓂, 
-            parameters = parameters, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
             opts = opts,
             dynamics = true, 
             algorithm = algorithm)
@@ -1016,6 +1035,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MODEL®
 - $PARAMETER_VALUES®
 # Keyword Arguments
+- $STEADY_STATE_FUNCTION®
 - $PERIODS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $SHOCKS®
@@ -1060,6 +1080,7 @@ get_irf(RBC, RBC.parameter_values)
 """
 function get_irf(𝓂::ℳ,
                     parameters::Vector{S};
+                    steady_state_function::SteadyStateFunctionType = missing,
                     periods::Int = DEFAULT_PERIODS,
                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC,
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCK_SELECTION,
@@ -1073,7 +1094,9 @@ function get_irf(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
 
-    solve!(𝓂, opts = opts)
+    @ignore_derivatives solve!(𝓂, 
+                                steady_state_function = steady_state_function,
+                                opts = opts)
 
     shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
@@ -1152,6 +1175,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $PERIODS®
 - $ALGORITHM®
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $SHOCKS®
 - $NEGATIVE_SHOCK®
@@ -1209,6 +1233,7 @@ function get_irf(𝓂::ℳ;
                 periods::Int = DEFAULT_PERIODS, 
                 algorithm::Symbol = DEFAULT_ALGORITHM, 
                 parameters::ParameterType = nothing,
+                steady_state_function::SteadyStateFunctionType = missing,
                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                 shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCKS_EXCLUDING_OBC,
                 negative_shock::Bool = DEFAULT_NEGATIVE_SHOCK, 
@@ -1248,7 +1273,8 @@ function get_irf(𝓂::ℳ;
     # @timeit_debug timer "Solve model" begin
 
     solve!(𝓂, 
-            parameters = parameters, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
             opts = opts,
             dynamics = true, 
             algorithm = algorithm,
@@ -1383,6 +1409,7 @@ Return the (non-stochastic) steady state, calibrated parameters, and derivatives
 - $MODEL®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $DERIVATIVES®
 - $PARAMETER_DERIVATIVES®
 - `stochastic` [Default: `false`, Type: `Bool`]: return stochastic steady state using second order perturbation if no other higher order perturbation algorithm is provided in `algorithm`.
@@ -1429,7 +1456,8 @@ And data, 4×6 Matrix{Float64}:
 ```
 """
 function get_steady_state(𝓂::ℳ; 
-                            parameters::ParameterType = nothing, 
+                            parameters::ParameterType = nothing,
+                            steady_state_function::SteadyStateFunctionType = missing, 
                             derivatives::Bool = DEFAULT_DERIVATIVES_FLAG, 
                             stochastic::Bool = DEFAULT_STOCHASTIC_FLAG,
                             algorithm::Symbol = DEFAULT_ALGORITHM_SELECTOR(stochastic),
@@ -1459,7 +1487,10 @@ function get_steady_state(𝓂::ℳ;
         end
     end
 
-    solve!(𝓂, parameters = parameters, opts = opts)
+    solve!(𝓂, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
+            opts = opts)
 
     vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
     
@@ -1490,6 +1521,7 @@ function get_steady_state(𝓂::ℳ;
     if stochastic
         solve!(𝓂, 
                 opts = opts, 
+                steady_state_function = steady_state_function, 
                 dynamics = true, 
                 algorithm = algorithm, 
                 silent = silent, 
@@ -1679,6 +1711,7 @@ The values of the output represent the NSSS in the case of a linear solution and
 - $MODEL®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $QME®
 - $SYLVESTER®
@@ -1722,6 +1755,7 @@ And data, 4×4 adjoint(::Matrix{Float64}) with eltype Float64:
 """
 function get_solution(𝓂::ℳ; 
                         parameters::ParameterType = nothing,
+                        steady_state_function::SteadyStateFunctionType = missing,
                         algorithm::Symbol = DEFAULT_ALGORITHM, 
                         silent::Bool = DEFAULT_SILENT_FLAG,
                         verbose::Bool = DEFAULT_VERBOSE,
@@ -1736,7 +1770,8 @@ function get_solution(𝓂::ℳ;
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
 
     solve!(𝓂, 
-            parameters = parameters, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
             opts = opts,
             dynamics = true, 
             silent = silent, 
@@ -1855,6 +1890,7 @@ Function to use when differentiating IRFs with respect to parameters.
 - $MODEL®
 - $PARAMETERS®
 # Keyword Arguments
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $QME®
 - $SYLVESTER®
@@ -1894,6 +1930,7 @@ get_solution(RBC, RBC.parameter_values)
 """
 function get_solution(𝓂::ℳ, 
                         parameters::Vector{S}; 
+                        steady_state_function::SteadyStateFunctionType = missing,
                         algorithm::Symbol = DEFAULT_ALGORITHM, 
                         verbose::Bool = DEFAULT_VERBOSE, 
                         tol::Tolerances = Tolerances(),
@@ -1905,7 +1942,10 @@ function get_solution(𝓂::ℳ,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
 
-    @ignore_derivatives solve!(𝓂, opts = opts, algorithm = algorithm)
+    @ignore_derivatives solve!(𝓂, 
+                                opts = opts, 
+                                steady_state_function = steady_state_function,
+                                algorithm = algorithm)
 
     
     if length(𝓂.bounds) > 0
@@ -2022,6 +2062,7 @@ If occasionally binding constraints are present in the model, they are not taken
 # Keyword Arguments
 - `periods` [Default: `[1:20...,Inf]`, Type: `Union{Vector{Int},Vector{Float64},UnitRange{Int64}}`]: vector of periods for which to calculate the conditional variance decomposition. If the vector contains `Inf`, also the unconditional variance decomposition is calculated (same output as [`get_variance_decomposition`](@ref)).
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $QME®
 - $LYAPUNOV®
 - $TOLERANCES®
@@ -2097,7 +2138,8 @@ And data, 7×2×21 Array{Float64, 3}:
 """
 function get_conditional_variance_decomposition(𝓂::ℳ; 
                                                 periods::Union{Vector{Int},Vector{Float64},UnitRange{Int64}} = DEFAULT_CONDITIONAL_VARIANCE_PERIODS,
-                                                parameters::ParameterType = nothing,  
+                                                parameters::ParameterType = nothing,
+                                                steady_state_function::SteadyStateFunctionType = missing,  
                                                 verbose::Bool = DEFAULT_VERBOSE,
                                                 tol::Tolerances = Tolerances(),
                                                 quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
@@ -2108,7 +2150,10 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 lyapunov_algorithm = lyapunov_algorithm)
 
-    solve!(𝓂, opts = opts, parameters = parameters)
+    solve!(𝓂, 
+            opts = opts,
+            steady_state_function = steady_state_function,  
+            parameters = parameters)
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
@@ -2206,6 +2251,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MODEL®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $QME®
 - $LYAPUNOV®
 - $TOLERANCES®
@@ -2258,6 +2304,7 @@ And data, 7×2 Matrix{Float64}:
 """
 function get_variance_decomposition(𝓂::ℳ; 
                                     parameters::ParameterType = nothing,
+                                    steady_state_function::SteadyStateFunctionType = missing,
                                     verbose::Bool = DEFAULT_VERBOSE,
                                     tol::Tolerances = Tolerances(),
                                     quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
@@ -2268,7 +2315,10 @@ function get_variance_decomposition(𝓂::ℳ;
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     lyapunov_algorithm = lyapunov_algorithm)
     
-    solve!(𝓂, opts = opts, parameters = parameters)
+    solve!(𝓂, 
+            opts = opts, 
+            steady_state_function = steady_state_function, 
+            parameters = parameters)
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
     
@@ -2342,6 +2392,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MODEL®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $QME®
 - $LYAPUNOV®
@@ -2385,7 +2436,8 @@ And data, 4×4 Matrix{Float64}:
 ```
 """
 function get_correlation(𝓂::ℳ; 
-                        parameters::ParameterType = nothing,  
+                        parameters::ParameterType = nothing,
+                        steady_state_function::SteadyStateFunctionType = missing,  
                         algorithm::Symbol = DEFAULT_ALGORITHM,
                         quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                         sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
@@ -2403,7 +2455,8 @@ function get_correlation(𝓂::ℳ;
     @assert algorithm ∈ [:first_order, :pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
 
     solve!(𝓂, 
-            parameters = parameters, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
             opts = opts, 
             algorithm = algorithm)
 
@@ -2458,6 +2511,7 @@ If occasionally binding constraints are present in the model, they are not taken
 # Keyword Arguments
 - `autocorrelation_periods` [Default: `1:5`, Type: `UnitRange{Int}`]: periods for which to return the autocorrelation
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $QME®
 - $LYAPUNOV®
@@ -2502,7 +2556,8 @@ And data, 4×5 Matrix{Float64}:
 """
 function get_autocorrelation(𝓂::ℳ; 
                             autocorrelation_periods::UnitRange{Int} = DEFAULT_AUTOCORRELATION_PERIODS,
-                            parameters::ParameterType = nothing,  
+                            parameters::ParameterType = nothing,
+                            steady_state_function::SteadyStateFunctionType = missing,  
                             algorithm::Symbol = DEFAULT_ALGORITHM,
                             quadratic_matrix_equation_algorithm::Symbol = DEFAULT_QME_ALGORITHM,
                             sylvester_algorithm::Union{Symbol,Vector{Symbol},Tuple{Symbol,Vararg{Symbol}}} = DEFAULT_SYLVESTER_SELECTOR(𝓂),
@@ -2521,7 +2576,8 @@ function get_autocorrelation(𝓂::ℳ;
 
     solve!(𝓂, 
             opts = opts, 
-            parameters = parameters, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
             algorithm = algorithm)
 
     if algorithm == :pruned_third_order
@@ -2592,6 +2648,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $MODEL®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - `non_stochastic_steady_state` [Default: `true`, Type: `Bool`]: switch to return SS of endogenous variables
 - `mean` [Default: `false`, Type: `Bool`]: switch to return mean of endogenous variables (the mean for the linearised solutoin is the NSSS)
 - `standard_deviation` [Default: `true`, Type: `Bool`]: switch to return standard deviation of endogenous variables
@@ -2660,7 +2717,8 @@ And data, 4×6 Matrix{Float64}:
 ```
 """
 function get_moments(𝓂::ℳ; 
-                    parameters::ParameterType = nothing,  
+                    parameters::ParameterType = nothing,
+                    steady_state_function::SteadyStateFunctionType = missing,  
                     non_stochastic_steady_state::Bool = DEFAULT_NON_STOCHASTIC_STEADY_STATE_FLAG, 
                     mean::Bool = DEFAULT_MEAN_FLAG,
                     standard_deviation::Bool = DEFAULT_STANDARD_DEVIATION_FLAG, 
@@ -2685,7 +2743,8 @@ function get_moments(𝓂::ℳ;
                     lyapunov_algorithm = lyapunov_algorithm)
 
     solve!(𝓂, 
-            parameters = parameters, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
             algorithm = algorithm, 
             opts = opts, 
             silent = silent)
@@ -3255,6 +3314,7 @@ Dict{Symbol, AbstractArray{Float64}} with 1 entry:
 function get_statistics(𝓂,
                         parameter_values::Vector{T};
                         parameters::Union{Vector{Symbol},Vector{String}} = 𝓂.parameters,
+                        steady_state_function::SteadyStateFunctionType = missing, 
                         non_stochastic_steady_state::Union{Symbol_input,String_input} = Symbol[],
                         mean::Union{Symbol_input,String_input} = Symbol[],
                         standard_deviation::Union{Symbol_input,String_input} = Symbol[],
@@ -3309,6 +3369,11 @@ function get_statistics(𝓂,
         algorithm = :pruned_second_order
     end
 
+    @ignore_derivatives solve!(𝓂, 
+                                algorithm = algorithm, 
+                                steady_state_function = steady_state_function,
+                                opts = opts)
+
     if !(non_stochastic_steady_state == Symbol[]) && (standard_deviation == Symbol[]) && (variance == Symbol[]) && (covariance == Symbol[]) && (autocorrelation == Symbol[])
         SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, all_parameters, opts = opts) # timer = timer, 
         
@@ -3320,8 +3385,6 @@ function get_statistics(𝓂,
 
         return ret
     end
-
-    @ignore_derivatives solve!(𝓂, algorithm = algorithm, opts = opts)
 
     if algorithm == :pruned_third_order
 
@@ -3606,6 +3669,7 @@ Calculate the residuals of the non-stochastic steady state equations of the mode
 
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $TOLERANCES®
 - $VERBOSE®
 
@@ -3659,13 +3723,17 @@ And data, 5-element Vector{Float64}:
 function get_non_stochastic_steady_state_residuals(𝓂::ℳ, 
                                                     values::Union{Vector{Float64}, Dict{Symbol, Float64}, Dict{String, Float64}, KeyedArray{Float64, 1}}; 
                                                     parameters::ParameterType = nothing,
+                                                    steady_state_function::SteadyStateFunctionType = missing,
                                                     tol::Tolerances = Tolerances(),
                                                     verbose::Bool = DEFAULT_VERBOSE)
     # @nospecialize # reduce compile time                                             
 
     opts = merge_calculation_options(tol = tol, verbose = verbose)
     
-    solve!(𝓂, parameters = parameters, opts = opts)
+    solve!(𝓂, 
+            parameters = parameters,
+            steady_state_function = steady_state_function, 
+            opts = opts)
 
     SS_and_pars, _ = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts)
 

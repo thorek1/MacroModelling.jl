@@ -150,6 +150,9 @@ const ParameterType = Union{Nothing,
                             Matrix{Real},
                             Vector{Float64} } where S <: AbstractString
 
+# Type for steady state function argument
+# Accepts a function, `nothing` (explicitly clear)
+const SteadyStateFunctionType = Union{Nothing, Function, Missing}
 
 using DispatchDoctor
 # @stable default_mode = "disable" begin
@@ -246,7 +249,7 @@ function InverseGamma  end
 
 # Remove comment for debugging
 # export block_solver, remove_redundant_SS_vars!, write_parameters_input!, parse_variables_input_to_index, undo_transformer , transformer, calculate_third_order_stochastic_steady_state, calculate_second_order_stochastic_steady_state, filter_and_smooth
-# export create_symbols_eqs!, solve_steady_state!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
+# export create_symbols_eqs!, write_steady_state_solver_function!, write_functions_mapping!, solve!, parse_algorithm_to_state_update, block_solver, block_solver_AD, calculate_covariance, calculate_jacobian, calculate_first_order_solution, expand_steady_state, get_symbols, calculate_covariance_AD, parse_shocks_input_to_index
 
 @stable default_mode = "disable" begin
 
@@ -1032,6 +1035,109 @@ function clear_solution_caches!(𝓂::ℳ, algorithm::Symbol)
 
     return nothing
 end
+
+
+"""
+    set_custom_steady_state_function!(𝓂::ℳ, f::Function)
+
+*Internal function* - Set a custom function to calculate the steady state of the model.
+
+This function is not exported. Users should instead pass the `steady_state_function` argument to functions like:
+- `get_irf(𝓂, steady_state_function = f)`
+- `get_steady_state(𝓂, steady_state_function = f)`
+- `simulate(𝓂, steady_state_function = f)`
+
+This function allows users to provide their own steady state solver, which can be useful when:
+- The default numerical solver has difficulty finding the steady state
+- An analytical solution for the steady state is known
+- A more efficient custom solver is available
+
+# Arguments
+- `𝓂`: Model object
+- `f`: A function that takes a vector of parameter values (in declaration order) and returns steady state values in the same order as `get_NSSS_and_parameters`: variables first, then calibrated parameters (if any).
+
+# Keyword Arguments
+- `verbose` [Default: `false`, Type: `Bool`]: Print information about the variable and parameter ordering.
+
+# Details
+The custom function `f` should have the signature:
+```julia
+f(parameters::Vector{Float64}) -> Vector{Float64}
+```
+
+Where:
+- Input: Parameter values in the declaration order (as defined in `@parameters`). Use `get_parameters(𝓂)` to see the parameter order.
+- Output: Steady state values in the same order as `get_NSSS_and_parameters`: variables in `sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))`, followed by calibrated parameters in `𝓂.calibration_equations_parameters` (if any).
+
+# Examples
+```julia
+using MacroModelling
+
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρ * z[-1] + std_z * eps_z[x]
+end
+
+@parameters RBC begin
+    std_z = 0.01
+    ρ = 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+# Define a custom steady state function
+# get_variables(RBC) returns [:c, :k, :q, :z] (sorted alphabetically)
+# get_parameters(RBC) returns [:std_z, :ρ, :δ, :α, :β] (in declaration order)
+# Return values must match the order used by get_NSSS_and_parameters:
+# variables in sort(union(RBC.var, RBC.exo_past, RBC.exo_future)), then any calibrated parameters.
+function my_steady_state(params)
+    std_z, ρ, δ, α, β = params
+    
+    # Analytical steady state
+    k_ss = ((1/β - 1 + δ) / α)^(1/(α - 1))
+    q_ss = k_ss^α
+    c_ss = q_ss - δ * k_ss
+    z_ss = 0.0
+    
+    return [c_ss, k_ss, q_ss, z_ss]  # Order matches get_NSSS_and_parameters(RBC)
+end
+
+# Use with get_irf, get_steady_state, or simulate
+get_irf(RBC, steady_state_function = my_steady_state)
+```
+
+# Returns
+- `nothing`
+
+See also: [`get_variables`](@ref), [`get_parameters`](@ref), [`get_steady_state`](@ref), [`get_irf`](@ref), [`simulate`](@ref)
+"""
+function set_custom_steady_state_function!(𝓂::ℳ, f::SteadyStateFunctionType)
+    had_custom = !isnothing(𝓂.custom_steady_state_function)
+
+    # Store the custom function
+    if isnothing(f)
+        𝓂.custom_steady_state_function = nothing
+        if had_custom
+            𝓂.solution.outdated_NSSS = true
+            for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+                push!(𝓂.solution.outdated_algorithms, alg)
+            end
+        end
+    elseif f isa Function && f !== 𝓂.custom_steady_state_function
+        𝓂.custom_steady_state_function = f 
+
+        𝓂.solution.outdated_NSSS = true
+        for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
+            push!(𝓂.solution.outdated_algorithms, alg)
+        end
+    end
+
+    return nothing
+end
+
 
 
 """
@@ -4577,9 +4683,7 @@ function write_ss_check_function!(𝓂::ℳ;
 end
 
 
-function solve_steady_state!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false, avoid_solve::Bool = false)
-    write_ss_check_function!(𝓂)
-
+function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::symbolics; verbose::Bool = false, avoid_solve::Bool = false)
     unknowns = union(Symbolics.calibration_equations_parameters, Symbolics.vars_in_ss_equations)
 
     @assert length(unknowns) <= length(Symbolics.ss_equations) + length(Symbolics.calibration_equations) "Unable to solve steady state. More unknowns than equations."
@@ -4992,15 +5096,93 @@ end
 
 
 
-function solve_steady_state!(𝓂::ℳ;
+function solve_steady_state!(𝓂::ℳ, 
+                            opts::CalculationOptions,
+                            ss_solver_parameters_algorithm::Symbol,
+                            ss_solver_parameters_maxtime::Real;
+                            silent::Bool = false)::Tuple{Vector{Float64}, Float64, Bool}
+    """
+    Internal function to solve and cache the steady state.
+    Returns: (SS_and_pars, solution_error, found_solution)
+    """
+    start_time = time()
+    
+    if 𝓂.precompile
+        return Float64[], 0.0, false
+    end
+    
+    if !(𝓂.custom_steady_state_function isa Function)
+        if !silent 
+            print("Find non-stochastic steady state:\t\t\t\t\t") 
+        end
+    end
+    
+    SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts, cold_start = true)
+    
+    found_solution = true
+    
+    if !(𝓂.custom_steady_state_function isa Function)
+        select_fastest_SS_solver_parameters!(𝓂, tol = opts.tol)
+        
+        if solution_error > opts.tol.NSSS_acceptance_tol
+            found_solution = find_SS_solver_parameters!(Val(ss_solver_parameters_algorithm), 𝓂, tol = opts.tol, verbosity = 0, maxtime = ss_solver_parameters_maxtime, maxiter = 1000000000)
+            
+            if found_solution
+                SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, 𝓂.parameter_values, opts = opts, cold_start = true)
+            end
+        end
+    end
+    
+    if !(𝓂.custom_steady_state_function isa Function)
+        if !silent 
+            println(round(time() - start_time, digits = 3), " seconds") 
+        end
+    end
+    
+    if !found_solution
+        @warn "Could not find non-stochastic steady state. Consider setting bounds on variables or calibrated parameters in the `@parameters` section (e.g. `k > 10`)."
+    end
+    
+    𝓂.solution.non_stochastic_steady_state = SS_and_pars
+    𝓂.solution.outdated_NSSS = false
+    
+    return SS_and_pars, solution_error, found_solution
+end
+
+# Centralised helper to write symbolic derivatives and map functions
+function write_symbolic_derivatives!(𝓂::ℳ; perturbation_order::Int = 1, silent::Bool = false)
+    start_time = time()
+
+    if !silent
+        if perturbation_order == 1
+            print("Take symbolic derivatives up to first order:\t\t\t\t")
+        elseif perturbation_order == 2
+            print("Take symbolic derivatives up to second order:\t\t\t\t")
+        elseif perturbation_order == 3
+            print("Take symbolic derivatives up to third order:\t\t\t\t")
+        end
+    end
+
+    write_auxiliary_indices!(𝓂)
+    write_functions_mapping!(𝓂, perturbation_order)
+
+    𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
+
+    if !silent
+        println(round(time() - start_time, digits = 3), " seconds")
+    end
+
+    return nothing
+end
+
+
+function write_steady_state_solver_function!(𝓂::ℳ;
                             cse = true,
                             skipzeros = true,
                             density_threshold::Float64 = .1,
                             nnz_parallel_threshold::Int = 1000000,
                             min_length::Int = 1000,
                             verbose::Bool = false)
-    write_ss_check_function!(𝓂)
-
     unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(𝓂.ss_aux_equations) + length(𝓂.calibration_equations) "Unable to solve steady state. More unknowns than equations."
@@ -6687,8 +6869,49 @@ end
 
 @stable default_mode = "disable" begin
 
+function set_up_steady_state_solver!(𝓂::ℳ; verbose::Bool, silent::Bool, avoid_solve::Bool = false, symbolic::Bool = false)
+    if !𝓂.precompile
+        start_time = time()
+
+        if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
+
+        symbolics = create_symbols_eqs!(𝓂)
+
+        remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = avoid_solve)
+
+        if !silent println(round(time() - start_time, digits = 3), " seconds") end
+
+        start_time = time()
+
+        if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+        write_ss_check_function!(𝓂)
+
+        write_steady_state_solver_function!(𝓂, symbolic, symbolics, verbose = verbose, avoid_solve = avoid_solve)
+
+        𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
+        
+        set_up_obc_violation_function!(𝓂)
+
+        if !silent println(round(time() - start_time, digits = 3), " seconds") end
+    else
+        start_time = time()
+
+        if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
+
+        write_ss_check_function!(𝓂)
+
+        write_steady_state_solver_function!(𝓂, verbose = verbose)
+
+        if !silent println(round(time() - start_time, digits = 3), " seconds") end
+    end
+
+    return nothing
+end
+
 function solve!(𝓂::ℳ; 
                 parameters::ParameterType = nothing, 
+                steady_state_function::SteadyStateFunctionType = missing,
                 dynamics::Bool = false, 
                 algorithm::Symbol = :first_order, 
                 opts::CalculationOptions = merge_calculation_options(),
@@ -6701,78 +6924,32 @@ function solve!(𝓂::ℳ;
 
     @assert algorithm ∈ all_available_algorithms
     
+    # Handle steady_state_function argument
+    set_custom_steady_state_function!(𝓂, steady_state_function)
+    
     # @timeit_debug timer "Write parameter inputs" begin
 
     write_parameters_input!(𝓂, parameters, verbose = opts.verbose)
+    
+    if 𝓂.solution.functions_written &&
+        isnothing(𝓂.custom_steady_state_function) &&
+        !(𝓂.SS_solve_func isa RuntimeGeneratedFunctions.RuntimeGeneratedFunction)
+
+        set_up_steady_state_solver!(𝓂, verbose = opts.verbose, silent = silent)
+    end
     
     if !𝓂.solution.functions_written
         verbose = opts.verbose
         
         perturbation_order = 1
-        
-        if !𝓂.precompile
-            start_time = time()
 
-            if !silent print("Remove redundant variables in non-stochastic steady state problem:\t") end
-
-            symbolics = create_symbols_eqs!(𝓂)
-
-            remove_redundant_SS_vars!(𝓂, symbolics, avoid_solve = false) 
-
-            if !silent println(round(time() - start_time, digits = 3), " seconds") end
-
-
-            start_time = time()
-
-            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-            solve_steady_state!(𝓂, false, symbolics, verbose = verbose, avoid_solve = false) # 2nd argument is SS_symbolic
-
-            𝓂.obc_violation_equations = write_obc_violation_equations(𝓂)
-            
-            set_up_obc_violation_function!(𝓂)
-
-            if !silent println(round(time() - start_time, digits = 3), " seconds") end
-        else
-            start_time = time()
-
-            if !silent print("Set up non-stochastic steady state problem:\t\t\t\t") end
-
-            solve_steady_state!(𝓂, verbose = verbose)
-
-            if !silent println(round(time() - start_time, digits = 3), " seconds") end
-        end
+        set_up_steady_state_solver!(𝓂, verbose = verbose, silent = silent, avoid_solve = false)
     
-        start_time = time()
+        SS_and_pars, solution_error, found_solution = solve_steady_state!(𝓂, opts, :ESCH, 120.0, silent = silent)
+            
+        write_symbolic_derivatives!(𝓂; perturbation_order = perturbation_order, silent = silent)
 
-        opts = merge_calculation_options(verbose = verbose)
-
-        start_time = time()
-
-        if !silent
-            if perturbation_order == 1
-                print("Take symbolic derivatives up to first order:\t\t\t\t")
-            elseif perturbation_order == 2
-                print("Take symbolic derivatives up to second order:\t\t\t\t")
-            elseif perturbation_order == 3
-                print("Take symbolic derivatives up to third order:\t\t\t\t")
-            end
-
-            𝓂.solution.functions_written = true
-        end
-
-        write_auxiliary_indices!(𝓂)
-
-        # time_dynamic_derivs = @elapsed 
-        write_functions_mapping!(𝓂, perturbation_order)
-
-        # @assert false "stop here"
-
-        𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
-
-        if !silent
-            println(round(time() - start_time, digits = 3), " seconds")
-        end
+        𝓂.solution.functions_written = true
     end
 
     # Check for missing parameters after processing input
@@ -8078,7 +8255,7 @@ function write_parameters_input!(𝓂::ℳ, parameters::D; verbose::Bool = true)
         𝓂.parameter_values = vcat(declared_values, missing_values, remaining_missing_values)
         
         # Clear the NSSS_solver_cache since parameter order/count has changed
-        # It will be rebuilt when solve_steady_state! is called with correct parameter count
+        # It will be rebuilt when write_steady_state_solver_function! is called with correct parameter count
         while length(𝓂.NSSS_solver_cache) > 0
             pop!(𝓂.NSSS_solver_cache)
         end
@@ -9578,10 +9755,47 @@ end
 
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                     parameter_values::Vector{S}; 
-                                    opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
+                                    opts::CalculationOptions = merge_calculation_options(),
+                                    cold_start::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS" begin
-    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+    
+    # Use custom steady state function if available, otherwise use default solver
+    if !isnothing(𝓂.custom_steady_state_function)
+        
+        SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
+
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
+
+        if length(SS_and_pars) != expected_length
+            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars)) values, expected $expected_length."))
+        end
+
+        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
+
+        𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
+
+        solution_error = sum(abs, residual)
+
+        iters = 0
+
+        if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
+            throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values)"))
+        end
+          
+        var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        SS_and_pars_tmp = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
+
+        SS_and_pars_tmp[[var_idx..., calib_idx...]] = SS_and_pars
+
+        SS_and_pars = SS_and_pars_tmp
+    else
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
+    end
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose 
@@ -9600,11 +9814,46 @@ end # dispatch_doctor
 function rrule(::typeof(get_NSSS_and_parameters), 
                 𝓂::ℳ, 
                 parameter_values::Vector{S}; 
-                opts::CalculationOptions = merge_calculation_options()) where S <: Real
+                opts::CalculationOptions = merge_calculation_options(),
+                cold_start::Bool = false) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
 
-    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+    # Use custom steady state function if available, otherwise use default solver
+    if !isnothing(𝓂.custom_steady_state_function)
+        SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
+
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
+
+        if length(SS_and_pars) != expected_length
+            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars)) values, expected $expected_length."))
+        end
+
+        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
+
+        𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
+
+        solution_error = sum(abs, residual)
+        
+        iters = 0
+
+        if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
+            throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol)."))
+        end
+        
+        var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        SS_and_pars_tmp = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
+
+        SS_and_pars_tmp[[var_idx..., calib_idx...]] = SS_and_pars
+
+        SS_and_pars = SS_and_pars_tmp
+    else
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
+    end
 
     # end # timeit_debug
 
@@ -9690,12 +9939,46 @@ end
 
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                 parameter_values_dual::Vector{ℱ.Dual{Z,S,N}}; 
-                                opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
+                                opts::CalculationOptions = merge_calculation_options(),
+                                cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
 
-    SS_and_pars, (solution_error, iters)  = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, false, 𝓂.solver_parameters)
+    if !isnothing(𝓂.custom_steady_state_function)
+        SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
 
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
+
+        if length(SS_and_pars) != expected_length
+            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars)) values, expected $expected_length."))
+        end
+
+        residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
+
+        𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
+
+        solution_error = sum(abs, residual)
+        
+        iters = 0
+
+        if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
+            throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol)."))
+        end
+        
+        var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
+
+        SS_and_pars_tmp = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
+
+        SS_and_pars_tmp[[var_idx..., calib_idx...]] = SS_and_pars
+
+        SS_and_pars = SS_and_pars_tmp
+    else
+        SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
+    end
+    
     ∂SS_and_pars = zeros(S, length(SS_and_pars), N)
 
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)

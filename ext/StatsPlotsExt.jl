@@ -2,7 +2,7 @@ module StatsPlotsExt
 
 using MacroModelling
 
-import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, infer_step
+import MacroModelling: ParameterType, ℳ, Symbol_input, String_input, Tolerances, merge_calculation_options, MODEL®, DATA®, PARAMETERS®, ALGORITHM®, FILTER®, VARIABLES®, SMOOTH®, SHOW_PLOTS®, SAVE_PLOTS®, SAVE_PLOTS_NAME®, SAVE_PLOTS_FORMAT®, SAVE_PLOTS_PATH®, PLOTS_PER_PAGE®, MAX_ELEMENTS_PER_LEGENDS_ROW®, EXTRA_LEGEND_SPACE®, PLOT_ATTRIBUTES®, QME®, SYLVESTER®, LYAPUNOV®, TOLERANCES®, VERBOSE®, DATA_IN_LEVELS®, PERIODS®, SHOCKS®, SHOCK_SIZE®, NEGATIVE_SHOCK®, GENERALISED_IRF®, GENERALISED_IRF_WARMUP_ITERATIONS®, CONDITIONS_IN_LEVELS®, GENERALISED_IRF_DRAWS®, INITIAL_STATE®, IGNORE_OBC®, CONDITIONS®, SHOCK_CONDITIONS®, LEVELS®, LABEL®, RENAME_DICTIONARY®, STEADY_STATE_FUNCTION®, parse_shocks_input_to_index, parse_variables_input_to_index, replace_indices, replace_indices_special, filter_data_with_model, get_relevant_steady_states, replace_indices_in_symbol, parse_algorithm_to_state_update, girf, decompose_name, obc_objective_optim_fun, obc_constraint_optim_fun, compute_irf_responses, process_ignore_obc_flag, adjust_generalised_irf_flag, process_shocks_input, normalize_filtering_options, infer_step, SteadyStateFunctionType
 import MacroModelling: DEFAULT_ALGORITHM, DEFAULT_FILTER_SELECTOR, DEFAULT_WARMUP_ITERATIONS, DEFAULT_VARIABLES_EXCLUDING_OBC, DEFAULT_SHOCK_SELECTION, DEFAULT_PRESAMPLE_PERIODS, DEFAULT_DATA_IN_LEVELS, DEFAULT_SHOCK_DECOMPOSITION_SELECTOR, DEFAULT_SMOOTH_SELECTOR, DEFAULT_LABEL, DEFAULT_SHOW_PLOTS, DEFAULT_SAVE_PLOTS, DEFAULT_SAVE_PLOTS_FORMAT, DEFAULT_SAVE_PLOTS_PATH, DEFAULT_PLOTS_PER_PAGE_SMALL, DEFAULT_TRANSPARENCY, DEFAULT_MAX_ELEMENTS_PER_LEGEND_ROW, DEFAULT_EXTRA_LEGEND_SPACE, DEFAULT_VERBOSE, DEFAULT_QME_ALGORITHM, DEFAULT_SYLVESTER_SELECTOR, DEFAULT_SYLVESTER_THRESHOLD, DEFAULT_LARGE_SYLVESTER_ALGORITHM, DEFAULT_SYLVESTER_ALGORITHM, DEFAULT_LYAPUNOV_ALGORITHM, DEFAULT_PLOT_ATTRIBUTES, DEFAULT_ARGS_AND_KWARGS_NAMES, DEFAULT_PLOTS_PER_PAGE_LARGE, DEFAULT_SHOCKS_EXCLUDING_OBC, DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC, DEFAULT_PERIODS, DEFAULT_SHOCK_SIZE, DEFAULT_NEGATIVE_SHOCK, DEFAULT_GENERALISED_IRF, DEFAULT_GENERALISED_IRF_WARMUP, DEFAULT_GENERALISED_IRF_DRAWS, DEFAULT_INITIAL_STATE, DEFAULT_IGNORE_OBC, DEFAULT_PLOT_TYPE, DEFAULT_CONDITIONS_IN_LEVELS, DEFAULT_SIGMA_RANGE, DEFAULT_FONT_SIZE, DEFAULT_VARIABLE_SELECTION, DEFAULT_FORECAST_PERIODS
 import DocStringExtensions: FIELDS, SIGNATURES, TYPEDEF, TYPEDSIGNATURES, TYPEDFIELDS
 import LaTeXStrings
@@ -129,6 +129,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
@@ -194,6 +195,7 @@ plot_model_estimates(RBC_CME, simulation([:k],:,:simulate))
 function plot_model_estimates(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
+                                steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM, 
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -248,7 +250,12 @@ function plot_model_estimates(𝓂::ℳ,
 
     filter, smooth, algorithm, shock_decomposition, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, shock_decomposition, warmup_iterations)
 
-    solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
+    solve!(𝓂, 
+            parameters = parameters, 
+            steady_state_function = steady_state_function,
+            algorithm = algorithm, 
+            opts = opts, 
+            dynamics = true)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
@@ -759,6 +766,7 @@ This function shares most of the signature and functionality of [`plot_model_est
 - $DATA®
 # Keyword Arguments
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
@@ -842,6 +850,7 @@ plot_model_estimates!(RBC_CME, simulation([:k],:,:simulate), parameters = :beta 
 function plot_model_estimates!(𝓂::ℳ,
                                 data::KeyedArray{Float64};
                                 parameters::ParameterType = nothing,
+                                steady_state_function::SteadyStateFunctionType = missing,
                                 algorithm::Symbol = DEFAULT_ALGORITHM,
                                 filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm),
                                 warmup_iterations::Int = DEFAULT_WARMUP_ITERATIONS,
@@ -894,7 +903,12 @@ function plot_model_estimates!(𝓂::ℳ,
 
     filter, smooth, algorithm, _, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
 
-    solve!(𝓂, parameters = parameters, algorithm = algorithm, opts = opts, dynamics = true)
+    solve!(𝓂, 
+            parameters = parameters, 
+            steady_state_function = steady_state_function,
+            algorithm = algorithm, 
+            opts = opts, 
+            dynamics = true)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
 
@@ -1742,6 +1756,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $SHOCKS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC))
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $SHOCK_SIZE®
 - $NEGATIVE_SHOCK®
@@ -1795,6 +1810,7 @@ function plot_irf(𝓂::ℳ;
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCKS_EXCLUDING_OBC, 
                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC,
                     parameters::ParameterType = nothing,
+                    steady_state_function::SteadyStateFunctionType = missing,
                     label::Union{Real, String, Symbol} = DEFAULT_LABEL,
                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
@@ -1847,7 +1863,13 @@ function plot_irf(𝓂::ℳ;
 
     generalised_irf = adjust_generalised_irf_flag(generalised_irf, generalised_irf_warmup_iterations, generalised_irf_draws, algorithm, occasionally_binding_constraints, shocks)
 
-    solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+    solve!(𝓂, 
+            parameters = parameters, 
+            steady_state_function = steady_state_function,
+            opts = opts, 
+            dynamics = true, 
+            algorithm = algorithm, 
+            obc = occasionally_binding_constraints || obc_shocks_included)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
@@ -2397,6 +2419,7 @@ This function shares most of the signature and functionality of [`plot_irf`](@re
 - $SHOCKS®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC))
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $SHOCK_SIZE®
 - $NEGATIVE_SHOCK®
@@ -2477,6 +2500,7 @@ function plot_irf!(𝓂::ℳ;
                     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = DEFAULT_SHOCKS_EXCLUDING_OBC, 
                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_AUX_AND_OBC,
                     parameters::ParameterType = nothing,
+                    steady_state_function::SteadyStateFunctionType = missing,
                     label::Union{Real, String, Symbol} = length(irf_active_plot_container) + 1,
                     show_plots::Bool = DEFAULT_SHOW_PLOTS,
                     save_plots::Bool = DEFAULT_SAVE_PLOTS,
@@ -2541,7 +2565,13 @@ function plot_irf!(𝓂::ℳ;
 
     generalised_irf = adjust_generalised_irf_flag(generalised_irf, generalised_irf_warmup_iterations, generalised_irf_draws, algorithm, occasionally_binding_constraints, shocks)
 
-    solve!(𝓂, parameters = parameters, opts = opts, dynamics = true, algorithm = algorithm, obc = occasionally_binding_constraints || obc_shocks_included)
+    solve!(𝓂, 
+            parameters = parameters, 
+            steady_state_function = steady_state_function,
+            opts = opts, 
+            dynamics = true, 
+            algorithm = algorithm, 
+            obc = occasionally_binding_constraints || obc_shocks_included)
 
     reference_steady_state, NSSS, SSS_delta = get_relevant_steady_states(𝓂, algorithm, opts = opts)
     
@@ -3473,6 +3503,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $PERIODS®
 - $(VARIABLES®(DEFAULT_VARIABLE_SELECTION))
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
 - $SAVE_PLOTS_FORMAT®
@@ -3523,6 +3554,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
                                                 periods::Int = DEFAULT_PERIODS, 
                                                 variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLE_SELECTION,
                                                 parameters::ParameterType = nothing,
+                                                steady_state_function::SteadyStateFunctionType = missing,
                                                 show_plots::Bool = DEFAULT_SHOW_PLOTS,
                                                 save_plots::Bool = DEFAULT_SAVE_PLOTS,
                                                 save_plots_format::Symbol = DEFAULT_SAVE_PLOTS_FORMAT,
@@ -3558,6 +3590,7 @@ function plot_conditional_variance_decomposition(𝓂::ℳ;
     fevds = get_conditional_variance_decomposition(𝓂,
                                                     periods = 1:periods,
                                                     parameters = parameters,
+                                                    steady_state_function = steady_state_function,
                                                     verbose = verbose,
                                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                     tol = tol)
@@ -3735,6 +3768,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $ALGORITHM®
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $IGNORE_OBC®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
@@ -3789,6 +3823,7 @@ function plot_solution(𝓂::ℳ,
                         algorithm::Symbol = DEFAULT_ALGORITHM,
                         σ::Union{Int64,Float64} = DEFAULT_SIGMA_RANGE,
                         parameters::ParameterType = nothing,
+                        steady_state_function::SteadyStateFunctionType = missing,
                         ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                         label::Union{Real, String, Symbol} = DEFAULT_LABEL,
                         show_plots::Bool = DEFAULT_SHOW_PLOTS,
@@ -3839,6 +3874,7 @@ function plot_solution(𝓂::ℳ,
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
                             parameters = parameters,
+                            steady_state_function = steady_state_function,
                             variables = :all,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm = sylvester_algorithm,
@@ -4456,6 +4492,7 @@ If the model contains occasionally binding constraints and `ignore_obc = false` 
 - $ALGORITHM®
 - `σ` [Default: `2`, Type: `Union{Int64,Float64}`]: defines the range of the state variable around the (non) stochastic steady state in standard deviations. E.g. a value of 2 means that the state variable is plotted for values of the (non) stochastic steady state in standard deviations +/- 2 standard deviations.
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $IGNORE_OBC®
 - $SHOW_PLOTS®
 - $SAVE_PLOTS®
@@ -4512,6 +4549,7 @@ function plot_solution!(𝓂::ℳ,
                         algorithm::Symbol = DEFAULT_ALGORITHM,
                         σ::Union{Int64,Float64} = DEFAULT_SIGMA_RANGE,
                         parameters::ParameterType = nothing,
+                        steady_state_function::SteadyStateFunctionType = missing,
                         ignore_obc::Bool = DEFAULT_IGNORE_OBC,
                         label::Union{Real, String, Symbol} = length(solution_active_plot_container) + 1,
                         show_plots::Bool = DEFAULT_SHOW_PLOTS,
@@ -4564,6 +4602,7 @@ function plot_solution!(𝓂::ℳ,
     SS_and_std = get_moments(𝓂, 
                             derivatives = false,
                             parameters = parameters,
+                            steady_state_function = steady_state_function,
                             variables = :all,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm = sylvester_algorithm,
@@ -4712,6 +4751,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $CONDITIONS_IN_LEVELS®
 - $ALGORITHM®
@@ -4794,6 +4834,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                                     periods::Int = DEFAULT_PERIODS, 
                                     parameters::ParameterType = nothing,
+                                    steady_state_function::SteadyStateFunctionType = missing,
                                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                     conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
                                     algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -4840,6 +4881,7 @@ function plot_conditional_forecast(𝓂::ℳ,
                                 initial_state = initial_state,
                                 periods = periods, 
                                 parameters = parameters,
+                                steady_state_function = steady_state_function,
                                 variables = variables, 
                                 conditions_in_levels = conditions_in_levels,
                                 algorithm = algorithm,
@@ -5166,6 +5208,7 @@ This function shares most of the signature and functionality of [`plot_condition
 - $INITIAL_STATE®
 - `periods` [Default: `40`, Type: `Int`]: the total number of periods is the sum of the argument provided here and the maximum of periods of the shocks or conditions argument.
 - $PARAMETERS®
+- $STEADY_STATE_FUNCTION®
 - $(VARIABLES®(DEFAULT_VARIABLES_EXCLUDING_OBC))
 - $CONDITIONS_IN_LEVELS®
 - $ALGORITHM®
@@ -5250,6 +5293,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}} = DEFAULT_INITIAL_STATE,
                                     periods::Int = DEFAULT_PERIODS, 
                                     parameters::ParameterType = nothing,
+                                    steady_state_function::SteadyStateFunctionType = missing,
                                     variables::Union{Symbol_input,String_input} = DEFAULT_VARIABLES_EXCLUDING_OBC, 
                                     conditions_in_levels::Bool = DEFAULT_CONDITIONS_IN_LEVELS,
                                     algorithm::Symbol = DEFAULT_ALGORITHM,
@@ -5300,6 +5344,7 @@ function plot_conditional_forecast!(𝓂::ℳ,
                                 initial_state = initial_state,
                                 periods = periods, 
                                 parameters = parameters,
+                                steady_state_function = steady_state_function,
                                 variables = variables, 
                                 conditions_in_levels = conditions_in_levels,
                                 algorithm = algorithm,

@@ -1,5 +1,13 @@
 @stable default_mode = "disable" begin
 
+"""
+Compute log-likelihood using the inversion filter, which calls the find_shocks function
+to recover shocks that match the observables. For higher-order solutions the global
+minimum-norm shocks search is NP-hard because feasible roots grow exponentially; starting
+from the origin with gradient-based solvers (including the default LagrangeNewton)
+returns the root whose basin contains the origin rather than guaranteeing the global
+minimum.
+"""
 # Specialization for :inversion filter
 function calculate_loglikelihood(::Val{:inversion}, 
                                 algorithm, observables, 
