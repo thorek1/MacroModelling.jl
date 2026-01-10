@@ -357,9 +357,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺  = @ignore_derivatives BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺  = @ignore_derivatives BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    s_in_s⁺  = @ignore_derivatives get_computational_constants(𝓂).s_in_s
+    sv_in_s⁺ = @ignore_derivatives get_computational_constants(𝓂).s_in_s⁺
+    e_in_s⁺  = @ignore_derivatives get_computational_constants(𝓂).e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -592,9 +592,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -1062,9 +1062,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    # s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -1290,9 +1290,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -1729,7 +1729,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     logabsdets = 0.0
 
     s_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    sv_in_s⁺ = @ignore_derivatives get_computational_constants(𝓂).s_in_s⁺
     e_in_s⁺ = @ignore_derivatives BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
 
     tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
@@ -2156,9 +2156,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
 
     tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
     shockvar_idxs = tmp.nzind
@@ -2709,9 +2709,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
 
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -3032,9 +3032,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -3628,9 +3628,9 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    # s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -3846,7 +3846,7 @@ function filter_data_with_model(𝓂::ℳ,
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     s_in_s⁺  = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
     e_in_s⁺  = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
@@ -4113,9 +4113,9 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
 
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -4423,9 +4423,9 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
+    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
 
     tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
     shockvar_idxs = tmp.nzind
