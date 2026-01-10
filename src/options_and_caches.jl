@@ -31,6 +31,7 @@ end
 mutable struct caches#{F <: Real, G <: AbstractFloat}
     second_order_caches::higher_order_caches#{F, G}
     third_order_caches::higher_order_caches#{F, G}
+    custom_steady_state_buffer::Vector{Float64}
 end
 
 
@@ -66,7 +67,8 @@ end
 
 function Caches(;T::Type = Float64, S::Type = Float64)
     caches( Higher_order_caches(T = T, S = S),
-            Higher_order_caches(T = T, S = S))
+            Higher_order_caches(T = T, S = S),
+            Float64[])
 end
 
 

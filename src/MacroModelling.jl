@@ -1038,7 +1038,7 @@ end
 
 
 """
-    set_custom_steady_state_function!(𝓂::ℳ, f::Function)
+    set_custom_steady_state_function!(𝓂::ℳ, f::SteadyStateFunctionType)
 
 *Internal function* - Set a custom function to calculate the steady state of the model.
 
@@ -1054,20 +1054,22 @@ This function allows users to provide their own steady state solver, which can b
 
 # Arguments
 - `𝓂`: Model object
-- `f`: A function that takes a vector of parameter values (in declaration order) and returns steady state values in the same order as `get_NSSS_and_parameters`: variables first, then calibrated parameters (if any).
+- `f`: A function that accepts either `(parameters)` or `(out, parameters)` and provides steady state values in the same order as `get_NSSS_and_parameters`: variables first, then calibrated parameters (if any).
 
 # Keyword Arguments
 - `verbose` [Default: `false`, Type: `Bool`]: Print information about the variable and parameter ordering.
 
 # Details
-The custom function `f` should have the signature:
+The custom function `f` can have either signature:
 ```julia
-f(parameters::Vector{Float64}) -> Vector{Float64}
+f(parameters::AbstractVector{<:Real}) -> AbstractVector{<:Real}
+f!(out::AbstractVector{<:Real}, parameters::AbstractVector{<:Real}) -> Union{Nothing, AbstractVector{<:Real}}
 ```
+When both signatures are applicable, the in-place signature is used.
 
 Where:
-- Input: Parameter values in the declaration order (as defined in `@parameters`). Use `get_parameters(𝓂)` to see the parameter order.
-- Output: Steady state values in the same order as `get_NSSS_and_parameters`: variables in `sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))`, followed by calibrated parameters in `𝓂.calibration_equations_parameters` (if any).
+- Input: Parameter values in the declaration order (as defined in `@parameters`). Parameter order is available from `get_parameters(𝓂)`.
+- Output: Steady state values in the same order as `get_NSSS_and_parameters`: variables in `sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))`, followed by calibrated parameters in `𝓂.calibration_equations_parameters` (if any). For in-place functions, `out` is filled in this order.
 
 # Examples
 ```julia
@@ -1120,6 +1122,7 @@ function set_custom_steady_state_function!(𝓂::ℳ, f::SteadyStateFunctionType
     # Store the custom function
     if isnothing(f)
         𝓂.custom_steady_state_function = nothing
+        
         if had_custom
             𝓂.solution.outdated_NSSS = true
             for alg in [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
@@ -9720,6 +9723,63 @@ function parse_algorithm_to_state_update(algorithm::Symbol, 𝓂::ℳ, occasiona
     return state_update, pruning
 end
 
+function get_custom_steady_state_buffer!(𝓂::ℳ, expected_length::Int)
+    buffer = 𝓂.caches.custom_steady_state_buffer
+
+    if length(buffer) != expected_length
+        buffer = Vector{Float64}(undef, expected_length)
+        𝓂.caches.custom_steady_state_buffer = buffer
+    end
+
+    return buffer
+end
+
+function evaluate_custom_steady_state_function(𝓂::ℳ,
+                                                f::Function,
+                                                parameter_values::AbstractVector{S},
+                                                expected_length::Int,
+                                                expected_parameter_length::Int) where {S <: Real}
+    if length(parameter_values) != expected_parameter_length
+        throw(ArgumentError("Custom steady state function expected $expected_parameter_length parameters, got $(length(parameter_values))."))
+    end
+
+    result = nothing
+    has_inplace = hasmethod(f, Tuple{typeof(parameter_values), typeof(parameter_values)})
+
+    if has_inplace
+        output = get_custom_steady_state_buffer!(𝓂, expected_length)
+
+        result = try 
+            f(output, parameter_values)
+        catch
+        end
+
+        if result === nothing
+            result = output
+        elseif !(result isa AbstractVector)
+            throw(ArgumentError("Custom steady state function with in-place signature returned $(typeof(result)); expected AbstractVector or nothing."))
+        end
+    elseif applicable(f, parameter_values)
+        result = try
+            f(parameter_values)
+        catch
+            fill(NaN, expected_length)
+        end
+
+        if !(result isa AbstractVector)
+            throw(ArgumentError("Custom steady state function returned $(typeof(result)); expected an AbstractVector."))
+        end
+    else
+        throw(ArgumentError("Custom steady state function must accept either (parameters) or (out, parameters)."))
+    end
+
+    if length(result) != expected_length
+        throw(ArgumentError("Custom steady state function returned $(length(result)) values, expected $expected_length."))
+    end
+
+    return result
+end
+
 @stable default_mode = "disable" begin
 
 function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
@@ -9766,15 +9826,13 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
-        SS_and_pars_tmp = try
-            𝓂.custom_steady_state_function(parameter_values)
-        catch
-            fill(S(NaN), expected_length)
-        end
-        
-        if length(SS_and_pars_tmp) != expected_length
-            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars_tmp)) values, expected $expected_length."))
-        end
+        SS_and_pars_tmp = evaluate_custom_steady_state_function(
+            𝓂,
+            𝓂.custom_steady_state_function,
+            parameter_values,
+            expected_length,
+            length(𝓂.parameters),
+        )
 
         residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
         
@@ -9829,15 +9887,13 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
-        SS_and_pars_tmp = try
-            𝓂.custom_steady_state_function(parameter_values)
-        catch
-            fill(S(NaN), expected_length)
-        end
-
-        if length(SS_and_pars_tmp) != expected_length
-            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars_tmp)) values, expected $expected_length."))
-        end
+        SS_and_pars_tmp = evaluate_custom_steady_state_function(
+            𝓂,
+            𝓂.custom_steady_state_function,
+            parameter_values,
+            expected_length,
+            length(𝓂.parameters),
+        )
 
         residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
         
@@ -9958,15 +10014,13 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
-        SS_and_pars_tmp = try
-            𝓂.custom_steady_state_function(parameter_values)
-        catch
-            fill(S(NaN), expected_length)
-        end
-
-        if length(SS_and_pars_tmp) != expected_length
-            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars_tmp)) values, expected $expected_length."))
-        end
+        SS_and_pars_tmp = evaluate_custom_steady_state_function(
+            𝓂,
+            𝓂.custom_steady_state_function,
+            parameter_values,
+            expected_length,
+            length(𝓂.parameters),
+        )
 
         residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
         
