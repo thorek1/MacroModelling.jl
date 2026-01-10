@@ -80,7 +80,7 @@ function my_ss(parameters)
     k_ss = ((1/β - 1 + δ) / α)^(1/(α-1))
     q_ss = k_ss^α
     c_ss = q_ss - δ*k_ss
-    z_ss = zero(T)
+    z_ss = 0.0
     
     # Return values in variable order: m.var (e.g., [:c, :k, :q, :z])
     return [c_ss, k_ss, q_ss, z_ss]

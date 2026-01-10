@@ -1140,9 +1140,7 @@ macro parameters(𝓂,ex...)
         exp)
     end
     
-    if ss_solver_parameters_algorithm ∉ [:ESCH, :SAMIN]
-        @warn "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $ss_solver_parameters_algorithm. Using default :ESCH."
-    end
+    @assert ss_solver_parameters_algorithm ∈ [:ESCH, :SAMIN] "ss_solver_parameters_algorithm must be :ESCH or :SAMIN. Got $ss_solver_parameters_algorithm. Using default :ESCH."
     
     parameter_definitions = replace_indices(ex[end])
 
