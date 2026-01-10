@@ -6911,7 +6911,7 @@ end
 
 function solve!(𝓂::ℳ; 
                 parameters::ParameterType = nothing, 
-                steady_state_function::SteadyStateFunctionType = nothing,
+                steady_state_function::SteadyStateFunctionType = missing,
                 dynamics::Bool = false, 
                 algorithm::Symbol = :first_order, 
                 opts::CalculationOptions = merge_calculation_options(),
