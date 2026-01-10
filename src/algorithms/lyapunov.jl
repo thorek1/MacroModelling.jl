@@ -80,33 +80,6 @@ end
 
 end # dispatch_doctor
 
-function rrule(::typeof(solve_lyapunov_equation),
-                A::AbstractMatrix{Float64},
-                C::AbstractMatrix{Float64};
-                lyapunov_algorithm::Symbol = :doubling,
-                tol::AbstractFloat = 1e-14,
-                acceptance_tol::AbstractFloat = 1e-12,
-                # timer::TimerOutput = TimerOutput(),
-                verbose::Bool = false)
-
-    P, solved = solve_lyapunov_equation(A, C, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-
-    # pullback 
-    # https://arxiv.org/abs/2011.11430  
-    function solve_lyapunov_equation_pullback(∂P)
-        if ℒ.norm(∂P[1]) < tol return NoTangent(), NoTangent(), NoTangent(), NoTangent() end
-
-        ∂C, slvd = solve_lyapunov_equation(A', ∂P[1], lyapunov_algorithm = lyapunov_algorithm,  tol = tol, verbose = verbose)
-    
-        solved = solved && slvd
-
-        ∂A = ∂C * A * P' + ∂C' * A * P
-
-        return NoTangent(), ∂A, ∂C, NoTangent()
-    end
-    
-    return (P, solved), solve_lyapunov_equation_pullback
-end
 
 @stable default_mode = "disable" begin
 
@@ -137,44 +110,6 @@ function solve_lyapunov_equation(  A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
         if ℒ.norm(X) < eps() continue end
 
-        P, slvd = solve_lyapunov_equation(Â, X, lyapunov_algorithm = lyapunov_algorithm, tol = tol, verbose = verbose)
-        
-        solved = solved && slvd
-
-        P̃[:,i] = vec(P)
-    end
-    
-    return reshape(map(P̂, eachrow(P̃)) do v, p
-        ℱ.Dual{Z}(v, p...) # Z is the tag
-    end, size(P̂)), solved
-end
-
-
-
-function solve_lyapunov_equation(   A::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
-                                    C::Union{ℒ.Adjoint{T, Matrix{T}}, DenseMatrix{T}},
-                                    ::Val{:bartels_stewart};
-                                    # timer::TimerOutput = TimerOutput(),
-                                    tol::AbstractFloat = 1e-14)::Tuple{Matrix{T}, Int, T} where T <: AbstractFloat
-    𝐂 = try 
-        MatrixEquations.lyapd(A, C)::Matrix{T}
-    catch
-        return C, 0, 1.0
-    end
-    
-    # 𝐂¹ = A * 𝐂 * A' + C
-
-    # denom = max(ℒ.norm(𝐂), ℒ.norm(𝐂¹))
-
-    # reached_tol = denom == 0 ? 0.0 : ℒ.norm(𝐂¹ - 𝐂) / denom   
-    
-    reached_tol = ℒ.norm(A * 𝐂 * A' + C - 𝐂) / ℒ.norm(𝐂)
-
-    # if reached_tol > tol
-    #     println("Lyapunov: lyapunov $reached_tol")
-    # end
-
-    return 𝐂, 0, reached_tol # return info on convergence
 end
 
 
