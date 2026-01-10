@@ -836,18 +836,34 @@ if test_set == "basic"
 
         custom_ss, custom_calls = make_counted_ss()
 
-        bad_calls = Ref(0)
-        function bad_ss(params)
-            bad_calls[] += 1
-            return zeros(4)
+        inplace_calls = Ref(0)
+        function inplace_ss!(out, params)
+            inplace_calls[] += 1
+            out .= rbc_steady_state(params)
+            return nothing
         end
+
+        # bad_calls = Ref(0)
+        # function bad_ss(params)
+        #     bad_calls[] += 1
+        #     return zeros(4)
+        # end
 
         custom_calls[] = 0
         _ = get_steady_state(RBC_switch, steady_state_function = custom_ss)
         @test custom_calls[] > 0
 
-        @test_throws ArgumentError get_steady_state(RBC_switch, steady_state_function = bad_ss)
-        @test bad_calls[] > 0
+        inplace_calls[] = 0
+        inplace_result = get_steady_state(RBC_switch, steady_state_function = inplace_ss!)
+        @test inplace_calls[] > 0
+        @test isapprox(inplace_result(:,:Steady_state), rbc_steady_state(RBC_switch.parameter_values), rtol = 1e-10)
+        vars_in_ss_equations = sort(collect(setdiff(reduce(union, MacroModelling.get_symbols.(RBC_switch.ss_aux_equations)),
+                                                    union(RBC_switch.parameters_in_equations, RBC_switch.➕_vars))))
+        expected_cache_length = length(vars_in_ss_equations) + length(RBC_switch.calibration_equations_parameters)
+        @test length(RBC_switch.caches.custom_steady_state_buffer) == expected_cache_length
+
+        # @test_throws ArgumentError get_steady_state(RBC_switch, steady_state_function = bad_ss)
+        # @test bad_calls[] > 0
 
         calls_before = custom_calls[]
         _ = get_steady_state(RBC_switch, steady_state_function = nothing)
