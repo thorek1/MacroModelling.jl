@@ -796,29 +796,29 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
-    function rbc_steady_state(params)
-        std_z, rho, delta, alpha, beta = params
+    @testset "Custom steady state assignment" begin
+        function rbc_steady_state(params)
+            std_z, rho, delta, alpha, beta = params
 
-        k_ss = ((1 / beta - 1 + delta) / alpha)^(1 / (alpha - 1))
-        q_ss = k_ss^alpha
-        c_ss = q_ss - delta * k_ss
-        z_ss = 0.0
+            k_ss = ((1 / beta - 1 + delta) / alpha)^(1 / (alpha - 1))
+            q_ss = k_ss^alpha
+            c_ss = q_ss - delta * k_ss
+            z_ss = 0.0
 
-        return [c_ss, k_ss, q_ss, z_ss]
-    end
-
-    function make_counted_ss()
-        calls = Ref(0)
-
-        function ss(params)
-            calls[] += 1
-            return rbc_steady_state(params)
+            return [c_ss, k_ss, q_ss, z_ss]
         end
 
-        return ss, calls
-    end
+        function make_counted_ss()
+            calls = Ref(0)
 
-    @testset "Custom steady state assignment" begin
+            function ss(params)
+                calls[] += 1
+                return rbc_steady_state(params)
+            end
+
+            return ss, calls
+        end
+
         @model RBC_switch begin
             1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
             c[0] + k[0] = (1 - delta) * k[-1] + q[0]
