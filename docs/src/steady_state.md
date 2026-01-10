@@ -62,7 +62,7 @@ For models where the internal solver fails, or when analytical solutions are ava
 
 After defining the model one can specify a custom steady state function and pass it on to the `@parameters` macro. The function should accept a vector of parameter values and return a vector of variables followed by calibration parameters. The input and output needs to follow the correct ordering of parameters and variables. The order of the parameters can be obtained using `get_parameters(m)`, and the order of the output follows `get_variables(m)` and `get_calibrated_parameters(m)`. Practically, one can call the model and parameter macros without defining the custom steady state function, then get the order from the above functions calls and based on this order define the custom steady state function.
 
-```julia
+```@repl ss
 # Define the model
 @model RBC begin
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
@@ -97,25 +97,62 @@ end
 
 The model can now be used as usual, and the custom steady state function will be called automatically:
 
-```julia
+```@repl ss
 ss = get_steady_state(RBC)
+```
+
+One can also use a non-allocating version of the steady state function that modifies a pre-allocated output vector in place. This function should accept two arguments: an output vector and a vector of parameter values. The output vector should be modified in place to contain the steady state values.
+
+```@repl ss
+# Define the model
+@model RBC begin
+    1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
+    c[0] + k[0] = (1 - δ) * k[-1] + q[0]
+    q[0] = exp(z[0]) * k[-1]^α
+    z[0] = ρᶻ * z[-1] + σᶻ * ϵᶻ[x]
+end
+
+# Define a steady state function
+function my_ss_inplace!(ss, parameters)
+    # parameters is ordered as: m.parameters (e.g., [:α, :β, :δ, :ρᶻ, :σᶻ])
+    α, β, δ, ρᶻ, σᶻ = parameters
+    # Compute steady state values
+    k_ss = ((1/β - 1 + δ) / α)^(1/(α-1))
+    q_ss = k_ss^α
+    c_ss = q_ss - δ*k_ss
+    z_ss = 0.0
+
+    ss[1] = c_ss
+    ss[2] = k_ss
+    ss[3] = q_ss
+    ss[4] = z_ss
+end
+
+
+@parameters RBC steady_state_function = my_ss_inplace! begin
+    σᶻ= 0.01
+    ρᶻ= 0.2
+    δ = 0.02
+    α = 0.5
+    β = 0.95
+end
+
+get_SS(RBC)  # uses the in-place version
 ```
 
 ### Method 2: Via Function Arguments
 
 All functions that accept a `parameters` argument also accept a `steady_state_function` argument:
 
-```julia
+```@repl ss
 # Pass the steady state function to specific function calls
 get_irf(RBC, steady_state_function = my_ss)
-get_steady_state(RBC, steady_state_function = my_ss)
-simulate(RBC, steady_state_function = my_ss)
 ```
 
 To revert to the internal solver and clear any previously set custom function on the model, pass `nothing`:
 
-```julia
-get_irf(RBC, steady_state_function = nothing)
+```@repl ss
+get_std(RBC, steady_state_function = nothing)
 ```
 
 ## When to Use Custom Steady State Functions
@@ -133,7 +170,7 @@ The internal solver is robust and works well for most models, so start with the 
 
 There are cases when one does not want to define all parameter values at the time of model definition. In such cases, one can define a model without parameters (as otherwise defined in the parameter macro) and add them in subsequent function call instead. This is particularly useful if one wants to use parameters from a file, database, or estimation routine. In such cases, one can define the model as follows:
 
-```julia
+```@repl ss
 @model RBC begin
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
     c[0] + k[0] = (1 - δ) * k[-1] + q[0]
@@ -144,14 +181,14 @@ end
 
 Then, one can run the parameter macro without specifying parameter values:
 
-```julia
+```@repl ss
 @parameters RBC begin
 end
 ```
 
 Later, one can define the parameter values when needed. For example, to get the steady state one can define the parameter values as a `Dict`:
 
-```julia
+```@repl ss
 ss = get_steady_state(RBC, parameters = Dict(:α => 0.5, :β => 0.95, :δ => 0.02, :ρᶻ => 0.2, :σᶻ => 0.01))
 ```
 
