@@ -3506,6 +3506,39 @@ function populate_name_display_cache!(𝓂::ℳ)
     return nothing
 end
 
+"""
+    get_computational_constants(𝓂::ℳ)
+
+Get cached computational constants (BitVectors and identity matrices).
+This function is called lazily and caches the result in the model struct.
+"""
+function get_computational_constants(𝓂::ℳ)
+    if isempty(𝓂.caches.computational_constants.s_in_s⁺)
+        populate_computational_constants!(𝓂)
+    end
+    return 𝓂.caches.computational_constants
+end
+
+"""
+    populate_computational_constants!(𝓂::ℳ)
+
+Populate the computational constants cache with BitVectors and identity matrices.
+This is called lazily the first time these constants are needed.
+"""
+function populate_computational_constants!(𝓂::ℳ)
+    nᵉ = 𝓂.timings.nExo
+    nˢ = 𝓂.timings.nPast_not_future_and_mixed
+    
+    # Create constant BitVectors used throughout the codebase
+    s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ + 1), zeros(Bool, nᵉ)))
+    s_in_s = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
+    
+    # Replace the entire cache with a new immutable instance
+    𝓂.caches.computational_constants = computational_constants_cache(s_in_s⁺, s_in_s, nˢ)
+    
+    return nothing
+end
+
 
 function get_possible_indices_for_name(name::Symbol, all_names::Vector{Symbol})
     indices = filter(x -> length(x) < 3 && x[1] == name, decompose_name.(all_names))
@@ -6384,10 +6417,11 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
                                                         tol::AbstractFloat = 1e-14) where R <: AbstractFloat
     # @timeit_debug timer "Setup matrices" begin
 
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    # Get cached computational constants
+    cc = get_computational_constants(𝓂)
+    s_in_s⁺ = cc.s_in_s⁺
+    s_in_s = cc.s_in_s
+    I_nPast = ℒ.I(cc.nPast)
     
     kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
     
@@ -6405,7 +6439,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     # @timeit_debug timer "Iterations" begin
 
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) - I_nPast)
 
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
@@ -6445,10 +6479,11 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     𝐒₂̂ = ℱ.value.(𝐒₂)
     x̂ = ℱ.value.(x)
     
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    # Get cached computational constants
+cc = get_computational_constants(𝓂)
+s_in_s⁺ = cc.s_in_s⁺
+s_in_s = cc.s_in_s
+I_nPast = ℒ.I(cc.nPast)
     
     kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
     
@@ -6463,7 +6498,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+        ∂x = (A + B * ℒ.kron(vcat(x̂,1), I_nPast) - I_nPast)
 
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
@@ -6493,7 +6528,7 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
 
             tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2
 
-            TMP = A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
+            TMP = A + B * ℒ.kron(vcat(x̂,1), I_nPast) - I_nPast
 
             ∂x̄[:,i] = -TMP \ tmp
         end
@@ -6517,10 +6552,11 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     # @timeit_debug timer "Calculate SSS - forward" begin
     # @timeit_debug timer "Setup indices" begin
 
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    # Get cached computational constants
+cc = get_computational_constants(𝓂)
+s_in_s⁺ = cc.s_in_s⁺
+s_in_s = cc.s_in_s
+I_nPast = ℒ.I(cc.nPast)
     
     kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
     
@@ -6537,7 +6573,7 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) - I_nPast)
 
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
@@ -6732,10 +6768,11 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
                                                         𝓂::ℳ;
                                                         # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    # Get cached computational constants
+cc = get_computational_constants(𝓂)
+s_in_s⁺ = cc.s_in_s⁺
+s_in_s = cc.s_in_s
+I_nPast = ℒ.I(cc.nPast)
     
     kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
     
@@ -6754,7 +6791,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), I_nPast) / 2 - I_nPast)
         
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
@@ -6788,10 +6825,11 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     𝐒₃̂ = ℱ.value.(𝐒₃)
     x̂ = ℱ.value.(x)
     
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    # Get cached computational constants
+cc = get_computational_constants(𝓂)
+s_in_s⁺ = cc.s_in_s⁺
+s_in_s = cc.s_in_s
+I_nPast = ℒ.I(cc.nPast)
     
     kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
     
@@ -6812,7 +6850,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+        ∂x = (A + B * ℒ.kron(vcat(x̂,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), I_nPast) / 2 - I_nPast)
 
         ∂x̂ = ℒ.lu!(∂x, check = false)
         
@@ -6844,7 +6882,7 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
 
             tmp = ∂A * x̂ + ∂B̂ * ℒ.kron(vcat(x̂,1), vcat(x̂,1)) / 2 + ∂Ĉ * ℒ.kron(vcat(x̂,1), ℒ.kron(vcat(x̂,1), vcat(x̂,1))) / 6
 
-            TMP = A + B * ℒ.kron(vcat(x̂,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed)
+            TMP = A + B * ℒ.kron(vcat(x̂,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x̂,1), vcat(x̂,1)), I_nPast) / 2 - I_nPast
 
             ∂x̄[:,i] = -TMP \ tmp
         end
@@ -6865,10 +6903,11 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
                                                         x::Vector{Float64},
                                                         𝓂::ℳ;
                                                         tol::AbstractFloat = 1e-14)
-    nᵉ = 𝓂.timings.nExo
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, 𝓂.timings.nPast_not_future_and_mixed ), zeros(Bool, nᵉ + 1)))
+    # Get cached computational constants
+cc = get_computational_constants(𝓂)
+s_in_s⁺ = cc.s_in_s⁺
+s_in_s = cc.s_in_s
+I_nPast = ℒ.I(cc.nPast)
     
     kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
     
@@ -6887,7 +6926,7 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
     for i in 1:max_iters
-        ∂x = (A + B * ℒ.kron(vcat(x,1), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), ℒ.I(𝓂.timings.nPast_not_future_and_mixed)) / 2 - ℒ.I(𝓂.timings.nPast_not_future_and_mixed))
+        ∂x = (A + B * ℒ.kron(vcat(x,1), I_nPast) + C * ℒ.kron(ℒ.kron(vcat(x,1), vcat(x,1)), I_nPast) / 2 - I_nPast)
         
         ∂x̂ = ℒ.lu!(∂x, check = false)
         

@@ -43,10 +43,22 @@ struct name_display_cache
     exo_has_curly::Bool
 end
 
+# Cache for model-constant computational objects
+# Stores precomputed BitVectors and size information for identity matrices
+struct computational_constants_cache
+    # BitVector for state selection: [ones(nPast+1), zeros(nExo)]
+    s_in_s⁺::BitVector
+    # BitVector for state selection: [ones(nPast), zeros(nExo+1)]  
+    s_in_s::BitVector
+    # Size for identity matrix of past states (store size, not the matrix itself)
+    nPast::Int
+end
+
 mutable struct caches#{F <: Real, G <: AbstractFloat}
     second_order_caches::higher_order_caches#{F, G}
     third_order_caches::higher_order_caches#{F, G}
     name_display_cache::name_display_cache
+    computational_constants::computational_constants_cache
 end
 
 
@@ -83,7 +95,8 @@ end
 function Caches(;T::Type = Float64, S::Type = Float64)
     caches( Higher_order_caches(T = T, S = S),
             Higher_order_caches(T = T, S = S),
-            name_display_cache([], [], [], false, false))  # Empty cache, populated on first use
+            name_display_cache([], [], [], false, false),  # Empty cache, populated on first use
+            computational_constants_cache(BitVector(), BitVector(), 0))  # Empty cache, populated on first use
 end
 
 
