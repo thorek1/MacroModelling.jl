@@ -88,13 +88,13 @@ function calculate_mean(parameters::Vector{T},
                 nᵉ = 𝓂.timings.nExo
                 nˢ = 𝓂.timings.nPast_not_future_and_mixed
 
-                s_in_s⁺ = get_computational_constants(𝓂).s_in_s
+                s_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
                 e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
                 v_in_s⁺ = get_computational_constants(𝓂).v_in_s⁺
                 
-                kron_states     = get_computational_constants(𝓂).kron_s_s
-                kron_shocks     = get_computational_constants(𝓂).kron_e_e
-                kron_volatility = get_computational_constants(𝓂).kron_v_v
+                kron_states     = ℒ.kron(s_in_s⁺, s_in_s⁺)
+                kron_shocks     = ℒ.kron(e_in_s⁺, e_in_s⁺)
+                kron_volatility = ℒ.kron(v_in_s⁺, v_in_s⁺)
 
                 # first order
                 states_to_variables¹ = sparse(𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed])
@@ -197,10 +197,10 @@ function calculate_second_order_moments(parameters::Vector{R},
             e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
             v_in_s⁺ = get_computational_constants(𝓂).v_in_s⁺
 
-            kron_s_s = get_computational_constants(𝓂).kron_s_s
-            kron_e_e = get_computational_constants(𝓂).kron_e_e
-            kron_v_v = get_computational_constants(𝓂).kron_v_v
-            kron_s_e = get_computational_constants(𝓂).kron_s_e
+            kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
+            kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
+            kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
+            kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
 
             # first order
             s_to_y₁ = 𝐒₁[:, 1:nˢ]
@@ -334,10 +334,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
             v_in_s⁺ = get_computational_constants(𝓂).v_in_s⁺
 
-            kron_s_s = get_computational_constants(𝓂).kron_s_s
-            kron_e_e = get_computational_constants(𝓂).kron_e_e
-            kron_v_v = get_computational_constants(𝓂).kron_v_v
-            kron_s_e = get_computational_constants(𝓂).kron_s_e
+            kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
+            kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
+            kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
+            kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
 
             # first order
             s_to_y₁ = 𝐒₁[:, 1:nˢ]
