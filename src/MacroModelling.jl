@@ -178,6 +178,11 @@ include("./filter/find_shocks.jl")
 include("./filter/inversion.jl")
 include("./filter/kalman.jl")
 
+# ForwardDiff Dual number support
+include("forwarddiff.jl")
+
+# ChainRules rrules for reverse-mode AD (Zygote, etc.)
+include("chainrules.jl")
 
 # end # DispatchDoctor
 
