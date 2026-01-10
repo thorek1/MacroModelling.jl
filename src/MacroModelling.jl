@@ -178,11 +178,7 @@ include("./filter/find_shocks.jl")
 include("./filter/inversion.jl")
 include("./filter/kalman.jl")
 
-# ForwardDiff Dual number support
-include("forwarddiff.jl")
 
-# ChainRules rrules for reverse-mode AD (Zygote, etc.)
-include("chainrules.jl")
 
 # end # DispatchDoctor
 
@@ -9615,5 +9611,11 @@ end # dispatch_doctor
 #         # plot_conditional_variance_decomposition(FS2000)
 #     end
 # end
+
+# ForwardDiff Dual number support
+include("./derivatives/forwarddiff.jl")
+
+# ChainRules rrules for reverse-mode AD (Zygote, etc.)
+include("./derivatives/chainrules.jl")
 
 end
