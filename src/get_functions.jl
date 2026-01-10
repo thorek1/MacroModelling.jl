@@ -2531,8 +2531,8 @@ function get_autocorrelation(𝓂::ℳ;
 
     solve!(𝓂, 
             opts = opts, 
-            parameters = parameters,
             steady_state_function = steady_state_function, 
+            parameters = parameters,
             algorithm = algorithm)
 
     if algorithm == :pruned_third_order
@@ -3220,6 +3220,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - `covariance` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the covariance of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. For grouped covariance computation, pass a `Vector` of `Vector`s (e.g. `[[:y, :c], [:k, :i]]`) to compute covariances only within each group, returning a single covariance matrix where cross-group covariances are set to zero. This allows more granular control over which covariances to compute. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all variables less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all variables less those related to occasionally binding constraints. `:all` will contain all variables.
 - `autocorrelation` [Default: `Symbol[]`, Type: `Union{Symbol_input,String_input}`]: variables for which to show the autocorrelation of selected variables. Inputs can be a variable name passed on as either a `Symbol` or `String` (e.g. `:y` or `\"y\"`), or `Tuple`, `Matrix` or `Vector` of `String` or `Symbol`. Any variables not part of the model will trigger a warning. `:all_excluding_auxiliary_and_obc` contains all shocks less those related to auxiliary variables and related to occasionally binding constraints (obc). `:all_excluding_obc` contains all shocks less those related to auxiliary variables. `:all` will contain all variables.
 - `autocorrelation_periods` [Default: `1:5`, Type = `UnitRange{Int}`]: periods for which to return the autocorrelation of selected variables
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $QME®
 - $LYAPUNOV®
@@ -3485,6 +3486,7 @@ If occasionally binding constraints are present in the model, they are not taken
 - $DATA®
 - `parameter_values` [Type: `Vector`]: Parameter values.
 # Keyword Arguments
+- $STEADY_STATE_FUNCTION®
 - $ALGORITHM®
 - $FILTER®
 - `presample_periods` [Default: `0`, Type: `Int`]: periods at the beginning of the data for which the loglikelihood is discarded.
@@ -3528,6 +3530,7 @@ get_loglikelihood(RBC, simulated_data([:k], :, :simulate), RBC.parameter_values)
 function get_loglikelihood(𝓂::ℳ, 
                             data::KeyedArray{Float64}, 
                             parameter_values::Vector{S}; 
+                            steady_state_function::SteadyStateFunctionType = missing, 
                             algorithm::Symbol = DEFAULT_ALGORITHM, 
                             filter::Symbol = DEFAULT_FILTER_SELECTOR(algorithm), 
                             on_failure_loglikelihood::U = -Inf,
@@ -3563,6 +3566,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     @ignore_derivatives solve!(𝓂, 
                                 opts = opts,
+                                steady_state_function = steady_state_function,
                                 # timer = timer, 
                                 algorithm = algorithm)
 

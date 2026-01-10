@@ -80,6 +80,7 @@ mutable struct caches#{F <: Real, G <: AbstractFloat}
     name_display_cache::name_display_cache
     model_structure_cache::model_structure_cache
     computational_constants::computational_constants_cache
+    custom_steady_state_buffer::Vector{Float64}
 end
 
 
@@ -119,6 +120,7 @@ function Caches(;T::Type = Float64, S::Type = Float64)
             name_display_cache([], [], [], false, false),  # Empty cache, populated on first use
             model_structure_cache(Symbol[], Symbol[], Symbol[]),  # Empty cache, populated on first use
             computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, BitVector(), BitVector(), ℒ.Diagonal(Float64[])))  # Empty cache, populated on first use
+            Float64[])
 end
 
 
