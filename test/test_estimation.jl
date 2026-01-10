@@ -4,6 +4,7 @@ import ADTypes: AutoZygote
 import Turing: NUTS, sample, logpdf
 import Optim, LineSearches
 using Random, CSV, DataFrames, MCMCChains, AxisKeys
+import Zygote
 
 include("../models/FS2000.jl")
 
