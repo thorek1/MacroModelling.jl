@@ -3446,6 +3446,69 @@ function decompose_name(name::Symbol)
     return result
 end
 
+"""
+    get_var_axis(𝓂::ℳ)
+
+Get cached or compute variable axis names with curly bracket formatting.
+This function is called lazily and caches the result in the model struct.
+"""
+function get_var_axis(𝓂::ℳ)
+    if 𝓂.caches.name_display_cache.var_axis === nothing
+        populate_name_display_cache!(𝓂)
+    end
+    return 𝓂.caches.name_display_cache.var_axis
+end
+
+"""
+    get_exo_axis(𝓂::ℳ; with_subscript::Bool = true)
+
+Get cached or compute shock axis names with curly bracket formatting.
+By default includes ₍ₓ₎ suffix; set with_subscript=false to exclude it.
+This function is called lazily and caches the result in the model struct.
+"""
+function get_exo_axis(𝓂::ℳ; with_subscript::Bool = true)
+    if 𝓂.caches.name_display_cache.exo_axis_plain === nothing
+        populate_name_display_cache!(𝓂)
+    end
+    return with_subscript ? 𝓂.caches.name_display_cache.exo_axis_with_subscript : 𝓂.caches.name_display_cache.exo_axis_plain
+end
+
+"""
+    populate_name_display_cache!(𝓂::ℳ)
+
+Populate the name display cache with processed variable and shock names.
+This is called lazily the first time display names are needed.
+"""
+function populate_name_display_cache!(𝓂::ℳ)
+    # Process variables
+    var_has_curly = any(x -> contains(string(x), "◖"), 𝓂.timings.var)
+    if var_has_curly
+        var_decomposed = decompose_name.(𝓂.timings.var)
+        var_axis = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in var_decomposed]
+    else
+        var_axis = 𝓂.timings.var
+    end
+    
+    # Process shocks (plain version without subscript)
+    exo_has_curly = any(x -> contains(string(x), "◖"), 𝓂.timings.exo)
+    if exo_has_curly
+        exo_decomposed = decompose_name.(𝓂.timings.exo)
+        exo_axis_plain = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in exo_decomposed]
+        exo_axis_with_subscript = exo_axis_plain .* "₍ₓ₎"
+    else
+        exo_axis_plain = 𝓂.timings.exo
+        exo_axis_with_subscript = map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo)
+    end
+    
+    # Store in cache
+    𝓂.caches.name_display_cache.var_axis = var_axis
+    𝓂.caches.name_display_cache.exo_axis_plain = exo_axis_plain
+    𝓂.caches.name_display_cache.exo_axis_with_subscript = exo_axis_with_subscript
+    𝓂.caches.name_display_cache.var_has_curly = var_has_curly
+    𝓂.caches.name_display_cache.exo_has_curly = exo_has_curly
+    
+    return nothing
+end
 
 
 function get_possible_indices_for_name(name::Symbol, all_names::Vector{Symbol})

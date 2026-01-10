@@ -28,9 +28,25 @@ mutable struct higher_order_caches{F <: Real, G <: AbstractFloat}
     sylvester_caches::sylvester_caches{G}
 end
 
+# Cache for model-constant display names
+# Stores precomputed variable and shock names that depend only on model structure
+mutable struct name_display_cache
+    # Processed variable names (with curly brackets formatted)
+    var_axis::Union{Nothing, Vector}
+    # Processed shock names (with curly brackets formatted, WITHOUT ₍ₓ₎ suffix)
+    exo_axis_plain::Union{Nothing, Vector}
+    # Processed shock names (with curly brackets formatted and WITH ₍ₓ₎ suffix)
+    exo_axis_with_subscript::Union{Nothing, Vector}
+    # Flag indicating if variables contain curly brackets
+    var_has_curly::Union{Nothing, Bool}
+    # Flag indicating if shocks contain curly brackets
+    exo_has_curly::Union{Nothing, Bool}
+end
+
 mutable struct caches#{F <: Real, G <: AbstractFloat}
     second_order_caches::higher_order_caches#{F, G}
     third_order_caches::higher_order_caches#{F, G}
+    name_display_cache::name_display_cache
 end
 
 
@@ -66,7 +82,8 @@ end
 
 function Caches(;T::Type = Float64, S::Type = Float64)
     caches( Higher_order_caches(T = T, S = S),
-            Higher_order_caches(T = T, S = S))
+            Higher_order_caches(T = T, S = S),
+            name_display_cache(nothing, nothing, nothing, nothing, nothing))  # Initialized lazily
 end
 
 

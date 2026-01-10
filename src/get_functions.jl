@@ -128,29 +128,12 @@ function get_shock_decomposition(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
     
-    axis1 = 𝓂.timings.var
-
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-    end
+    axis1 = get_var_axis(𝓂)
 
     if pruning
-        axis2 = vcat(𝓂.timings.exo, :Nonlinearities, :Initial_values)
+        axis2 = vcat(get_exo_axis(𝓂), :Nonlinearities, :Initial_values)
     else
-        axis2 = vcat(𝓂.timings.exo, :Initial_values)
-    end
-
-    if any(x -> contains(string(x), "◖"), axis2)
-        axis2_decomposed = decompose_name.(axis2)
-        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
-        axis2[1:length(𝓂.timings.exo)] = axis2[1:length(𝓂.timings.exo)] .* "₍ₓ₎"
-    else
-        if pruning
-            axis2 = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Nonlinearities, :Initial_values)
-        else
-            axis2 = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Initial_values)
-        end
+        axis2 = vcat(get_exo_axis(𝓂), :Initial_values)
     end
 
     if pruning
@@ -272,15 +255,7 @@ function get_estimated_shocks(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
     
-    axis1 = 𝓂.timings.exo
-
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-        axis1 = axis1 .* "₍ₓ₎"
-    else
-        axis1 = map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)
-    end
+    axis1 = get_exo_axis(𝓂)
 
     return KeyedArray(shocks;  Shocks = axis1, Periods = 1:size(data,2))
 end
@@ -403,12 +378,7 @@ function get_estimated_variables(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
 
-    axis1 = 𝓂.timings.var
-
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-    end
+    axis1 = get_var_axis(𝓂)
 
     return KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
 end
@@ -633,12 +603,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                                                     smooth = smooth, 
                                                                                     opts = opts)
 
-    axis1 = 𝓂.timings.var
-
-    if any(x -> contains(string(x), "◖"), axis1)
-        axis1_decomposed = decompose_name.(axis1)
-        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-    end
+    axis1 = get_var_axis(𝓂)
 
     return KeyedArray(standard_deviations;  Standard_deviations = axis1, Periods = 1:size(data,2))
 end
@@ -2210,12 +2175,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    axis2 = 𝓂.timings.exo
-
-    if any(x -> contains(string(x), "◖"), axis2)
-        axis2_decomposed = decompose_name.(axis2)
-        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
-    end
+    axis2 = get_exo_axis(𝓂, with_subscript = false)
 
     KeyedArray(cond_var_decomp; Variables = axis1, Shocks = axis2, Periods = periods)
 end
@@ -2362,12 +2322,7 @@ function get_variance_decomposition(𝓂::ℳ;
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    axis2 = 𝓂.timings.exo
-
-    if any(x -> contains(string(x), "◖"), axis2)
-        axis2_decomposed = decompose_name.(axis2)
-        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
-    end
+    axis2 = get_exo_axis(𝓂, with_subscript = false)
 
     KeyedArray(var_decomp; Variables = axis1, Shocks = axis2)
 end
@@ -2801,12 +2756,7 @@ function get_moments(𝓂::ℳ;
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
     end
 
-    axis2 = 𝓂.timings.exo
-
-    if any(x -> contains(string(x), "◖"), axis2)
-        axis2_decomposed = decompose_name.(axis2)
-        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
-    end
+    axis2 = get_exo_axis(𝓂, with_subscript = false)
 
 
     if derivatives
