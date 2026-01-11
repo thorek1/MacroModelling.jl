@@ -174,6 +174,15 @@ The constant `SYMPYWORKSPACE_RESERVED_NAMES` in `MacroModelling.jl` lists names 
 
 - Avoid second-person phrasing (“you”) in docs and docstrings.
 
+### Caching Guidance
+
+- For constant calculations that can be computed once and reused, compute lazily on first use and store in the model struct cache; subsequent use must read from the cache.
+
+### Session Progress Log
+
+- Always take stock of what was done and what remains, and save it in `AGENT_PROGRESS.md`.
+- At the start of a new session, always read `AGENT_PROGRESS.md` before making changes.
+
 ## Testing Patterns
 
 Tests use Julia's `Test` module with `@testset` blocks:
