@@ -3564,6 +3564,50 @@ function populate_computational_constants!(𝓂::ℳ)
 end
 
 """
+    get_first_order_index_cache(𝓂::ℳ)
+
+Return cached first-order perturbation indices, computing and storing them on first use.
+"""
+function get_first_order_index_cache(𝓂::ℳ)
+    return get_first_order_index_cache(𝓂.caches, 𝓂.timings)
+end
+
+function get_first_order_index_cache(ℂC::caches, T::timings)
+    if isnothing(ℂC.first_order_index_cache)
+        ℂC.first_order_index_cache = build_first_order_index_cache(T)
+    end
+    return ℂC.first_order_index_cache
+end
+
+function build_first_order_index_cache(T::timings)
+    dyn_index = T.nPresent_only + 1:T.nVars
+
+    reverse_dynamic_order = indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx)
+
+    comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
+    sort!(comb)
+
+    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
+    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
+
+    Ir = ℒ.I(length(comb))
+
+    nabla_zero_cols = (T.nFuture_not_past_and_mixed + 1):(T.nFuture_not_past_and_mixed + T.nVars)
+    nabla_minus_cols = (T.nFuture_not_past_and_mixed + T.nVars + 1):(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed)
+    nabla_e_start = T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1
+
+    return first_order_index_cache(dyn_index,
+                                    reverse_dynamic_order,
+                                    comb,
+                                    future_not_past_and_mixed_in_comb,
+                                    past_not_future_and_mixed_in_comb,
+                                    Ir,
+                                    nabla_zero_cols,
+                                    nabla_minus_cols,
+                                    nabla_e_start)
+end
+
+"""
     get_model_structure(𝓂::ℳ)
 
 Get cached model structure information (SS_and_pars_names, all_variables, NSSS_labels).
@@ -6376,7 +6420,8 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                         T = 𝓂.timings, 
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        ℂC = 𝓂.caches)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -6705,7 +6750,8 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                         T = 𝓂.timings, 
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        ℂC = 𝓂.caches)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -7161,7 +7207,8 @@ function solve!(𝓂::ℳ;
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                                 T = 𝓂.timings, 
                                                                 opts = opts,
-                                                                initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                                initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                                ℂC = 𝓂.caches)
     
             if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -7183,7 +7230,8 @@ function solve!(𝓂::ℳ;
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; 
                                                                     T = 𝓂.timings, 
                                                                     opts = opts,
-                                                                    initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                                    initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                                    ℂC = 𝓂.caches)
 
                 if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -10417,7 +10465,8 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                         T = TT, 
                                                         # timer = timer, 
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                        opts = opts)
+                                                        opts = opts,
+                                                        ℂC = 𝓂.caches)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 

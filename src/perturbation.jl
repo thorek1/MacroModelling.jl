@@ -3,26 +3,24 @@
 function calculate_first_order_solution(∇₁::Matrix{R}; 
                                         T::timings, 
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        ℂC::Union{Nothing, caches} = nothing)::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
-    dynIndex = T.nPresent_only+1:T.nVars
+    idx_cache = isnothing(ℂC) ? build_first_order_index_cache(T) : get_first_order_index_cache(ℂC, T)
 
-    reverse_dynamic_order = indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx)
-
-    comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
-    sort!(comb)
-
-    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
-    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
- 
-    Ir = ℒ.I(length(comb))
+    dynIndex = idx_cache.dyn_index
+    reverse_dynamic_order = idx_cache.reverse_dynamic_order
+    comb = idx_cache.comb
+    future_not_past_and_mixed_in_comb = idx_cache.future_not_past_and_mixed_in_comb
+    past_not_future_and_mixed_in_comb = idx_cache.past_not_future_and_mixed_in_comb
+    Ir = idx_cache.Ir
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]    
-    ∇₋ = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
-    ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+    ∇₀ = ∇₁[:,idx_cache.nabla_zero_cols]
+    ∇₋ = ∇₁[:,idx_cache.nabla_minus_cols]
+    ∇ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
@@ -121,27 +119,25 @@ function rrule(::typeof(calculate_first_order_solution),
                 ∇₁::Matrix{R};
                 T::timings, 
                 opts::CalculationOptions = merge_calculation_options(),
-                initial_guess::AbstractMatrix{R} = zeros(0,0)) where R <: AbstractFloat
+                initial_guess::AbstractMatrix{R} = zeros(0,0),
+                ℂC::Union{Nothing, caches} = nothing) where R <: AbstractFloat
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
-    dynIndex = T.nPresent_only+1:T.nVars
+    idx_cache = isnothing(ℂC) ? build_first_order_index_cache(T) : get_first_order_index_cache(ℂC, T)
 
-    reverse_dynamic_order = indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx)
-
-    comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
-    sort!(comb)
-
-    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
-    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
-    
-    Ir = ℒ.I(length(comb))
+    dynIndex = idx_cache.dyn_index
+    reverse_dynamic_order = idx_cache.reverse_dynamic_order
+    comb = idx_cache.comb
+    future_not_past_and_mixed_in_comb = idx_cache.future_not_past_and_mixed_in_comb
+    past_not_future_and_mixed_in_comb = idx_cache.past_not_future_and_mixed_in_comb
+    Ir = idx_cache.Ir
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed]
-    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1, T.nVars)]    
-    ∇₋ = ∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1, T.nPast_not_future_and_mixed)]
-    ∇̂ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+    ∇₀ = ∇₁[:,idx_cache.nabla_zero_cols]
+    ∇₋ = ∇₁[:,idx_cache.nabla_minus_cols]
+    ∇̂ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
     
     # end # timeit_debug
     # @timeit_debug timer "Invert ∇₀" begin
@@ -236,7 +232,7 @@ function rrule(::typeof(calculate_first_order_solution),
     tmp2 = -M' * (∇₊ * expand[1])'
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+    ∇ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
 
     function first_order_solution_pullback(∂𝐒) 
         ∂∇₁ = zero(∇₁)
@@ -244,9 +240,9 @@ function rrule(::typeof(calculate_first_order_solution),
         ∂𝐒ᵗ = ∂𝐒[1][:,1:T.nPast_not_future_and_mixed]
         ∂𝐒ᵉ = ∂𝐒[1][:,T.nPast_not_future_and_mixed + 1:end]
 
-        ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1:end] .= -M' * ∂𝐒ᵉ
+        ∂∇₁[:,idx_cache.nabla_e_start:end] .= -M' * ∂𝐒ᵉ
 
-        ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .= M' * ∂𝐒ᵉ * ∇ₑ' * M'
+        ∂∇₁[:,idx_cache.nabla_zero_cols] .= M' * ∂𝐒ᵉ * ∇ₑ' * M'
 
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .= (M' * ∂𝐒ᵉ * ∇ₑ' * M' * expand[2]' * 𝐒ᵗ')[:,T.future_not_past_and_mixed_idx]
 
@@ -265,8 +261,8 @@ function rrule(::typeof(calculate_first_order_solution),
         end
 
         ∂∇₁[:,1:T.nFuture_not_past_and_mixed] .+= (ss * 𝐒̂ᵗ' * 𝐒̂ᵗ')[:,T.future_not_past_and_mixed_idx]
-        ∂∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)] .+= ss * 𝐒̂ᵗ'
-        ∂∇₁[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] .+= ss[:,T.past_not_future_and_mixed_idx]
+        ∂∇₁[:,idx_cache.nabla_zero_cols] .+= ss * 𝐒̂ᵗ'
+        ∂∇₁[:,idx_cache.nabla_minus_cols] .+= ss[:,T.past_not_future_and_mixed_idx]
 
         return NoTangent(), ∂∇₁, NoTangent()
     end
@@ -279,15 +275,17 @@ end
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
                                         T::timings, 
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
+                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                        ℂC::Union{Nothing, caches} = nothing)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
+    idx_cache = isnothing(ℂC) ? build_first_order_index_cache(T) : get_first_order_index_cache(ℂC, T)
 
     expand = [ℒ.I(T.nVars)[T.future_not_past_and_mixed_idx,:], ℒ.I(T.nVars)[T.past_not_future_and_mixed_idx,:]] 
 
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-    B = ∇̂₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
+    B = ∇̂₁[:,idx_cache.nabla_zero_cols]
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; T = T, opts = opts, initial_guess = initial_guess)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; T = T, opts = opts, initial_guess = initial_guess, ℂC = ℂC)
 
     if !solved 
         return ∇₁, qme_sol, false
@@ -320,8 +318,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
         p .= ℱ.partials.(∇₁, i)
 
         dA = p[:,1:T.nFuture_not_past_and_mixed] * expand[1]
-        dB = p[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-        dC = p[:,T.nFuture_not_past_and_mixed + T.nVars .+ range(1,T.nPast_not_future_and_mixed)] * expand[2]
+        dB = p[:,idx_cache.nabla_zero_cols]
+        dC = p[:,idx_cache.nabla_minus_cols] * expand[2]
         
         CC = invAXB * (dA * X² + dC + dB * X)
 
@@ -357,8 +355,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
     Jm = @view(ℒ.diagm(ones(S,T.nVars))[T.past_not_future_and_mixed_idx,:])
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * ℒ.diagm(ones(S,T.nVars))[T.future_not_past_and_mixed_idx,:]
-    ∇₀ = ∇₁[:,T.nFuture_not_past_and_mixed .+ range(1,T.nVars)]
-    ∇ₑ = ∇₁[:,(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1):end]
+    ∇₀ = ∇₁[:,idx_cache.nabla_zero_cols]
+    ∇ₑ = ∇₁[:,idx_cache.nabla_e_start:end]
 
     B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
 

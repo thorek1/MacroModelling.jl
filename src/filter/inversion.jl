@@ -3494,7 +3494,8 @@ function filter_data_with_model(𝓂::ℳ,
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                         T = T, 
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                        opts = opts)
+                                                        opts = opts,
+                                                        ℂC = 𝓂.caches)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 

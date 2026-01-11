@@ -14,7 +14,8 @@ function calculate_covariance(parameters::Vector{R},
     sol, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                             T = 𝓂.timings, 
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                            opts = opts)
+                                                            opts = opts,
+                                                            ℂC = 𝓂.caches)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -59,7 +60,8 @@ function calculate_mean(parameters::Vector{T},
         𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                             T = 𝓂.timings, 
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution, 
-                                                            opts = opts)
+                                                            opts = opts,
+                                                            ℂC = 𝓂.caches)
         
         if !solved 
             mean_of_variables = SS_and_pars[1:𝓂.timings.nVars]

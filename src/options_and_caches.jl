@@ -84,12 +84,25 @@ struct computational_constants_cache
     kron_e_s::BitVector  # kron(e_in_s⁺, s_in_s⁺)
 end
 
+struct first_order_index_cache{I}
+    dyn_index::UnitRange{Int}
+    reverse_dynamic_order::Vector{Union{Nothing, Int}}
+    comb::Vector{Union{Nothing, Int}}
+    future_not_past_and_mixed_in_comb::Vector{Union{Nothing, Int}}
+    past_not_future_and_mixed_in_comb::Vector{Union{Nothing, Int}}
+    Ir::I
+    nabla_zero_cols::UnitRange{Int}
+    nabla_minus_cols::UnitRange{Int}
+    nabla_e_start::Int
+end
+
 mutable struct caches#{F <: Real, G <: AbstractFloat}
     second_order_caches::higher_order_caches#{F, G}
     third_order_caches::higher_order_caches#{F, G}
     name_display_cache::name_display_cache
     model_structure_cache::model_structure_cache
     computational_constants::computational_constants_cache
+    first_order_index_cache::Union{Nothing, first_order_index_cache}
     custom_steady_state_buffer::Vector{Float64}
 end
 
@@ -132,6 +145,7 @@ function Caches(;T::Type = Float64, S::Type = Float64)
             computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, 
                                          BitVector(), BitVector(), ℒ.Diagonal(Float64[]),
                                          BitVector(), BitVector(), BitVector(), BitVector(), BitVector()),
+            nothing,
             Float64[])
 end
 

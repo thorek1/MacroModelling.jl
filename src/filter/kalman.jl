@@ -608,7 +608,7 @@ function filter_and_smooth(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = opts)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = opts, ℂC = 𝓂.caches)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 

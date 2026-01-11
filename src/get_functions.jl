@@ -1082,7 +1082,8 @@ function get_irf(𝓂::ℳ,
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                             T = 𝓂.timings, 
                                                             opts = opts,
-                                                            initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                            ℂC = 𝓂.caches)
     
     if solved 
         𝓂.solution.perturbation.qme_solution = qme_sol
@@ -1936,7 +1937,8 @@ function get_solution(𝓂::ℳ,
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, 
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        ℂC = 𝓂.caches)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -2126,7 +2128,8 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
                                                         T = 𝓂.timings, 
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        ℂC = 𝓂.caches)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -2279,9 +2282,10 @@ function get_variance_decomposition(𝓂::ℳ;
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁; 
-                                                            T = 𝓂.timings, 
-            opts = opts, 
-                                                            initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        T = 𝓂.timings, 
+                                                        opts = opts, 
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        ℂC = 𝓂.caches)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
