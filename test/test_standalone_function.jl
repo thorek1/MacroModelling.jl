@@ -1,6 +1,6 @@
 using SparseArrays
 using MacroModelling
-import MacroModelling: timings, get_NSSS_and_parameters
+import MacroModelling: timings, get_NSSS_and_parameters, First_order_index_cache
 using ForwardDiff
 import LinearAlgebra as ℒ
 using FiniteDifferences, Zygote
@@ -68,6 +68,35 @@ get_irf(RBC_CME, algorithm = :pruned_second_order)
 ∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
 ∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
 #SS = get_steady_state(RBC_CME, derivatives = false)
+
+@testset "First order index cache" begin
+    RBC_CME.caches.first_order_index_cache = First_order_index_cache()
+
+    first_order_uncached, qme_uncached, solved_uncached = calculate_first_order_solution(∇₁; 
+                                                                                        T = RBC_CME.timings,
+                                                                                        initial_guess = RBC_CME.solution.perturbation.qme_solution)
+
+    @test !RBC_CME.caches.first_order_index_cache.initialized
+
+    first_order_cached, qme_cached, solved_cached = calculate_first_order_solution(∇₁,
+                                                                                    RBC_CME;
+                                                                                    initial_guess = RBC_CME.solution.perturbation.qme_solution)
+
+    @test RBC_CME.caches.first_order_index_cache.initialized
+
+    cache_ref = RBC_CME.caches.first_order_index_cache
+
+    first_order_cached_again, qme_cached_again, solved_cached_again = calculate_first_order_solution(∇₁,
+                                                                                                    RBC_CME;
+                                                                                                    initial_guess = RBC_CME.solution.perturbation.qme_solution)
+
+    @test RBC_CME.caches.first_order_index_cache === cache_ref
+    @test solved_cached == solved_uncached == solved_cached_again
+    @test isapprox(first_order_cached, first_order_uncached, rtol = eps(Float32))
+    @test isapprox(first_order_cached_again, first_order_uncached, rtol = eps(Float32))
+    @test isapprox(qme_cached, qme_uncached, rtol = eps(Float32))
+    @test isapprox(qme_cached_again, qme_uncached, rtol = eps(Float32))
+end
 
 
 T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :z_delta], [:A, :Pi, :c, :k, :z_delta], [:A], [:k, :z_delta], [:A], [:delta_eps, :eps_z], [:A, :Pi, :R, :c, :k, :y, :z_delta], Symbol[], Symbol[], 2, 1, 3, 3, 5, 7, 2, [3, 6], [1, 2, 4, 5, 7], [1, 2, 4], [2, 3], [1, 5, 7], [1], [1], [5, 7], [5, 6, 1, 7, 3, 2, 4], [3, 4, 5, 1, 2])

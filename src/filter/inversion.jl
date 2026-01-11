@@ -3472,6 +3472,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
     T = 𝓂.timings
+    ensure_computational_constants_cache!(𝓂)
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3605,6 +3606,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 opts::CalculationOptions = merge_calculation_options())
 
     T = 𝓂.timings
+    ensure_computational_constants_cache!(𝓂)
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3819,6 +3821,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
     T = 𝓂.timings
+    ensure_computational_constants_cache!(𝓂)
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -4087,6 +4090,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
     T = 𝓂.timings
+    ensure_computational_constants_cache!(𝓂)
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -4397,6 +4401,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
     T = 𝓂.timings
+    ensure_computational_constants_cache!(𝓂)
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))

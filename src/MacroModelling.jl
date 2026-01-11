@@ -844,6 +844,8 @@ function obc_objective_optim_fun(X::Vector{S}, grad::Vector{S})::S where S
 end
 
 function set_up_obc_violation_function!(𝓂)
+    ensure_model_structure_cache!(𝓂)
+    ms = 𝓂.caches.model_structure_cache
     present_varss = collect(reduce(union,match_pattern.(get_symbols.(𝓂.dyn_equations),r"₍₀₎$")))
 
     sort!(present_varss ,by = x->replace(string(x),r"₍₀₎$"=>""))
@@ -853,7 +855,7 @@ function set_up_obc_violation_function!(𝓂)
 
     dyn_var_present = Symbol.(replace.(string.(sort(collect(reduce(union,dyn_var_present_list)))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
 
-    SS_and_pars_names = get_model_structure(𝓂).SS_and_pars_names
+    SS_and_pars_names = ms.SS_and_pars_names
 
     dyn_var_present_idx = indexin(dyn_var_present   , SS_and_pars_names)
 
@@ -2990,7 +2992,8 @@ end
 function get_relevant_steady_states(𝓂::ℳ, 
                                     algorithm::Symbol;
                                     opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
-    full_NSSS = @ignore_derivatives get_model_structure(𝓂).full_NSSS_display
+    ms = @ignore_derivatives ensure_model_structure_cache!(𝓂)
+    full_NSSS = ms.full_NSSS_display
 
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, 
                                     stochastic = algorithm != :first_order,
@@ -3445,246 +3448,40 @@ end
 """
     get_var_axis(𝓂::ℳ)
 
-Get cached or compute variable axis names with curly bracket formatting.
-This function is called lazily and caches the result in the model struct.
+Return cached variable axis names with curly bracket formatting.
 """
 function get_var_axis(𝓂::ℳ)
-    if isempty(𝓂.caches.name_display_cache.var_axis)
-        populate_name_display_cache!(𝓂)
-    end
     return 𝓂.caches.name_display_cache.var_axis
 end
 
 """
     get_exo_axis(𝓂::ℳ; with_subscript::Bool = true)
 
-Get cached or compute shock axis names with curly bracket formatting.
+Return cached shock axis names with curly bracket formatting.
 By default includes ₍ₓ₎ suffix; set with_subscript=false to exclude it.
-This function is called lazily and caches the result in the model struct.
 """
 function get_exo_axis(𝓂::ℳ; with_subscript::Bool = true)
-    if isempty(𝓂.caches.name_display_cache.exo_axis_plain)
-        populate_name_display_cache!(𝓂)
-    end
-    return with_subscript ? 𝓂.caches.name_display_cache.exo_axis_with_subscript : 𝓂.caches.name_display_cache.exo_axis_plain
-end
-
-"""
-    populate_name_display_cache!(𝓂::ℳ)
-
-Populate the name display cache with processed variable and shock names.
-This is called lazily the first time display names are needed.
-"""
-function populate_name_display_cache!(𝓂::ℳ)
-    # Process variables
-    var_has_curly = any(x -> contains(string(x), "◖"), 𝓂.timings.var)
-    if var_has_curly
-        var_decomposed = decompose_name.(𝓂.timings.var)
-        var_axis = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in var_decomposed]
-    else
-        var_axis = 𝓂.timings.var
-    end
-    
-    # Process shocks (plain version without subscript)
-    exo_has_curly = any(x -> contains(string(x), "◖"), 𝓂.timings.exo)
-    if exo_has_curly
-        exo_decomposed = decompose_name.(𝓂.timings.exo)
-        exo_axis_plain = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in exo_decomposed]
-        exo_axis_with_subscript = exo_axis_plain .* "₍ₓ₎"
-    else
-        exo_axis_plain = 𝓂.timings.exo
-        exo_axis_with_subscript = map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo)
-    end
-    
-    # Replace the entire cache with a new immutable instance
-    𝓂.caches.name_display_cache = name_display_cache(var_axis, exo_axis_plain, exo_axis_with_subscript, var_has_curly, exo_has_curly)
-    
-    return nothing
+    cache = 𝓂.caches.name_display_cache
+    return with_subscript ? cache.exo_axis_with_subscript : cache.exo_axis_plain
 end
 
 """
     get_computational_constants(𝓂::ℳ)
 
-Get cached computational constants (BitVectors and identity matrices).
-This function is called lazily and caches the result in the model struct.
+Return cached computational constants (BitVectors and identity matrices).
 """
 function get_computational_constants(𝓂::ℳ)
-    if isempty(𝓂.caches.computational_constants.s_in_s⁺)
-        populate_computational_constants!(𝓂)
-    end
+    ensure_computational_constants_cache!(𝓂)
     return 𝓂.caches.computational_constants
-end
-
-"""
-    populate_computational_constants!(𝓂::ℳ)
-
-Populate the computational constants cache with BitVectors, kronecker products, and identity matrices.
-This is called lazily the first time these constants are needed.
-"""
-function populate_computational_constants!(𝓂::ℳ)
-    nᵉ = 𝓂.timings.nExo
-    nˢ = 𝓂.timings.nPast_not_future_and_mixed
-    
-    # Create constant BitVectors used throughout the codebase
-    s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-    
-    # Precompute kronecker products (used 8 and 6 times respectively)
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-    
-    # Additional BitVectors for moments calculations
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
-    v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
-    
-    # Diagonal matrix for state selection
-    diag_nVars = ℒ.diagm(ones(𝓂.timings.nVars))
-    
-    # Additional kron products for moments and filter calculations
-    kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)  # Same as kron_s⁺_s⁺ but named for clarity
-    kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
-    kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
-    kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
-    kron_e_s = ℒ.kron(e_in_s⁺, s_in_s⁺)
-    
-    # Replace the entire cache with a new immutable instance
-    𝓂.caches.computational_constants = computational_constants_cache(
-        s_in_s⁺, s_in_s, kron_s⁺_s⁺, kron_s⁺_s, nˢ, e_in_s⁺, v_in_s⁺, diag_nVars,
-        kron_s_s, kron_e_e, kron_v_v, kron_s_e, kron_e_s
-    )
-    
-    return nothing
-end
-
-"""
-    get_first_order_index_cache(𝓂::ℳ)
-
-Return cached first-order perturbation indices, computing and storing them on first use.
-"""
-function get_first_order_index_cache(𝓂::ℳ)
-    I_nVars = get_computational_constants(𝓂).diag_nVars
-    return get_first_order_index_cache(𝓂.caches, 𝓂.timings, I_nVars)
-end
-
-function get_first_order_index_cache(ℂC::caches, T::timings, I_nVars)
-    if !ℂC.first_order_index_cache.initialized
-        ℂC.first_order_index_cache = build_first_order_index_cache(T, I_nVars)
-    end
-    return ℂC.first_order_index_cache
-end
-
-function build_first_order_index_cache(T::timings, I_nVars)
-    dyn_index = T.nPresent_only + 1:T.nVars
-
-    reverse_dynamic_order = indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx)
-
-    comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
-    sort!(comb)
-
-    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
-    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
-
-    Ir = ℒ.I(length(comb))
-
-    nabla_zero_cols = (T.nFuture_not_past_and_mixed + 1):(T.nFuture_not_past_and_mixed + T.nVars)
-    nabla_minus_cols = (T.nFuture_not_past_and_mixed + T.nVars + 1):(T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed)
-    nabla_e_start = T.nFuture_not_past_and_mixed + T.nVars + T.nPast_not_future_and_mixed + 1
-
-    expand_future = I_nVars[T.future_not_past_and_mixed_idx,:]
-    expand_past = I_nVars[T.past_not_future_and_mixed_idx,:]
-
-    return first_order_index_cache(true,
-                                    dyn_index,
-                                    reverse_dynamic_order,
-                                    comb,
-                                    future_not_past_and_mixed_in_comb,
-                                    past_not_future_and_mixed_in_comb,
-                                    Ir,
-                                    nabla_zero_cols,
-                                    nabla_minus_cols,
-                                    nabla_e_start,
-                                    expand_future,
-                                    expand_past)
 end
 
 """
     get_model_structure(𝓂::ℳ)
 
-Get cached model structure information (SS_and_pars_names, all_variables, NSSS_labels).
-This function is called lazily and caches the result in the model struct.
+Return cached model structure information (SS_and_pars_names, all_variables, NSSS_labels).
 """
 function get_model_structure(𝓂::ℳ)
-    if isempty(𝓂.caches.model_structure_cache.SS_and_pars_names)
-        populate_model_structure_cache!(𝓂)
-    end
     return 𝓂.caches.model_structure_cache
-end
-
-"""
-    populate_model_structure_cache!(𝓂::ℳ)
-
-Populate the model structure cache with processed variable lists and labels.
-This is called lazily the first time these structures are needed.
-"""
-function populate_model_structure_cache!(𝓂::ℳ)
-    # SS_and_pars_names: used in multiple places
-    SS_and_pars_names = vcat(
-        Symbol.(replace.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))), 
-                r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 
-        𝓂.calibration_equations_parameters
-    )
-    
-    # all_variables: sorted union of var, aux, exo_present
-    all_variables = sort(union(𝓂.var, 𝓂.aux, 𝓂.exo_present))
-    
-    # NSSS_labels: sorted union of exo_present, var + calibration parameters
-    NSSS_labels = [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
-    
-    # Precompute aux indices and processed names
-    aux_indices = Int.(indexin(𝓂.aux, all_variables))
-    processed_all_variables = copy(all_variables)
-    processed_all_variables[aux_indices] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.aux)
-
-    full_NSSS = copy(processed_all_variables)
-    if any(x -> contains(string(x), "◖"), full_NSSS)
-        full_NSSS_decomposed = decompose_name.(full_NSSS)
-        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
-    end
-    full_NSSS_display = Vector{Union{Symbol, String}}(full_NSSS)
-
-    steady_state_expand_matrix = create_selector_matrix(processed_all_variables, NSSS_labels)
-
-    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)), union(𝓂.parameters_in_equations, 𝓂.➕_vars))))
-    extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.var), 𝓂.calibration_equations_parameters)
-    custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
-
-    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-    SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
-    SS_and_pars_no_exo_idx = Int.(indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag))
-
-    vars_non_obc = 𝓂.var[.!contains.(string.(𝓂.var), "ᵒᵇᶜ")]
-    vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(𝓂.aux, 𝓂.exo_present)), all_variables))
-    vars_idx_excluding_obc = Int.(indexin(vars_non_obc, all_variables))
-    
-    # Replace the entire cache with a new immutable instance
-    𝓂.caches.model_structure_cache = model_structure_cache(
-        SS_and_pars_names,
-        all_variables,
-        NSSS_labels,
-        aux_indices,
-        processed_all_variables,
-        full_NSSS_display,
-        steady_state_expand_matrix,
-        custom_ss_expand_matrix,
-        vars_in_ss_equations,
-        SS_and_pars_names_lead_lag,
-        SS_and_pars_names_no_exo,
-        SS_and_pars_no_exo_idx,
-        vars_idx_excluding_aux_obc,
-        vars_idx_excluding_obc,
-    )
-    
-    return nothing
 end
 
 
@@ -3788,7 +3585,8 @@ end
 
 
 function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
-    X = @ignore_derivatives get_model_structure(𝓂).steady_state_expand_matrix
+    ms = @ignore_derivatives ensure_model_structure_cache!(𝓂)
+    X = ms.steady_state_expand_matrix
     return X * SS_and_pars
 end
 
@@ -6419,6 +6217,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         # timer::TimerOutput = TimerOutput(),
                                                         # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     # @timeit_debug timer "Calculate NSSS" begin
+    ensure_computational_constants_cache!(𝓂)
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
 
@@ -6505,7 +6304,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
         converged = true
     else
         # Get cached computational constants
-        cc = get_computational_constants(𝓂)
+        cc = 𝓂.caches.computational_constants
         s_in_s⁺ = @ignore_derivatives cc.s_in_s⁺
         kron_s⁺_s⁺ = @ignore_derivatives cc.kron_s⁺_s⁺
         
@@ -6549,7 +6348,8 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     # @timeit_debug timer "Setup matrices" begin
 
     # Get cached computational constants
-    cc = get_computational_constants(𝓂)
+    ensure_computational_constants_cache!(𝓂)
+    cc = 𝓂.caches.computational_constants
     s_in_s⁺ = cc.s_in_s⁺
     s_in_s = cc.s_in_s
     I_nPast = ℒ.I(cc.nPast)
@@ -6611,10 +6411,11 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     x̂ = ℱ.value.(x)
     
     # Get cached computational constants
-cc = get_computational_constants(𝓂)
-s_in_s⁺ = cc.s_in_s⁺
-s_in_s = cc.s_in_s
-I_nPast = ℒ.I(cc.nPast)
+    ensure_computational_constants_cache!(𝓂)
+    cc = 𝓂.caches.computational_constants
+    s_in_s⁺ = cc.s_in_s⁺
+    s_in_s = cc.s_in_s
+    I_nPast = ℒ.I(cc.nPast)
     
     kron_s⁺_s⁺ = cc.kron_s⁺_s⁺
     
@@ -6684,10 +6485,11 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     # @timeit_debug timer "Setup indices" begin
 
     # Get cached computational constants
-cc = get_computational_constants(𝓂)
-s_in_s⁺ = cc.s_in_s⁺
-s_in_s = cc.s_in_s
-I_nPast = ℒ.I(cc.nPast)
+    ensure_computational_constants_cache!(𝓂)
+    cc = 𝓂.caches.computational_constants
+    s_in_s⁺ = cc.s_in_s⁺
+    s_in_s = cc.s_in_s
+    I_nPast = ℒ.I(cc.nPast)
     
     kron_s⁺_s⁺ = cc.kron_s⁺_s⁺
     
@@ -6757,6 +6559,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         pruning::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}} where M <: Real
                                                         # timer::TimerOutput = TimerOutput(),
                                                         # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
+    ensure_computational_constants_cache!(𝓂)
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
     
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
@@ -6855,7 +6658,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         converged = true
     else
         # Get cached computational constants
-        cc = get_computational_constants(𝓂)
+        cc = 𝓂.caches.computational_constants
         s_in_s⁺ = @ignore_derivatives cc.s_in_s⁺
         kron_s⁺_s⁺ = @ignore_derivatives cc.kron_s⁺_s⁺
         
@@ -6899,10 +6702,11 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
                                                         # timer::TimerOutput = TimerOutput(),
                                                         tol::AbstractFloat = 1e-14)
     # Get cached computational constants
-cc = get_computational_constants(𝓂)
-s_in_s⁺ = cc.s_in_s⁺
-s_in_s = cc.s_in_s
-I_nPast = ℒ.I(cc.nPast)
+    ensure_computational_constants_cache!(𝓂)
+    cc = 𝓂.caches.computational_constants
+    s_in_s⁺ = cc.s_in_s⁺
+    s_in_s = cc.s_in_s
+    I_nPast = ℒ.I(cc.nPast)
     
     kron_s⁺_s⁺ = cc.kron_s⁺_s⁺
     
@@ -6956,10 +6760,11 @@ function calculate_third_order_stochastic_steady_state(::Val{:newton},
     x̂ = ℱ.value.(x)
     
     # Get cached computational constants
-cc = get_computational_constants(𝓂)
-s_in_s⁺ = cc.s_in_s⁺
-s_in_s = cc.s_in_s
-I_nPast = ℒ.I(cc.nPast)
+    ensure_computational_constants_cache!(𝓂)
+    cc = 𝓂.caches.computational_constants
+    s_in_s⁺ = cc.s_in_s⁺
+    s_in_s = cc.s_in_s
+    I_nPast = ℒ.I(cc.nPast)
     
     kron_s⁺_s⁺ = cc.kron_s⁺_s⁺
     
@@ -7034,10 +6839,11 @@ function rrule(::typeof(calculate_third_order_stochastic_steady_state),
                                                         𝓂::ℳ;
                                                         tol::AbstractFloat = 1e-14)
     # Get cached computational constants
-cc = get_computational_constants(𝓂)
-s_in_s⁺ = cc.s_in_s⁺
-s_in_s = cc.s_in_s
-I_nPast = ℒ.I(cc.nPast)
+    ensure_computational_constants_cache!(𝓂)
+    cc = 𝓂.caches.computational_constants
+    s_in_s⁺ = cc.s_in_s⁺
+    s_in_s = cc.s_in_s
+    I_nPast = ℒ.I(cc.nPast)
     
     kron_s⁺_s⁺ = cc.kron_s⁺_s⁺
     
@@ -9682,10 +9488,11 @@ end
 
 
 function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, 𝓂::ℳ)::Union{UnitRange{Int}, Vector{Int}}
+    ms = ensure_model_structure_cache!(𝓂)
     if variables == :all_excluding_auxiliary_and_obc
-        return get_model_structure(𝓂).vars_idx_excluding_aux_obc
+        return ms.vars_idx_excluding_aux_obc
     elseif variables == :all_excluding_obc
-        return get_model_structure(𝓂).vars_idx_excluding_obc
+        return ms.vars_idx_excluding_obc
     end
 
     return parse_variables_input_to_index(variables, 𝓂.timings)
@@ -10043,27 +9850,16 @@ function create_broadcaster(indices::Vector{Int}, n::Int)
     return broadcaster  
 end
 
-function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
-    selector = spzeros(Float64, length(target), length(source))
-    idx = indexin(target, source)
-    for (i, j) in enumerate(idx)
-        if !isnothing(j)
-            selector[i, j] = 1.0
-        end
-    end
-    return selector
-end
-
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                     parameter_values::Vector{S}; 
                                     opts::CalculationOptions = merge_calculation_options(),
                                     cold_start::Bool = false)::Tuple{Vector{S}, Tuple{S, Int}} where S <: Real
                                     # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS" begin
+    ms = ensure_model_structure_cache!(𝓂)
     
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.custom_steady_state_function isa Function
-        ms = get_model_structure(𝓂)
         vars_in_ss_equations = ms.vars_in_ss_equations
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
@@ -10112,10 +9908,10 @@ function rrule(::typeof(get_NSSS_and_parameters),
                 cold_start::Bool = false) where S <: Real
                 # timer::TimerOutput = TimerOutput(),
     # @timeit_debug timer "Calculate NSSS - forward" begin
+    ms = ensure_model_structure_cache!(𝓂)
 
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.custom_steady_state_function isa Function
-        ms = get_model_structure(𝓂)
         vars_in_ss_equations = ms.vars_in_ss_equations
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
@@ -10151,7 +9947,6 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # @timeit_debug timer "Calculate NSSS - pullback" begin
 
-    ms = get_model_structure(𝓂)
     SS_and_pars_names = ms.SS_and_pars_names
     SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
 
@@ -10229,9 +10024,9 @@ function get_NSSS_and_parameters(𝓂::ℳ,
                                 cold_start::Bool = false)::Tuple{Vector{ℱ.Dual{Z,S,N}}, Tuple{S, Int}} where {Z, S <: AbstractFloat, N}
                                 # timer::TimerOutput = TimerOutput(),
     parameter_values = ℱ.value.(parameter_values_dual)
+    ms = ensure_model_structure_cache!(𝓂)
 
     if 𝓂.custom_steady_state_function isa Function
-        ms = get_model_structure(𝓂)
         vars_in_ss_equations = ms.vars_in_ss_equations
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
@@ -10266,7 +10061,6 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         solution_error = S(10.0)
     else
-        ms = get_model_structure(𝓂)
         SS_and_pars_names = ms.SS_and_pars_names
         SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
 

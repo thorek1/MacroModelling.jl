@@ -117,7 +117,8 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                         𝓂::ℳ;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{R} = zeros(0,0)) where R
-    idx_cache = @ignore_derivatives get_first_order_index_cache(𝓂)
+    @ignore_derivatives ensure_first_order_index_cache!(𝓂)
+    idx_cache = 𝓂.caches.first_order_index_cache
     return calculate_first_order_solution(∇₁;
                                             T = 𝓂.timings,
                                             opts = opts,
@@ -380,7 +381,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         𝓂::ℳ;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0)) where {Z,S,N}
-    idx_cache = @ignore_derivatives get_first_order_index_cache(𝓂)
+    @ignore_derivatives ensure_first_order_index_cache!(𝓂)
+    idx_cache = 𝓂.caches.first_order_index_cache
     return calculate_first_order_solution(∇₁;
                                             T = 𝓂.timings,
                                             opts = opts,

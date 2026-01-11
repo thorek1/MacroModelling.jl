@@ -599,6 +599,8 @@ function filter_and_smooth(𝓂::ℳ,
     sort!(observables)
 
     solve!(𝓂, opts = opts)
+    ensure_computational_constants_cache!(𝓂)
+    cc = 𝓂.caches.computational_constants
 
     parameters = 𝓂.parameter_values
 
@@ -612,7 +614,7 @@ function filter_and_smooth(𝓂::ℳ,
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
-    A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * get_computational_constants(𝓂).diag_nVars[𝓂.timings.past_not_future_and_mixed_idx,:]
+    A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * cc.diag_nVars[𝓂.timings.past_not_future_and_mixed_idx,:]
 
     B = @views sol[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
 

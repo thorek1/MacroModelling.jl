@@ -128,6 +128,7 @@ function get_shock_decomposition(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
     
+    ensure_name_display_cache!(𝓂)
     axis1 = get_var_axis(𝓂)
 
     if pruning
@@ -255,6 +256,7 @@ function get_estimated_shocks(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
     
+    ensure_name_display_cache!(𝓂)
     axis1 = get_exo_axis(𝓂)
 
     return KeyedArray(shocks;  Shocks = axis1, Periods = 1:size(data,2))
@@ -378,6 +380,7 @@ function get_estimated_variables(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
 
+    ensure_name_display_cache!(𝓂)
     axis1 = get_var_axis(𝓂)
 
     return KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
@@ -603,6 +606,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                                                     smooth = smooth, 
                                                                                     opts = opts)
 
+    ensure_name_display_cache!(𝓂)
     axis1 = get_var_axis(𝓂)
 
     return KeyedArray(standard_deviations;  Standard_deviations = axis1, Periods = 1:size(data,2))
@@ -1516,6 +1520,7 @@ function get_steady_state(𝓂::ℳ;
         derivatives = true
     end
 
+    ensure_name_display_cache!(𝓂)
     var_axis = get_var_axis(𝓂)
     calib_axis = 𝓂.calibration_equations_parameters
     if any(x -> x isa String, var_axis) || any(x -> contains(string(x), "◖"), calib_axis)
@@ -2171,6 +2176,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     axis1 = 𝓂.var
 
+    ensure_name_display_cache!(𝓂)
     axis1 = get_var_axis(𝓂)
 
     axis2 = get_exo_axis(𝓂, with_subscript = false)
@@ -2315,6 +2321,7 @@ function get_variance_decomposition(𝓂::ℳ;
     
     axis1 = 𝓂.var
 
+    ensure_name_display_cache!(𝓂)
     axis1 = get_var_axis(𝓂)
 
     axis2 = get_exo_axis(𝓂, with_subscript = false)
@@ -2428,6 +2435,7 @@ function get_correlation(𝓂::ℳ;
     
     axis1 = 𝓂.var
 
+    ensure_name_display_cache!(𝓂)
     axis1 = get_var_axis(𝓂)
 
     KeyedArray(collect(corr); Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
@@ -2563,6 +2571,7 @@ function get_autocorrelation(𝓂::ℳ;
     
     axis1 = 𝓂.var
 
+    ensure_name_display_cache!(𝓂)
     axis1 = get_var_axis(𝓂)
 
     KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_periods = autocorrelation_periods)

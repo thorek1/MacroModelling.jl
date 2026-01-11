@@ -1,116 +1,10 @@
 @stable default_mode = "disable" begin
 
-function get_moments_kron_states(𝓂::ℳ)
-    cache = 𝓂.caches.moments_cache
-    if isempty(cache.kron_states)
-        cc = get_computational_constants(𝓂)
-        cache.kron_states = ℒ.kron(cc.s_in_s, cc.s_in_s)
-    end
-    return cache.kron_states
-end
-
-function get_moments_kron_s_e(𝓂::ℳ)
-    cache = 𝓂.caches.moments_cache
-    if isempty(cache.kron_s_e)
-        cc = get_computational_constants(𝓂)
-        cache.kron_s_e = ℒ.kron(cc.s_in_s, cc.e_in_s⁺)
-    end
-    return cache.kron_s_e
-end
-
-function get_moments_kron_e_v(𝓂::ℳ)
-    cache = 𝓂.caches.moments_cache
-    if isempty(cache.kron_e_v)
-        cc = get_computational_constants(𝓂)
-        cache.kron_e_v = ℒ.kron(cc.e_in_s⁺, cc.v_in_s⁺)
-    end
-    return cache.kron_e_v
-end
-
-function get_moments_I_plus_s_s(𝓂::ℳ)
-    cache = 𝓂.caches.moments_cache
-    if size(cache.I_plus_s_s, 1) == 0
-        nˢ = 𝓂.timings.nPast_not_future_and_mixed
-        cache.I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
-    end
-    return cache.I_plus_s_s
-end
-
-function compute_e4(nᵉ::Int)
-    if nᵉ == 0
-        return Float64[]
-    end
-    E_e4 = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4)
-    quadrup = multiplicate(nᵉ, 4)
-    comb4 = reduce(vcat, generateSumVectors(nᵉ, 4))
-    comb4 = comb4 isa Int64 ? reshape([comb4], 1, 1) : comb4
-    for j = 1:size(comb4, 1)
-        E_e4[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb4[j, :])
-    end
-    return quadrup * E_e4
-end
-
-function compute_e6(nᵉ::Int)
-    if nᵉ == 0
-        return Float64[]
-    end
-    E_e6 = zeros(nᵉ * (nᵉ + 1)÷2 * (nᵉ + 2)÷3 * (nᵉ + 3)÷4 * (nᵉ + 4)÷5 * (nᵉ + 5)÷6)
-    sextup = multiplicate(nᵉ, 6)
-    comb6 = reduce(vcat, generateSumVectors(nᵉ, 6))
-    comb6 = comb6 isa Int64 ? reshape([comb6], 1, 1) : comb6
-    for j = 1:size(comb6, 1)
-        E_e6[j] = product_moments(ℒ.I(nᵉ), 1:nᵉ, comb6[j, :])
-    end
-    return sextup * E_e6
-end
-
-function get_moments_e4(𝓂::ℳ)
-    cache = 𝓂.caches.moments_cache
-    if isempty(cache.e4)
-        cache.e4 = compute_e4(𝓂.timings.nExo)
-    end
-    return cache.e4
-end
-
-function get_moments_e6(𝓂::ℳ)
-    cache = 𝓂.caches.moments_cache
-    if isempty(cache.e6)
-        cache.e6 = compute_e6(𝓂.timings.nExo)
-    end
-    return cache.e6
-end
-
-function get_moments_substate_cache(𝓂::ℳ, nˢ::Int)
-    cache = 𝓂.caches.moments_cache
-    if !haskey(cache.substate_cache, nˢ)
-        nᵉ = 𝓂.timings.nExo
-        I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
-        e_es = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nᵉ * nˢ)), nˢ * nᵉ^2, nˢ * nᵉ^2))
-        e_ss = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nˢ^2)), nᵉ * nˢ^2, nᵉ * nˢ^2))
-        ss_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ^2)), ℒ.I(nˢ)), nˢ^3, nˢ^3))
-        s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2))
-        cache.substate_cache[nˢ] = moments_substate_cache(I_plus_s_s, e_es, e_ss, ss_s, s_s)
-    end
-    return cache.substate_cache[nˢ]
-end
-
-function get_dependency_kron_cache(𝓂::ℳ, dependencies::Vector{Symbol}, s_in_s⁺::BitVector)
-    cache = 𝓂.caches.moments_cache
-    key = Tuple(dependencies)
-    if !haskey(cache.dependency_kron_cache, key)
-        cc = get_computational_constants(𝓂)
-        cache.dependency_kron_cache[key] = moments_dependency_kron_cache(
-            ℒ.kron(s_in_s⁺, s_in_s⁺),
-            ℒ.kron(s_in_s⁺, cc.e_in_s⁺),
-            ℒ.kron(s_in_s⁺, cc.v_in_s⁺)
-        )
-    end
-    return cache.dependency_kron_cache[key]
-end
-
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
                                 opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
+    ensure_computational_constants_cache!(𝓂)
+    cc = 𝓂.caches.computational_constants
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
     if solution_error > opts.tol.NSSS_acceptance_tol
@@ -126,7 +20,7 @@ function calculate_covariance(parameters::Vector{R},
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
-    A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * get_computational_constants(𝓂).diag_nVars[𝓂.timings.past_not_future_and_mixed_idx,:]
+    A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * cc.diag_nVars[𝓂.timings.past_not_future_and_mixed_idx,:]
 
     C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
     
@@ -162,6 +56,9 @@ function calculate_mean(parameters::Vector{T},
 
         solved = solution_error < opts.tol.NSSS_acceptance_tol
     else
+        ensure_moments_cache!(𝓂)
+        cc = 𝓂.caches.computational_constants
+        mc = 𝓂.caches.moments_cache
         ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
         
         𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
@@ -196,8 +93,7 @@ function calculate_mean(parameters::Vector{T},
                 nᵉ = 𝓂.timings.nExo
                 nˢ = 𝓂.timings.nPast_not_future_and_mixed
 
-                cc = get_computational_constants(𝓂)
-                kron_states = get_moments_kron_states(𝓂)
+                kron_states = mc.kron_states
                 kron_shocks = cc.kron_e_e
                 kron_volatility = cc.kron_v_v
 
@@ -253,6 +149,9 @@ function calculate_second_order_moments(parameters::Vector{R},
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
 
     if solved
+        ensure_moments_cache!(𝓂)
+        cc = 𝓂.caches.computational_constants
+        mc = 𝓂.caches.moments_cache
         nᵉ = 𝓂.timings.nExo
 
         nˢ = 𝓂.timings.nPast_not_future_and_mixed
@@ -263,10 +162,10 @@ function calculate_second_order_moments(parameters::Vector{R},
 
         # precalc second order
         ## mean
-        I_plus_s_s = get_moments_I_plus_s_s(𝓂)
+        I_plus_s_s = mc.I_plus_s_s
 
         ## covariance
-        e⁴ = get_moments_e4(𝓂)
+        e⁴ = mc.e4
 
         # second order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
@@ -286,11 +185,10 @@ function calculate_second_order_moments(parameters::Vector{R},
                 𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
             end
 
-            cc = get_computational_constants(𝓂)
-            kron_s_s = get_moments_kron_states(𝓂)
+            kron_s_s = mc.kron_states
             kron_e_e = cc.kron_e_e
             kron_v_v = cc.kron_v_v
-            kron_s_e = get_moments_kron_s_e(𝓂)
+            kron_s_e = mc.kron_s_e
 
             # first order
             s_to_y₁ = 𝐒₁[:, 1:nˢ]
@@ -376,6 +274,9 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
 
     if solved
+        ensure_moments_cache!(𝓂)
+        cc = 𝓂.caches.computational_constants
+        mc = 𝓂.caches.moments_cache
         nᵉ = 𝓂.timings.nExo
 
         nˢ = 𝓂.timings.nPast_not_future_and_mixed
@@ -386,10 +287,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
 
         # precalc second order
         ## mean
-        I_plus_s_s = get_moments_I_plus_s_s(𝓂)
+        I_plus_s_s = mc.I_plus_s_s
 
         ## covariance
-        e⁴ = get_moments_e4(𝓂)
+        e⁴ = mc.e4
 
         # second order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
@@ -408,11 +309,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
                 𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
             end
 
-            cc = get_computational_constants(𝓂)
-            kron_s_s = get_moments_kron_states(𝓂)
+            kron_s_s = mc.kron_states
             kron_e_e = cc.kron_e_e
             kron_v_v = cc.kron_v_v
-            kron_s_e = get_moments_kron_s_e(𝓂)
+            kron_s_e = mc.kron_s_e
 
             # first order
             s_to_y₁ = 𝐒₁[:, 1:nˢ]
@@ -557,6 +457,10 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
     end
 
+    ensure_moments_cache!(𝓂)
+    cc = 𝓂.caches.computational_constants
+    mc = 𝓂.caches.moments_cache
+
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
@@ -583,19 +487,18 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     nᵉ = 𝓂.timings.nExo
 
-    cc = get_computational_constants(𝓂)
     kron_e_e = cc.kron_e_e
     kron_v_v = cc.kron_v_v
-    kron_e_v = get_moments_kron_e_v(𝓂)
+    kron_e_v = mc.kron_e_v
     e_in_s⁺ = cc.e_in_s⁺
     v_in_s⁺ = cc.v_in_s⁺
 
     # precalc second order
     ## covariance
-    e⁴ = get_moments_e4(𝓂)
+    e⁴ = mc.e4
 
     # precalc third order
-    e⁶ = get_moments_e6(𝓂)
+    e⁶ = mc.e6
 
     Σʸ₃ = zeros(T, size(Σʸ₂))
 
@@ -635,7 +538,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
         s_in_s⁺ = BitVector(vcat(𝓂.timings.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
 
-        substate_cache = get_moments_substate_cache(𝓂, nˢ)
+        substate_cache = ensure_moments_substate_cache!(𝓂, nˢ)
         I_plus_s_s = substate_cache.I_plus_s_s
         e_es = substate_cache.e_es
         e_ss = substate_cache.e_ss
@@ -650,7 +553,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         e_to_s₁ = 𝐒₁[iˢ, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
 
         # second order
-        dep_kron = get_dependency_kron_cache(𝓂, dependencies, s_in_s⁺)
+        dep_kron = ensure_moments_dependency_kron_cache!(𝓂, dependencies, s_in_s⁺)
         kron_s_s = dep_kron.kron_s_s
         kron_s_e = dep_kron.kron_s_e
 
@@ -800,6 +703,10 @@ function calculate_third_order_moments(parameters::Vector{T},
         return zeros(T,0,0), zeros(T,0), zeros(T,0), false
     end
 
+    ensure_moments_cache!(𝓂)
+    cc = 𝓂.caches.computational_constants
+    mc = 𝓂.caches.moments_cache
+
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
@@ -826,19 +733,18 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     nᵉ = 𝓂.timings.nExo
 
-    cc = get_computational_constants(𝓂)
     kron_e_e = cc.kron_e_e
     kron_v_v = cc.kron_v_v
-    kron_e_v = get_moments_kron_e_v(𝓂)
+    kron_e_v = mc.kron_e_v
     e_in_s⁺ = cc.e_in_s⁺
     v_in_s⁺ = cc.v_in_s⁺
 
     # precalc second order
     ## covariance
-    e⁴ = get_moments_e4(𝓂)
+    e⁴ = mc.e4
 
     # precalc third order
-    e⁶ = get_moments_e6(𝓂)
+    e⁶ = mc.e6
 
     Σʸ₃ = zeros(T, size(Σʸ₂))
 
@@ -876,7 +782,7 @@ function calculate_third_order_moments(parameters::Vector{T},
 
         s_in_s⁺ = BitVector(vcat(𝓂.timings.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
 
-        substate_cache = get_moments_substate_cache(𝓂, nˢ)
+        substate_cache = ensure_moments_substate_cache!(𝓂, nˢ)
         I_plus_s_s = substate_cache.I_plus_s_s
         e_es = substate_cache.e_es
         e_ss = substate_cache.e_ss
@@ -891,7 +797,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         e_to_s₁ = 𝐒₁[iˢ, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
 
         # second order
-        dep_kron = get_dependency_kron_cache(𝓂, dependencies, s_in_s⁺)
+        dep_kron = ensure_moments_dependency_kron_cache!(𝓂, dependencies, s_in_s⁺)
         kron_s_s = dep_kron.kron_s_s
         kron_s_e = dep_kron.kron_s_e
 
