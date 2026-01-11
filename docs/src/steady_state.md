@@ -63,6 +63,8 @@ For models where the internal solver fails, or when analytical solutions are ava
 After defining the model one can specify a custom steady state function and pass it on to the `@parameters` macro. The function should accept a vector of parameter values and return a vector of variables followed by calibration parameters. The input and output needs to follow the correct ordering of parameters and variables. The order of the parameters can be obtained using `get_parameters(m)`, and the order of the output follows `get_variables(m)` and `get_calibrated_parameters(m)`. Practically, one can call the model and parameter macros without defining the custom steady state function, then get the order from the above functions calls and based on this order define the custom steady state function.
 
 ```@repl ss
+using MacroModelling
+
 # Define the model
 @model RBC begin
     1  /  c[0] = (β  /  c[1]) * (α * exp(z[1]) * k[0]^(α - 1) + (1 - δ))
