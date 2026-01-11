@@ -84,6 +84,31 @@ struct computational_constants_cache
     kron_e_s::BitVector  # kron(e_in_s⁺, s_in_s⁺)
 end
 
+struct moments_substate_cache
+    I_plus_s_s::SparseMatrixCSC{Float64, Int}
+    e_es::SparseMatrixCSC{Float64, Int}
+    e_ss::SparseMatrixCSC{Float64, Int}
+    ss_s::SparseMatrixCSC{Float64, Int}
+    s_s::SparseMatrixCSC{Float64, Int}
+end
+
+struct moments_dependency_kron_cache
+    kron_s_s::BitVector
+    kron_s_e::BitVector
+    kron_s_v::BitVector
+end
+
+mutable struct moments_cache
+    kron_states::BitVector
+    kron_s_e::BitVector
+    I_plus_s_s::SparseMatrixCSC{Float64, Int}
+    e4::Vector{Float64}
+    e6::Vector{Float64}
+    kron_e_v::BitVector
+    substate_cache::Dict{Int, moments_substate_cache}
+    dependency_kron_cache::Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_cache}
+end
+
 struct first_order_index_cache{I, M}
     initialized::Bool
     dyn_index::UnitRange{Int}
@@ -105,6 +130,7 @@ mutable struct caches#{F <: Real, G <: AbstractFloat}
     name_display_cache::name_display_cache
     model_structure_cache::model_structure_cache
     computational_constants::computational_constants_cache
+    moments_cache::moments_cache
     first_order_index_cache::first_order_index_cache
     custom_steady_state_buffer::Vector{Float64}
 end
@@ -126,6 +152,18 @@ function First_order_index_cache()
                                     1,
                                     empty_matrix,
                                     empty_matrix)
+end
+
+function Moments_cache()
+    empty_sparse = spzeros(Float64, 0, 0)
+    return moments_cache(BitVector(),
+                        BitVector(),
+                        empty_sparse,
+                        Float64[],
+                        Float64[],
+                        BitVector(),
+                        Dict{Int, moments_substate_cache}(),
+                        Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_cache}())
 end
 
 
@@ -167,6 +205,7 @@ function Caches(;T::Type = Float64, S::Type = Float64)
             computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, 
                                          BitVector(), BitVector(), ℒ.Diagonal(Float64[]),
                                          BitVector(), BitVector(), BitVector(), BitVector(), BitVector()),
+            Moments_cache(),
             First_order_index_cache(),
             Float64[])
 end

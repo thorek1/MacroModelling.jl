@@ -1516,9 +1516,12 @@ function get_steady_state(𝓂::ℳ;
         derivatives = true
     end
 
-    axis1 = [vars_in_ss_equations..., (return_variables_only ? [] : 𝓂.calibration_equations_parameters)...]
-
-    axis1 = get_var_axis(𝓂)
+    var_axis = get_var_axis(𝓂)
+    calib_axis = 𝓂.calibration_equations_parameters
+    if any(x -> x isa String, var_axis) || any(x -> contains(string(x), "◖"), calib_axis)
+        calib_axis = replace.(string.(calib_axis), "◖" => "{", "◗" => "}")
+    end
+    axis1 = return_variables_only ? var_axis[var_idx] : vcat(var_axis[var_idx], calib_axis)
 
     axis2 = vcat(:Steady_state, 𝓂.parameters[param_idx])
 
