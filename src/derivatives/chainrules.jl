@@ -1260,37 +1260,41 @@ function rrule(::typeof(get_NSSS_and_parameters),
     # @timeit_debug timer "Calculate NSSS - forward" begin
 
     # Use custom steady state function if available, otherwise use default solver
-    if !isnothing(𝓂.custom_steady_state_function)
-        SS_and_pars = 𝓂.custom_steady_state_function(parameter_values)
-
+    if 𝓂.custom_steady_state_function isa Function
         vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
+
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
-        if length(SS_and_pars) != expected_length
-            throw(ArgumentError("Custom steady state function returned $(length(SS_and_pars)) values, expected $expected_length."))
-        end
+        SS_and_pars_tmp = evaluate_custom_steady_state_function(
+            𝓂,
+            parameter_values,
+            expected_length,
+            length(𝓂.parameters),
+        )
 
         residual = zeros(length(𝓂.ss_equations) + length(𝓂.calibration_equations))
-
-        𝓂.SS_check_func(residual, 𝓂.parameter_values, SS_and_pars)
-
-        solution_error = sum(abs, residual)
         
+        𝓂.SS_check_func(residual, parameter_values, SS_and_pars_tmp)
+        
+        solution_error = ℒ.norm(residual)
+
         iters = 0
 
-        if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
-            throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol)."))
-        end
+        # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
+        #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
+        # end
+          
+        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
+
+        extended_SS_and_pars = [map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.var)...,𝓂.calibration_equations_parameters...]
+
+        SS_and_pars = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
         
-        var_idx = indexin([vars_in_ss_equations...], [𝓂.var...,𝓂.calibration_equations_parameters...])
-
-        calib_idx = indexin([𝓂.calibration_equations_parameters...], [𝓂.var...,𝓂.calibration_equations_parameters...])
-
-        SS_and_pars_tmp = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
-
-        SS_and_pars_tmp[[var_idx..., calib_idx...]] = SS_and_pars
-
-        SS_and_pars = SS_and_pars_tmp
+        for (i,v) in enumerate(extended_SS_and_pars)
+            idx = indexin([v], vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))[1]
+            isnothing(idx) && continue
+            SS_and_pars[i] = SS_and_pars_tmp[idx]
+        end
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
@@ -1374,7 +1378,6 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     return (SS_and_pars, (solution_error, iters)), get_non_stochastic_steady_state_pullback
 end
-
 
 
 function rrule(::typeof(run_kalman_iterations), 
