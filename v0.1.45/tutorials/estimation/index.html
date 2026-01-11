@@ -50,10 +50,10 @@ Parameters:   9</code></pre><p>First, the package is loaded and then the <a href
            del     = 0.01
            z_e_a   = 0.035449
            z_e_m   = 0.008862
-       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	1.659 seconds
-Set up non-stochastic steady state problem:				2.388 seconds
-Find non-stochastic steady state:					1.203 seconds
-Take symbolic derivatives up to first order:				0.216 seconds
+       end</code><code class="nohighlight hljs ansi" style="display:block;">Remove redundant variables in non-stochastic steady state problem:	1.425 seconds
+Set up non-stochastic steady state problem:				2.016 seconds
+Find non-stochastic steady state:					1.751 seconds
+Take symbolic derivatives up to first order:				0.336 seconds
 Model:        FS2000
 Variables
  Total:       18
@@ -161,8 +161,8 @@ Chains MCMC chain (1000×21×1 Array{Float64, 3}):
 Iterations        = 501:1:1500
 Number of chains  = 1
 Samples per chain = 1000
-Wall duration     = 4172.61 seconds
-Compute duration  = 4172.61 seconds
+Wall duration     = 8547.79 seconds
+Compute duration  = 8547.79 seconds
 parameters        = parameters[1], parameters[2], parameters[3], parameters[4], parameters[5], parameters[6], parameters[7], parameters[8], parameters[9]
 internals         = lp, n_steps, is_accept, acceptance_rate, log_density, hamiltonian_energy, hamiltonian_energy_error, max_hamiltonian_energy_error, tree_depth, numerical_error, step_size, nom_step_size
 
@@ -170,36 +170,36 @@ Summary Statistics
  <span class="sgr1">    parameters      mean       std      mcse    ess_bulk   ess_tail      rhat ⋯
  <span class="sgr90">        Symbol   Float64   Float64   Float64     Float64    Float64   Float64 ⋯
 
-  parameters[1]    0.4036    0.0204    0.0008    717.2023   659.6991    1.0023 ⋯
-  parameters[2]    0.9905    0.0022    0.0001   1012.5128   633.9307    1.0060 ⋯
-  parameters[3]    0.0046    0.0009    0.0000    928.0759   676.8761    0.9998 ⋯
-  parameters[4]    1.0142    0.0017    0.0000   1448.6558   773.1359    1.0003 ⋯
-  parameters[5]    0.8457    0.0350    0.0011   1047.3913   589.4825    1.0040 ⋯
-  parameters[6]    0.6848    0.0497    0.0015   1148.4794   843.2654    1.0001 ⋯
-  parameters[7]    0.0026    0.0015    0.0000   1043.2237   701.9215    1.0007 ⋯
-  parameters[8]    0.0137    0.0009    0.0000    743.7735   612.5291    1.0002 ⋯
-  parameters[9]    0.0033    0.0002    0.0000    886.0002   639.2438    0.9990 ⋯
+  parameters[1]    0.4037    0.0209    0.0008    769.1820   609.8324    1.0014 ⋯
+  parameters[2]    0.9904    0.0022    0.0001   1121.7673   337.2792    1.0084 ⋯
+  parameters[3]    0.0047    0.0009    0.0000    882.1502   737.4473    0.9992 ⋯
+  parameters[4]    1.0141    0.0017    0.0001   1039.9190   586.8773    1.0007 ⋯
+  parameters[5]    0.8465    0.0359    0.0014    670.3425   519.0758    0.9995 ⋯
+  parameters[6]    0.6850    0.0471    0.0014   1072.0492   656.2061    1.0022 ⋯
+  parameters[7]    0.0024    0.0014    0.0000    821.3633   505.5934    1.0018 ⋯
+  parameters[8]    0.0137    0.0009    0.0000    773.0439   624.5710    1.0070 ⋯
+  parameters[9]    0.0033    0.0002    0.0000   1023.8403   848.7930    1.0006 ⋯
 </span><span class="sgr36">                                                                1 column omitted
 
 Quantiles
      parameters      2.5%     25.0%     50.0%     75.0%     97.5%
  </span><span class="sgr90">        Symbol   Float64   Float64   Float64   Float64   Float64
 
-  parameters[1]    0.3628    0.3897    0.4031    0.4161    0.4452
-  parameters[2]    0.9859    0.9891    0.9906    0.9920    0.9942
-  parameters[3]    0.0028    0.0040    0.0046    0.0053    0.0065
-  parameters[4]    1.0105    1.0133    1.0144    1.0153    1.0173
-  parameters[5]    0.7745    0.8209    0.8475    0.8712    0.9100
-  parameters[6]    0.5781    0.6525    0.6864    0.7208    0.7739
-  parameters[7]    0.0006    0.0015    0.0023    0.0033    0.0060
-  parameters[8]    0.0121    0.0131    0.0137    0.0144    0.0156
-  parameters[9]    0.0030    0.0032    0.0033    0.0035    0.0038</span></span></code></pre><h3 id="Inspect-posterior"><a class="docs-heading-anchor" href="#Inspect-posterior">Inspect posterior</a><a id="Inspect-posterior-1"></a><a class="docs-heading-anchor-permalink" href="#Inspect-posterior" title="Permalink"></a></h3><p>In order to understand the posterior distribution and the sequence of samples they are plotted:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using StatsPlots</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; chain_NUTS_rn = replacenames(chain_NUTS, Dict([&quot;parameters[$i]&quot; for i in 1:length(FS2000.parameters)] .=&gt; FS2000.parameters))</code><code class="nohighlight hljs ansi" style="display:block;">Chains MCMC chain (1000×21×1 Array{Float64, 3}):
+  parameters[1]    0.3646    0.3893    0.4035    0.4170    0.4450
+  parameters[2]    0.9857    0.9892    0.9905    0.9919    0.9943
+  parameters[3]    0.0028    0.0040    0.0047    0.0053    0.0064
+  parameters[4]    1.0105    1.0131    1.0142    1.0153    1.0172
+  parameters[5]    0.7734    0.8228    0.8481    0.8721    0.9113
+  parameters[6]    0.5882    0.6544    0.6866    0.7171    0.7715
+  parameters[7]    0.0006    0.0015    0.0022    0.0031    0.0059
+  parameters[8]    0.0120    0.0131    0.0137    0.0143    0.0157
+  parameters[9]    0.0030    0.0032    0.0033    0.0035    0.0037</span></span></code></pre><h3 id="Inspect-posterior"><a class="docs-heading-anchor" href="#Inspect-posterior">Inspect posterior</a><a id="Inspect-posterior-1"></a><a class="docs-heading-anchor-permalink" href="#Inspect-posterior" title="Permalink"></a></h3><p>In order to understand the posterior distribution and the sequence of samples they are plotted:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using StatsPlots</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; chain_NUTS_rn = replacenames(chain_NUTS, Dict([&quot;parameters[$i]&quot; for i in 1:length(FS2000.parameters)] .=&gt; FS2000.parameters))</code><code class="nohighlight hljs ansi" style="display:block;">Chains MCMC chain (1000×21×1 Array{Float64, 3}):
 
 Iterations        = 501:1:1500
 Number of chains  = 1
 Samples per chain = 1000
-Wall duration     = 4172.61 seconds
-Compute duration  = 4172.61 seconds
+Wall duration     = 8547.79 seconds
+Compute duration  = 8547.79 seconds
 parameters        = alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m
 internals         = lp, n_steps, is_accept, acceptance_rate, log_density, hamiltonian_energy, hamiltonian_energy_error, max_hamiltonian_energy_error, tree_depth, numerical_error, step_size, nom_step_size
 
@@ -207,42 +207,42 @@ Summary Statistics
  <span class="sgr1"> parameters      mean       std      mcse    ess_bulk   ess_tail      rhat    ⋯
  <span class="sgr90">     Symbol   Float64   Float64   Float64     Float64    Float64   Float64    ⋯
 
-         alp    0.4036    0.0204    0.0008    717.2023   659.6991    1.0023    ⋯
-         bet    0.9905    0.0022    0.0001   1012.5128   633.9307    1.0060    ⋯
-         gam    0.0046    0.0009    0.0000    928.0759   676.8761    0.9998    ⋯
-         mst    1.0142    0.0017    0.0000   1448.6558   773.1359    1.0003    ⋯
-         rho    0.8457    0.0350    0.0011   1047.3913   589.4825    1.0040    ⋯
-         psi    0.6848    0.0497    0.0015   1148.4794   843.2654    1.0001    ⋯
-         del    0.0026    0.0015    0.0000   1043.2237   701.9215    1.0007    ⋯
-       z_e_a    0.0137    0.0009    0.0000    743.7735   612.5291    1.0002    ⋯
-       z_e_m    0.0033    0.0002    0.0000    886.0002   639.2438    0.9990    ⋯
+         alp    0.4037    0.0209    0.0008    769.1820   609.8324    1.0014    ⋯
+         bet    0.9904    0.0022    0.0001   1121.7673   337.2792    1.0084    ⋯
+         gam    0.0047    0.0009    0.0000    882.1502   737.4473    0.9992    ⋯
+         mst    1.0141    0.0017    0.0001   1039.9190   586.8773    1.0007    ⋯
+         rho    0.8465    0.0359    0.0014    670.3425   519.0758    0.9995    ⋯
+         psi    0.6850    0.0471    0.0014   1072.0492   656.2061    1.0022    ⋯
+         del    0.0024    0.0014    0.0000    821.3633   505.5934    1.0018    ⋯
+       z_e_a    0.0137    0.0009    0.0000    773.0439   624.5710    1.0070    ⋯
+       z_e_m    0.0033    0.0002    0.0000   1023.8403   848.7930    1.0006    ⋯
 </span><span class="sgr36">                                                                1 column omitted
 
 Quantiles
   parameters      2.5%     25.0%     50.0%     75.0%     97.5%
  </span><span class="sgr90">     Symbol   Float64   Float64   Float64   Float64   Float64
 
-         alp    0.3628    0.3897    0.4031    0.4161    0.4452
-         bet    0.9859    0.9891    0.9906    0.9920    0.9942
-         gam    0.0028    0.0040    0.0046    0.0053    0.0065
-         mst    1.0105    1.0133    1.0144    1.0153    1.0173
-         rho    0.7745    0.8209    0.8475    0.8712    0.9100
-         psi    0.5781    0.6525    0.6864    0.7208    0.7739
-         del    0.0006    0.0015    0.0023    0.0033    0.0060
-       z_e_a    0.0121    0.0131    0.0137    0.0144    0.0156
-       z_e_m    0.0030    0.0032    0.0033    0.0035    0.0038</span></span></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot(chain_NUTS_rn);</code></pre><p><img src="../../assets/FS2000_chain_NUTS.png" alt="NUTS chain"/></p><p>Next, the posterior loglikelihood is plotted along two parameters dimensions, with the other parameters kept at the posterior mean, and the samples are added to the visualisation. This visualisation allows understanding the curvature of the posterior and puts the samples in context.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using ComponentArrays, MCMCChains</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; import DynamicPPL: logjoint</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; parameter_mean = mean(chain_NUTS)</code><code class="nohighlight hljs ansi" style="display:block;">Mean
+         alp    0.3646    0.3893    0.4035    0.4170    0.4450
+         bet    0.9857    0.9892    0.9905    0.9919    0.9943
+         gam    0.0028    0.0040    0.0047    0.0053    0.0064
+         mst    1.0105    1.0131    1.0142    1.0153    1.0172
+         rho    0.7734    0.8228    0.8481    0.8721    0.9113
+         psi    0.5882    0.6544    0.6866    0.7171    0.7715
+         del    0.0006    0.0015    0.0022    0.0031    0.0059
+       z_e_a    0.0120    0.0131    0.0137    0.0143    0.0157
+       z_e_m    0.0030    0.0032    0.0033    0.0035    0.0037</span></span></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot(chain_NUTS_rn);</code></pre><p><img src="../../assets/FS2000_chain_NUTS.png" alt="NUTS chain"/></p><p>Next, the posterior loglikelihood is plotted along two parameters dimensions, with the other parameters kept at the posterior mean, and the samples are added to the visualisation. This visualisation allows understanding the curvature of the posterior and puts the samples in context.</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; using ComponentArrays, MCMCChains</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; import DynamicPPL: logjoint</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; parameter_mean = mean(chain_NUTS)</code><code class="nohighlight hljs ansi" style="display:block;">Mean
  <span class="sgr1">    parameters      mean
  <span class="sgr90">        Symbol   Float64
 
-  parameters[1]    0.4036
-  parameters[2]    0.9905
-  parameters[3]    0.0046
-  parameters[4]    1.0142
-  parameters[5]    0.8457
-  parameters[6]    0.6848
-  parameters[7]    0.0026
+  parameters[1]    0.4037
+  parameters[2]    0.9904
+  parameters[3]    0.0047
+  parameters[4]    1.0141
+  parameters[5]    0.8465
+  parameters[6]    0.6850
+  parameters[7]    0.0024
   parameters[8]    0.0137
-  parameters[9]    0.0033</span></span></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; pars = ComponentArray([parameter_mean.nt[2]], Axis(:parameters));</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; logjoint(FS2000_loglikelihood, pars)</code><code class="nohighlight hljs ansi" style="display:block;">1343.3700888708788</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
+  parameters[9]    0.0033</span></span></code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; pars = ComponentArray([parameter_mean.nt[2]], Axis(:parameters));</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; logjoint(FS2000_loglikelihood, pars)</code><code class="nohighlight hljs ansi" style="display:block;">1343.442257249414</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; function calculate_log_probability(par1, par2, pars_syms, orig_pars, model)
            orig_pars[1][pars_syms] = [par1, par2]
            logjoint(model, orig_pars)
        end</code><code class="nohighlight hljs ansi" style="display:block;">calculate_log_probability (generic function with 1 method)</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; granularity = 32;</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par1 = :del;</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par2 = :gam;</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; paridx1 = indexin([par1], FS2000.parameters)[1];</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; paridx2 = indexin([par2], FS2000.parameters)[1];</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range1 = collect(range(minimum(chain_NUTS[Symbol(&quot;parameters[$paridx1]&quot;)]), stop = maximum(chain_NUTS[Symbol(&quot;parameters[$paridx1]&quot;)]), length = granularity));</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; par_range2 = collect(range(minimum(chain_NUTS[Symbol(&quot;parameters[$paridx2]&quot;)]), stop = maximum(chain_NUTS[Symbol(&quot;parameters[$paridx2]&quot;)]), length = granularity));</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; p = surface(par_range1, par_range2,
@@ -263,7 +263,7 @@ Quantiles
                    alpha = 0.5);</code><br/><code class="language-julia-repl hljs" style="display:block;">julia&gt; p</code><code class="nohighlight hljs ansi" style="display:block;">Plot{Plots.GRBackend() n=2}</code></pre><p><img src="../../assets/FS2000_posterior_surface.png" alt="Posterior surface"/></p><h2 id="Find-posterior-mode"><a class="docs-heading-anchor" href="#Find-posterior-mode">Find posterior mode</a><a id="Find-posterior-mode-1"></a><a class="docs-heading-anchor-permalink" href="#Find-posterior-mode" title="Permalink"></a></h2><p>Other than the mean and median of the posterior distribution the mode can also be calculated as follows:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; modeFS2000 = Turing.maximum_a_posteriori(FS2000_loglikelihood,
                                                adtype = AutoZygote(),
                                                initial_params = FS2000.parameter_values)</code><code class="nohighlight hljs ansi" style="display:block;">ModeResult with maximized lp of 1343.75
-[0.40272130614139096, 0.9909439049258568, 0.004550077284858466, 1.0143227321142445, 0.8457080502073168, 0.6910342545072917, 0.0016353132402136786, 0.013479922495314156, 0.00325754511810571]</code></pre><h2 id="Model-estimates-given-the-data-and-the-model-solution"><a class="docs-heading-anchor" href="#Model-estimates-given-the-data-and-the-model-solution">Model estimates given the data and the model solution</a><a id="Model-estimates-given-the-data-and-the-model-solution-1"></a><a class="docs-heading-anchor-permalink" href="#Model-estimates-given-the-data-and-the-model-solution" title="Permalink"></a></h2><p>Having found the parameters at the posterior mode model estimates of the shocks which explain the data used to estimate it can be retrieved. This can be done with the <code>get_estimated_shocks</code> function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_estimated_shocks(FS2000, data, parameters = collect(modeFS2000.values))</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
+[0.4027213061412656, 0.990943904925805, 0.00455007728488263, 1.0143227321142567, 0.8457080502064661, 0.6910342545077032, 0.0016353132402222427, 0.013479922495311594, 0.003257545118106977]</code></pre><h2 id="Model-estimates-given-the-data-and-the-model-solution"><a class="docs-heading-anchor" href="#Model-estimates-given-the-data-and-the-model-solution">Model estimates given the data and the model solution</a><a id="Model-estimates-given-the-data-and-the-model-solution-1"></a><a class="docs-heading-anchor-permalink" href="#Model-estimates-given-the-data-and-the-model-solution" title="Permalink"></a></h2><p>Having found the parameters at the posterior mode model estimates of the shocks which explain the data used to estimate it can be retrieved. This can be done with the <code>get_estimated_shocks</code> function:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; get_estimated_shocks(FS2000, data, parameters = collect(modeFS2000.values))</code><code class="nohighlight hljs ansi" style="display:block;">2-dimensional <span class="sgr1">KeyedArray(NamedDimsArray(...))</span> with keys:
 ↓   <span class="sgr35">Shocks ∈ 2-element Vector{Symbol}</span>
 →   <span class="sgr34">Periods ∈ 192-element UnitRange{Int64}</span>
 And data, <span class="sgr1">2×192 Matrix{Float64}</span>:
@@ -297,7 +297,7 @@ And data, <span class="sgr1">18×3×192 Array{Float64, 3}</span>:
                  <span class="sgr35">(:e_a₍ₓ₎)</span>     <span class="sgr35">(:e_m₍ₓ₎)</span>     <span class="sgr35">(:Initial_values)</span>
   <span class="sgr35">(:P)</span>            0.0148888    -0.00108998    0.00810035
   <span class="sgr35">(:Pᴸ⁽¹⁾)</span>        0.0146127    -0.000913525   0.00743931
-  <span class="sgr35">(:R)</span>           -4.89234e-16  -0.000955353   0.0031234
+  <span class="sgr35">(:R)</span>            1.38026e-16  -0.000955353   0.0031234
    ⋮
   <span class="sgr35">(:log_gy_obs)</span>   0.0328867     8.71844e-5    0.000120402
   <span class="sgr35">(:m)</span>           -0.0          -0.00111942    0.00365979
@@ -308,10 +308,10 @@ And data, <span class="sgr1">18×3×192 Array{Float64, 3}</span>:
                  <span class="sgr35">(:e_a₍ₓ₎)</span>     <span class="sgr35">(:e_m₍ₓ₎)</span>     <span class="sgr35">(:Initial_values)</span>
   <span class="sgr35">(:P)</span>            0.0288478     0.00602704    0.000719126
   <span class="sgr35">(:Pᴸ⁽¹⁾)</span>        0.0283128     0.00503281    0.000705791
-  <span class="sgr35">(:R)</span>            6.01929e-16   0.00539571    3.21953e-10
+  <span class="sgr35">(:R)</span>           -4.10475e-16   0.00539571    3.21953e-10
    ⋮
   <span class="sgr35">(:log_gy_obs)</span>  -0.0168618     0.000336676   7.85288e-6
-  <span class="sgr35">(:m)</span>            5.79362e-15   0.00632233    3.77243e-10
+  <span class="sgr35">(:m)</span>           -4.06763e-16   0.00632233    3.77243e-10
   <span class="sgr35">(:n)</span>            0.00624343   -0.000223709   0.000155638
   <span class="sgr35">(:y)</span>           -0.0357943    -0.000897025  -0.000892291
 
@@ -319,13 +319,13 @@ And data, <span class="sgr1">18×3×192 Array{Float64, 3}</span>:
                  <span class="sgr35">(:e_a₍ₓ₎)</span>     <span class="sgr35">(:e_m₍ₓ₎)</span>     <span class="sgr35">(:Initial_values)</span>
   <span class="sgr35">(:P)</span>            0.00129293   -0.00565097    0.000121485
   <span class="sgr35">(:Pᴸ⁽¹⁾)</span>        0.00126895   -0.00472692    0.000119232
-  <span class="sgr35">(:R)</span>           -7.77922e-16  -0.00500928    4.33681e-17
+  <span class="sgr35">(:R)</span>            4.51969e-17  -0.00500928    3.64292e-17
    ⋮
   <span class="sgr35">(:log_gy_obs)</span>   0.000247177   7.87663e-5    1.32661e-6
-  <span class="sgr35">(:m)</span>           -7.32969e-16  -0.00586953    6.76542e-17
+  <span class="sgr35">(:m)</span>            5.14608e-17  -0.00586953    4.42354e-17
   <span class="sgr35">(:n)</span>            0.000279824   0.000195656   2.62925e-5
   <span class="sgr35">(:y)</span>           -0.00160426    0.000901756  -0.000150738</code></pre><p>A 3-dimensional array is returned with variables, shocks, and time periods as dimensions. The shocks dimension also includes the initial value as a residual between the actual value and what was explained by the shocks. This computation also relies on the Kalman smoother.</p><p>Last but not least, the model estimates and the shock decomposition can also be plotted. The model estimates plot, using <code>plot_model_estimates</code>:</p><pre><code class="language-julia-repl hljs" style="display:block;">julia&gt; plot_model_estimates(FS2000, data)</code><code class="nohighlight hljs ansi" style="display:block;">4-element Vector{Any}:
  Plot{Plots.GRBackend() n=42}
  Plot{Plots.GRBackend() n=42}
  Plot{Plots.GRBackend() n=44}
- Plot{Plots.GRBackend() n=10}</code></pre><p><img src="../../assets/estimates__FS2000__3.png" alt="Model estimates"/></p><p>shows the variables of the model (blue), data (red), the shock decomposition for each endogenous variable and in the last panel the estimated shocks used to estimate the model.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../calibration/">« Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)</a><a class="docs-footer-nextpage" href="../../plotting/">Overview »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Sunday 11 January 2026 00:05">Sunday 11 January 2026</span>. Using Julia version 1.12.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ Plot{Plots.GRBackend() n=10}</code></pre><p><img src="../../assets/estimates__FS2000__3.png" alt="Model estimates"/></p><p>shows the variables of the model (blue), data (red), the shock decomposition for each endogenous variable and in the last panel the estimated shocks used to estimate the model.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../calibration/">« Calibration / method of moments (for higher order perturbation solutions) - Gali (2015)</a><a class="docs-footer-nextpage" href="../../plotting/">Overview »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Sunday 11 January 2026 23:53">Sunday 11 January 2026</span>. Using Julia version 1.12.4.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
