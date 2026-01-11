@@ -49,16 +49,16 @@ end
 # be aware that dynare dynamics differ if c[2] or P[2] (not sure which one) are not declared explicitly as an auxiliary variable (c_lead(0) = c(+1)). The system in dynare has one less variable and the higher order solutions are different for the stochastic vol term.
 
 
-# Custom steady state function for FS2000 model
+# Custom steady state function for FS2000 model (in-place)
 # Variable order: P, R, W, c, d, dA, e, gp_obs, gy_obs, k, l, log_gp_obs, log_gy_obs, m, n, y
 # Parameter order: alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m
-function FS2000_custom_steady_state_function(parameters)
+function FS2000_custom_steady_state_function!(ss, parameters)
     alp, bet, gam, mst, rho, psi, del, z_e_a, z_e_m = parameters
 
     dA = exp(gam)
     gst = 1/dA
     m = mst
-    
+
     khst = ( (1-gst*bet*(1-del)) / (alp*gst^alp*bet) )^(1/(alp-1))
     xist = ( ((khst*gst)^alp - (1-gst*(1-del))*khst)/mst )^(-1)
     nust = psi*mst^2/( (1-alp)*(1-psi)*bet*gst^alp*khst^alp )
@@ -76,13 +76,40 @@ function FS2000_custom_steady_state_function(parameters)
     q  = 1 - d
 
     e = 1
-    
+
     gp_obs = m/dA
     gy_obs = dA
 
     log_gp_obs = log(gp_obs)
     log_gy_obs = log(gy_obs)
 
-    # Return in order: P, R, W, c, d, dA, e, gp_obs, gy_obs, k, l, log_gp_obs, log_gy_obs, m, n, y
-    return [P, R, W, c, d, dA, e, gp_obs, gy_obs, k, l, log_gp_obs, log_gy_obs, m, n, y]
+    # ensure destination has correct length
+    if length(ss) != 16
+        resize!(ss, 16)
+    end
+
+    ss[1]  = P
+    ss[2]  = R
+    ss[3]  = W
+    ss[4]  = c
+    ss[5]  = d
+    ss[6]  = dA
+    ss[7]  = e
+    ss[8]  = gp_obs
+    ss[9]  = gy_obs
+    ss[10] = k
+    ss[11] = l
+    ss[12] = log_gp_obs
+    ss[13] = log_gy_obs
+    ss[14] = m
+    ss[15] = n
+    ss[16] = y
+
+    return ss
+end
+
+# Allocating wrapper kept for compatibility
+function FS2000_custom_steady_state_function(parameters)
+    ss = Vector{Float64}(undef, 16)
+    return FS2000_custom_steady_state_function!(ss, parameters)
 end

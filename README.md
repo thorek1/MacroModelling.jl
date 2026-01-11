@@ -91,7 +91,7 @@ using MacroModelling
     z[0] = ρ * z[-1] + std_z * eps_z[x]
 end;
 
-function rbc_steady_state(params)
+function rbc_steady_state!(ss, params)
     std_z, rho, delta, alpha, beta = params
 
     k_ss = ((1 / beta - 1 + delta) / alpha)^(1 / (alpha - 1))
@@ -99,10 +99,13 @@ function rbc_steady_state(params)
     c_ss = q_ss - delta * k_ss
     z_ss = 0.0
 
-    return [c_ss, k_ss, q_ss, z_ss]
+    ss[1] = c_ss
+    ss[2] = k_ss
+    ss[3] = q_ss
+    ss[4] = z_ss
 end
 
-@parameters RBC steady_state_function = rbc_steady_state begin
+@parameters RBC steady_state_function = rbc_steady_state! begin
     std_z = 0.01
     ρ = 0.2
     δ = 0.02
