@@ -84,16 +84,19 @@ struct computational_constants_cache
     kron_e_s::BitVector  # kron(e_in_s⁺, s_in_s⁺)
 end
 
-struct first_order_index_cache{I}
+struct first_order_index_cache{I, M}
+    initialized::Bool
     dyn_index::UnitRange{Int}
     reverse_dynamic_order::Vector{Union{Nothing, Int}}
-    comb::Vector{Union{Nothing, Int}}
+    comb::Vector{Int}
     future_not_past_and_mixed_in_comb::Vector{Union{Nothing, Int}}
     past_not_future_and_mixed_in_comb::Vector{Union{Nothing, Int}}
     Ir::I
     nabla_zero_cols::UnitRange{Int}
     nabla_minus_cols::UnitRange{Int}
     nabla_e_start::Int
+    expand_future::M
+    expand_past::M
 end
 
 mutable struct caches#{F <: Real, G <: AbstractFloat}
@@ -102,8 +105,27 @@ mutable struct caches#{F <: Real, G <: AbstractFloat}
     name_display_cache::name_display_cache
     model_structure_cache::model_structure_cache
     computational_constants::computational_constants_cache
-    first_order_index_cache::Union{Nothing, first_order_index_cache}
+    first_order_index_cache::first_order_index_cache
     custom_steady_state_buffer::Vector{Float64}
+end
+
+function First_order_index_cache()
+    empty_range = 1:0
+    empty_union_vec = Vector{Union{Nothing, Int}}()
+    empty_int_vec = Int[]
+    empty_matrix = zeros(0,0)
+    return first_order_index_cache(false,
+                                    empty_range,
+                                    empty_union_vec,
+                                    empty_int_vec,
+                                    empty_union_vec,
+                                    empty_union_vec,
+                                    ℒ.I(0),
+                                    empty_range,
+                                    empty_range,
+                                    1,
+                                    empty_matrix,
+                                    empty_matrix)
 end
 
 
@@ -145,7 +167,7 @@ function Caches(;T::Type = Float64, S::Type = Float64)
             computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, 
                                          BitVector(), BitVector(), ℒ.Diagonal(Float64[]),
                                          BitVector(), BitVector(), BitVector(), BitVector(), BitVector()),
-            nothing,
+            First_order_index_cache(),
             Float64[])
 end
 
