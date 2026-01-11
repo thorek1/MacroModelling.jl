@@ -2990,14 +2990,7 @@ end
 function get_relevant_steady_states(𝓂::ℳ, 
                                     algorithm::Symbol;
                                     opts::CalculationOptions = merge_calculation_options())::Tuple{Vector{Float64}, Vector{Float64}, Vector{Float64}}
-    full_NSSS = sort(union(𝓂.var,𝓂.aux,𝓂.exo_present))
-
-    full_NSSS[indexin(𝓂.aux,full_NSSS)] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.aux)
-
-    if any(x -> contains(string(x), "◖"), full_NSSS)
-        full_NSSS_decomposed = decompose_name.(full_NSSS)
-        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
-    end
+    full_NSSS = @ignore_derivatives get_model_structure(𝓂).full_NSSS_display
 
     relevant_SS = get_steady_state(𝓂, algorithm = algorithm, 
                                     stochastic = algorithm != :first_order,
@@ -3648,12 +3641,48 @@ function populate_model_structure_cache!(𝓂::ℳ)
     NSSS_labels = [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
     
     # Precompute aux indices and processed names
-    aux_indices = indexin(𝓂.aux, all_variables)
+    aux_indices = Int.(indexin(𝓂.aux, all_variables))
     processed_all_variables = copy(all_variables)
     processed_all_variables[aux_indices] = map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.aux)
+
+    full_NSSS = copy(processed_all_variables)
+    if any(x -> contains(string(x), "◖"), full_NSSS)
+        full_NSSS_decomposed = decompose_name.(full_NSSS)
+        full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
+    end
+    full_NSSS_display = Vector{Union{Symbol, String}}(full_NSSS)
+
+    steady_state_expand_matrix = create_selector_matrix(processed_all_variables, NSSS_labels)
+
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)), union(𝓂.parameters_in_equations, 𝓂.➕_vars))))
+    extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.var), 𝓂.calibration_equations_parameters)
+    custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
+
+    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
+    SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+    SS_and_pars_no_exo_idx = Int.(indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag))
+
+    vars_non_obc = 𝓂.var[.!contains.(string.(𝓂.var), "ᵒᵇᶜ")]
+    vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(𝓂.aux, 𝓂.exo_present)), all_variables))
+    vars_idx_excluding_obc = Int.(indexin(vars_non_obc, all_variables))
     
     # Replace the entire cache with a new immutable instance
-    𝓂.caches.model_structure_cache = model_structure_cache(SS_and_pars_names, all_variables, NSSS_labels, aux_indices, processed_all_variables)
+    𝓂.caches.model_structure_cache = model_structure_cache(
+        SS_and_pars_names,
+        all_variables,
+        NSSS_labels,
+        aux_indices,
+        processed_all_variables,
+        full_NSSS_display,
+        steady_state_expand_matrix,
+        custom_ss_expand_matrix,
+        vars_in_ss_equations,
+        SS_and_pars_names_lead_lag,
+        SS_and_pars_names_no_exo,
+        SS_and_pars_no_exo_idx,
+        vars_idx_excluding_aux_obc,
+        vars_idx_excluding_obc,
+    )
     
     return nothing
 end
@@ -3759,21 +3788,7 @@ end
 
 
 function expand_steady_state(SS_and_pars::Vector{M}, 𝓂::ℳ) where M
-    all_variables = @ignore_derivatives get_model_structure(𝓂).all_variables
-
-    all_variables = @ignore_derivatives get_model_structure(𝓂).processed_all_variables
-
-    NSSS_labels = @ignore_derivatives get_model_structure(𝓂).NSSS_labels
-
-    X = zeros(Int, length(all_variables), length(SS_and_pars))
-
-    ignore_derivatives() do
-        for (i,s) in enumerate(all_variables)
-            idx = indexin([s],NSSS_labels)
-            X[i,idx...] = 1
-        end
-    end
-    
+    X = @ignore_derivatives get_model_structure(𝓂).steady_state_expand_matrix
     return X * SS_and_pars
 end
 
@@ -9666,6 +9681,16 @@ function girf(state_update::Function,
 end
 
 
+function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, 𝓂::ℳ)::Union{UnitRange{Int}, Vector{Int}}
+    if variables == :all_excluding_auxiliary_and_obc
+        return get_model_structure(𝓂).vars_idx_excluding_aux_obc
+    elseif variables == :all_excluding_obc
+        return get_model_structure(𝓂).vars_idx_excluding_obc
+    end
+
+    return parse_variables_input_to_index(variables, 𝓂.timings)
+end
+
 function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, T::timings)::Union{UnitRange{Int}, Vector{Int}}
     # Handle nested vector conversion separately
     if variables isa Vector{Vector{String}}
@@ -10018,6 +10043,17 @@ function create_broadcaster(indices::Vector{Int}, n::Int)
     return broadcaster  
 end
 
+function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
+    selector = spzeros(Float64, length(target), length(source))
+    idx = indexin(target, source)
+    for (i, j) in enumerate(idx)
+        if !isnothing(j)
+            selector[i, j] = 1.0
+        end
+    end
+    return selector
+end
+
 function get_NSSS_and_parameters(𝓂::ℳ, 
                                     parameter_values::Vector{S}; 
                                     opts::CalculationOptions = merge_calculation_options(),
@@ -10027,8 +10063,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.custom_steady_state_function isa Function
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-
+        ms = get_model_structure(𝓂)
+        vars_in_ss_equations = ms.vars_in_ss_equations
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
         SS_and_pars_tmp = evaluate_custom_steady_state_function(
@@ -10049,18 +10085,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
         #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
-        
-        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
-
-        extended_SS_and_pars = [map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.var)...,𝓂.calibration_equations_parameters...]
-
-        SS_and_pars = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
-
-        for (i,v) in enumerate(extended_SS_and_pars)
-            idx = indexin([v], vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))[1]
-            isnothing(idx) && continue
-            SS_and_pars[i] = SS_and_pars_tmp[idx]
-        end
+        X = @ignore_derivatives ms.custom_ss_expand_matrix
+        SS_and_pars = X * SS_and_pars_tmp
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
@@ -10089,8 +10115,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # Use custom steady state function if available, otherwise use default solver
     if 𝓂.custom_steady_state_function isa Function
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-
+        ms = get_model_structure(𝓂)
+        vars_in_ss_equations = ms.vars_in_ss_equations
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
         SS_and_pars_tmp = evaluate_custom_steady_state_function(
@@ -10111,18 +10137,8 @@ function rrule(::typeof(get_NSSS_and_parameters),
         # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
         #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
-          
-        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
-
-        extended_SS_and_pars = [map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.var)...,𝓂.calibration_equations_parameters...]
-
-        SS_and_pars = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
-        
-        for (i,v) in enumerate(extended_SS_and_pars)
-            idx = indexin([v], vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))[1]
-            isnothing(idx) && continue
-            SS_and_pars[i] = SS_and_pars_tmp[idx]
-        end
+        X = @ignore_derivatives ms.custom_ss_expand_matrix
+        SS_and_pars = X * SS_and_pars_tmp
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
@@ -10135,17 +10151,15 @@ function rrule(::typeof(get_NSSS_and_parameters),
 
     # @timeit_debug timer "Calculate NSSS - pullback" begin
 
-    SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-        
-    SS_and_pars_names = get_model_structure(𝓂).SS_and_pars_names
-
-    SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+    ms = get_model_structure(𝓂)
+    SS_and_pars_names = ms.SS_and_pars_names
+    SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
 
     # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
     unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
 
     ∂ = parameter_values
-    C = SS_and_pars[indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag)] # [dyn_ss_idx])
+    C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
 
     if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
         if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC
@@ -10217,8 +10231,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
     parameter_values = ℱ.value.(parameter_values_dual)
 
     if 𝓂.custom_steady_state_function isa Function
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))
-
+        ms = get_model_structure(𝓂)
+        vars_in_ss_equations = ms.vars_in_ss_equations
         expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
 
         SS_and_pars_tmp = evaluate_custom_steady_state_function(
@@ -10239,18 +10253,8 @@ function get_NSSS_and_parameters(𝓂::ℳ,
         # if !isfinite(solution_error) || solution_error > opts.tol.NSSS_acceptance_tol
         #     throw(ArgumentError("Custom steady state function failed steady state check: residual $solution_error > $(opts.tol.NSSS_acceptance_tol). Parameters: $(parameter_values). Steady state and parameters returned: $(SS_and_pars_tmp)."))
         # end
-          
-        expected_length = length(vars_in_ss_equations) + length(𝓂.calibration_equations_parameters)
-
-        extended_SS_and_pars = [map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),  𝓂.var)...,𝓂.calibration_equations_parameters...]
-
-        SS_and_pars = zeros(length(𝓂.var) + length(𝓂.calibration_equations_parameters))
-        
-        for (i,v) in enumerate(extended_SS_and_pars)
-            idx = indexin([v], vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))[1]
-            isnothing(idx) && continue
-            SS_and_pars[i] = SS_and_pars_tmp[idx]
-        end
+        X = @ignore_derivatives ms.custom_ss_expand_matrix
+        SS_and_pars = X * SS_and_pars_tmp
     else
         SS_and_pars, (solution_error, iters) = 𝓂.SS_solve_func(parameter_values, 𝓂, opts.tol, opts.verbose, cold_start, 𝓂.solver_parameters)
     end
@@ -10262,18 +10266,16 @@ function get_NSSS_and_parameters(𝓂::ℳ,
 
         solution_error = S(10.0)
     else
-        SS_and_pars_names_lead_lag = vcat(Symbol.(string.(sort(union(𝓂.var,𝓂.exo_past,𝓂.exo_future)))), 𝓂.calibration_equations_parameters)
-            
-        SS_and_pars_names = get_model_structure(𝓂).SS_and_pars_names
-        
-        SS_and_pars_names_no_exo = vcat(Symbol.(replace.(string.(sort(setdiff(𝓂.var,𝓂.exo_past,𝓂.exo_future))), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.calibration_equations_parameters)
+        ms = get_model_structure(𝓂)
+        SS_and_pars_names = ms.SS_and_pars_names
+        SS_and_pars_names_lead_lag = ms.SS_and_pars_names_lead_lag
 
         # unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
         unknowns = Symbol.(vcat(string.(sort(collect(setdiff(reduce(union,get_symbols.(𝓂.ss_aux_equations)),union(𝓂.parameters_in_equations,𝓂.➕_vars))))), 𝓂.calibration_equations_parameters))
         
 
         ∂ = parameter_values
-        C = SS_and_pars[indexin(unique(SS_and_pars_names_no_exo), SS_and_pars_names_lead_lag)] # [dyn_ss_idx])
+        C = SS_and_pars[ms.SS_and_pars_no_exo_idx] # [dyn_ss_idx])
 
         if eltype(𝓂.∂SS_equations_∂parameters[1]) != eltype(parameter_values)
             if 𝓂.∂SS_equations_∂parameters[1] isa SparseMatrixCSC

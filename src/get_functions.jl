@@ -115,7 +115,7 @@ function get_shock_decomposition(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -242,7 +242,7 @@ function get_estimated_shocks(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -365,7 +365,7 @@ function get_estimated_variables(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -591,7 +591,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -831,7 +831,7 @@ function get_conditional_forecast(𝓂::ℳ,
         end
     end
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
 
     Y = zeros(size(𝓂.solution.perturbation.first_order.solution_matrix,1),periods)
 
@@ -1069,7 +1069,7 @@ function get_irf(𝓂::ℳ,
 
     shocks, negative_shock, _, periods, shock_idx, shock_history = process_shocks_input(shocks, negative_shock, 1.0, periods, 𝓂)
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
 
     reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
@@ -2701,7 +2701,7 @@ function get_moments(𝓂::ℳ;
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
 
     parameter_derivatives = parameter_derivatives isa String_input ? parameter_derivatives .|> Meta.parse .|> replace_indices : parameter_derivatives
 
@@ -3278,20 +3278,20 @@ function get_statistics(𝓂,
 
     @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
-    SS_var_idx = @ignore_derivatives parse_variables_input_to_index(non_stochastic_steady_state, 𝓂.timings)
+    SS_var_idx = @ignore_derivatives parse_variables_input_to_index(non_stochastic_steady_state, 𝓂)
 
-    mean_var_idx = @ignore_derivatives parse_variables_input_to_index(mean, 𝓂.timings)
+    mean_var_idx = @ignore_derivatives parse_variables_input_to_index(mean, 𝓂)
 
-    std_var_idx = @ignore_derivatives parse_variables_input_to_index(standard_deviation, 𝓂.timings)
+    std_var_idx = @ignore_derivatives parse_variables_input_to_index(standard_deviation, 𝓂)
 
-    var_var_idx = @ignore_derivatives parse_variables_input_to_index(variance, 𝓂.timings)
+    var_var_idx = @ignore_derivatives parse_variables_input_to_index(variance, 𝓂)
 
-    covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂.timings)
+    covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂)
     
     # Parse covariance groups if input is grouped format
     covar_groups = @ignore_derivatives is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.timings) : nothing
 
-    autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂.timings)
+    autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂)
 
 
     other_parameter_values = @ignore_derivatives 𝓂.parameter_values[indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters)]

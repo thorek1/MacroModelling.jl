@@ -56,6 +56,24 @@ struct model_structure_cache
     aux_indices::Vector{Int}
     # processed_all_variables: all_variables with aux names cleaned
     processed_all_variables::Vector{Symbol}
+    # full_NSSS with aux cleaned and curly bracket display formatting
+    full_NSSS_display::Vector{Union{Symbol, String}}
+    # Selector from NSSS order to full steady-state vector (processed variables)
+    steady_state_expand_matrix::SparseMatrixCSC{Float64, Int}
+    # Selector from custom steady-state order to var + calibrated parameters
+    custom_ss_expand_matrix::SparseMatrixCSC{Float64, Int}
+    # vars_in_ss_equations: cached for custom steady state mapping
+    vars_in_ss_equations::Vector{Symbol}
+    # SS_and_pars_names in lead/lag form
+    SS_and_pars_names_lead_lag::Vector{Symbol}
+    # SS_and_pars_names without exo and lead/lag markers
+    SS_and_pars_names_no_exo::Vector{Symbol}
+    # Cached indices for SS_and_pars_names_no_exo in lead/lag list
+    SS_and_pars_no_exo_idx::Vector{Int}
+    # Cached variable indices excluding auxiliary and OBC variables
+    vars_idx_excluding_aux_obc::Vector{Int}
+    # Cached variable indices excluding OBC variables
+    vars_idx_excluding_obc::Vector{Int}
 end
 
 # Cache for model-constant computational objects
@@ -201,7 +219,9 @@ function Caches(;T::Type = Float64, S::Type = Float64)
     caches( Higher_order_caches(T = T, S = S),
             Higher_order_caches(T = T, S = S),
             name_display_cache([], [], [], false, false),
-            model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[]),
+            model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[],
+                                Union{Symbol,String}[], spzeros(Float64, 0, 0), spzeros(Float64, 0, 0),
+                                Symbol[], Symbol[], Symbol[], Int[], Int[], Int[]),
             computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, 
                                          BitVector(), BitVector(), ℒ.Diagonal(Float64[]),
                                          BitVector(), BitVector(), BitVector(), BitVector(), BitVector()),
