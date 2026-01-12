@@ -1,7 +1,7 @@
 @stable default_mode = "disable" begin
 
-function calculate_first_order_solution(∇₁::Matrix{R}; 
-                                        cache::caches, 
+function calculate_first_order_solution(∇₁::Matrix{R},
+                                        cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
     # @timeit_debug timer "Calculate 1st order solution" begin
@@ -117,8 +117,8 @@ end
 end # dispatch_doctor 
 
 function rrule(::typeof(calculate_first_order_solution), 
-                ∇₁::Matrix{R};
-                cache::caches, 
+                ∇₁::Matrix{R},
+                cache::caches;
                 opts::CalculationOptions = merge_calculation_options(),
                 initial_guess::AbstractMatrix{R} = zeros(0,0)) where R <: AbstractFloat
     # Forward pass to compute the output and intermediate values needed for the backward pass
@@ -274,8 +274,8 @@ end
 
 @stable default_mode = "disable" begin
 
-function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}}; 
-                                        cache::caches, 
+function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
+                                        cache::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
@@ -289,7 +289,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
     B = ∇̂₁[:,idx_cache_built.nabla_zero_cols]
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁; cache = cache, opts = opts, initial_guess = initial_guess)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, cache; opts = opts, initial_guess = initial_guess)
 
     if !solved 
         return ∇₁, qme_sol, false

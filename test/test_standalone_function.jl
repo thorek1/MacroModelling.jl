@@ -72,14 +72,14 @@ get_irf(RBC_CME, algorithm = :pruned_second_order)
 @testset "First order index cache" begin
     RBC_CME.caches.first_order_index_cache = First_order_index_cache()
 
-    first_order_uncached, qme_uncached, solved_uncached = calculate_first_order_solution(∇₁; 
-                                                                                        T = RBC_CME.timings,
+    first_order_uncached, qme_uncached, solved_uncached = calculate_first_order_solution(∇₁,
+                                                                                        RBC_CME.cache;
                                                                                         initial_guess = RBC_CME.solution.perturbation.qme_solution)
 
     @test !RBC_CME.caches.first_order_index_cache.initialized
 
     first_order_cached, qme_cached, solved_cached = calculate_first_order_solution(∇₁,
-                                                                                    RBC_CME;
+                                                                                    RBC_CME.cache;
                                                                                     initial_guess = RBC_CME.solution.perturbation.qme_solution)
 
     @test RBC_CME.caches.first_order_index_cache.initialized
@@ -87,7 +87,7 @@ get_irf(RBC_CME, algorithm = :pruned_second_order)
     cache_ref = RBC_CME.caches.first_order_index_cache
 
     first_order_cached_again, qme_cached_again, solved_cached_again = calculate_first_order_solution(∇₁,
-                                                                                                    RBC_CME;
+                                                                                                    RBC_CME.cache;
                                                                                                     initial_guess = RBC_CME.solution.perturbation.qme_solution)
 
     @test RBC_CME.caches.first_order_index_cache === cache_ref
@@ -101,7 +101,7 @@ end
 
 T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :z_delta], [:A, :Pi, :c, :k, :z_delta], [:A], [:k, :z_delta], [:A], [:delta_eps, :eps_z], [:A, :Pi, :R, :c, :k, :y, :z_delta], Symbol[], Symbol[], 2, 1, 3, 3, 5, 7, 2, [3, 6], [1, 2, 4, 5, 7], [1, 2, 4], [2, 3], [1, 5, 7], [1], [1], [5, 7], [5, 6, 1, 7, 3, 2, 4], [3, 4, 5, 1, 2])
 
-first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁; T = T)# |> Matrix{Float32}
+first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁, RBC_CME.cache)# |> Matrix{Float32}
 
 second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, 
                                                                 RBC_CME.solution.perturbation.second_order_auxiliary_matrices,
