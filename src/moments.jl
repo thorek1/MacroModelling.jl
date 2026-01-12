@@ -84,7 +84,6 @@ function calculate_mean(parameters::Vector{T},
             𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
                                                         𝓂.solution.perturbation.second_order_auxiliary_matrices,
                                                         cache; 
-                                                        T = T_timings, 
                                                         opts = opts)
 
             if !solved 
@@ -157,12 +156,15 @@ function calculate_second_order_moments(parameters::Vector{R},
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
 
     if solved
+        # Initialize caches at entry point
+        cache = initialize_caches!(𝓂)
         ensure_moments_cache!(𝓂)
-        cc = 𝓂.caches.computational_constants
-        mc = 𝓂.caches.moments_cache
-        nᵉ = 𝓂.timings.nExo
+        cc = cache.computational_constants
+        mc = cache.moments_cache
+        T = cache.timings
+        nᵉ = T.nExo
 
-        nˢ = 𝓂.timings.nPast_not_future_and_mixed
+        nˢ = T.nPast_not_future_and_mixed
 
         iˢ = 𝓂.timings.past_not_future_and_mixed_idx
 
