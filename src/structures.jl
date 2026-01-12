@@ -286,6 +286,8 @@ end
 struct name_display_cache
     # Processed variable names (with curly brackets formatted)
     var_axis::Vector{R} where R <: Union{Symbol, String}
+    # Processed calibration equations parameter names (with curly brackets formatted)
+    calib_axis::Vector{R} where R <: Union{Symbol, String}
     # Processed shock names (with curly brackets formatted, WITHOUT ₍ₓ₎ suffix)
     exo_axis_plain::Vector{R} where R <: Union{Symbol, String}
     # Processed shock names (with curly brackets formatted and WITH ₍ₓ₎ suffix)

@@ -3648,15 +3648,6 @@ function decompose_name(name::Symbol)
 end
 
 """
-    get_var_axis(𝓂::ℳ)
-
-Return cached variable axis names with curly bracket formatting.
-"""
-function get_var_axis(𝓂::ℳ)
-    return 𝓂.caches.name_display_cache.var_axis
-end
-
-"""
     get_exo_axis(𝓂::ℳ; with_subscript::Bool = true)
 
 Return cached shock axis names with curly bracket formatting.

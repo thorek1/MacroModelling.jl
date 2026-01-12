@@ -108,6 +108,12 @@ function ensure_name_display_cache!(𝓂)
             var_axis = T.var
         end
 
+        if var_has_curly
+            calib_axis = replace.(string.(calib_axis), "◖" => "{", "◗" => "}")
+        else
+            calib_axis = 𝓂.calibration_equations_parameters
+        end
+
         exo_has_curly = any(x -> contains(string(x), "◖"), T.exo)
         if exo_has_curly
             exo_decomposed = decompose_name.(T.exo)
@@ -120,6 +126,7 @@ function ensure_name_display_cache!(𝓂)
 
         cache.name_display_cache = name_display_cache(
             var_axis,
+            calib_axis,
             exo_axis_plain,
             exo_axis_with_subscript,
             var_has_curly,
