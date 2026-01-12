@@ -240,6 +240,32 @@ struct ss_solve_block
     extended_ss_problem::function_and_jacobian
 end
 
+# Structure for vector-based steady state solving
+# Each block fills values in the SS_and_pars_values vector using indices
+struct ss_solve_block_new
+    # Indices into SS_and_pars_values for variables solved by this block
+    target_indices::Vector{Int}
+    # Indices into SS_and_pars_values for known inputs needed by this block  
+    input_indices::Vector{Int}
+    # Indices into parameters vector for parameters needed by this block
+    parameter_indices::Vector{Int}
+    # Lower and upper bounds for target variables
+    lbs::Vector{Float64}
+    ubs::Vector{Float64}
+    # Function and Jacobian for numerical solving
+    ss_problem::function_and_jacobian
+    extended_ss_problem::function_and_jacobian
+end
+
+# Structure holding a function that modifies SS_and_pars_values in place
+# Used for analytical solutions and intermediate parameter calculations
+struct ss_fill_function
+    # Function that fills values: (SS_and_pars_values, parameters) -> nothing
+    fill!::Function
+    # Target indices that this function fills
+    target_indices::Vector{Int}
+end
+
 mutable struct solution
     perturbation::perturbation
     non_stochastic_steady_state::Vector{Float64}
@@ -376,6 +402,12 @@ mutable struct ℳ
     # solved_sub_values
     # ss_solve_blocks::Vector#{RuntimeGeneratedFunction}
     ss_solve_blocks_in_place::Vector{ss_solve_block}
+    # Vector-based steady state solving components
+    ss_solve_blocks_new::Vector{ss_solve_block_new}  # Numerical solve blocks with index info
+    ss_fill_functions::Vector{ss_fill_function}       # Analytical solutions and parameter computations
+    ss_solve_order::Vector{Tuple{Symbol, Int}}        # Order of operations: (:analytical, idx) or (:numerical, idx)
+    ss_var_indices::Dict{Symbol, Int}                 # Map from variable name to index in SS_and_pars_values
+    ss_par_indices::Dict{Symbol, Int}                 # Map from param name to index in parameters vector
     # Vector{Tuple{
     #     Tuple{
     #         Tuple{Vector{Float64}, RuntimeGeneratedFunctions.RuntimeGeneratedFunction}, 

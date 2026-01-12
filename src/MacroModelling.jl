@@ -4734,6 +4734,12 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
     min_max_errors = []
 
     unique_➕_eqs = Dict{Union{Expr,Symbol},Symbol}()
+    
+    # Initialize new vector-based structures
+    empty!(𝓂.ss_solve_blocks_new)
+    empty!(𝓂.ss_fill_functions)
+    empty!(𝓂.ss_solve_order)
+    analytical_fill_exprs = []  # Track analytical fill expressions to build functions later
 
     while n > 0 
         if length(eqs[:,eqs[2,:] .== n]) == 2
@@ -4777,6 +4783,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                 eq_idx_in_block_to_solve = eqs[:,eqs[2,:] .== n][1,:]
 
                 write_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                # Track numerical block for vector-based approach
+                push!(analytical_fill_exprs, (nothing, nothing, :numerical))
                 # write_domain_safe_block_solution!(𝓂, SS_solve_func, [var_to_solve_for], [eq_to_solve], relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
             elseif soll[1].is_number == true
                 ss_equations = [replace_symbolic(eq, var_to_solve_for, soll[1]) for eq in ss_equations]
@@ -4786,8 +4794,12 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars) 
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = max(eps(),$(𝓂.solved_vals[end]))))
+                    # Track analytical solution for vector-based approach
+                    push!(analytical_fill_exprs, (𝓂.solved_vars[end], :(max(eps(),$(𝓂.solved_vals[end]))), :analytical))
                 else
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                    # Track analytical solution for vector-based approach
+                    push!(analytical_fill_exprs, (𝓂.solved_vars[end], 𝓂.solved_vals[end], :analytical))
                 end
 
                 push!(atoms_in_equations_list,[])
@@ -4800,6 +4812,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
                 if (𝓂.solved_vars[end] ∈ 𝓂.➕_vars)
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))))
+                    # Track analytical solution for vector-based approach (use simple expression, not transformed)
+                    push!(analytical_fill_exprs, (𝓂.solved_vars[end], :(min(max($(𝓂.bounds[𝓂.solved_vars[end]][1]), $(𝓂.solved_vals[end])), $(𝓂.bounds[𝓂.solved_vars[end]][2]))), :analytical))
                     push!(SS_solve_func,:(solution_error += $(Expr(:call,:abs, Expr(:call, :-, 𝓂.solved_vars[end], 𝓂.solved_vals[end])))))
                     push!(SS_solve_func, :(if solution_error > tol.NSSS_acceptance_tol if verbose println("Failed for analytical aux variables with error $solution_error") end; scale = scale * .3 + solved_scale * .7; continue end))
                     
@@ -4816,6 +4830,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     end
                     
                     push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(rewritten_eqs[1])))
+                    # Track analytical solution for vector-based approach (use simple original expression)
+                    push!(analytical_fill_exprs, (𝓂.solved_vars[end], 𝓂.solved_vals[end], :analytical))
                 end
 
                 if haskey(𝓂.bounds, 𝓂.solved_vars[end]) && 𝓂.solved_vars[end] ∉ 𝓂.➕_vars
@@ -4854,6 +4870,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
                         push!(atoms_in_equations_list, Set(Symbol.(soll[vars].atoms())))
                         push!(SS_solve_func,:($(𝓂.solved_vars[end]) = $(𝓂.solved_vals[end])))
+                        # Track analytical solution for vector-based approach
+                        push!(analytical_fill_exprs, (𝓂.solved_vars[end], 𝓂.solved_vals[end], :analytical))
                     end
                 end
             end
@@ -4869,6 +4887,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
                 if length(pe) > 5
                     write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)
+                    # Track numerical block for vector-based approach
+                    push!(analytical_fill_exprs, (nothing, nothing, :numerical))
                     # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)
                 else
                     solved_system = partial_solve(eqs_to_solve[pe], vars_to_solve[pv], incidence_matrix_subset[pv,pe], avoid_solve = avoid_solve)
@@ -4878,6 +4898,8 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
                     #     𝓂.➕_vars, unique_➕_eqs)  
                     # else
                         write_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list)  
+                        # Track numerical block for vector-based approach
+                        push!(analytical_fill_exprs, (nothing, nothing, :numerical))
                         # write_domain_safe_block_solution!(𝓂, SS_solve_func, vars_to_solve, eqs_to_solve, relevant_pars_across, NSSS_solver_cache_init_tmp, eq_idx_in_block_to_solve, atoms_in_equations_list, unique_➕_eqs)  
                     # end
                 end
@@ -5092,8 +5114,79 @@ function write_steady_state_solver_function!(𝓂::ℳ, symbolic_SS, Symbolics::
 
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
     # 𝓂.SS_solve_func = eval(solve_exp)
+    
+    # Set up index mappings for the vector-based approach
+    setup_index_mappings!(𝓂)
+    
+    # Build fill functions from analytical expressions
+    # This needs to happen after setup_index_mappings! so we have the indices
+    numerical_block_idx = 0
+    for (target_var, value_expr, op_type) in analytical_fill_exprs
+        if op_type == :numerical
+            numerical_block_idx += 1
+            push!(𝓂.ss_solve_order, (:numerical, numerical_block_idx))
+        elseif op_type == :analytical && target_var !== nothing && haskey(𝓂.ss_var_indices, target_var)
+            target_idx = 𝓂.ss_var_indices[target_var]
+            
+            # Convert expression to use indexed vectors
+            indexed_expr = convert_expr_to_indexed(value_expr, 𝓂.ss_var_indices, 𝓂.ss_par_indices)
+            
+            # Build the fill function expression
+            fill_func_expr = :(function fill_value!(SS_and_pars_values, parameters)
+                SS_and_pars_values[$target_idx] = $indexed_expr
+                return nothing
+            end)
+            
+            # Create the RuntimeGeneratedFunction
+            fill_func = @RuntimeGeneratedFunction(fill_func_expr)
+            
+            push!(𝓂.ss_fill_functions, ss_fill_function(fill_func, [target_idx]))
+            push!(𝓂.ss_solve_order, (:analytical, length(𝓂.ss_fill_functions)))
+        end
+        # Skip entries where target_var is not in ss_var_indices (like auxiliary ➕ vars)
+    end
 
     return nothing
+end
+
+
+"""
+    build_extended_parameters(𝓂::ℳ)
+
+Build an extended parameters vector that includes both base parameters and 
+computed parameter definitions (parameters_as_function_of_parameters).
+This is needed for the vector-based fill functions.
+"""
+function build_extended_parameters(𝓂::ℳ)
+    # Start with base parameters
+    extended_pars = copy(𝓂.parameter_values)
+    
+    # Compute and append parameter definitions
+    for eq in 𝓂.calibration_equations_no_var
+        # eq is like :(Pi_ss = R_ss - Pi_real)
+        # We need to evaluate the RHS using the already computed parameters
+        target_par = eq.args[1]
+        value_expr = eq.args[2]
+        
+        # Build a dict to substitute parameter values
+        par_dict = Dict{Symbol, Float64}()
+        for (i, par) in enumerate(𝓂.parameters)
+            par_dict[par] = extended_pars[i]
+        end
+        # Also include already computed derived parameters
+        for (i, par) in enumerate(𝓂.parameters_as_function_of_parameters)
+            if length(extended_pars) >= length(𝓂.parameters) + i
+                par_dict[par] = extended_pars[length(𝓂.parameters) + i]
+            end
+        end
+        
+        # Substitute and evaluate
+        substituted_expr = postwalk(x -> x isa Symbol && haskey(par_dict, x) ? par_dict[x] : x, value_expr)
+        value = eval(substituted_expr)
+        push!(extended_pars, value)
+    end
+    
+    return extended_pars
 end
 
 
@@ -5228,6 +5321,12 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     NSSS_solver_cache_init_tmp = []
 
     n_block = 1
+    
+    # Initialize new vector-based structures
+    empty!(𝓂.ss_solve_blocks_new)
+    empty!(𝓂.ss_fill_functions)
+    empty!(𝓂.ss_solve_order)
+    analytical_fill_exprs = []  # Track expressions to build fill functions later
 
     while n > 0
         vars_to_solve = unknowns[vars[:,vars[2,:] .== n][1,:]]
@@ -5586,6 +5685,9 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                 function_and_jacobian(calc_ext_block!::Function, ϵᵉ, ext_func_exprs::Function, ext_buffer, ext_chol_buffer, ext_lu_buffer)
             )
         )
+        
+        # Track numerical block for vector-based approach
+        push!(analytical_fill_exprs, (nothing, nothing, :numerical))
 
         n_block += 1
         
@@ -5773,7 +5875,214 @@ function write_steady_state_solver_function!(𝓂::ℳ;
     𝓂.SS_solve_func = @RuntimeGeneratedFunction(solve_exp)
     # 𝓂.SS_solve_func = eval(solve_exp)
 
+    # Set up index mappings for the vector-based approach
+    setup_index_mappings!(𝓂)
+    
+    # Build fill functions from tracked expressions (numerical only for this function)
+    numerical_block_idx = 0
+    for (target_var, value_expr, op_type) in analytical_fill_exprs
+        if op_type == :numerical
+            numerical_block_idx += 1
+            push!(𝓂.ss_solve_order, (:numerical, numerical_block_idx))
+        end
+    end
+
     return nothing
+end
+
+
+"""
+    setup_index_mappings!(𝓂::ℳ)
+
+Set up the index mappings for the vector-based steady state solver.
+Creates mappings from variable/parameter names to their indices in the SS_and_pars_values vector.
+"""
+function setup_index_mappings!(𝓂::ℳ)
+    # Clear existing mappings
+    empty!(𝓂.ss_var_indices)
+    empty!(𝓂.ss_par_indices)
+    
+    # Variables and calibration parameters that we solve for in steady state
+    # These are in the same order as the output of SS_solve_func
+    ss_vars = sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))
+    ss_vars_clean = Symbol.(replace.(string.(ss_vars), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => ""))
+    
+    # Build variable index mapping
+    for (i, var) in enumerate(ss_vars_clean)
+        𝓂.ss_var_indices[var] = i
+    end
+    
+    # Calibration parameters come after variables
+    n_vars = length(ss_vars_clean)
+    for (i, par) in enumerate(𝓂.calibration_equations_parameters)
+        𝓂.ss_var_indices[par] = n_vars + i
+    end
+    
+    # Add auxiliary ➕ variables - they come after calibration parameters
+    # These are intermediate variables used in domain-safe transformations
+    n_calib = length(𝓂.calibration_equations_parameters)
+    for (i, aux_var) in enumerate(𝓂.➕_vars)
+        𝓂.ss_var_indices[aux_var] = n_vars + n_calib + i
+    end
+    
+    # Build parameter index mapping (input parameters)
+    for (i, par) in enumerate(𝓂.parameters)
+        𝓂.ss_par_indices[par] = i
+    end
+    
+    # Also add parameters_as_function_of_parameters to the parameter indices
+    # These are derived parameters computed from other parameters
+    n_pars = length(𝓂.parameters)
+    for (i, par) in enumerate(𝓂.parameters_as_function_of_parameters)
+        𝓂.ss_par_indices[par] = n_pars + i
+    end
+    
+    return nothing
+end
+
+
+"""
+    convert_expr_to_indexed(expr, var_indices, par_indices, var_vec_name=:SS_and_pars_values, par_vec_name=:parameters)
+
+Convert an expression using named variables and parameters to one using indexed vectors.
+"""
+function convert_expr_to_indexed(expr, var_indices::Dict{Symbol,Int}, par_indices::Dict{Symbol,Int};
+                                  var_vec_name::Symbol=:SS_and_pars_values, 
+                                  par_vec_name::Symbol=:parameters)
+    return postwalk(x -> 
+        x isa Symbol ?
+            haskey(var_indices, x) ?
+                :($var_vec_name[$(var_indices[x])]) :
+            haskey(par_indices, x) ?
+                :($par_vec_name[$(par_indices[x])]) :
+            x :
+        x,
+    expr)
+end
+
+
+"""
+    create_fill_function(target_var::Symbol, value_expr::Expr, 𝓂::ℳ)
+
+Create a function that fills a single variable in the SS_and_pars_values vector.
+Returns a ss_fill_function struct.
+"""
+function create_fill_function(target_var::Symbol, value_expr, 𝓂::ℳ)
+    target_idx = 𝓂.ss_var_indices[target_var]
+    
+    # Convert the value expression to use indexed vectors
+    indexed_expr = convert_expr_to_indexed(value_expr, 𝓂.ss_var_indices, 𝓂.ss_par_indices)
+    
+    # Build a function that fills this value
+    fill_func_expr = quote
+        function fill_value!(SS_and_pars_values::Vector{T}, parameters::Vector{T}) where T
+            SS_and_pars_values[$target_idx] = $indexed_expr
+            return nothing
+        end
+    end
+    
+    # Create the function using eval (during model compilation)
+    fill_func = eval(fill_func_expr)
+    
+    return ss_fill_function(fill_func, [target_idx])
+end
+
+
+"""
+    solve_steady_state_vectorized!(SS_and_pars_values, parameters, 𝓂, solver_parameters, tol, verbose, cold_start)
+
+Solve the steady state using the vector-based approach.
+Each block fills values in SS_and_pars_values sequentially.
+"""
+function solve_steady_state_vectorized!(SS_and_pars_values::Vector{T}, 
+                                        parameters::Vector{T},
+                                        𝓂::ℳ,
+                                        solver_parameters::Vector{solver_parameters},
+                                        tol::Tolerances,
+                                        verbose::Bool,
+                                        cold_start::Bool) where T <: Real
+    solution_error = 0.0
+    iters = 0
+    
+    # Execute each operation in order
+    for (op_type, idx) in 𝓂.ss_solve_order
+        if op_type == :analytical
+            # Execute analytical fill function
+            𝓂.ss_fill_functions[idx].fill!(SS_and_pars_values, parameters)
+        elseif op_type == :numerical
+            # Execute numerical block solver
+            block = 𝓂.ss_solve_blocks_new[idx]
+            # Get initial guess from SS_and_pars_values or use default
+            guess = T[SS_and_pars_values[i] for i in block.target_indices]
+            # Replace NaN with default guess
+            for (j, g) in enumerate(guess)
+                if !isfinite(g)
+                    guess[j] = 1.205996189998029  # default initial guess
+                end
+            end
+            
+            solution = block_solver_vectorized(SS_and_pars_values, parameters, block, guess,
+                                               solver_parameters, false, cold_start, verbose)
+            solution_error += solution[2][1]
+            iters += solution[2][2]
+            
+            if solution_error > tol.NSSS_acceptance_tol
+                return (solution_error, iters)
+            end
+        end
+    end
+    
+    return (solution_error, iters)
+end
+
+
+"""
+    block_solver_vectorized(SS_and_pars_values, parameters, block, solver_parameters, fail_fast_solvers_only, cold_start, verbose)
+
+Solve a block of steady state equations using the vector-based approach.
+The block contains indices for reading inputs and writing outputs to the SS_and_pars_values vector.
+"""
+function block_solver_vectorized(SS_and_pars_values::Vector{T}, 
+                                  parameters::Vector{T},
+                                  block::ss_solve_block_new,
+                                  guess::Vector{T},
+                                  solver_parameters::Vector{solver_parameters},
+                                  fail_fast_solvers_only::Bool,
+                                  cold_start::Bool,
+                                  verbose::Bool) where T <: Real
+    # Extract inputs from SS_and_pars_values using input indices
+    params_and_solved = T[SS_and_pars_values[i] for i in block.input_indices]
+    
+    # Add parameters from parameters vector using parameter indices
+    for i in block.parameter_indices
+        push!(params_and_solved, parameters[i])
+    end
+    
+    # If all params_and_solved are NaN (shouldn't happen in correct order), return error
+    if all(isnan, params_and_solved)
+        return (fill(NaN, length(block.target_indices)), (Inf, 0))
+    end
+    
+    # Use the standard block solver
+    guess_and_pars = [max.(block.lbs[1:length(guess)], min.(block.ubs[1:length(guess)], guess)), [Inf]]
+    
+    solution = block_solver(length(params_and_solved) == 0 ? [0.0] : params_and_solved,
+                            1,
+                            ss_solve_block(block.ss_problem, block.extended_ss_problem),
+                            guess_and_pars,
+                            block.lbs,
+                            block.ubs,
+                            solver_parameters,
+                            fail_fast_solvers_only,
+                            cold_start,
+                            verbose)
+    
+    # Write results to SS_and_pars_values
+    for (local_idx, global_idx) in enumerate(block.target_indices)
+        SS_and_pars_values[global_idx] = solution[1][local_idx]
+    end
+    
+    return solution
 end
 
 
