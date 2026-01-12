@@ -371,8 +371,8 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
     Jm = expand_past
     
     ∇₊ = ∇₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
-    ∇₀ = ∇₁[:,cache.nabla_zero_cols]
-    ∇ₑ = ∇₁[:,cache.nabla_e_start:end]
+    ∇₀ = ∇₁[:,idx_cache_built.nabla_zero_cols]
+    ∇ₑ = ∇₁[:,idx_cache_built.nabla_e_start:end]
 
     B = -((∇₊ * x * Jm + ∇₀) \ ∇ₑ)
 
