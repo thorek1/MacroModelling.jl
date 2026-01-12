@@ -17,18 +17,6 @@ shocks[1,1] = .05
 
 model = RBC_baseline
 
-
-
-include("models/Backus_Kehoe_Kydland_1992.jl")
-
-model = Backus_Kehoe_Kydland_1992
-
-algos = [:first_order, :second_order, :pruned_second_order]
-
-conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = ["C{H}","Y{F}"], Periods = 1:2)
-conditions[1,1] = .01
-conditions[2,2] = .02
-
 for algo in algos
     get_steady_state(model, algorithm = algo)
 
@@ -40,3 +28,24 @@ for algo in algos
     end
 end
 
+
+# include("models/Backus_Kehoe_Kydland_1992.jl")
+
+# model = Backus_Kehoe_Kydland_1992
+
+# algos = [:first_order, :second_order, :pruned_second_order]
+
+# conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = ["C{H}","Y{F}"], Periods = 1:2)
+# conditions[1,1] = .01
+# conditions[2,2] = .02
+
+# for algo in algos
+#     get_steady_state(model, algorithm = algo)
+
+#     get_conditional_forecast(model, conditions,  conditions_in_levels = false, algorithm = algo)
+
+#     if algo in [:first_order, :pruned_second_order, :second_order]
+#         get_mean(model, algorithm = algo)
+#         get_std(model, algorithm = algo)
+#     end
+# end

@@ -24,6 +24,10 @@
 - Added ChainRules `rrule` for `mat_mult_kron` to make Zygote gradients work (avoids mutation errors from `mul!` into views).
 - Fixed the `rrule` signature for `calculate_second_order_solution` to match current argument ordering so Zygote doesn’t trace into LAPACK solves.
 - Added a targeted script test for Zygote gradients of `get_loglikelihood` at `:third_order` and `:pruned_third_order`.
+- Moved second/third-order auxiliary matrices into `caches`, introduced a `workspaces` struct for higher-order scratch buffers, and removed `nothing`-based timings initialization (added `Empty_timings` + `is_empty_timings`).
+- Fixed `ensure_name_display_cache!` to initialize `calib_axis` correctly when curly-brace formatting is used.
+- Moved auxiliary indices into `caches`, added a dedicated `workspaces` field on `ℳ`, and updated higher-order solution calls to pass workspaces explicitly.
+- Updated `run_cache_steady_state_checks.jl` to only call mean/std for supported algorithms.
 
 ## Tests
 - `TEST_SET=basic julia --project -e 'using Pkg; Pkg.test()'` failed: unsatisfiable requirements during Pkg resolve (DynamicPPL/Pigeons/Turing/JET constraints).
@@ -60,6 +64,8 @@
 - `julia --project scripts/test_plot_model_estimates.jl` succeeded.
 - `julia --project scripts/test_get_var_axis.jl` succeeded.
 - `julia --project scripts/test_zygote_loglikelihood_third_pruned_third.jl` succeeded (Zygote gradients for `:third_order` and `:pruned_third_order`).
+- `julia --project run_cache_steady_state_checks.jl` succeeded.
+- `julia --project run_cache_steady_state_checks.jl` succeeded after updating the script’s mean/std algorithm list.
 
 ## Remaining
 - Resolve test environment dependencies and rerun tests.
