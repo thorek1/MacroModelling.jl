@@ -18,6 +18,44 @@ function First_order_index_cache()
                                     empty_matrix)
 end
 
+function Empty_timings()
+    empty_symbols = Symbol[]
+    empty_ints = Int[]
+    return timings(empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    empty_symbols,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    empty_ints,
+                    empty_ints,
+                    empty_ints,
+                    empty_ints,
+                    empty_ints,
+                    empty_ints,
+                    empty_ints,
+                    empty_ints,
+                    empty_ints,
+                    empty_ints)
+end
+
+is_empty_timings(T::timings) = T.nVars == 0 && T.nExo == 0 && isempty(T.var)
+
 function Moments_cache()
     empty_sparse = spzeros(Float64, 0, 0)
     return moments_cache(BitVector(),
@@ -61,11 +99,30 @@ function Higher_order_caches(;T::Type = Float64, S::Type = Float64)
                         Sylvester_caches(S = S))
 end
 
+function Workspaces(;T::Type = Float64, S::Type = Float64)
+    workspaces(Higher_order_caches(T = T, S = S),
+                Higher_order_caches(T = T, S = S))
+end
+
+function Second_order_auxiliary_matrices_cache()
+    empty_sparse = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
+    return second_order_auxiliary_matrices(empty_sparse, empty_sparse, empty_sparse, empty_sparse)
+end
+
+function Third_order_auxiliary_matrices_cache()
+    empty_sparse = SparseMatrixCSC{Int, Int64}(ℒ.I, 0, 0)
+    return third_order_auxiliary_matrices(empty_sparse, empty_sparse, Dict{Vector{Int}, Int}(),
+                                            empty_sparse, empty_sparse, empty_sparse, empty_sparse,
+                                            empty_sparse, empty_sparse, empty_sparse, empty_sparse,
+                                            empty_sparse, empty_sparse, empty_sparse, empty_sparse)
+end
+
 function Caches(;T::Type = Float64, S::Type = Float64)
-    caches( nothing,  # timings will be set later from model
-            Higher_order_caches(T = T, S = S),
-            Higher_order_caches(T = T, S = S),
-            name_display_cache(Symbol[], Symbol[], Symbol[], false, false),
+    caches( Empty_timings(),
+            Second_order_auxiliary_matrices_cache(),
+            Third_order_auxiliary_matrices_cache(),
+            Workspaces(T = T, S = S),
+            name_display_cache(Symbol[], Symbol[], Symbol[], Symbol[], false, false),
             model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[],
                                 Union{Symbol,String}[], spzeros(Float64, 0, 0), spzeros(Float64, 0, 0),
                                 Symbol[], Symbol[], Symbol[], Int[], Int[], Int[]),
@@ -97,7 +154,7 @@ function ensure_name_display_cache!(𝓂)
     cache = 𝓂.caches
     ndc = cache.name_display_cache
     # Use timings from cache if available, otherwise from model
-    T = isnothing(cache.timings) ? 𝓂.timings : cache.timings
+    T = is_empty_timings(cache.timings) ? 𝓂.timings : cache.timings
     
     if isempty(ndc.var_axis)
         var_has_curly = any(x -> contains(string(x), "◖"), T.var)
@@ -109,7 +166,7 @@ function ensure_name_display_cache!(𝓂)
         end
 
         if var_has_curly
-            calib_axis = replace.(string.(calib_axis), "◖" => "{", "◗" => "}")
+            calib_axis = replace.(string.(𝓂.calibration_equations_parameters), "◖" => "{", "◗" => "}")
         else
             calib_axis = 𝓂.calibration_equations_parameters
         end
@@ -142,7 +199,7 @@ function ensure_computational_constants_cache!(𝓂)
     cc = cache.computational_constants
     if isempty(cc.s_in_s⁺)
         # Use timings from cache if available, otherwise from model
-        T = isnothing(cache.timings) ? 𝓂.timings : cache.timings
+        T = is_empty_timings(cache.timings) ? 𝓂.timings : cache.timings
         nᵉ = T.nExo
         nˢ = T.nPast_not_future_and_mixed
 
@@ -234,7 +291,7 @@ function ensure_first_order_index_cache!(𝓂)
     if !cache.first_order_index_cache.initialized
         cc = ensure_computational_constants_cache!(𝓂)
         # Use timings from cache if available, otherwise from model
-        T = isnothing(cache.timings) ? 𝓂.timings : cache.timings
+        T = is_empty_timings(cache.timings) ? 𝓂.timings : cache.timings
         cache.first_order_index_cache = build_first_order_index_cache(T, cc.diag_nVars)
     end
     return cache.first_order_index_cache
@@ -345,7 +402,7 @@ function ensure_moments_cache!(𝓂)
     mc = cache.moments_cache
     cc = ensure_computational_constants_cache!(𝓂)
     # Use timings from cache if available, otherwise from model
-    T = isnothing(cache.timings) ? 𝓂.timings : cache.timings
+    T = is_empty_timings(cache.timings) ? 𝓂.timings : cache.timings
     
     if isempty(mc.kron_states)
         mc.kron_states = ℒ.kron(cc.s_in_s, cc.s_in_s)
@@ -374,7 +431,7 @@ function ensure_moments_substate_cache!(𝓂, nˢ::Int)
     mc = cache.moments_cache
     if !haskey(mc.substate_cache, nˢ)
         # Use timings from cache if available, otherwise from model
-        T = isnothing(cache.timings) ? 𝓂.timings : cache.timings
+        T = is_empty_timings(cache.timings) ? 𝓂.timings : cache.timings
         nᵉ = T.nExo
         I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
         e_es = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nᵉ * nˢ)), nˢ * nᵉ^2, nˢ * nᵉ^2))

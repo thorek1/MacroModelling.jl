@@ -369,21 +369,17 @@ end
 
 
 
-
-
-
-
 function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             𝑺₁::AbstractMatrix{S},#first order solution
-                                            M₂::second_order_auxiliary_matrices,   # aux matrices
                                             cache::caches;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
-    if !(eltype(cache.second_order_caches.Ŝ) == S)
-        cache.second_order_caches = Higher_order_caches(T = S)
+    if !(eltype(cache.workspaces.second_order.Ŝ) == S)
+        cache.workspaces.second_order = Higher_order_caches(T = S)
     end
-    ℂ = cache.second_order_caches
+    ℂ = cache.workspaces.second_order
+    M₂ = cache.second_order_auxiliary_matrices
     T = cache.timings
     # @timeit_debug timer "Calculate second order solution" begin
 
@@ -504,14 +500,14 @@ function rrule(::typeof(calculate_second_order_solution),
                     ∇₁::AbstractMatrix{S}, #first order derivatives
                     ∇₂::SparseMatrixCSC{S}, #second order derivatives
                     𝑺₁::AbstractMatrix{S},#first order solution
-                    M₂::second_order_auxiliary_matrices,   # aux matrices
                     cache::caches;
                     initial_guess::AbstractMatrix{R} = zeros(0,0),
                     opts::CalculationOptions = merge_calculation_options()) where {S <: Real, R <: Real}
-    if !(eltype(cache.second_order_caches.Ŝ) == S)
-        cache.second_order_caches = Higher_order_caches(T = S)
+    if !(eltype(cache.workspaces.second_order.Ŝ) == S)
+        cache.workspaces.second_order = Higher_order_caches(T = S)
     end
-    ℂ = cache.second_order_caches
+    ℂ = cache.workspaces.second_order
+    M₂ = cache.second_order_auxiliary_matrices
     T = cache.timings
     # @timeit_debug timer "Second order solution - forward" begin
     # inspired by Levintal
@@ -775,16 +771,15 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             ∇₃::SparseMatrixCSC{S}, #third order derivatives
                                             𝑺₁::AbstractMatrix{S}, #first order solution
                                             𝐒₂::SparseMatrixCSC{S}, #second order solution
-                                            M₂::second_order_auxiliary_matrices,  # aux matrices second order
-                                            M₃::third_order_auxiliary_matrices,   # aux matrices third order
                                             cache::caches;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
-    if !(eltype(cache.third_order_caches.Ŝ) == S)
-        cache.third_order_caches = Higher_order_caches(T = S)
+    if !(eltype(cache.workspaces.third_order.Ŝ) == S)
+        cache.workspaces.third_order = Higher_order_caches(T = S)
     end
-    ℂ = cache.third_order_caches
-
+    ℂ = cache.workspaces.third_order
+    M₂ = cache.second_order_auxiliary_matrices
+    M₃ = cache.third_order_auxiliary_matrices
     T = cache.timings
     # @timeit_debug timer "Calculate third order solution" begin
     # inspired by Levintal
@@ -1022,15 +1017,15 @@ function rrule(::typeof(calculate_third_order_solution),
                 ∇₃::SparseMatrixCSC{S}, #third order derivatives
                 𝑺₁::AbstractMatrix{S}, #first order solution
                 𝐒₂::SparseMatrixCSC{S}, #second order solution
-                M₂::second_order_auxiliary_matrices,  # aux matrices second order
-                M₃::third_order_auxiliary_matrices,   # aux matrices third order
                 cache::caches;
                 initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                 opts::CalculationOptions = merge_calculation_options()) where S <: AbstractFloat 
-    if !(eltype(cache.third_order_caches.Ŝ) == S)
-        cache.third_order_caches = Higher_order_caches(T = S)
+    if !(eltype(cache.workspaces.third_order.Ŝ) == S)
+        cache.workspaces.third_order = Higher_order_caches(T = S)
     end
-    ℂ = cache.third_order_caches
+    ℂ = cache.workspaces.third_order
+    M₂ = cache.second_order_auxiliary_matrices
+    M₃ = cache.third_order_auxiliary_matrices
     T = cache.timings
 
     # @timeit_debug timer "Third order solution - forward" begin

@@ -859,12 +859,12 @@ function get_conditional_forecast(𝓂::ℳ,
 
         S₂ = nothing
         if size(𝓂.solution.perturbation.second_order_solution, 2) > 0
-            S₂ = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+            S₂ = 𝓂.solution.perturbation.second_order_solution * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
         end
 
         S₃ = nothing
         if algorithm ∈ [:third_order, :pruned_third_order] && size(𝓂.solution.perturbation.third_order_solution, 2) > 0
-            S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
+            S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
         end
 
         # Use Lagrange-Newton algorithm to find shocks
@@ -1770,7 +1770,7 @@ function get_solution(𝓂::ℳ;
     end
 
     if algorithm == :second_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂, 
                                     𝓂.timings.nVars, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
@@ -1779,7 +1779,7 @@ function get_solution(𝓂::ℳ;
                             Variables = axis2,
                             States__Shocks² = axis1)
     elseif algorithm == :pruned_second_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂, 
                                     𝓂.timings.nVars, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
@@ -1788,7 +1788,7 @@ function get_solution(𝓂::ℳ;
                             Variables = axis2,
                             States__Shocks² = axis1)
     elseif algorithm == :third_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃, 
                                     𝓂.timings.nVars, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
@@ -1799,7 +1799,7 @@ function get_solution(𝓂::ℳ;
                             States__Shocks² = axis1,
                             States__Shocks³ = axis1)
     elseif algorithm == :pruned_third_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃, 
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃, 
                                     𝓂.timings.nVars, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
                                     𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
@@ -1963,56 +1963,50 @@ function get_solution(𝓂::ℳ,
     end
 
     if algorithm == :second_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
     
-	        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-	                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
-	                                                    𝓂.caches; 
-	                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
-	                                                    opts = opts)
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+                                                    opts = opts)
 
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-        𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+        𝐒₂ *= 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
 
         if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
+            𝐒₂ = sparse(𝐒₂) # * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)
         end
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
     
-	        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-	                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
-	                                                    𝓂.caches; 
-	                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
-	                                                    opts = opts)
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+                                                    opts = opts)
     
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-        𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+        𝐒₂ *= 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
 
         if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
+            𝐒₂ = sparse(𝐒₂) # * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)
         end
 
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.third_order_auxiliary_matrices.𝐔∇₃
                 
 	        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
-	                                                    𝐒₁, 𝐒₂, 
-	                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices, 
-	                                                    𝓂.solution.perturbation.third_order_auxiliary_matrices,
+	                                                    𝐒₁, 𝐒₂,
 	                                                    𝓂.caches; 
 	                                                    initial_guess = 𝓂.solution.perturbation.third_order_solution,
 	                                                    opts = opts)
 
         if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
         
-        𝐒₃ *= 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
+        𝐒₃ *= 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
 
         if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-            𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
+            𝐒₃ = sparse(𝐒₃) # * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃)
         end
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, 𝐒₃, true

@@ -18,7 +18,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         acceptance_tol::AbstractFloat = 1e-8,
                                         verbose::Bool = false) where R <: Real
     T = cache.timings
-    @assert !isnothing(T) "Cache timings not initialised."
+    @assert !is_empty_timings(T) "Cache timings not initialised."
 
     if length(initial_guess) > 0
         X = initial_guess

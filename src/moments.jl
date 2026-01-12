@@ -79,11 +79,9 @@ function calculate_mean(parameters::Vector{R},
         else
             𝓂.solution.perturbation.qme_solution = qme_sol
 
-            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
+            ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
             
-            𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                        𝓂.solution.perturbation.second_order_auxiliary_matrices,
-                                                        cache; 
+            𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
                                                         opts = opts)
 
             if !solved 
@@ -91,10 +89,10 @@ function calculate_mean(parameters::Vector{R},
             else
                 if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-                𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+                𝐒₂ *= 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
 
                 if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-                    𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
+                    𝐒₂ = sparse(𝐒₂) # * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)
                 end
 
                 nᵉ = T.nExo
@@ -178,20 +176,18 @@ function calculate_second_order_moments(parameters::Vector{R},
         e⁴ = mc.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
 
-	        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-	                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
-	                                                    𝓂.caches; 
-	                                                    opts = opts)
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+                                                    opts = opts)
 
         if solved2
             if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-            𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+            𝐒₂ *= 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
 
             if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-                𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
+                𝐒₂ = sparse(𝐒₂) # * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)
             end
 
             kron_s_s = mc.kron_states
@@ -302,19 +298,18 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         e⁴ = mc.e4
 
         # second order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
 
-	        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-	                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
-	                                                    𝓂.caches; 
-	                                                    opts = opts)
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+                                                    opts = opts)
+
         if solved2
             if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-            𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+            𝐒₂ *= 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
 
             if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-                𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
+                𝐒₂ = sparse(𝐒₂) # * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)
             end
 
             kron_s_s = mc.kron_states
@@ -469,11 +464,9 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     cc = 𝓂.caches.computational_constants
     mc = 𝓂.caches.moments_cache
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.third_order_auxiliary_matrices.𝐔∇₃
 
 	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-	                                                𝓂.solution.perturbation.second_order_auxiliary_matrices, 
-	                                                𝓂.solution.perturbation.third_order_auxiliary_matrices,
 	                                                𝓂.caches; 
 	                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
 	                                                opts = opts)
@@ -484,10 +477,10 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
-    𝐒₃ *= 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
+    𝐒₃ *= 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
 
     if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-        𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
+        𝐒₃ = sparse(𝐒₃) # * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃)
     end
     
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.caches, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
@@ -714,14 +707,12 @@ function calculate_third_order_moments(parameters::Vector{T},
     cc = 𝓂.caches.computational_constants
     mc = 𝓂.caches.moments_cache
 
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.third_order_auxiliary_matrices.𝐔∇₃
 
-	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-	                                                𝓂.solution.perturbation.second_order_auxiliary_matrices, 
-	                                                𝓂.solution.perturbation.third_order_auxiliary_matrices,
-	                                                𝓂.caches; 
-	                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
-	                                                opts = opts)
+    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
+                                                𝓂.caches; 
+                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
+                                                opts = opts)
 
     if !solved3
         return zeros(T,0,0), zeros(T,0), zeros(T,0), false
@@ -729,10 +720,10 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
-    𝐒₃ *= 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
+    𝐒₃ *= 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
 
     if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-        𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
+        𝐒₃ = sparse(𝐒₃) # * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃)
     end
     
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.caches, observables, covariance = covariance, tol = opts.tol.dependencies_tol)

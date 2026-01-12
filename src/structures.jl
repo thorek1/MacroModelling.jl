@@ -220,8 +220,6 @@ mutable struct perturbation
     second_order_solution::AbstractMatrix{Float64}
     third_order_solution::AbstractMatrix{Float64}
     auxiliary_indices::auxiliary_indices
-    second_order_auxiliary_matrices::second_order_auxiliary_matrices
-    third_order_auxiliary_matrices::third_order_auxiliary_matrices
 end
 
 mutable struct function_and_jacobian
@@ -279,6 +277,11 @@ mutable struct higher_order_caches{F <: Real, G <: AbstractFloat}
     tmp_sparse_prealloc6::Tuple{Vector{Int}, Vector{Int}, Vector{F}, Vector{Int}, Vector{Int}, Vector{Int}, Vector{F}}
     Ŝ::Matrix{F}
     sylvester_caches::sylvester_caches{G}
+end
+
+mutable struct workspaces
+    second_order::higher_order_caches
+    third_order::higher_order_caches
 end
 
 # Cache for model-constant display names
@@ -405,11 +408,12 @@ end
 
 mutable struct caches#{F <: Real, G <: AbstractFloat}
     # Timings information (model structure - constant for a given model)
-    timings::Union{Nothing, timings}
+    timings::timings
     
     # Cache structures
-    second_order_caches::higher_order_caches#{F, G}
-    third_order_caches::higher_order_caches#{F, G}
+    second_order_auxiliary_matrices::second_order_auxiliary_matrices
+    third_order_auxiliary_matrices::third_order_auxiliary_matrices
+    workspaces::workspaces
     name_display_cache::name_display_cache
     model_structure_cache::model_structure_cache
     computational_constants::computational_constants_cache

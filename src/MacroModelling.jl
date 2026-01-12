@@ -2390,7 +2390,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     tol::AbstractFloat = eps())
 
     T = cache.timings
-    @assert !isnothing(T) "Cache timings not initialised."
+    @assert !is_empty_timings(T) "Cache timings not initialised."
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
 
@@ -2489,7 +2489,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     tol::AbstractFloat = eps())
 
     T = cache.timings
-    @assert !isnothing(T) "Cache timings not initialised."
+    @assert !is_empty_timings(T) "Cache timings not initialised."
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
 
@@ -2646,7 +2646,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     tol::AbstractFloat = eps())
 
     T = cache.timings
-    @assert !isnothing(T) "Cache timings not initialised."
+    @assert !is_empty_timings(T) "Cache timings not initialised."
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
 
@@ -5428,6 +5428,7 @@ function write_symbolic_derivatives!(𝓂::ℳ; perturbation_order::Int = 1, sil
     end
 
     write_auxiliary_indices!(𝓂)
+    
     write_functions_mapping!(𝓂, perturbation_order)
 
     𝓂.solution.outdated_algorithms = Set(all_available_algorithms)
@@ -6498,24 +6499,23 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate Hessian" begin
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
     
     # end # timeit_debug
 
     # @timeit_debug timer "Calculate second order solution" begin
 
-	    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.solution.perturbation.second_order_auxiliary_matrices,
-	                                                    𝓂.caches; 
-	                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
-	                                                    # timer = timer,
-	                                                    opts = opts)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+                                                    # timer = timer,
+                                                    opts = opts)
 
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+    𝐒₂ *= 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
 
     if !issparse(𝐒₂)
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
+        𝐒₂ = sparse(𝐒₂) # * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)
     end
 
     # end # timeit_debug
@@ -6832,14 +6832,12 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
         return all_SS, false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
 
-    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
+    ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
 
-	    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-	                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
-	                                                    𝓂.caches;
-	                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
-	                                                    # timer = timer,
-	                                                    opts = opts)
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+                                                    # timer = timer,
+                                                    opts = opts)
 
     if !solved2
         if opts.verbose println("2nd order solution not found") end
@@ -6848,16 +6846,14 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     
     if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-    𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
+    𝐒₂ *= 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
 
     if !issparse(𝐒₂)
-        𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
+        𝐒₂ = sparse(𝐒₂) # * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)
     end
-    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
+    ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.caches.third_order_auxiliary_matrices.𝐔∇₃
             
 	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-	                                                𝓂.solution.perturbation.second_order_auxiliary_matrices, 
-	                                                𝓂.solution.perturbation.third_order_auxiliary_matrices,
 	                                                𝓂.caches; 
 	                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
 	                                                # timer = timer, 
@@ -6870,20 +6866,20 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
-    if length(𝓂.caches.third_order_caches.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.caches.third_order_caches.Ŝ))
-        𝓂.caches.third_order_caches.Ŝ = 𝐒₃ * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
+    if length(𝓂.caches.workspaces.third_order.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.caches.workspaces.third_order.Ŝ))
+        𝓂.caches.workspaces.third_order.Ŝ = 𝐒₃ * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
     else
-        mul_reverse_AD!(𝓂.caches.third_order_caches.Ŝ, 𝐒₃, 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
+        mul_reverse_AD!(𝓂.caches.workspaces.third_order.Ŝ, 𝐒₃, 𝓂.caches.third_order_auxiliary_matrices.𝐔₃)
     end
 
-    Ŝ = 𝓂.caches.third_order_caches.Ŝ
+    Ŝ = 𝓂.caches.workspaces.third_order.Ŝ
 
-    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.caches.third_order_caches)
+    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.caches.workspaces.third_order)
     
-    # 𝐒₃ *= 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
-    # 𝐒₃ = sparse_preallocated!(𝐒₃, ℂ = 𝓂.caches.third_order_caches)
+    # 𝐒₃ *= 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
+    # 𝐒₃ = sparse_preallocated!(𝐒₃, ℂ = 𝓂.caches.workspaces.third_order)
     
-    # 𝐒₃ = sparse(Ŝ) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
+    # 𝐒₃ = sparse(Ŝ) # * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃)
 
     𝐒₁ = [𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) 𝐒₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
@@ -7243,13 +7239,13 @@ function solve!(𝓂::ℳ;
 
     # end # timeit_debug
 
-    if 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && 
+    if 𝓂.caches.second_order_auxiliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && 
         algorithm ∈ [:second_order, :pruned_second_order]
         start_time = time()
         if !silent print("Take symbolic derivatives up to second order:\t\t\t\t") end
         write_functions_mapping!(𝓂, 2)
         if !silent println(round(time() - start_time, digits = 3), " seconds") end
-    elseif 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && algorithm ∈ [:third_order, :pruned_third_order]
+    elseif 𝓂.caches.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0) && algorithm ∈ [:third_order, :pruned_third_order]
         start_time = time()
         if !silent print("Take symbolic derivatives up to third order:\t\t\t\t") end
         write_functions_mapping!(𝓂, 3)
@@ -7474,7 +7470,7 @@ end
 
 function create_second_order_auxiliary_matrices(cache::caches)
     T = cache.timings
-    @assert !isnothing(T) "Cache timings not initialised."
+    @assert !is_empty_timings(T) "Cache timings not initialised."
 
     # Indices and number of variables
     n₋ = T.nPast_not_future_and_mixed
@@ -7512,7 +7508,7 @@ end
 
 function create_third_order_auxiliary_matrices(cache::caches, ∇₃_col_indices::Vector{Int})
     T = cache.timings
-    @assert !isnothing(T) "Cache timings not initialised."
+    @assert !is_empty_timings(T) "Cache timings not initialised."
 
     # Indices and number of variables
     n₋ = T.nPast_not_future_and_mixed
@@ -8246,8 +8242,8 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     # second order
         derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = 2, output_compressed = false)
 
-        if 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
-            𝓂.solution.perturbation.second_order_auxiliary_matrices = create_second_order_auxiliary_matrices(𝓂.caches)
+        if 𝓂.caches.second_order_auxiliary_matrices.𝛔 == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+            𝓂.caches.second_order_auxiliary_matrices = create_second_order_auxiliary_matrices(𝓂.caches)
 
             ∇₂_dyn = derivatives[2][1]
 
@@ -8343,9 +8339,9 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     if max_perturbation_order == 3
         derivatives = take_nth_order_derivatives(dyn_equations, 𝔙, 𝔓, SS_mapping, nps, nxs; max_perturbation_order = max_perturbation_order, output_compressed = true)
     # third order
-        if 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
+        if 𝓂.caches.third_order_auxiliary_matrices.𝐂₃ == SparseMatrixCSC{Int, Int64}(ℒ.I,0,0)
             I,J,V = findnz(derivatives[3][1])
-            𝓂.solution.perturbation.third_order_auxiliary_matrices = create_third_order_auxiliary_matrices(𝓂.caches, unique(J))
+            𝓂.caches.third_order_auxiliary_matrices = create_third_order_auxiliary_matrices(𝓂.caches, unique(J))
         
             ∇₃_dyn = derivatives[3][1]
 
@@ -9756,7 +9752,7 @@ end
 
 function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, cache::caches)::Union{UnitRange{Int}, Vector{Int}}
     T = cache.timings
-    @assert !isnothing(T) "Cache timings not initialised."
+    @assert !is_empty_timings(T) "Cache timings not initialised."
 
     # Handle nested vector conversion separately
     if variables isa Vector{Vector{String}}
@@ -9841,7 +9837,7 @@ end
 # Function to parse grouped covariance input into groups of indices
 function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, cache::caches)::Vector{Vector{Int}}
     T = cache.timings
-    @assert !isnothing(T) "Cache timings not initialised."
+    @assert !is_empty_timings(T) "Cache timings not initialised."
 
     # Convert String_input to Symbol_input for nested structures
     if variables isa Vector{Vector{String}}
@@ -9879,7 +9875,7 @@ parse_covariance_groups(variables, T::timings) =
 
 function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, cache::caches)
     T = cache.timings
-    @assert !isnothing(T) "Cache timings not initialised."
+    @assert !is_empty_timings(T) "Cache timings not initialised."
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
