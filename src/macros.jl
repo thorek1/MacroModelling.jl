@@ -770,6 +770,9 @@ macro model(𝓂,ex...)
                 reorder,
                 dynamic_order)
 
+    # Set timings in the cache for unified access
+    set_timings!(ℂ, T)
+
 
     aux_future_tmp  = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_future))
     aux_future      = aux_future_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_future_tmp)]

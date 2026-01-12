@@ -149,6 +149,10 @@ struct first_order_index_cache{I, M}
 end
 
 mutable struct caches#{F <: Real, G <: AbstractFloat}
+    # Timings information (model structure - constant for a given model)
+    timings::Union{Nothing, timings}
+    
+    # Cache structures
     second_order_caches::higher_order_caches#{F, G}
     third_order_caches::higher_order_caches#{F, G}
     name_display_cache::name_display_cache
@@ -222,7 +226,8 @@ function Higher_order_caches(;T::Type = Float64, S::Type = Float64)
 end
 
 function Caches(;T::Type = Float64, S::Type = Float64)
-    caches( Higher_order_caches(T = T, S = S),
+    caches( nothing,  # timings will be set later from model
+            Higher_order_caches(T = T, S = S),
             Higher_order_caches(T = T, S = S),
             name_display_cache([], [], [], false, false),
             model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[],
@@ -235,6 +240,12 @@ function Caches(;T::Type = Float64, S::Type = Float64)
             Moments_cache(),
             First_order_index_cache(),
             Float64[])
+end
+
+# Initialize timings in the cache (should be called once after model creation)
+function set_timings!(cache::caches, T::timings)
+    cache.timings = T
+    return cache
 end
 
 function ensure_name_display_cache!(𝓂)
