@@ -594,15 +594,11 @@ function filter_and_smooth(𝓂::ℳ,
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
 
     @assert length(observables) == size(data_in_deviations)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
-    @assert length(observables) <= 𝓂.caches.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+    @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     sort!(observables)
 
     solve!(𝓂, opts = opts)
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-    cc = caches.computational_constants
-    T = caches.timings
 
     parameters = 𝓂.parameter_values
 
@@ -612,18 +608,15 @@ function filter_and_smooth(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            caches; 
-                                                            opts = opts)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = opts)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
-    # Direct caches access
-    A = @views sol[:,1:T.nPast_not_future_and_mixed] * cc.diag_nVars[T.past_not_future_and_mixed_idx,:]
+    A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
-    B = @views sol[:,T.nPast_not_future_and_mixed+1:end]
+    B = @views sol[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
 
-    C = @views ℒ.diagm(ones(T.nVars))[sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),:]
+    C = @views ℒ.diagm(ones(𝓂.timings.nVars))[sort(indexin(observables,sort(union(𝓂.aux,𝓂.var,𝓂.exo_present)))),:]
 
     𝐁 = B * B'
 

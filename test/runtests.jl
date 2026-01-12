@@ -485,7 +485,7 @@ if test_set == "plots_5"
 
         plot_irf!(Smets_Wouters_2007, shocks = [:em, :ea], negative_shock = true, plot_type = :stack)
         
-        shock_mat = randn(Smets_Wouters_2007.caches.timings.nExo,3)
+        shock_mat = randn(Smets_Wouters_2007.timings.nExo,3)
 
         plot_irf!(Smets_Wouters_2007, shocks = shock_mat, plot_type = :stack)
 
@@ -532,7 +532,7 @@ if test_set == "plots_5"
         plot_conditional_forecast!(FS2000, cndtns_lvl, plot_type = :stack, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         # conditons on #3 is nothing which makes sense since it is not showing
 
-        shock_mat = sprandn(Smets_Wouters_2007.caches.timings.nExo, 10, .1)
+        shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
 
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,4), Variables = [:pinfobs], Periods = 1:4)
         cndtns_lvl[1,4] = 2
@@ -544,7 +544,7 @@ if test_set == "plots_5"
         cndtns_lvl = KeyedArray(Matrix{Union{Nothing, Float64}}(undef,1,8), Variables = [:y], Periods = 1:8)
         cndtns_lvl[1,8] = 1.4
         
-        shock_mat = sprandn(Smets_Wouters_2007.caches.timings.nExo, 10, .1)
+        shock_mat = sprandn(Smets_Wouters_2007.timings.nExo, 10, .1)
 
         plot_conditional_forecast(Smets_Wouters_2007, cndtns_lvl, shocks = shock_mat, label = "SW07 w shocks", variables = [:y, :k, :c])
 
@@ -552,7 +552,7 @@ if test_set == "plots_5"
 
         plot_conditional_forecast!(FS2000, cndtns_lvl, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
-        shock_mat = sprandn(FS2000.caches.timings.nExo, 10, .1)
+        shock_mat = sprandn(FS2000.timings.nExo, 10, .1)
 
         plot_conditional_forecast!(FS2000, cndtns_lvl, shocks = shock_mat, label = :rand_shocks, rename_dictionary = Dict(:e_a => :ea, :e_m => :em, :R => :r, :W => :w))
         
@@ -3658,7 +3658,7 @@ if test_set == "basic"
         # solve!(Smets_Wouters_2003, verbose = true)
 
 
-        @test isapprox(get_steady_state(Smets_Wouters_2003, verbose = true)(Smets_Wouters_2003.caches.timings.var,[:Steady_state]),
+        @test isapprox(get_steady_state(Smets_Wouters_2003, verbose = true)(Smets_Wouters_2003.timings.var,[:Steady_state]),
                         [  1.2043777509278788
                         1.2043777484127967
                         0.362
@@ -3923,7 +3923,7 @@ if test_set == "basic"
         end
 
         get_solution(RBC_CME)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.caches.timings.nExo+1):end...]], [    0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
                                                                     6.73489e-6   0.000168887
                                                                     1.01124e-5   0.000253583
                                                                     -0.000365783  0.00217203
@@ -3932,7 +3932,7 @@ if test_set == "basic"
                                                                     0.005        0.0], atol = 1e-6)
 
         get_solution(RBC_CME, parameters = :I_K_ratio => .1)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.caches.timings.nExo+1):end...]],[  0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
             3.42408e-6   0.000111417
             5.14124e-6   0.000167292
         -0.000196196  0.00190741
@@ -3941,7 +3941,7 @@ if test_set == "basic"
             0.005        0.0], atol = 1e-6)
 
         get_solution(RBC_CME, parameters = :cap_share => 1.5)
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.caches.timings.nExo+1):end...]],[ 0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
         4.00629e-6   0.000118171
         6.01543e-6   0.000177434
     -0.000207089  0.00201698
@@ -3996,7 +3996,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.caches.timings.nExo+1):end...]], [    0.0          0.0068
+    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
     #                                                                 6.73489e-6   0.000168887
     #                                                                 1.01124e-5   0.000253583
     #                                                                 -0.000365783  0.00217203
@@ -4007,7 +4007,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :I_K_ratio => .1)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.caches.timings.nExo+1):end...]],[  0.0          0.0068
+    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
     #         3.42408e-6   0.000111417
     #         5.14124e-6   0.000167292
     #     -0.000196196  0.00190741
@@ -4018,7 +4018,7 @@ if test_set == "basic"
 
     #     get_solution(RBC_CME, algorithm = :linear_time_iteration, parameters = :cap_share => 1.5)
 
-    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.caches.timings.nExo+1):end...]],[ 0.0          0.0068
+    #     @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
     #     4.00629e-6   0.000118171
     #     6.01543e-6   0.000177434
     # -0.000207089  0.00201698
@@ -4073,7 +4073,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.caches.timings.nExo+1):end...]], [    0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]], [    0.0          0.0068
                                                                     6.73489e-6   0.000168887
                                                                     1.01124e-5   0.000253583
                                                                     -0.000365783  0.00217203
@@ -4084,7 +4084,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :I_K_ratio => .1)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.caches.timings.nExo+1):end...]],[  0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[  0.0          0.0068
             3.42408e-6   0.000111417
             5.14124e-6   0.000167292
         -0.000196196  0.00190741
@@ -4095,7 +4095,7 @@ if test_set == "basic"
 
         get_solution(RBC_CME, quadratic_matrix_equation_algorithm = :doubling, parameters = :cap_share => 1.5)
 
-        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.caches.timings.nExo+1):end...]],[ 0.0          0.0068
+        @test isapprox(RBC_CME.solution.perturbation.first_order.solution_matrix[:,[(end-RBC_CME.timings.nExo+1):end...]],[ 0.0          0.0068
         4.00629e-6   0.000118171
         6.01543e-6   0.000177434
     -0.000207089  0.00201698

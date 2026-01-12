@@ -357,10 +357,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = @ignore_derivatives get_computational_constants(T)
-    s_in_s⁺  = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺  = cc.e_in_s⁺
+    s_in_s⁺  = @ignore_derivatives BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺  = @ignore_derivatives BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -593,10 +592,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = get_computational_constants(T)
-    s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -1064,10 +1062,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    cc = get_computational_constants(T)
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
+    # s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -1293,10 +1290,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = get_computational_constants(T)
-    s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -1732,17 +1728,26 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = @ignore_derivatives get_computational_constants(T)
-    s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
+    s_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = @ignore_derivatives BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = @ignore_derivatives BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
 
-    shockvar_idxs = cc.shockvar_idxs
-    shock_idxs = cc.shock_idxs
-    shock_idxs2 = cc.shock_idxs2
-    shock²_idxs = cc.shock²_idxs
+    tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
+    shockvar_idxs = tmp.nzind
+    
+    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
+    shock_idxs = tmp.nzind
+
+    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺) |> sparse
+    shock_idxs2 = tmp.nzind
+
+    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
+    shock²_idxs = tmp.nzind
+
     shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
-    var_vol²_idxs = cc.var_vol²_idxs
+
+    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
+    var_vol²_idxs = tmp.nzind
 
     tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
     var²_idxs = tmp.nzind
@@ -1826,7 +1831,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     kron_buffer4sv = ℒ.kron(II, vcat(1,state[1]))
 
-    kron_buffer2s = ℒ.kron(J, vcat(state[1], zero(R)))
+    kron_buffer2s = ℒ.kron(J, state[1])
 
     kron_buffer2sv = ℒ.kron(J, vcat(1,state[1]))
 
@@ -1847,8 +1852,6 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     state²⁻ = state[2]#[T.past_not_future_and_mixed_idx]
 
     state³⁻ = state[3]#[T.past_not_future_and_mixed_idx]
-
-    state²⁻_vol = zeros(R, length(state²⁻) + 1)
 
     # @timeit_debug timer "Loop" begin
 
@@ -1881,9 +1884,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         
         # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(J, state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(J, state²⁻) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(J, state¹⁻_vol), state¹⁻_vol) / 2
         
-        copyto!(state²⁻_vol, 1, state²⁻, 1)
-        state²⁻_vol[end] = 0
-        ℒ.kron!(kron_buffer2s, J, state²⁻_vol)
+        ℒ.kron!(kron_buffer2s, J, state²⁻)
     
         ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵛᵉ, kron_buffer2s)
 
@@ -2155,10 +2156,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = get_computational_constants(T)
-    s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
 
     tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
     shockvar_idxs = tmp.nzind
@@ -2709,10 +2709,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = get_computational_constants(T)
-    s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
 
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -3033,10 +3032,9 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = get_computational_constants(T)
-    s_in_s⁺ = cc.s_in_s
-    sv_in_s⁺ = cc.s_in_s⁺
-    e_in_s⁺ = cc.e_in_s⁺
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -3473,9 +3471,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 warmup_iterations::Int = 0,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-    T = caches.timings
+    T = 𝓂.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3495,9 +3491,9 @@ function filter_data_with_model(𝓂::ℳ,
 
     ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        caches;
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                        T = T, 
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution, 
                                                         opts = opts)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
@@ -3608,9 +3604,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
 
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-    T = caches.timings
+    T = 𝓂.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3634,9 +3628,9 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    # s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -3824,13 +3818,11 @@ function filter_data_with_model(𝓂::ℳ,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-    T = caches.timings
+    T = 𝓂.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
-    decomposition = zeros(T.nVars, T.nExo + 3, size(data_in_deviations, 2))
+    decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 3, size(data_in_deviations, 2))
 
     observables = get_and_check_observables(𝓂, data_in_deviations)
     
@@ -3845,7 +3837,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = [zeros(𝓂.caches.timings.nVars), collect(sss) - all_SS]
+    state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
      
     precision_factor = 1.0
 
@@ -3854,7 +3846,7 @@ function filter_data_with_model(𝓂::ℳ,
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
     s_in_s⁺  = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
     e_in_s⁺  = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
@@ -4039,12 +4031,12 @@ function filter_data_with_model(𝓂::ℳ,
         shocks[:,i] .= x
     end
 
-    states = [initial_state for _ in 1:𝓂.caches.timings.nExo + 1]
+    states = [initial_state for _ in 1:𝓂.timings.nExo + 1]
 
     decomposition[:, end, :] .= variables
 
-    for i in 1:𝓂.caches.timings.nExo
-        sck = zeros(𝓂.caches.timings.nExo)
+    for i in 1:𝓂.timings.nExo
+        sck = zeros(𝓂.timings.nExo)
         sck[i] = shocks[i, 1]
 
         aug_state₁ = [initial_state[1][T.past_not_future_and_mixed_idx]; 1; sck]
@@ -4063,8 +4055,8 @@ function filter_data_with_model(𝓂::ℳ,
     decomposition[:, end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:, 1:end - 2, 1], dims = 2)
 
     for i in 2:size(data_in_deviations, 2)
-        for ii in 1:𝓂.caches.timings.nExo
-            sck = zeros(𝓂.caches.timings.nExo)
+        for ii in 1:𝓂.timings.nExo
+            sck = zeros(𝓂.timings.nExo)
             sck[ii] = shocks[ii, i]
             
             aug_state₁ = [states[ii][1][T.past_not_future_and_mixed_idx]; 1; sck]
@@ -4094,9 +4086,7 @@ function filter_data_with_model(𝓂::ℳ,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-    T = caches.timings
+    T = 𝓂.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -4123,9 +4113,9 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
 
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -4406,13 +4396,11 @@ function filter_data_with_model(𝓂::ℳ,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-    T = caches.timings
+    T = 𝓂.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
-    decomposition = zeros(T.nVars, T.nExo + 3, size(data_in_deviations, 2))
+    decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 3, size(data_in_deviations, 2))
     
     observables = get_and_check_observables(𝓂, data_in_deviations)
 
@@ -4427,7 +4415,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = [zeros(𝓂.caches.timings.nVars), collect(sss) - all_SS, zeros(𝓂.caches.timings.nVars)]
+    state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
 
     precision_factor = 1.0
 
@@ -4435,9 +4423,9 @@ function filter_data_with_model(𝓂::ℳ,
 
     cond_var_idx = indexin(observables,sort(union(T.aux,T.var,T.exo_present)))
 
-    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    s_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed), zeros(Bool, T.nExo + 1)))
+    sv_in_s⁺ = BitVector(vcat(ones(Bool, T.nPast_not_future_and_mixed + 1), zeros(Bool, T.nExo)))
+    e_in_s⁺ = BitVector(vcat(zeros(Bool, T.nPast_not_future_and_mixed + 1), ones(Bool, T.nExo)))
 
     tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
     shockvar_idxs = tmp.nzind
@@ -4745,12 +4733,12 @@ function filter_data_with_model(𝓂::ℳ,
         shocks[:,i] .= x
     end
 
-    states = [initial_state for _ in 1:𝓂.caches.timings.nExo + 1]
+    states = [initial_state for _ in 1:𝓂.timings.nExo + 1]
 
     decomposition[:, end, :] .= variables
 
-    for i in 1:𝓂.caches.timings.nExo
-        sck = zeros(𝓂.caches.timings.nExo)
+    for i in 1:𝓂.timings.nExo
+        sck = zeros(𝓂.timings.nExo)
         sck[i] = shocks[i, 1]
 
         aug_state₁ = [initial_state[1][T.past_not_future_and_mixed_idx]; 1; sck]
@@ -4778,8 +4766,8 @@ function filter_data_with_model(𝓂::ℳ,
     decomposition[:,end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:,1:end - 2, 1], dims = 2)
 
     for i in 2:size(data_in_deviations, 2)
-        for ii in 1:𝓂.caches.timings.nExo
-            sck = zeros(𝓂.caches.timings.nExo)
+        for ii in 1:𝓂.timings.nExo
+            sck = zeros(𝓂.timings.nExo)
             sck[ii] = shocks[ii, i]
 
             aug_state₁ = [states[ii][1][T.past_not_future_and_mixed_idx]; 1; sck]

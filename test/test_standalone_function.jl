@@ -65,35 +65,38 @@ get_irf(RBC_CME, algorithm = :pruned_third_order)
 get_irf(RBC_CME, algorithm = :pruned_second_order)
 
 ∇₁ = calculate_jacobian(RBC_CME.parameter_values, SS_and_pars, RBC_CME)# |> Matrix
-∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.caches.second_order_auxiliary_matrices.𝐔∇₂
-∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.caches.third_order_auxiliary_matrices.𝐔∇₃
+∇₂ = calculate_hessian(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
+∇₃ = calculate_third_order_derivatives(RBC_CME.parameter_values,SS_and_pars,RBC_CME)# * RBC_CME.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
 #SS = get_steady_state(RBC_CME, derivatives = false)
 
 
 T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :z_delta], [:A, :Pi, :c, :k, :z_delta], [:A], [:k, :z_delta], [:A], [:delta_eps, :eps_z], [:A, :Pi, :R, :c, :k, :y, :z_delta], Symbol[], Symbol[], 2, 1, 3, 3, 5, 7, 2, [3, 6], [1, 2, 4, 5, 7], [1, 2, 4], [2, 3], [1, 5, 7], [1], [1], [5, 7], [5, 6, 1, 7, 3, 2, 4], [3, 4, 5, 1, 2])
 
-first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁, RBC_CME.caches)# |> Matrix{Float32}
+first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁; T = T)# |> Matrix{Float32}
 
-second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, RBC_CME.caches)
+second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, 
+                                                                RBC_CME.solution.perturbation.second_order_auxiliary_matrices,
+                                                                RBC_CME.caches; 
+                                                                T = T)
 
 
-# second_order_solution *= RBC_CME.caches.second_order_auxiliary_matrices.𝐔₂
+# second_order_solution *= RBC_CME.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
 
-second_order_solution = sparse(second_order_solution * RBC_CME.caches.second_order_auxiliary_matrices.𝐔₂)
+second_order_solution = sparse(second_order_solution * RBC_CME.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
 
 third_order_solution, solved3 = calculate_third_order_solution(∇₁, 
                                                             ∇₂, 
                                                             ∇₃,
                                                             first_order_solution, 
                                                             second_order_solution, 
-                                                            RBC_CME.caches.second_order_auxiliary_matrices, 
-                                                            RBC_CME.caches.third_order_auxiliary_matrices, 
+                                                            RBC_CME.solution.perturbation.second_order_auxiliary_matrices, 
+                                                            RBC_CME.solution.perturbation.third_order_auxiliary_matrices, 
                                                             RBC_CME.caches; 
                                                             T = T)
 
-# third_order_solution *= RBC_CME.caches.third_order_auxiliary_matrices.𝐔₃
+# third_order_solution *= RBC_CME.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
 
-third_order_solution = sparse(third_order_solution * RBC_CME.caches.third_order_auxiliary_matrices.𝐔₃)
+third_order_solution = sparse(third_order_solution * RBC_CME.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
 
 @testset verbose = true "SS, derivatives of model at SS and solutions" begin
     NSSS =  [1.0
@@ -219,7 +222,7 @@ third_order_solution = sparse(third_order_solution * RBC_CME.caches.third_order_
         -0.0021014511165327685
         -0.0004090778090616675
         0.0004090778090616675],7,3375)
-    @test isapprox(∇₃ * RBC_CME.caches.third_order_auxiliary_matrices.𝐔∇₃
+    @test isapprox(∇₃ * RBC_CME.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
     ,third_order_derivatives2,rtol = eps(Float32))
 
     first_order_solution2 = [ 0.9         5.41234e-16  -6.41848e-17   0.0           0.0068
@@ -251,8 +254,8 @@ end
     end
 
     pruned_second_order_state_update = function(pruned_states::Vector{Vector{Float64}}, shock::Vector{Float64})
-        aug_state₁ = [pruned_states[1][RBC_CME.caches.timings.past_not_future_and_mixed_idx]; 1; shock]
-        aug_state₂ = [pruned_states[2][RBC_CME.caches.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+        aug_state₁ = [pruned_states[1][RBC_CME.timings.past_not_future_and_mixed_idx]; 1; shock]
+        aug_state₂ = [pruned_states[2][RBC_CME.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
         
         return [Tz * aug_state₁, Tz * aug_state₂ + second_order_solution * ℒ.kron(aug_state₁, aug_state₁) / 2]
     end
@@ -266,10 +269,10 @@ end
     end
 
     pruned_third_order_state_update = function(pruned_states::Vector{Vector{Float64}}, shock::Vector{Float64})
-        aug_state₁ = [pruned_states[1][RBC_CME.caches.timings.past_not_future_and_mixed_idx]; 1; shock]
-        aug_state₁̂ = [pruned_states[1][RBC_CME.caches.timings.past_not_future_and_mixed_idx]; 0; shock]
-        aug_state₂ = [pruned_states[2][RBC_CME.caches.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
-        aug_state₃ = [pruned_states[3][RBC_CME.caches.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+        aug_state₁ = [pruned_states[1][RBC_CME.timings.past_not_future_and_mixed_idx]; 1; shock]
+        aug_state₁̂ = [pruned_states[1][RBC_CME.timings.past_not_future_and_mixed_idx]; 0; shock]
+        aug_state₂ = [pruned_states[2][RBC_CME.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
+        aug_state₃ = [pruned_states[3][RBC_CME.timings.past_not_future_and_mixed_idx]; 0; zero(shock)]
         
         kron_aug_state₁ = ℒ.kron(aug_state₁, aug_state₁)
 
@@ -293,7 +296,7 @@ end
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.second_order.stochastic_steady_state
 
-    initial_state = zeros(RBC_CME.caches.timings.nVars) - SSS_delta
+    initial_state = zeros(RBC_CME.timings.nVars) - SSS_delta
 
     Random.seed!(3)
     ggiirrff2 = girf(second_order_state_update, initial_state, zeros(T.nVars), T, draws = 1000, warmup_periods = 100)
@@ -309,7 +312,7 @@ end
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.third_order.stochastic_steady_state
 
-    initial_state = zeros(RBC_CME.caches.timings.nVars) - SSS_delta
+    initial_state = zeros(RBC_CME.timings.nVars) - SSS_delta
 
     Random.seed!(3)
     ggiirrff3 = girf(third_order_state_update, initial_state, zeros(T.nVars), T, draws = 1000, warmup_periods = 100)
@@ -325,7 +328,7 @@ end
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.pruned_second_order.stochastic_steady_state
 
-    initial_state = [zeros(RBC_CME.caches.timings.nVars), zeros(RBC_CME.caches.timings.nVars) ]
+    initial_state = [zeros(RBC_CME.timings.nVars), zeros(RBC_CME.timings.nVars) ]
     
     Random.seed!(3)
     ggiirrffp2 = girf(pruned_second_order_state_update, initial_state, zeros(T.nVars), T, draws = 1000, warmup_periods = 100)
@@ -341,7 +344,7 @@ end
 
     SSS_delta = RBC_CME.solution.non_stochastic_steady_state[1:length(RBC_CME.var)] - RBC_CME.solution.perturbation.pruned_third_order.stochastic_steady_state
 
-    initial_state = [zeros(RBC_CME.caches.timings.nVars), zeros(RBC_CME.caches.timings.nVars), zeros(RBC_CME.caches.timings.nVars)]
+    initial_state = [zeros(RBC_CME.timings.nVars), zeros(RBC_CME.timings.nVars), zeros(RBC_CME.timings.nVars)]
 
     Random.seed!(3)
     ggiirrffp3 = girf(pruned_third_order_state_update, initial_state, zeros(T.nVars), T, draws = 1000, warmup_periods = 100)

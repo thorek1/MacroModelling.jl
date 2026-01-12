@@ -95,7 +95,7 @@ function get_shock_decomposition(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                     lyapunov_algorithm = lyapunov_algorithm)
 
     filter, smooth, algorithm, _, pruning, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
@@ -115,7 +115,7 @@ function get_shock_decomposition(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -128,13 +128,29 @@ function get_shock_decomposition(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
     
-    ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.caches.name_display_cache.var_axis
+    axis1 = 𝓂.timings.var
+
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
 
     if pruning
-        axis2 = vcat(get_exo_axis(𝓂), :Nonlinearities, :Initial_values)
+        axis2 = vcat(𝓂.timings.exo, :Nonlinearities, :Initial_values)
     else
-        axis2 = vcat(get_exo_axis(𝓂), :Initial_values)
+        axis2 = vcat(𝓂.timings.exo, :Initial_values)
+    end
+
+    if any(x -> contains(string(x), "◖"), axis2)
+        axis2_decomposed = decompose_name.(axis2)
+        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+        axis2[1:length(𝓂.timings.exo)] = axis2[1:length(𝓂.timings.exo)] .* "₍ₓ₎"
+    else
+        if pruning
+            axis2 = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Nonlinearities, :Initial_values)
+        else
+            axis2 = vcat(map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo), :Initial_values)
+        end
     end
 
     if pruning
@@ -223,7 +239,7 @@ function get_estimated_shocks(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
     filter, smooth, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
@@ -243,7 +259,7 @@ function get_estimated_shocks(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -256,8 +272,15 @@ function get_estimated_shocks(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
     
-    ensure_name_display_cache!(𝓂)
-    axis1 = get_exo_axis(𝓂)
+    axis1 = 𝓂.timings.exo
+
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+        axis1 = axis1 .* "₍ₓ₎"
+    else
+        axis1 = map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.timings.exo)
+    end
 
     return KeyedArray(shocks;  Shocks = axis1, Periods = 1:size(data,2))
 end
@@ -347,7 +370,7 @@ function get_estimated_variables(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                                sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                 lyapunov_algorithm = lyapunov_algorithm)
 
     filter, smooth, algorithm, _, _, warmup_iterations = normalize_filtering_options(filter, smooth, algorithm, false, warmup_iterations)
@@ -367,7 +390,7 @@ function get_estimated_variables(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -380,8 +403,12 @@ function get_estimated_variables(𝓂::ℳ,
                                                                                     opts = opts,
                                                                                     smooth = smooth)
 
-    ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.caches.name_display_cache.var_axis
+    axis1 = 𝓂.timings.var
+
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
 
     return KeyedArray(levels ? variables .+ NSSS[1:length(𝓂.var)] : variables;  Variables = axis1, Periods = 1:size(data,2))
 end
@@ -594,7 +621,7 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂) |> sort
+    obs_idx = parse_variables_input_to_index(obs_symbols, 𝓂.timings) |> sort
 
     if data_in_levels
         data_in_deviations = data .- NSSS[obs_idx]
@@ -606,8 +633,12 @@ function get_estimated_variable_standard_deviations(𝓂::ℳ,
                                                                                     smooth = smooth, 
                                                                                     opts = opts)
 
-    ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.caches.name_display_cache.var_axis
+    axis1 = 𝓂.timings.var
+
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
 
     return KeyedArray(standard_deviations;  Standard_deviations = axis1, Periods = 1:size(data,2))
 end
@@ -737,7 +768,7 @@ function get_conditional_forecast(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                                sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                 lyapunov_algorithm = lyapunov_algorithm)
 
     periods += max(size(conditions,2), shocks isa Nothing ? 1 : size(shocks,2)) # isa Nothing needed otherwise JET tests fail
@@ -813,18 +844,18 @@ function get_conditional_forecast(𝓂::ℳ,
 
     if unspecified_initial_state
         if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars) - SSS_delta]
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars) - SSS_delta, zeros(𝓂.caches.timings.nVars)]
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
         else
-            initial_state = zeros(𝓂.caches.timings.nVars) - SSS_delta
+            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
         end
     else
         if initial_state isa Vector{Float64}
             if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.caches.timings.nVars], zeros(𝓂.caches.timings.nVars) - SSS_delta]
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
             elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.caches.timings.nVars], zeros(𝓂.caches.timings.nVars) - SSS_delta, zeros(𝓂.caches.timings.nVars)]
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
             else
                 initial_state = initial_state - NSSS
             end
@@ -835,7 +866,7 @@ function get_conditional_forecast(𝓂::ℳ,
         end
     end
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     Y = zeros(size(𝓂.solution.perturbation.first_order.solution_matrix,1),periods)
 
@@ -855,16 +886,16 @@ function get_conditional_forecast(𝓂::ℳ,
 
     if algorithm ∈ [:second_order, :third_order, :pruned_second_order, :pruned_third_order]
         S₁ = 𝓂.solution.perturbation.first_order.solution_matrix
-        S₁ = [S₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] zeros(𝓂.caches.timings.nVars) S₁[:,𝓂.caches.timings.nPast_not_future_and_mixed+1:end]]
+        S₁ = [S₁[:,1:𝓂.timings.nPast_not_future_and_mixed] zeros(𝓂.timings.nVars) S₁[:,𝓂.timings.nPast_not_future_and_mixed+1:end]]
 
         S₂ = nothing
         if size(𝓂.solution.perturbation.second_order_solution, 2) > 0
-            S₂ = 𝓂.solution.perturbation.second_order_solution * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
+            S₂ = 𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
         end
 
         S₃ = nothing
         if algorithm ∈ [:third_order, :pruned_third_order] && size(𝓂.solution.perturbation.third_order_solution, 2) > 0
-            S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
+            S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
         end
 
         # Use Lagrange-Newton algorithm to find shocks
@@ -878,7 +909,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                                       S₁,
                                                       S₂,
                                                       S₃,
-                                                      𝓂.caches.timings;
+                                                      𝓂.timings;
                                                       verbose = verbose)
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
@@ -919,7 +950,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                                               S₁,
                                                               S₂,
                                                               S₃,
-                                                              𝓂.caches.timings;
+                                                              𝓂.timings;
                                                               verbose = verbose)
 
                 @assert matched "Numerical stabiltiy issues for restrictions in period $i."
@@ -932,7 +963,7 @@ function get_conditional_forecast(𝓂::ℳ,
             Y[:,i] = pruning ? sum(initial_state) : initial_state
         end
     elseif algorithm == :first_order
-        C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.caches.timings.nPast_not_future_and_mixed+1:end]
+        C = @views 𝓂.solution.perturbation.first_order.solution_matrix[:,𝓂.timings.nPast_not_future_and_mixed+1:end]
     
         CC = C[cond_var_idx,free_shock_idx]
 
@@ -979,14 +1010,14 @@ function get_conditional_forecast(𝓂::ℳ,
         end
     end
 
-    axis1 = [𝓂.caches.timings.var[var_idx]; 𝓂.caches.timings.exo]
+    axis1 = [𝓂.timings.var[var_idx]; 𝓂.timings.exo]
 
     if any(x -> contains(string(x), "◖"), axis1)
         axis1_decomposed = decompose_name.(axis1)
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-        axis1[end-length(𝓂.caches.timings.exo)+1:end] = axis1[end-length(𝓂.caches.timings.exo)+1:end] .* "₍ₓ₎"
+        axis1[end-length(𝓂.timings.exo)+1:end] = axis1[end-length(𝓂.timings.exo)+1:end] .* "₍ₓ₎"
     else
-        axis1 = [𝓂.caches.timings.var[var_idx]; map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.caches.timings.exo)]
+        axis1 = [𝓂.timings.var[var_idx]; map(x->Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo)]
     end
 
     return KeyedArray([Y[var_idx,:] .+ (levels ? reference_steady_state + SSS_delta : SSS_delta)[var_idx]; convert(Matrix{Float64}, shocks)];  Variables_and_shocks = axis1, Periods = 1:periods)
@@ -1063,20 +1094,17 @@ function get_irf(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
 
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-
     @ignore_derivatives solve!(𝓂, 
                                 steady_state_function = steady_state_function,
                                 opts = opts)
 
-    shocks = 𝓂.caches.timings.nExo == 0 ? :none : shocks
+    shocks = 𝓂.timings.nExo == 0 ? :none : shocks
 
     @assert shocks != :simulate "Use parameters as a known argument to simulate the model."
 
     shocks, negative_shock, _, periods, shock_idx, shock_history = process_shocks_input(shocks, negative_shock, 1.0, periods, 𝓂)
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     reference_steady_state, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
@@ -1086,8 +1114,8 @@ function get_irf(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)# |> Matrix
 								
-    sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            caches;
+    sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                            T = 𝓂.timings, 
                                                             opts = opts,
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution)
     
@@ -1097,18 +1125,18 @@ function get_irf(𝓂::ℳ,
         return zeros(S, length(var_idx), periods, shocks == :none ? 1 : length(shock_idx))
     end
 
-    state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.caches.timings.past_not_future_and_mixed_idx]; shock] end
+    state_update = function(state::Vector, shock::Vector) sol_mat * [state[𝓂.timings.past_not_future_and_mixed_idx]; shock] end
 
-    initial_state = initial_state == [0.0] ? zeros(𝓂.caches.timings.nVars) : initial_state - reference_steady_state[1:length(𝓂.var)]
+    initial_state = initial_state == [0.0] ? zeros(𝓂.timings.nVars) : initial_state - reference_steady_state[1:length(𝓂.var)]
 
-    # Y = zeros(𝓂.caches.timings.nVars,periods,𝓂.caches.timings.nExo)
+    # Y = zeros(𝓂.timings.nVars,periods,𝓂.timings.nExo)
     Ŷ = []
 
     for ii in shock_idx
         Y = []
 
         if shocks isa Union{Symbol_input,String_input}
-            shock_history = zeros(𝓂.caches.timings.nExo,periods)
+            shock_history = zeros(𝓂.timings.nExo,periods)
             if shocks ≠ :none
                 shock_history[ii,1] = negative_shock ? -1 : 1
             end
@@ -1123,7 +1151,7 @@ function get_irf(𝓂::ℳ,
         push!(Ŷ, reduce(hcat,Y))
     end
 
-    deviations = reshape(reduce(hcat,Ŷ),𝓂.caches.timings.nVars, periods, shocks == :none ? 1 : length(shock_idx))[var_idx,:,:]
+    deviations = reshape(reduce(hcat,Ŷ),𝓂.timings.nVars, periods, shocks == :none ? 1 : length(shock_idx))[var_idx,:,:]
 
     if levels
         return deviations .+ reference_steady_state[var_idx]
@@ -1227,7 +1255,7 @@ function get_irf(𝓂::ℳ;
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                 sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                                sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                                sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                                 lyapunov_algorithm = lyapunov_algorithm)
 
     # @timeit_debug timer "Wrangling inputs" begin
@@ -1265,18 +1293,18 @@ function get_irf(𝓂::ℳ;
 
     if unspecified_initial_state
         if algorithm == :pruned_second_order
-            initial_state = [zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars) - SSS_delta]
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta]
         elseif algorithm == :pruned_third_order
-            initial_state = [zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars) - SSS_delta, zeros(𝓂.caches.timings.nVars)]
+            initial_state = [zeros(𝓂.timings.nVars), zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
         else
-            initial_state = zeros(𝓂.caches.timings.nVars) - SSS_delta
+            initial_state = zeros(𝓂.timings.nVars) - SSS_delta
         end
     else
         if initial_state isa Vector{Float64}
             if algorithm == :pruned_second_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.caches.timings.nVars], zeros(𝓂.caches.timings.nVars) - SSS_delta]
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta]
             elseif algorithm == :pruned_third_order
-                initial_state = [initial_state - reference_steady_state[1:𝓂.caches.timings.nVars], zeros(𝓂.caches.timings.nVars) - SSS_delta, zeros(𝓂.caches.timings.nVars)]
+                initial_state = [initial_state - reference_steady_state[1:𝓂.timings.nVars], zeros(𝓂.timings.nVars) - SSS_delta, zeros(𝓂.timings.nVars)]
             else
                 initial_state = initial_state - NSSS
             end
@@ -1523,10 +1551,12 @@ function get_steady_state(𝓂::ℳ;
         derivatives = true
     end
 
-    ensure_name_display_cache!(𝓂)
-    var_axis = 𝓂.caches.name_display_cache.var_axis
-    calib_axis = 𝓂.caches.name_display_cache.calib_axis
-    axis1 = return_variables_only ? var_axis[var_idx] : vcat(var_axis[var_idx], calib_axis)
+    axis1 = [vars_in_ss_equations..., (return_variables_only ? [] : 𝓂.calibration_equations_parameters)...]
+
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
 
     axis2 = vcat(:Steady_state, 𝓂.parameters[param_idx])
 
@@ -1751,15 +1781,15 @@ function get_solution(𝓂::ℳ;
         solution_matrix = 𝓂.solution.perturbation.first_order.solution_matrix
     end
 
-    axis1 = [𝓂.caches.timings.past_not_future_and_mixed; :Volatility; 𝓂.exo]
+    axis1 = [𝓂.timings.past_not_future_and_mixed; :Volatility; 𝓂.exo]
 
     if any(x -> contains(string(x), "◖"), axis1)
         axis1_decomposed = decompose_name.(axis1)
         axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-        axis1[end-length(𝓂.caches.timings.exo)+1:end] = axis1[end-length(𝓂.caches.timings.exo)+1:end] .* "₍ₓ₎"
-        axis1[1:length(𝓂.caches.timings.past_not_future_and_mixed)] = axis1[1:length(𝓂.caches.timings.past_not_future_and_mixed)] .* "₍₋₁₎"
+        axis1[end-length(𝓂.timings.exo)+1:end] = axis1[end-length(𝓂.timings.exo)+1:end] .* "₍ₓ₎"
+        axis1[1:length(𝓂.timings.past_not_future_and_mixed)] = axis1[1:length(𝓂.timings.past_not_future_and_mixed)] .* "₍₋₁₎"
     else
-        axis1 = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.caches.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)]
+        axis1 = [map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); :Volatility;map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)]
     end
 
     axis2 = 𝓂.var
@@ -1770,55 +1800,55 @@ function get_solution(𝓂::ℳ;
     end
 
     if algorithm == :second_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂, 
-                                    𝓂.caches.timings.nVars, 
-                                    𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo, 
-                                    𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo),
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
                                 [2,1,3]);
                             States__Shocks¹ = axis1,
                             Variables = axis2,
                             States__Shocks² = axis1)
     elseif algorithm == :pruned_second_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂, 
-                                    𝓂.caches.timings.nVars, 
-                                    𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo, 
-                                    𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo),
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.second_order_solution * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
                                 [2,1,3]);
                             States__Shocks¹ = axis1,
                             Variables = axis2,
                             States__Shocks² = axis1)
     elseif algorithm == :third_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃, 
-                                    𝓂.caches.timings.nVars, 
-                                    𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo, 
-                                    𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo, 
-                                    𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo),
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
                                 [2,1,3,4]);
                             States__Shocks¹ = axis1,
                             Variables = axis2,
                             States__Shocks² = axis1,
                             States__Shocks³ = axis1)
     elseif algorithm == :pruned_third_order
-        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃, 
-                                    𝓂.caches.timings.nVars, 
-                                    𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo, 
-                                    𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo, 
-                                    𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo),
+        return KeyedArray(permutedims(reshape(𝓂.solution.perturbation.third_order_solution * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃, 
+                                    𝓂.timings.nVars, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo, 
+                                    𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo),
                                 [2,1,3,4]);
                             States__Shocks¹ = axis1,
                             Variables = axis2,
                             States__Shocks² = axis1,
                             States__Shocks³ = axis1)
     else
-        axis1 = [:Steady_state; 𝓂.caches.timings.past_not_future_and_mixed; 𝓂.exo]
+        axis1 = [:Steady_state; 𝓂.timings.past_not_future_and_mixed; 𝓂.exo]
 
         if any(x -> contains(string(x), "◖"), axis1)
             axis1_decomposed = decompose_name.(axis1)
             axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
-            axis1[end-length(𝓂.caches.timings.exo)+1:end] = axis1[end-length(𝓂.caches.timings.exo)+1:end] .* "₍ₓ₎"
-            axis1[2:length(𝓂.caches.timings.past_not_future_and_mixed)+1] = axis1[2:length(𝓂.caches.timings.past_not_future_and_mixed)+1] .* "₍₋₁₎"
+            axis1[end-length(𝓂.timings.exo)+1:end] = axis1[end-length(𝓂.timings.exo)+1:end] .* "₍ₓ₎"
+            axis1[2:length(𝓂.timings.past_not_future_and_mixed)+1] = axis1[2:length(𝓂.timings.past_not_future_and_mixed)+1] .* "₍₋₁₎"
         else
-            axis1 = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.caches.timings.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)]
+            axis1 = [:Steady_state; map(x->Symbol(string(x) * "₍₋₁₎"),𝓂.timings.past_not_future_and_mixed); map(x->Symbol(string(x) * "₍ₓ₎"),𝓂.exo)]
         end
 
         return KeyedArray([𝓂.solution.non_stochastic_steady_state[1:length(𝓂.var)] solution_matrix]';
@@ -1912,9 +1942,6 @@ function get_solution(𝓂::ℳ,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
 
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-
     @ignore_derivatives solve!(𝓂, 
                                 opts = opts, 
                                 steady_state_function = steady_state_function,
@@ -1945,8 +1972,7 @@ function get_solution(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        caches;
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, 
                                                         opts = opts,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
@@ -1963,51 +1989,59 @@ function get_solution(𝓂::ℳ,
     end
 
     if algorithm == :second_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
     
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches, 𝓂.workspaces;
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
+                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
+                                                    𝓂.caches; 
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
+                                                    T = 𝓂.timings, 
                                                     opts = opts)
 
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-        𝐒₂ *= 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
+        𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
 
         if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)
+            𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
         end
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, true
     elseif algorithm == :third_order
-        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
+        ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
     
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches, 𝓂.workspaces;
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
+                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
+                                                    𝓂.caches; 
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
+                                                    T = 𝓂.timings, 
                                                     opts = opts)
     
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
-        𝐒₂ *= 𝓂.caches.second_order_auxiliary_matrices.𝐔₂
+        𝐒₂ *= 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂
 
         if !(typeof(𝐒₂) <: AbstractSparseMatrix)
-            𝐒₂ = sparse(𝐒₂) # * 𝓂.caches.second_order_auxiliary_matrices.𝐔₂)
+            𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
         end
 
-        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.third_order_auxiliary_matrices.𝐔∇₃
+        ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
                 
-	        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
-	                                                    𝐒₁, 𝐒₂,
-	                                                    𝓂.caches,
-                                                        𝓂.workspaces;
-	                                                    initial_guess = 𝓂.solution.perturbation.third_order_solution,
-	                                                    opts = opts)
+        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
+                                                    𝐒₁, 𝐒₂, 
+                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices, 
+                                                    𝓂.solution.perturbation.third_order_auxiliary_matrices,
+                                                    𝓂.caches; 
+                                                    initial_guess = 𝓂.solution.perturbation.third_order_solution,
+                                                    T = 𝓂.timings, 
+                                                    opts = opts)
 
         if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
         
-        𝐒₃ *= 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
+        𝐒₃ *= 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃
 
         if !(typeof(𝐒₃) <: AbstractSparseMatrix)
-            𝐒₃ = sparse(𝐒₃) # * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃)
+            𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
         end
 
         return SS_and_pars[1:length(𝓂.var)], 𝐒₁, 𝐒₂, 𝐒₃, true
@@ -2116,9 +2150,6 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 lyapunov_algorithm = lyapunov_algorithm)
 
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-
     solve!(𝓂, 
             opts = opts,
             steady_state_function = steady_state_function,  
@@ -2130,23 +2161,23 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        caches;
+    𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                        T = 𝓂.timings, 
                                                         opts = opts,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
-    A = @views 𝑺₁[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.caches.timings.nVars))[indexin(𝓂.caches.timings.past_not_future_and_mixed_idx,1:𝓂.caches.timings.nVars),:]
+    A = @views 𝑺₁[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[indexin(𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nVars),:]
     
     sort!(periods)
 
     maxperiods = periods == [Inf] ? 0 : Int(maximum(periods[isfinite.(periods)]))
 
-    var_container = zeros(size(𝑺₁)[1], 𝓂.caches.timings.nExo, length(periods))
+    var_container = zeros(size(𝑺₁)[1], 𝓂.timings.nExo, length(periods))
 
-    for i in 1:𝓂.caches.timings.nExo
-        C = @views 𝑺₁[:,𝓂.caches.timings.nPast_not_future_and_mixed+i]
+    for i in 1:𝓂.timings.nExo
+        C = @views 𝑺₁[:,𝓂.timings.nPast_not_future_and_mixed+i]
         CC = C * C'
         varr = zeros(size(C)[1],size(C)[1])
         for k in 1:maxperiods
@@ -2174,10 +2205,17 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     axis1 = 𝓂.var
 
-    ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.caches.name_display_cache.var_axis
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
 
-    axis2 = get_exo_axis(𝓂, with_subscript = false)
+    axis2 = 𝓂.timings.exo
+
+    if any(x -> contains(string(x), "◖"), axis2)
+        axis2_decomposed = decompose_name.(axis2)
+        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+    end
 
     KeyedArray(cond_var_decomp; Variables = axis1, Shocks = axis2, Periods = periods)
 end
@@ -2277,9 +2315,6 @@ function get_variance_decomposition(𝓂::ℳ;
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     lyapunov_algorithm = lyapunov_algorithm)
     
-    # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
-
     solve!(𝓂, 
             opts = opts, 
             steady_state_function = steady_state_function, 
@@ -2289,19 +2324,19 @@ function get_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        caches;
-                                                        opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁; 
+                                                            T = 𝓂.timings, 
+            opts = opts, 
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
-    variances_by_shock = zeros(𝓂.caches.timings.nVars, 𝓂.caches.timings.nExo)
+    variances_by_shock = zeros(𝓂.timings.nVars, 𝓂.timings.nExo)
 
-    A = @views sol[:, 1:𝓂.caches.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.caches.timings.nVars))[𝓂.caches.timings.past_not_future_and_mixed_idx,:]
+    A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
 
-    for i in 1:𝓂.caches.timings.nExo
-        C = @views sol[:, 𝓂.caches.timings.nPast_not_future_and_mixed + i]
+    for i in 1:𝓂.timings.nExo
+        C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed + i]
         
         CC = C * C'
 
@@ -2322,10 +2357,17 @@ function get_variance_decomposition(𝓂::ℳ;
     
     axis1 = 𝓂.var
 
-    ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.caches.name_display_cache.var_axis
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
 
-    axis2 = get_exo_axis(𝓂, with_subscript = false)
+    axis2 = 𝓂.timings.exo
+
+    if any(x -> contains(string(x), "◖"), axis2)
+        axis2_decomposed = decompose_name.(axis2)
+        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+    end
 
     KeyedArray(var_decomp; Variables = axis1, Shocks = axis2)
 end
@@ -2407,7 +2449,7 @@ function get_correlation(𝓂::ℳ;
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                         sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
     @assert algorithm ∈ [:first_order, :pruned_second_order,:pruned_third_order] "Correlation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
@@ -2436,8 +2478,10 @@ function get_correlation(𝓂::ℳ;
     
     axis1 = 𝓂.var
 
-    ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.caches.name_display_cache.var_axis
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
 
     KeyedArray(collect(corr); Variables = axis1, 𝑉𝑎𝑟𝑖𝑎𝑏𝑙𝑒𝑠 = axis1)
 end
@@ -2525,7 +2569,7 @@ function get_autocorrelation(𝓂::ℳ;
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
     @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Autocorrelation can only be calculated for first order perturbation or second and third order pruned perturbation solutions."
@@ -2537,7 +2581,7 @@ function get_autocorrelation(𝓂::ℳ;
             algorithm = algorithm)
 
     if algorithm == :pruned_third_order
-        covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments_with_autocorrelation(𝓂.parameter_values, 𝓂.caches.timings.var, 𝓂, 
+        covar_dcmp, state_μ, autocorr, SS_and_pars, solved = calculate_third_order_moments_with_autocorrelation(𝓂.parameter_values, 𝓂.timings.var, 𝓂, 
                                                                                             opts = opts, 
                                                                                             autocorrelation_periods = autocorrelation_periods)
 
@@ -2562,7 +2606,7 @@ function get_autocorrelation(𝓂::ℳ;
 
         @assert solved "Could not find covariance matrix."
 
-        A = @views sol[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.caches.timings.nVars))[𝓂.caches.timings.past_not_future_and_mixed_idx,:]
+        A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
     
         autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ ℒ.diag(covar_dcmp)) for i in autocorrelation_periods])
 
@@ -2572,8 +2616,10 @@ function get_autocorrelation(𝓂::ℳ;
     
     axis1 = 𝓂.var
 
-    ensure_name_display_cache!(𝓂)
-    axis1 = 𝓂.caches.name_display_cache.var_axis
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
 
     KeyedArray(collect(autocorr); Variables = axis1, Autocorrelation_periods = autocorrelation_periods)
 end
@@ -2693,7 +2739,7 @@ function get_moments(𝓂::ℳ;
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                    sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                     lyapunov_algorithm = lyapunov_algorithm)
 
     solve!(𝓂, 
@@ -2711,7 +2757,7 @@ function get_moments(𝓂::ℳ;
 
     # write_parameters_input!(𝓂,parameters, verbose = verbose)
 
-    var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
+    var_idx = parse_variables_input_to_index(variables, 𝓂.timings) |> sort
 
     parameter_derivatives = parameter_derivatives isa String_input ? parameter_derivatives .|> Meta.parse .|> replace_indices : parameter_derivatives
 
@@ -2750,9 +2796,17 @@ function get_moments(𝓂::ℳ;
 
     axis1 = 𝓂.var
 
-    axis1 = 𝓂.caches.name_display_cache.var_axis
+    if any(x -> contains(string(x), "◖"), axis1)
+        axis1_decomposed = decompose_name.(axis1)
+        axis1 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis1_decomposed]
+    end
 
-    axis2 = get_exo_axis(𝓂, with_subscript = false)
+    axis2 = 𝓂.timings.exo
+
+    if any(x -> contains(string(x), "◖"), axis2)
+        axis2_decomposed = decompose_name.(axis2)
+        axis2 = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in axis2_decomposed]
+    end
 
 
     if derivatives
@@ -2775,7 +2829,7 @@ function get_moments(𝓂::ℳ;
             dNSSS = 𝒟.jacobian(x -> get_NSSS_and_parameters(𝓂, x, opts = opts)[1], backend, 𝓂.parameter_values)[:,param_idx]
             
             if length(𝓂.calibration_equations_parameters) > 0
-                var_idx_ext = vcat(var_idx, 𝓂.caches.timings.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
+                var_idx_ext = vcat(var_idx, 𝓂.timings.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
             else
                 var_idx_ext = var_idx
             end
@@ -2938,7 +2992,7 @@ function get_moments(𝓂::ℳ;
             end
 
             if length(𝓂.calibration_equations_parameters) > 0
-                var_idx_ext = vcat(var_idx, 𝓂.caches.timings.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
+                var_idx_ext = vcat(var_idx, 𝓂.timings.nVars .+ (1:length(𝓂.calibration_equations_parameters)))
             else
                 var_idx_ext = var_idx
             end
@@ -3279,7 +3333,7 @@ function get_statistics(𝓂,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                         sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                        sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                         lyapunov_algorithm = lyapunov_algorithm)
 
     @assert length(parameter_values) == length(parameters) "Vector of `parameters` must correspond to `parameter_values` in length and order. Define the parameter names in the `parameters` keyword argument."
@@ -3288,20 +3342,20 @@ function get_statistics(𝓂,
 
     @assert !(non_stochastic_steady_state == Symbol[]) || !(standard_deviation == Symbol[]) || !(mean == Symbol[]) || !(variance == Symbol[]) || !(covariance == Symbol[]) || !(autocorrelation == Symbol[]) "Provide variables for at least one output."
 
-    SS_var_idx = @ignore_derivatives parse_variables_input_to_index(non_stochastic_steady_state, 𝓂)
+    SS_var_idx = @ignore_derivatives parse_variables_input_to_index(non_stochastic_steady_state, 𝓂.timings)
 
-    mean_var_idx = @ignore_derivatives parse_variables_input_to_index(mean, 𝓂)
+    mean_var_idx = @ignore_derivatives parse_variables_input_to_index(mean, 𝓂.timings)
 
-    std_var_idx = @ignore_derivatives parse_variables_input_to_index(standard_deviation, 𝓂)
+    std_var_idx = @ignore_derivatives parse_variables_input_to_index(standard_deviation, 𝓂.timings)
 
-    var_var_idx = @ignore_derivatives parse_variables_input_to_index(variance, 𝓂)
+    var_var_idx = @ignore_derivatives parse_variables_input_to_index(variance, 𝓂.timings)
 
-    covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂)
+    covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂.timings)
     
     # Parse covariance groups if input is grouped format
-    covar_groups = @ignore_derivatives is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.caches) : nothing
+    covar_groups = @ignore_derivatives is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.timings) : nothing
 
-    autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂)
+    autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂.timings)
 
 
     other_parameter_values = @ignore_derivatives 𝓂.parameter_values[indexin(setdiff(𝓂.parameters, parameters), 𝓂.parameters)]
@@ -3383,7 +3437,7 @@ function get_statistics(𝓂,
             
             autocorr[ℒ.diag(covar_dcmp) .< opts.tol.lyapunov_acceptance_tol,:] .= 0
         elseif !(algorithm == :pruned_third_order)
-            A = @views sol[:,1:𝓂.caches.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.caches.timings.nVars))[𝓂.caches.timings.past_not_future_and_mixed_idx,:]
+            A = @views sol[:,1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
         
             autocorr = reduce(hcat,[ℒ.diag(A ^ i * covar_dcmp ./ max.(ℒ.diag(covar_dcmp),eps(Float64))) for i in autocorrelation_periods])
 
@@ -3544,7 +3598,7 @@ function get_loglikelihood(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                             sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
-                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.caches.timings.nPast_not_future_and_mixed + 1 + 𝓂.caches.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
+                            sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? sum(k * (k + 1) ÷ 2 for k in 1:𝓂.timings.nPast_not_future_and_mixed + 1 + 𝓂.timings.nExo) > DEFAULT_SYLVESTER_THRESHOLD ? DEFAULT_LARGE_SYLVESTER_ALGORITHM : DEFAULT_SYLVESTER_ALGORITHM : sylvester_algorithm[2],
                             lyapunov_algorithm = lyapunov_algorithm)
 
     # if algorithm ∈ [:third_order,:pruned_third_order]

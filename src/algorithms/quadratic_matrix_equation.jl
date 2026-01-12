@@ -8,17 +8,15 @@
 
 @stable default_mode = "disable" begin
 
-function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
-                                        B::AbstractMatrix{R},
-                                        C::AbstractMatrix{R},
-                                        caches::caches;
+function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
+                                        B::AbstractMatrix{R}, 
+                                        C::AbstractMatrix{R}, 
+                                        T::timings; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
                                         verbose::Bool = false) where R <: Real
-    T = caches.timings
-    
 
     if length(initial_guess) > 0
         X = initial_guess
@@ -77,24 +75,6 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
     # if (reached_tol > tol) println("QME failed: $reached_tol") end
 
     return sol, reached_tol < acceptance_tol
-end
-
-function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
-                                        B::AbstractMatrix{R}, 
-                                        C::AbstractMatrix{R}, 
-                                        T::timings; 
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
-                                        quadratic_matrix_equation_algorithm::Symbol = :schur,
-                                        tol::AbstractFloat = 1e-14,
-                                        acceptance_tol::AbstractFloat = 1e-8,
-                                        verbose::Bool = false) where R <: Real
-    caches = set_timings!(Caches(), T)
-    return solve_quadratic_matrix_equation(A, B, C, caches;
-                                            initial_guess = initial_guess,
-                                            quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
-                                            tol = tol,
-                                            acceptance_tol = acceptance_tol,
-                                            verbose = verbose)
 end
 
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R}, 
