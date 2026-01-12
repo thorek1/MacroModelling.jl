@@ -6300,7 +6300,9 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
                                                         # timer::TimerOutput = TimerOutput(),
                                                         # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}} where M
     # @timeit_debug timer "Calculate NSSS" begin
-    ensure_computational_constants_cache!(𝓂)
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+    T = cache.timings
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
 
@@ -6308,7 +6310,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         # if verbose println("NSSS not found") end # handled within solve function
-        return zeros(𝓂.timings.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return zeros(T.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
     end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
@@ -6430,8 +6432,9 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     # @timeit_debug timer "Setup matrices" begin
 
     # Get cached computational constants
-    ensure_computational_constants_cache!(𝓂)
-    cc = 𝓂.caches.computational_constants
+    cache = initialize_caches!(𝓂)
+    cc = cache.computational_constants
+    T = cache.timings
     s_in_s⁺ = cc.s_in_s⁺
     s_in_s = cc.s_in_s
     I_nPast = ℒ.I(cc.nPast)
@@ -6440,9 +6443,9 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     
     kron_s⁺_s = cc.kron_s⁺_s
     
-    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    A = 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+    B = 𝐒₂[T.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂[T.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
 
     max_iters = 100
     # SSS .= 𝐒₁ * aug_state + 𝐒₂ * ℒ.kron(aug_state, aug_state) / 2 + 𝐒₃ * ℒ.kron(ℒ.kron(aug_state,aug_state),aug_state) / 6
@@ -6493,8 +6496,9 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     x̂ = ℱ.value.(x)
     
     # Get cached computational constants
-    ensure_computational_constants_cache!(𝓂)
-    cc = 𝓂.caches.computational_constants
+    cache = initialize_caches!(𝓂)
+    cc = cache.computational_constants
+    T = cache.timings
     s_in_s⁺ = cc.s_in_s⁺
     s_in_s = cc.s_in_s
     I_nPast = ℒ.I(cc.nPast)
@@ -6503,9 +6507,9 @@ function calculate_second_order_stochastic_steady_state(::Val{:newton},
     
     kron_s⁺_s = cc.kron_s⁺_s
     
-    A = 𝐒₁̂[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
-    B = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
-    B̂ = 𝐒₂̂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
+    A = 𝐒₁̂[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
+    B = 𝐒₂̂[T.past_not_future_and_mixed_idx,kron_s⁺_s]
+    B̂ = 𝐒₂̂[T.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
  
     ∂x̄  = zeros(S, length(x̂), N)
     
@@ -6567,8 +6571,9 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     # @timeit_debug timer "Setup indices" begin
 
     # Get cached computational constants
-    ensure_computational_constants_cache!(𝓂)
-    cc = 𝓂.caches.computational_constants
+    cache = initialize_caches!(𝓂)
+    cc = cache.computational_constants
+    T = cache.timings
     s_in_s⁺ = cc.s_in_s⁺
     s_in_s = cc.s_in_s
     I_nPast = ℒ.I(cc.nPast)
@@ -6577,7 +6582,7 @@ function rrule(::typeof(calculate_second_order_stochastic_steady_state),
     
     kron_s⁺_s = cc.kron_s⁺_s
     
-    A = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx,1:𝓂.timings.nPast_not_future_and_mixed]
+    A = 𝐒₁[T.past_not_future_and_mixed_idx,1:T.nPast_not_future_and_mixed]
     B = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s]
     B̂ = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx,kron_s⁺_s⁺]
     
@@ -6641,12 +6646,15 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
                                                         pruning::Bool = false)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}, AbstractMatrix{M}, SparseMatrixCSC{M, Int}, SparseMatrixCSC{M, Int}} where M <: Real
                                                         # timer::TimerOutput = TimerOutput(),
                                                         # tol::AbstractFloat = 1e-12)::Tuple{Vector{M}, Bool, Vector{M}, M, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}, AbstractMatrix{M}, SparseMatrixCSC{M}, SparseMatrixCSC{M}} where M
-    ensure_computational_constants_cache!(𝓂)
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+    T = cache.timings
+    
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts) # , timer = timer)
     
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         if opts.verbose println("NSSS not found") end
-        return zeros(𝓂.timings.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
+        return zeros(T.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0), spzeros(0,0)
     end
     
     all_SS = expand_steady_state(SS_and_pars,𝓂)
