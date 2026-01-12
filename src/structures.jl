@@ -219,7 +219,6 @@ mutable struct perturbation
     qme_solution::Matrix{Float64}
     second_order_solution::AbstractMatrix{Float64}
     third_order_solution::AbstractMatrix{Float64}
-    auxiliary_indices::auxiliary_indices
 end
 
 mutable struct function_and_jacobian
@@ -411,9 +410,9 @@ mutable struct caches#{F <: Real, G <: AbstractFloat}
     timings::timings
     
     # Cache structures
+    auxiliary_indices::auxiliary_indices
     second_order_auxiliary_matrices::second_order_auxiliary_matrices
     third_order_auxiliary_matrices::third_order_auxiliary_matrices
-    workspaces::workspaces
     name_display_cache::name_display_cache
     model_structure_cache::model_structure_cache
     computational_constants::computational_constants_cache
@@ -612,6 +611,7 @@ mutable struct ℳ
     timings::timings
 
     caches::caches
+    workspaces::workspaces
 
     obc_violation_equations::Vector{Expr}
     # obc_shock_bounds::Vector{Tuple{Symbol, Bool, Float64}}

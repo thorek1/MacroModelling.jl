@@ -117,11 +117,15 @@ function Third_order_auxiliary_matrices_cache()
                                             empty_sparse, empty_sparse, empty_sparse, empty_sparse)
 end
 
+function Auxiliary_indices_cache()
+    auxiliary_indices(Int[], Int[], Int[], Int[], Int[])
+end
+
 function Caches(;T::Type = Float64, S::Type = Float64)
     caches( Empty_timings(),
+            Auxiliary_indices_cache(),
             Second_order_auxiliary_matrices_cache(),
             Third_order_auxiliary_matrices_cache(),
-            Workspaces(T = T, S = S),
             name_display_cache(Symbol[], Symbol[], Symbol[], Symbol[], false, false),
             model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[],
                                 Union{Symbol,String}[], spzeros(Float64, 0, 0), spzeros(Float64, 0, 0),

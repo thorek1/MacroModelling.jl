@@ -372,13 +372,14 @@ end
 function calculate_second_order_solution(∇₁::AbstractMatrix{S}, #first order derivatives
                                             ∇₂::SparseMatrixCSC{S}, #second order derivatives
                                             𝑺₁::AbstractMatrix{S},#first order solution
-                                            cache::caches;
+                                            cache::caches,
+                                            workspaces::workspaces;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}} where {R <: Real, S <: Real}
-    if !(eltype(cache.workspaces.second_order.Ŝ) == S)
-        cache.workspaces.second_order = Higher_order_caches(T = S)
+    if !(eltype(workspaces.second_order.Ŝ) == S)
+        workspaces.second_order = Higher_order_caches(T = S)
     end
-    ℂ = cache.workspaces.second_order
+    ℂ = workspaces.second_order
     M₂ = cache.second_order_auxiliary_matrices
     T = cache.timings
     # @timeit_debug timer "Calculate second order solution" begin
@@ -500,13 +501,14 @@ function rrule(::typeof(calculate_second_order_solution),
                     ∇₁::AbstractMatrix{S}, #first order derivatives
                     ∇₂::SparseMatrixCSC{S}, #second order derivatives
                     𝑺₁::AbstractMatrix{S},#first order solution
-                    cache::caches;
+                    cache::caches,
+                    workspaces::workspaces;
                     initial_guess::AbstractMatrix{R} = zeros(0,0),
                     opts::CalculationOptions = merge_calculation_options()) where {S <: Real, R <: Real}
-    if !(eltype(cache.workspaces.second_order.Ŝ) == S)
-        cache.workspaces.second_order = Higher_order_caches(T = S)
+    if !(eltype(workspaces.second_order.Ŝ) == S)
+        workspaces.second_order = Higher_order_caches(T = S)
     end
-    ℂ = cache.workspaces.second_order
+    ℂ = workspaces.second_order
     M₂ = cache.second_order_auxiliary_matrices
     T = cache.timings
     # @timeit_debug timer "Second order solution - forward" begin
@@ -547,7 +549,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
         if opts.verbose println("Second order solution: inversion failed") end
-        return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
+        return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
     
     spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
@@ -593,7 +595,7 @@ function rrule(::typeof(calculate_second_order_solution),
     # @timeit_debug timer "Post-process" begin
 
     if !solved
-        return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
     # end # timeit_debug
@@ -632,7 +634,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
         # @timeit_debug timer "Sylvester" begin
         if ℒ.norm(∂𝐒₂) < opts.tol.sylvester_tol
-            return (𝐒₂, false), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return (𝐒₂, false), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
         
         ∂C, solved = solve_sylvester_equation(A', B', ∂𝐒₂,
@@ -643,7 +645,7 @@ function rrule(::typeof(calculate_second_order_solution),
                                                 verbose = opts.verbose)
 
         if !solved
-            return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+            return (𝐒₂, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
         
         # end # timeit_debug
@@ -756,7 +758,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
         # end # timeit_debug
 
-        return NoTangent(), ∂∇₁, ∂∇₂, ∂𝑺₁, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return NoTangent(), ∂∇₁, ∂∇₂, ∂𝑺₁, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
     
 
@@ -771,13 +773,14 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             ∇₃::SparseMatrixCSC{S}, #third order derivatives
                                             𝑺₁::AbstractMatrix{S}, #first order solution
                                             𝐒₂::SparseMatrixCSC{S}, #second order solution
-                                            cache::caches;
+                                            cache::caches,
+                                            workspaces::workspaces;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
-    if !(eltype(cache.workspaces.third_order.Ŝ) == S)
-        cache.workspaces.third_order = Higher_order_caches(T = S)
+    if !(eltype(workspaces.third_order.Ŝ) == S)
+        workspaces.third_order = Higher_order_caches(T = S)
     end
-    ℂ = cache.workspaces.third_order
+    ℂ = workspaces.third_order
     M₂ = cache.second_order_auxiliary_matrices
     M₃ = cache.third_order_auxiliary_matrices
     T = cache.timings
@@ -1017,13 +1020,14 @@ function rrule(::typeof(calculate_third_order_solution),
                 ∇₃::SparseMatrixCSC{S}, #third order derivatives
                 𝑺₁::AbstractMatrix{S}, #first order solution
                 𝐒₂::SparseMatrixCSC{S}, #second order solution
-                cache::caches;
+                cache::caches,
+                workspaces::workspaces;
                 initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                 opts::CalculationOptions = merge_calculation_options()) where S <: AbstractFloat 
-    if !(eltype(cache.workspaces.third_order.Ŝ) == S)
-        cache.workspaces.third_order = Higher_order_caches(T = S)
+    if !(eltype(workspaces.third_order.Ŝ) == S)
+        workspaces.third_order = Higher_order_caches(T = S)
     end
-    ℂ = cache.workspaces.third_order
+    ℂ = workspaces.third_order
     M₂ = cache.second_order_auxiliary_matrices
     M₃ = cache.third_order_auxiliary_matrices
     T = cache.timings
@@ -1067,7 +1071,7 @@ function rrule(::typeof(calculate_third_order_solution),
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
         if opts.verbose println("Second order solution: inversion failed") end
-        return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
     spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
@@ -1252,7 +1256,7 @@ function rrule(::typeof(calculate_third_order_solution),
     # end
 
     if !solved
-        return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
+        return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
     𝐒₃ = choose_matrix_format(𝐒₃, density_threshold = 1.0, min_length = 10, tol = opts.tol.droptol)
@@ -1351,7 +1355,7 @@ function rrule(::typeof(calculate_third_order_solution),
                                                 verbose = opts.verbose)
 
         if !solved
-            return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent() 
+            return (𝐒₃, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
         end
 
         ∂C = choose_matrix_format(∂C, density_threshold = 1.0, min_length = 0)
@@ -1575,7 +1579,7 @@ function rrule(::typeof(calculate_third_order_solution),
         # end # timeit_debug
         # end # timeit_debug
 
-        return NoTangent(), ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return NoTangent(), ∂∇₁, ∂∇₂, ∂∇₃, ∂𝑺₁, ∂𝐒₂, NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
 
     return (𝐒₃, solved), third_order_solution_pullback

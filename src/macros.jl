@@ -734,6 +734,7 @@ macro model(𝓂,ex...)
     @assert !any(isnothing, past_not_future_and_mixed_idx) "The following variables appear in the past only (and should at least appear in the present as well): $(setdiff(future_not_past_and_mixed, var)))"
 
     ℂ = Caches()
+    𝓦 = Workspaces()
 
     T = timings(present_only,
                 future_not_past,
@@ -930,6 +931,7 @@ macro model(𝓂,ex...)
                         $T,
 
                         $ℂ,
+                        $𝓦,
 
                         Expr[],
                         # $obc_shock_bounds,
@@ -975,8 +977,7 @@ macro model(𝓂,ex...)
                                             third_order_perturbation_solution([], (x,y)->nothing, (x,y)->nothing),
                                             zeros(0,0),                                 # 1st order sol
                                             SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 2nd order sol
-                                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0),   # 3rd order sol
-                                            auxiliary_indices(Int[],Int[],Int[],Int[],Int[])
+                                            SparseMatrixCSC{Float64, Int64}(ℒ.I,0,0)   # 3rd order sol
                             ),
                             Float64[], 
                             # Set([:first_order]),

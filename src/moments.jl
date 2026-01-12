@@ -81,7 +81,7 @@ function calculate_mean(parameters::Vector{R},
 
             ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
             
-            𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+            𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches, 𝓂.workspaces;
                                                         opts = opts)
 
             if !solved 
@@ -178,7 +178,7 @@ function calculate_second_order_moments(parameters::Vector{R},
         # second order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
 
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches, 𝓂.workspaces;
                                                     opts = opts)
 
         if solved2
@@ -300,7 +300,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         # second order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
 
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches, 𝓂.workspaces;
                                                     opts = opts)
 
         if solved2
@@ -467,7 +467,8 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.third_order_auxiliary_matrices.𝐔∇₃
 
 	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-	                                                𝓂.caches; 
+	                                                𝓂.caches,
+                                                    𝓂.workspaces;
 	                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
 	                                                opts = opts)
 
@@ -710,7 +711,8 @@ function calculate_third_order_moments(parameters::Vector{T},
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.third_order_auxiliary_matrices.𝐔∇₃
 
     𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-                                                𝓂.caches; 
+                                                𝓂.caches,
+                                                𝓂.workspaces;
                                                 initial_guess = 𝓂.solution.perturbation.third_order_solution,
                                                 opts = opts)
 

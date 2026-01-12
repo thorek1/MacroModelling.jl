@@ -6505,7 +6505,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
 
     # @timeit_debug timer "Calculate second order solution" begin
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches, 𝓂.workspaces;
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     # timer = timer,
                                                     opts = opts)
@@ -6834,7 +6834,7 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
 
-    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+    𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches, 𝓂.workspaces;
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     # timer = timer,
                                                     opts = opts)
@@ -6854,7 +6854,8 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂) #, timer = timer)# * 𝓂.caches.third_order_auxiliary_matrices.𝐔∇₃
             
 	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-	                                                𝓂.caches; 
+	                                                𝓂.caches,
+                                                    𝓂.workspaces;
 	                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
 	                                                # timer = timer, 
 	                                                opts = opts)
@@ -6866,18 +6867,18 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
 
     if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
 
-    if length(𝓂.caches.workspaces.third_order.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.caches.workspaces.third_order.Ŝ))
-        𝓂.caches.workspaces.third_order.Ŝ = 𝐒₃ * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
+    if length(𝓂.workspaces.third_order.Ŝ) == 0 || !(eltype(𝐒₃) == eltype(𝓂.workspaces.third_order.Ŝ))
+        𝓂.workspaces.third_order.Ŝ = 𝐒₃ * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
     else
-        mul_reverse_AD!(𝓂.caches.workspaces.third_order.Ŝ, 𝐒₃, 𝓂.caches.third_order_auxiliary_matrices.𝐔₃)
+        mul_reverse_AD!(𝓂.workspaces.third_order.Ŝ, 𝐒₃, 𝓂.caches.third_order_auxiliary_matrices.𝐔₃)
     end
 
-    Ŝ = 𝓂.caches.workspaces.third_order.Ŝ
+    Ŝ = 𝓂.workspaces.third_order.Ŝ
 
-    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.caches.workspaces.third_order)
+    𝐒₃̂ = sparse_preallocated!(Ŝ, ℂ = 𝓂.workspaces.third_order)
     
     # 𝐒₃ *= 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
-    # 𝐒₃ = sparse_preallocated!(𝐒₃, ℂ = 𝓂.caches.workspaces.third_order)
+    # 𝐒₃ = sparse_preallocated!(𝐒₃, ℂ = 𝓂.workspaces.third_order)
     
     # 𝐒₃ = sparse(Ŝ) # * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃)
 
@@ -7989,10 +7990,10 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
                     dyn_past_list[indexin(sort(past),past)],
                     dyn_exo_list[indexin(sort(exo),exo)])
 
-    dyn_var_future_idx = 𝓂.solution.perturbation.auxiliary_indices.dyn_var_future_idx
-    dyn_var_present_idx = 𝓂.solution.perturbation.auxiliary_indices.dyn_var_present_idx
-    dyn_var_past_idx = 𝓂.solution.perturbation.auxiliary_indices.dyn_var_past_idx
-    dyn_ss_idx = 𝓂.solution.perturbation.auxiliary_indices.dyn_ss_idx
+    dyn_var_future_idx = 𝓂.caches.auxiliary_indices.dyn_var_future_idx
+    dyn_var_present_idx = 𝓂.caches.auxiliary_indices.dyn_var_present_idx
+    dyn_var_past_idx = 𝓂.caches.auxiliary_indices.dyn_var_past_idx
+    dyn_ss_idx = 𝓂.caches.auxiliary_indices.dyn_ss_idx
 
     dyn_var_idxs = vcat(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx)
 
@@ -8461,7 +8462,7 @@ function write_auxiliary_indices!(𝓂::ℳ)
 
     shocks_ss = zeros(length(dyn_exo))
 
-    𝓂.solution.perturbation.auxiliary_indices = auxiliary_indices(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx, dyn_ss_idx, shocks_ss)
+    𝓂.caches.auxiliary_indices = auxiliary_indices(dyn_var_future_idx, dyn_var_present_idx, dyn_var_past_idx, dyn_ss_idx, shocks_ss)
 
     return nothing
 end

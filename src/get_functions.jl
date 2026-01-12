@@ -1965,7 +1965,7 @@ function get_solution(𝓂::ℳ,
     if algorithm == :second_order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
     
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches, 𝓂.workspaces;
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     opts = opts)
 
@@ -1981,7 +1981,7 @@ function get_solution(𝓂::ℳ,
     elseif algorithm == :third_order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.caches.second_order_auxiliary_matrices.𝐔∇₂
     
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches;
+        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 𝓂.caches, 𝓂.workspaces;
                                                     initial_guess = 𝓂.solution.perturbation.second_order_solution,
                                                     opts = opts)
     
@@ -1997,7 +1997,8 @@ function get_solution(𝓂::ℳ,
                 
 	        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
 	                                                    𝐒₁, 𝐒₂,
-	                                                    𝓂.caches; 
+	                                                    𝓂.caches,
+                                                        𝓂.workspaces;
 	                                                    initial_guess = 𝓂.solution.perturbation.third_order_solution,
 	                                                    opts = opts)
 
