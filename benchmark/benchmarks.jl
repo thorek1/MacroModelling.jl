@@ -43,18 +43,18 @@ function run_benchmarks!(𝓂::ℳ, SUITE::BenchmarkGroup)
     
     SUITE[𝓂.model_name]["qme"] = BenchmarkGroup()
     
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁, 𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
     
     clear_solution_caches!(𝓂, :first_order)
     
-    SUITE[𝓂.model_name]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁, $𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($𝓂, :first_order)
     
-    SUITE[𝓂.model_name]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁, $𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
     
     
-    A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+    A = @views sol[:, 1:𝓂.caches.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.caches.timings.nVars))[𝓂.caches.timings.past_not_future_and_mixed_idx,:]
     
-    C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
+    C = @views sol[:, 𝓂.caches.timings.nPast_not_future_and_mixed+1:end]
     
     CC = C * C'
     
@@ -103,7 +103,7 @@ run_benchmarks!(Smets_Wouters_2007, SUITE)
 #     end
 # end
 
-# If a cache of tuned parameters already exists, use it, otherwise, tune and cache
+# If a caches of tuned parameters already exists, use it, otherwise, tune and caches
 # the benchmark parameters. Reusing cached parameters is faster and more reliable
 # than re-tuning `SUITE` every time the file is included.
 # paramspath = joinpath(dirname(@__FILE__), "params.json")
