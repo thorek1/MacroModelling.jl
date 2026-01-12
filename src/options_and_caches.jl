@@ -54,8 +54,6 @@ function Empty_timings()
                     empty_ints)
 end
 
-is_empty_timings(T::timings) = T.nVars == 0 && T.nExo == 0 && isempty(T.var)
-
 function Moments_cache()
     empty_sparse = spzeros(Float64, 0, 0)
     return moments_cache(BitVector(),
@@ -158,7 +156,7 @@ function ensure_name_display_cache!(𝓂)
     cache = 𝓂.caches
     ndc = cache.name_display_cache
     # Use timings from cache if available, otherwise from model
-    T = is_empty_timings(cache.timings) ? 𝓂.timings : cache.timings
+    T = cache.timings
     
     if isempty(ndc.var_axis)
         var_has_curly = any(x -> contains(string(x), "◖"), T.var)
@@ -203,7 +201,7 @@ function ensure_computational_constants_cache!(𝓂)
     cc = cache.computational_constants
     if isempty(cc.s_in_s⁺)
         # Use timings from cache if available, otherwise from model
-        T = is_empty_timings(cache.timings) ? 𝓂.timings : cache.timings
+        T = cache.timings
         nᵉ = T.nExo
         nˢ = T.nPast_not_future_and_mixed
 
@@ -295,7 +293,7 @@ function ensure_first_order_index_cache!(𝓂)
     if !cache.first_order_index_cache.initialized
         cc = ensure_computational_constants_cache!(𝓂)
         # Use timings from cache if available, otherwise from model
-        T = is_empty_timings(cache.timings) ? 𝓂.timings : cache.timings
+        T = cache.timings
         cache.first_order_index_cache = build_first_order_index_cache(T, cc.diag_nVars)
     end
     return cache.first_order_index_cache
@@ -406,7 +404,7 @@ function ensure_moments_cache!(𝓂)
     mc = cache.moments_cache
     cc = ensure_computational_constants_cache!(𝓂)
     # Use timings from cache if available, otherwise from model
-    T = is_empty_timings(cache.timings) ? 𝓂.timings : cache.timings
+    T = cache.timings
     
     if isempty(mc.kron_states)
         mc.kron_states = ℒ.kron(cc.s_in_s, cc.s_in_s)
@@ -435,7 +433,7 @@ function ensure_moments_substate_cache!(𝓂, nˢ::Int)
     mc = cache.moments_cache
     if !haskey(mc.substate_cache, nˢ)
         # Use timings from cache if available, otherwise from model
-        T = is_empty_timings(cache.timings) ? 𝓂.timings : cache.timings
+        T = cache.timings
         nᵉ = T.nExo
         I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
         e_es = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nᵉ * nˢ)), nˢ * nᵉ^2, nˢ * nᵉ^2))

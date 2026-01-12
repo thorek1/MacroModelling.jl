@@ -2390,7 +2390,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     tol::AbstractFloat = eps())
 
     T = cache.timings
-    @assert !is_empty_timings(T) "Cache timings not initialised."
+    
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
 
@@ -2489,7 +2489,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     tol::AbstractFloat = eps())
 
     T = cache.timings
-    @assert !is_empty_timings(T) "Cache timings not initialised."
+    
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
 
@@ -2646,7 +2646,7 @@ function determine_efficient_order(𝐒₁::Matrix{<: Real},
                                     tol::AbstractFloat = eps())
 
     T = cache.timings
-    @assert !is_empty_timings(T) "Cache timings not initialised."
+    
 
     orders = Pair{Vector{Symbol}, Vector{Symbol}}[]
 
@@ -7471,7 +7471,7 @@ end
 
 function create_second_order_auxiliary_matrices(cache::caches)
     T = cache.timings
-    @assert !is_empty_timings(T) "Cache timings not initialised."
+    
 
     # Indices and number of variables
     n₋ = T.nPast_not_future_and_mixed
@@ -7509,7 +7509,7 @@ end
 
 function create_third_order_auxiliary_matrices(cache::caches, ∇₃_col_indices::Vector{Int})
     T = cache.timings
-    @assert !is_empty_timings(T) "Cache timings not initialised."
+    
 
     # Indices and number of variables
     n₋ = T.nPast_not_future_and_mixed
@@ -9753,7 +9753,7 @@ end
 
 function parse_variables_input_to_index(variables::Union{Symbol_input, String_input, Vector{Vector{Symbol}}, Vector{Tuple{Symbol,Vararg{Symbol}}}, Vector{Vector{Symbol}}, Tuple{Tuple{Symbol,Vararg{Symbol}}, Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, cache::caches)::Union{UnitRange{Int}, Vector{Int}}
     T = cache.timings
-    @assert !is_empty_timings(T) "Cache timings not initialised."
+    
 
     # Handle nested vector conversion separately
     if variables isa Vector{Vector{String}}
@@ -9838,7 +9838,7 @@ end
 # Function to parse grouped covariance input into groups of indices
 function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}}, cache::caches)::Vector{Vector{Int}}
     T = cache.timings
-    @assert !is_empty_timings(T) "Cache timings not initialised."
+    
 
     # Convert String_input to Symbol_input for nested structures
     if variables isa Vector{Vector{String}}
@@ -9876,7 +9876,7 @@ parse_covariance_groups(variables, T::timings) =
 
 function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, cache::caches)
     T = cache.timings
-    @assert !is_empty_timings(T) "Cache timings not initialised."
+    
 
     shocks = shocks isa String_input ? shocks .|> Meta.parse .|> replace_indices : shocks
 
