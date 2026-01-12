@@ -114,18 +114,6 @@ function calculate_first_order_solution(∇₁::Matrix{R};
     return hcat(A, ∇ₑ), sol, true
 end
 
-function calculate_first_order_solution(∇₁::Matrix{R},
-                                        𝓂::ℳ;
-                                        opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0)) where R
-    # Initialize caches at entry point - use direct cache access
-    cache = initialize_caches!(𝓂)
-    return calculate_first_order_solution(∇₁;
-                                            cache = cache,
-                                            opts = opts,
-                                            initial_guess = initial_guess)
-end
-
 end # dispatch_doctor 
 
 function rrule(::typeof(calculate_first_order_solution), 
@@ -379,16 +367,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}};
     return hcat(x, B), qme_sol, solved
 end
 
-function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
-                                        𝓂::ℳ;
-                                        opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0)) where {Z,S,N}
-    cache = @ignore_derivatives initialize_caches!(𝓂)
-    return calculate_first_order_solution(∇₁;
-                                            cache = cache,
-                                            opts = opts,
-                                            initial_guess = initial_guess)
-end
+
 
 
 

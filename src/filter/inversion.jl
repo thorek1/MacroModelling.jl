@@ -3495,8 +3495,8 @@ function filter_data_with_model(𝓂::ℳ,
 
     ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        𝓂;
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                        cache = cache,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution,
                                                         opts = opts)
     
