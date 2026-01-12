@@ -41,7 +41,7 @@ function calculate_first_order_solution(∇₁::Matrix{R};
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, T, 
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, cache, 
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
@@ -171,7 +171,7 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
-    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, T, 
+    sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, cache, 
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
@@ -381,13 +381,11 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         𝓂::ℳ;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0)) where {Z,S,N}
-    @ignore_derivatives ensure_first_order_index_cache!(𝓂)
-    idx_cache = 𝓂.caches.first_order_index_cache
+    cache = @ignore_derivatives initialize_caches!(𝓂)
     return calculate_first_order_solution(∇₁;
-                                            T = 𝓂.timings,
+                                            cache = cache,
                                             opts = opts,
-                                            initial_guess = initial_guess,
-                                            idx_cache = idx_cache)
+                                            initial_guess = initial_guess)
 end
 
 
@@ -802,8 +800,8 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             T::timings,
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
-    if !(eltype(ℂC.third_order_caches.Ŝ) == S)
-        ℂC.third_order_caches = Higher_order_caches(T = S)
+    if !(eltype(cache.third_order_caches.Ŝ) == S)
+        cache.third_order_caches = Higher_order_caches(T = S)
     end
     ℂ = ℂC.third_order_caches
 

@@ -357,9 +357,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺  = @ignore_derivatives get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = @ignore_derivatives get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺  = @ignore_derivatives get_computational_constants(𝓂).e_in_s⁺
+    cc = @ignore_derivatives get_computational_constants(T)
+    s_in_s⁺  = cc.s_in_s
+    sv_in_s⁺ = cc.s_in_s⁺
+    e_in_s⁺  = cc.e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -592,9 +593,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    cc = get_computational_constants(T)
+    s_in_s⁺ = cc.s_in_s
+    sv_in_s⁺ = cc.s_in_s⁺
+    e_in_s⁺ = cc.e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -1063,8 +1065,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     logabsdets = 0.0
 
     # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    cc = get_computational_constants(T)
+    sv_in_s⁺ = cc.s_in_s⁺
+    e_in_s⁺ = cc.e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -1290,9 +1293,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    cc = get_computational_constants(T)
+    s_in_s⁺ = cc.s_in_s
+    sv_in_s⁺ = cc.s_in_s⁺
+    e_in_s⁺ = cc.e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -1728,22 +1732,15 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = @ignore_derivatives get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = @ignore_derivatives get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = @ignore_derivatives get_computational_constants(𝓂).e_in_s⁺
+    cc = @ignore_derivatives get_computational_constants(T)
+    s_in_s⁺ = cc.s_in_s
+    sv_in_s⁺ = cc.s_in_s⁺
+    e_in_s⁺ = cc.e_in_s⁺
 
-    tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
-    shockvar_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-
+    shockvar_idxs = cc.shockvar_idxs
+    shock_idxs = cc.shock_idxs
+    shock_idxs2 = cc.shock_idxs2
+    shock²_idxs = cc.shock²_idxs
     shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
 
     tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
@@ -1831,7 +1828,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
 
     kron_buffer4sv = ℒ.kron(II, vcat(1,state[1]))
 
-    kron_buffer2s = ℒ.kron(J, state[1])
+    kron_buffer2s = ℒ.kron(J, vcat(state[1], zero(R)))
 
     kron_buffer2sv = ℒ.kron(J, vcat(1,state[1]))
 
@@ -1852,6 +1849,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     state²⁻ = state[2]#[T.past_not_future_and_mixed_idx]
 
     state³⁻ = state[3]#[T.past_not_future_and_mixed_idx]
+
+    state²⁻_vol = zeros(R, length(state²⁻) + 1)
 
     # @timeit_debug timer "Loop" begin
 
@@ -1884,7 +1883,9 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
         
         # 𝐒ⁱ = 𝐒¹ᵉ + 𝐒²⁻ᵉ * ℒ.kron(J, state¹⁻_vol) + 𝐒²⁻ᵛᵉ * ℒ.kron(J, state²⁻) + 𝐒³⁻ᵉ² * ℒ.kron(ℒ.kron(J, state¹⁻_vol), state¹⁻_vol) / 2
         
-        ℒ.kron!(kron_buffer2s, J, state²⁻)
+        copyto!(state²⁻_vol, 1, state²⁻, 1)
+        state²⁻_vol[end] = 0
+        ℒ.kron!(kron_buffer2s, J, state²⁻_vol)
     
         ℒ.mul!(𝐒ⁱ, 𝐒²⁻ᵛᵉ, kron_buffer2s)
 
@@ -2156,9 +2157,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    cc = get_computational_constants(T)
+    s_in_s⁺ = cc.s_in_s
+    sv_in_s⁺ = cc.s_in_s⁺
+    e_in_s⁺ = cc.e_in_s⁺
 
     tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
     shockvar_idxs = tmp.nzind
@@ -2709,9 +2711,10 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    cc = get_computational_constants(T)
+    s_in_s⁺ = cc.s_in_s
+    sv_in_s⁺ = cc.s_in_s⁺
+    e_in_s⁺ = cc.e_in_s⁺
 
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind
@@ -3032,9 +3035,10 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    sv_in_s⁺ = get_computational_constants(𝓂).s_in_s⁺
-    e_in_s⁺ = get_computational_constants(𝓂).e_in_s⁺
+    cc = get_computational_constants(T)
+    s_in_s⁺ = cc.s_in_s
+    sv_in_s⁺ = cc.s_in_s⁺
+    e_in_s⁺ = cc.e_in_s⁺
     
     tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
     shock_idxs = tmp.nzind

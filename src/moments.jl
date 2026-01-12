@@ -170,11 +170,10 @@ function calculate_second_order_moments(parameters::Vector{R},
         # second order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
 
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
-                                                    𝓂.caches; 
-                                                    T = 𝓂.timings, 
-                                                    opts = opts)
+	        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
+	                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
+	                                                    𝓂.caches; 
+	                                                    opts = opts)
 
         if solved2
             if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
@@ -295,11 +294,10 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         # second order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
 
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
-                                                    𝓂.caches; 
-                                                    T = 𝓂.timings, 
-                                                    opts = opts)
+	        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
+	                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
+	                                                    𝓂.caches; 
+	                                                    opts = opts)
         if solved2
             if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
@@ -463,13 +461,12 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
 
-    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-                                                𝓂.solution.perturbation.second_order_auxiliary_matrices, 
-                                                𝓂.solution.perturbation.third_order_auxiliary_matrices,
-                                                𝓂.caches; 
-                                                T = 𝓂.timings, 
-                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
-                                                opts = opts)
+	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
+	                                                𝓂.solution.perturbation.second_order_auxiliary_matrices, 
+	                                                𝓂.solution.perturbation.third_order_auxiliary_matrices,
+	                                                𝓂.caches; 
+	                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
+	                                                opts = opts)
 
     if !solved3
         return zeros(T,0,0), zeros(T,0), zeros(T,0,0), zeros(T,0), false
@@ -483,7 +480,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
     end
     
-    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.timings, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.caches, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
 
     nᵉ = 𝓂.timings.nExo
 
@@ -709,13 +706,12 @@ function calculate_third_order_moments(parameters::Vector{T},
 
     ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
 
-    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
-                                                𝓂.solution.perturbation.second_order_auxiliary_matrices, 
-                                                𝓂.solution.perturbation.third_order_auxiliary_matrices,
-                                                𝓂.caches; 
-                                                T = 𝓂.timings, 
-                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
-                                                opts = opts)
+	    𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 
+	                                                𝓂.solution.perturbation.second_order_auxiliary_matrices, 
+	                                                𝓂.solution.perturbation.third_order_auxiliary_matrices,
+	                                                𝓂.caches; 
+	                                                initial_guess = 𝓂.solution.perturbation.third_order_solution,
+	                                                opts = opts)
 
     if !solved3
         return zeros(T,0,0), zeros(T,0), zeros(T,0), false
@@ -729,7 +725,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         𝐒₃ = sparse(𝐒₃) # * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔₃)
     end
     
-    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.timings, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
+    orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.caches, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
 
     nᵉ = 𝓂.timings.nExo
 

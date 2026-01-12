@@ -9,6 +9,12 @@
 - Added a targeted cache validation script for steady-state expansion, custom steady state mapping, and cached variable indices.
 - Moved cache creation helpers into `src/options_and_caches.jl` (name display, computational constants, model structure, first-order indices, selector matrix, moments) and removed duplicate definitions from `src/MacroModelling.jl` and `src/moments.jl`.
 - Refactored cache usage to call ensure helpers once per high-level call and use `𝓂.caches` in `src/moments.jl`, `src/perturbation.jl`, `src/get_functions.jl`, and filter paths; updated steady-state/model-structure callers to use cached selectors.
+- Fixed package load/precompile failures caused by include-order cycles (`timings` and `ℳ`) by introducing `src/timings.jl` and removing the `::ℳ` annotation from `initialize_caches!`.
+- Removed obsolete `T = 𝓂.timings` keywords from second/third-order solution call sites and fixed a typo (`ℂC` → `cache`) in `calculate_third_order_solution`.
+- Made `get_loglikelihood(..., algorithm = :pruned_third_order)` work by adding `get_computational_constants(::timings)` and fixing the inversion filter’s pruned third-order Jacobian construction (state² term needed an explicit volatility slot).
+- Added `cache::caches` overloads for `determine_efficient_order` and switched `src/moments.jl` call sites from `𝓂.timings` to `𝓂.caches`.
+- Replaced cache→timings wrapper overloads by making cache-carrying methods the concrete implementations for `determine_efficient_order`, `create_*_order_auxiliary_matrices`, `solve_quadratic_matrix_equation`, and `parse_*_input_to_index`/`parse_covariance_groups`.
+- Added a targeted `get_std` script test for pruned second/third order on RBC_CME models with/without calibration equations.
 
 ## Tests
 - `TEST_SET=basic julia --project -e 'using Pkg; Pkg.test()'` failed: unsatisfiable requirements during Pkg resolve (DynamicPPL/Pigeons/Turing/JET constraints).
@@ -29,6 +35,11 @@
 - `julia --project run_rbc_pruned_second_order_mean.jl` succeeded (prints `get_mean` output for `RBC_baseline`, algorithm `:pruned_second_order`).
 - `julia --project run_rbc_pruned_third_order_std.jl` succeeded (prints `get_std` output for `RBC_baseline`, algorithm `:pruned_third_order`).
 - `julia --project run_cache_steady_state_checks.jl` succeeded (prints steady-state cache checks for `RBC_baseline` and `RBC_switch`).
+- `julia --project -e 'using MacroModelling; println(\"loaded\")'` succeeded.
+- `julia --project scripts/test_get_loglikelihood_pruned_third.jl` succeeded (prints finite pruned third-order loglikelihood).
+- `julia --project scripts/test_get_std_pruned_second_third.jl` succeeded (pruned second/third order `get_std` for RBC_CME models with/without calibration equations).
+- Re-ran `julia --project scripts/test_get_loglikelihood_pruned_third.jl`: succeeded.
+- Re-ran `julia --project scripts/test_get_std_pruned_second_third.jl`: succeeded after cache-propagation refactor.
 
 ## Remaining
 - Resolve test environment dependencies and rerun tests.

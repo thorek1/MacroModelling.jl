@@ -1962,12 +1962,11 @@ function get_solution(𝓂::ℳ,
     if algorithm == :second_order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
     
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
-                                                    𝓂.caches; 
-                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
-                                                    T = 𝓂.timings, 
-                                                    opts = opts)
+	        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
+	                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
+	                                                    𝓂.caches; 
+	                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+	                                                    opts = opts)
 
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
@@ -1981,12 +1980,11 @@ function get_solution(𝓂::ℳ,
     elseif algorithm == :third_order
         ∇₂ = calculate_hessian(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔∇₂
     
-        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
-                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
-                                                    𝓂.caches; 
-                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
-                                                    T = 𝓂.timings, 
-                                                    opts = opts)
+	        𝐒₂, solved2 = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
+	                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices,
+	                                                    𝓂.caches; 
+	                                                    initial_guess = 𝓂.solution.perturbation.second_order_solution,
+	                                                    opts = opts)
     
         if eltype(𝐒₂) == Float64 && solved2 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
@@ -1998,14 +1996,13 @@ function get_solution(𝓂::ℳ,
 
         ∇₃ = calculate_third_order_derivatives(parameters, SS_and_pars, 𝓂)# * 𝓂.solution.perturbation.third_order_auxiliary_matrices.𝐔∇₃
                 
-        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
-                                                    𝐒₁, 𝐒₂, 
-                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices, 
-                                                    𝓂.solution.perturbation.third_order_auxiliary_matrices,
-                                                    𝓂.caches; 
-                                                    initial_guess = 𝓂.solution.perturbation.third_order_solution,
-                                                    T = 𝓂.timings, 
-                                                    opts = opts)
+	        𝐒₃, solved3 = calculate_third_order_solution(∇₁, ∇₂, ∇₃, 
+	                                                    𝐒₁, 𝐒₂, 
+	                                                    𝓂.solution.perturbation.second_order_auxiliary_matrices, 
+	                                                    𝓂.solution.perturbation.third_order_auxiliary_matrices,
+	                                                    𝓂.caches; 
+	                                                    initial_guess = 𝓂.solution.perturbation.third_order_solution,
+	                                                    opts = opts)
 
         if eltype(𝐒₃) == Float64 && solved3 𝓂.solution.perturbation.third_order_solution = 𝐒₃ end
         
@@ -3298,7 +3295,7 @@ function get_statistics(𝓂,
     covar_var_idx = @ignore_derivatives parse_variables_input_to_index(covariance, 𝓂)
     
     # Parse covariance groups if input is grouped format
-    covar_groups = @ignore_derivatives is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.timings) : nothing
+    covar_groups = @ignore_derivatives is_grouped_covariance_input(covariance) ? parse_covariance_groups(covariance, 𝓂.caches) : nothing
 
     autocorr_var_idx = @ignore_derivatives parse_variables_input_to_index(autocorrelation, 𝓂)
 
