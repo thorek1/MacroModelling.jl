@@ -400,8 +400,9 @@ function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
 end
 
 function ensure_model_structure_cache!(𝓂)
-    cache = 𝓂.caches.model_structure_cache
-    if isempty(cache.SS_and_pars_names)
+    cache = 𝓂.caches
+    msc = cache.model_structure_cache
+    if isempty(msc.SS_and_pars_names)
         SS_and_pars_names = vcat(
             Symbol.(replace.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))),
                     r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
@@ -437,7 +438,7 @@ function ensure_model_structure_cache!(𝓂)
         vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(𝓂.aux, 𝓂.exo_present)), all_variables))
         vars_idx_excluding_obc = Int.(indexin(vars_non_obc, all_variables))
 
-        𝓂.caches.model_structure_cache = model_structure_cache(
+        cache.model_structure_cache = model_structure_cache(
             SS_and_pars_names,
             all_variables,
             NSSS_labels,
@@ -455,7 +456,7 @@ function ensure_model_structure_cache!(𝓂)
         )
     end
 
-    return 𝓂.caches.model_structure_cache
+    return cache.model_structure_cache
 end
 
 function compute_e4(nᵉ::Int)
@@ -533,17 +534,18 @@ function ensure_moments_substate_cache!(𝓂, nˢ::Int)
 end
 
 function ensure_moments_dependency_kron_cache!(𝓂, dependencies::Vector{Symbol}, s_in_s⁺::BitVector)
-    cache = 𝓂.caches.moments_cache
+    cache = 𝓂.caches
+    mc = cache.moments_cache
     key = Tuple(dependencies)
-    if !haskey(cache.dependency_kron_cache, key)
+    if !haskey(mc.dependency_kron_cache, key)
         cc = ensure_computational_constants_cache!(𝓂)
-        cache.dependency_kron_cache[key] = moments_dependency_kron_cache(
+        mc.dependency_kron_cache[key] = moments_dependency_kron_cache(
             ℒ.kron(s_in_s⁺, s_in_s⁺),
             ℒ.kron(s_in_s⁺, cc.e_in_s⁺),
             ℒ.kron(s_in_s⁺, cc.v_in_s⁺),
         )
     end
-    return cache.dependency_kron_cache[key]
+    return mc.dependency_kron_cache[key]
 end
 
 
