@@ -160,8 +160,8 @@ using DispatchDoctor
 # Imports
 include("default_options.jl")
 include("common_docstrings.jl")
-include("options_and_caches.jl")
 include("structures.jl")
+include("options_and_caches.jl")
 include("macros.jl")
 include("get_functions.jl")
 include("dynare.jl")
