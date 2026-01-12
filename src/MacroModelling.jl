@@ -59,7 +59,7 @@ import MatrixEquations # good overview: https://cscproxy.mpi-magdeburg.mpg.de/mp
 # using NamedArrays
 # using AxisKeys
 
-import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent, @thunk, ProjectTo, unthunk
+import ChainRulesCore: @ignore_derivatives, ignore_derivatives, rrule, NoTangent, @thunk, ProjectTo, unthunk, AbstractZero
 import RecursiveFactorization as RF
 
 using RuntimeGeneratedFunctions
@@ -1570,6 +1570,89 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     # else
     #     return sparse(rows, cols, vals, size(A,1), size(D,2))   
     # end
+end
+
+function rrule(::typeof(mat_mult_kron),
+                                A::AbstractSparseMatrix{R},
+                                B::AbstractMatrix{T},
+                                C::AbstractMatrix{T},
+                                D::AbstractMatrix{S}) where {R <: Real, T <: Real, S <: Real}
+    Y = mat_mult_kron(A, B, C, D)
+
+    function mat_mult_kron_pullback(Ȳ)
+        if Ȳ isa AbstractZero
+            return NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        end
+
+        Ȳdense = Matrix(Ȳ)
+
+        n_rowB = size(B, 1)
+        n_colB = size(B, 2)
+        n_rowC = size(C, 1)
+        n_colC = size(C, 2)
+
+        G = promote_type(eltype(B), eltype(C), eltype(D), Float64)
+
+        ∂B = zeros(G, size(B))
+        ∂C = zeros(G, size(C))
+        ∂D = zeros(G, size(D))
+
+        A_csc = A isa SparseMatrixCSC ? A : A.A
+        nnzA = nnz(A_csc)
+        nz_col = Vector{Int}(undef, nnzA)
+        row_to_nzinds = Dict{Int, Vector{Int}}()
+
+        for col in 1:size(A_csc, 2)
+            for k in A_csc.colptr[col]:(A_csc.colptr[col + 1] - 1)
+                nz_col[k] = col
+                r = A_csc.rowval[k]
+                push!(get!(row_to_nzinds, r, Int[]), k)
+            end
+        end
+
+        ∂A_nz = zeros(G, nnzA)
+        Abar_vec = zeros(G, size(A_csc, 2))
+
+        for (r, ks) in row_to_nzinds
+            fill!(Abar_vec, zero(G))
+            @inbounds for k in ks
+                Abar_vec[nz_col[k]] = A_csc.nzval[k]
+            end
+
+            Abar = reshape(Abar_vec, n_rowC, n_rowB)
+            AbarB = Abar * B
+            CAbarB = C' * AbarB
+            vCAbarB = vec(CAbarB)
+
+            g_row = collect(@view Ȳdense[r, :])
+
+            ∂D .+= vCAbarB * g_row'
+
+            vCAbarB̄ = D * g_row
+            CAbarB̄ = reshape(vCAbarB̄, n_colC, n_colB)
+
+            ∂C .+= AbarB * CAbarB̄'
+
+            AbarB̄ = C * CAbarB̄
+            ∂B .+= Abar' * AbarB̄
+
+            Abar̄ = AbarB̄ * B'
+            vecAbar̄ = vec(Abar̄)
+            @inbounds for k in ks
+                ∂A_nz[k] += vecAbar̄[nz_col[k]]
+            end
+        end
+
+        ∂A_csc = SparseMatrixCSC(size(A_csc, 1), size(A_csc, 2), copy(A_csc.colptr), copy(A_csc.rowval), ∂A_nz)
+
+        return NoTangent(),
+                ProjectTo(A)(∂A_csc),
+                ProjectTo(B)(∂B),
+                ProjectTo(C)(∂C),
+                ProjectTo(D)(∂D)
+    end
+
+    return Y, mat_mult_kron_pullback
 end
 
 
@@ -3284,6 +3367,50 @@ replace_indices_special(x::Symbol) = x
 replace_indices(x::String) = Symbol(replace(x, "{" => "◖", "}" => "◗"))
 
 replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{", "◗" => "}")
+
+apply_custom_name(name::Symbol, rename_dictionary::AbstractDict{Symbol, <:AbstractString}) =
+    haskey(rename_dictionary, name) ? Symbol(rename_dictionary[name]) : name
+
+apply_custom_name(name::AbstractString, rename_dictionary::AbstractDict{Symbol, <:AbstractString}) =
+    haskey(rename_dictionary, Symbol(name)) ? rename_dictionary[Symbol(name)] : name
+
+function normalize_superscript(x::Symbol)
+    return normalize_superscript(string(x))
+end
+
+function normalize_superscript(x::AbstractString)
+    sub_map = Dict(
+        '₀' => '0', '₁' => '1', '₂' => '2', '₃' => '3', '₄' => '4',
+        '₅' => '5', '₆' => '6', '₇' => '7', '₈' => '8', '₉' => '9',
+        '₊' => '+', '₋' => '-', '₌' => '=', '₍' => '(', '₎' => ')',
+        'ₐ' => 'a', 'ₑ' => 'e', 'ₕ' => 'h', 'ᵢ' => 'i', 'ⱼ' => 'j',
+        'ₖ' => 'k', 'ₗ' => 'l', 'ₘ' => 'm', 'ₙ' => 'n', 'ₒ' => 'o',
+        'ₚ' => 'p', 'ᵣ' => 'r', 'ₛ' => 's', 'ₜ' => 't', 'ᵤ' => 'u',
+        'ᵥ' => 'v', 'ₓ' => 'x'
+    )
+    super_map = Dict(
+        '⁰' => '0', '¹' => '1', '²' => '2', '³' => '3', '⁴' => '4',
+        '⁵' => '5', '⁶' => '6', '⁷' => '7', '⁸' => '8', '⁹' => '9',
+        '⁺' => '+', '⁻' => '-', '⁼' => '=', '⁽' => '(', '⁾' => ')',
+        'ᵃ' => 'a', 'ᵇ' => 'b', 'ᶜ' => 'c', 'ᵈ' => 'd', 'ᵉ' => 'e',
+        'ᶠ' => 'f', 'ᵍ' => 'g', 'ʰ' => 'h', 'ᶦ' => 'i', 'ʲ' => 'j',
+        'ᵏ' => 'k', 'ˡ' => 'l', 'ᵐ' => 'm', 'ⁿ' => 'n', 'ᵒ' => 'o',
+        'ᵖ' => 'p', 'ʳ' => 'r', 'ˢ' => 's', 'ᵗ' => 't', 'ᵘ' => 'u',
+        'ᵛ' => 'v', 'ʷ' => 'w', 'ˣ' => 'x', 'ʸ' => 'y', 'ᶻ' => 'z'
+    )
+
+    buf = IOBuffer()
+    for c in x
+        if haskey(sub_map, c)
+            write(buf, sub_map[c])
+        elseif haskey(super_map, c)
+            write(buf, super_map[c])
+        else
+            write(buf, c)
+        end
+    end
+    return String(take!(buf))
+end
 
 function replace_indices(exxpr::Expr)::Union{Expr,Symbol}
     postwalk(x -> begin

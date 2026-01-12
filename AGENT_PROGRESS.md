@@ -15,6 +15,15 @@
 - Added `cache::caches` overloads for `determine_efficient_order` and switched `src/moments.jl` call sites from `𝓂.timings` to `𝓂.caches`.
 - Replaced cache→timings wrapper overloads by making cache-carrying methods the concrete implementations for `determine_efficient_order`, `create_*_order_auxiliary_matrices`, `solve_quadratic_matrix_equation`, and `parse_*_input_to_index`/`parse_covariance_groups`.
 - Added a targeted `get_std` script test for pruned second/third order on RBC_CME models with/without calibration equations.
+- Fixed `calculate_first_order_solution` (Dual path) to use `cache.first_order_index_cache` fields (`nabla_zero_cols`, `nabla_e_start`) after cache refactor.
+- Added a targeted script test covering the three `run_rbc_*.jl` entrypoints.
+- Restored `apply_custom_name` and `normalize_superscript` helpers needed by `StatsPlotsExt` so `plot_model_estimates` works again.
+- Added a targeted script test for `plot_model_estimates` / `plot_model_estimates!`.
+- Fixed `name_display_cache` axis fields to be concrete (`Vector{Symbol}`) so `get_var_axis(::ℳ)` is type-stable and doesn’t trip DispatchDoctor.
+- Added a targeted script test for `get_var_axis` / `get_exo_axis` return types.
+- Added ChainRules `rrule` for `mat_mult_kron` to make Zygote gradients work (avoids mutation errors from `mul!` into views).
+- Fixed the `rrule` signature for `calculate_second_order_solution` to match current argument ordering so Zygote doesn’t trace into LAPACK solves.
+- Added a targeted script test for Zygote gradients of `get_loglikelihood` at `:third_order` and `:pruned_third_order`.
 
 ## Tests
 - `TEST_SET=basic julia --project -e 'using Pkg; Pkg.test()'` failed: unsatisfiable requirements during Pkg resolve (DynamicPPL/Pigeons/Turing/JET constraints).
@@ -40,6 +49,17 @@
 - `julia --project scripts/test_get_std_pruned_second_third.jl` succeeded (pruned second/third order `get_std` for RBC_CME models with/without calibration equations).
 - Re-ran `julia --project scripts/test_get_loglikelihood_pruned_third.jl`: succeeded.
 - Re-ran `julia --project scripts/test_get_std_pruned_second_third.jl`: succeeded after cache-propagation refactor.
+- `julia --project run_rbc_pruned_second_order_mean.jl` failed: `caches` has no field `nabla_zero_cols`.
+- `julia --project run_rbc_pruned_third_order_std.jl` failed: `caches` has no field `nabla_zero_cols`.
+- `julia --project run_rbc_pruned_second_order_mean.jl` succeeded after fixing Dual first-order cache indexing.
+- `julia --project run_rbc_pruned_third_order_std.jl` succeeded after fixing Dual first-order cache indexing.
+- `julia --project scripts/test_run_rbc_scripts.jl` succeeded (pruned second/third moments + calibration equations steady state).
+- `julia --project scripts/test_get_std_pruned_second_third.jl` succeeded.
+- `julia --project scripts/test_get_loglikelihood_pruned_third.jl` succeeded.
+- `julia --project -e 'using MacroModelling, StatsPlots; include(\"test/models/RBC_CME.jl\"); sim = simulate(m); plot_model_estimates(m, sim([:k], :,:simulate); show_plots=false, save_plots=false)'` succeeded after restoring plotting helpers.
+- `julia --project scripts/test_plot_model_estimates.jl` succeeded.
+- `julia --project scripts/test_get_var_axis.jl` succeeded.
+- `julia --project scripts/test_zygote_loglikelihood_third_pruned_third.jl` succeeded (Zygote gradients for `:third_order` and `:pruned_third_order`).
 
 ## Remaining
 - Resolve test environment dependencies and rerun tests.

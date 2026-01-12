@@ -32,11 +32,11 @@ end
 # Stores precomputed variable and shock names that depend only on model structure
 struct name_display_cache
     # Processed variable names (with curly brackets formatted)
-    var_axis::Vector
+    var_axis::Vector{Symbol}
     # Processed shock names (with curly brackets formatted, WITHOUT ₍ₓ₎ suffix)
-    exo_axis_plain::Vector
+    exo_axis_plain::Vector{Symbol}
     # Processed shock names (with curly brackets formatted and WITH ₍ₓ₎ suffix)
-    exo_axis_with_subscript::Vector
+    exo_axis_with_subscript::Vector{Symbol}
     # Flag indicating if variables contain curly brackets
     var_has_curly::Bool
     # Flag indicating if shocks contain curly brackets
@@ -229,7 +229,7 @@ function Caches(;T::Type = Float64, S::Type = Float64)
     caches( nothing,  # timings will be set later from model
             Higher_order_caches(T = T, S = S),
             Higher_order_caches(T = T, S = S),
-            name_display_cache([], [], [], false, false),
+            name_display_cache(Symbol[], Symbol[], Symbol[], false, false),
             model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[],
                                 Union{Symbol,String}[], spzeros(Float64, 0, 0), spzeros(Float64, 0, 0),
                                 Symbol[], Symbol[], Symbol[], Int[], Int[], Int[]),
@@ -267,7 +267,7 @@ function ensure_name_display_cache!(𝓂)
         var_has_curly = any(x -> contains(string(x), "◖"), T.var)
         if var_has_curly
             var_decomposed = decompose_name.(T.var)
-            var_axis = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in var_decomposed]
+            var_axis = Symbol.([length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in var_decomposed])
         else
             var_axis = T.var
         end
@@ -275,8 +275,8 @@ function ensure_name_display_cache!(𝓂)
         exo_has_curly = any(x -> contains(string(x), "◖"), T.exo)
         if exo_has_curly
             exo_decomposed = decompose_name.(T.exo)
-            exo_axis_plain = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in exo_decomposed]
-            exo_axis_with_subscript = exo_axis_plain .* "₍ₓ₎"
+            exo_axis_plain = Symbol.([length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in exo_decomposed])
+            exo_axis_with_subscript = map(x -> Symbol(string(x) * "₍ₓ₎"), exo_axis_plain)
         else
             exo_axis_plain = T.exo
             exo_axis_with_subscript = map(x -> Symbol(string(x) * "₍ₓ₎"), T.exo)

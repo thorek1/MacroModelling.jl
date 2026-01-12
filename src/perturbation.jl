@@ -525,8 +525,8 @@ function rrule(::typeof(calculate_second_order_solution),
                     ∇₁::AbstractMatrix{S}, #first order derivatives
                     ∇₂::SparseMatrixCSC{S}, #second order derivatives
                     𝑺₁::AbstractMatrix{S},#first order solution
-                    cache::caches,
                     M₂::second_order_auxiliary_matrices,   # aux matrices
+                    cache::caches;
                     initial_guess::AbstractMatrix{R} = zeros(0,0),
                     opts::CalculationOptions = merge_calculation_options()) where {S <: Real, R <: Real}
     if !(eltype(cache.second_order_caches.Ŝ) == S)
@@ -572,7 +572,7 @@ function rrule(::typeof(calculate_second_order_solution),
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
         if opts.verbose println("Second order solution: inversion failed") end
-        return (∇₁₊𝐒₁➕∇₁₀, solved), x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return (∇₁₊𝐒₁➕∇₁₀, false), x -> (NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent())
     end
     
     spinv = inv(∇₁₊𝐒₁➕∇₁₀lu)
