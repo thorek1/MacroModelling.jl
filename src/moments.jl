@@ -3,8 +3,11 @@
 function calculate_covariance(parameters::Vector{R}, 
                                 𝓂::ℳ; 
                                 opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
-    ensure_computational_constants_cache!(𝓂)
-    cc = 𝓂.caches.computational_constants
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+    cc = cache.computational_constants
+    T = cache.timings
+    
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
     if solution_error > opts.tol.NSSS_acceptance_tol
@@ -20,9 +23,10 @@ function calculate_covariance(parameters::Vector{R},
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
-    A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * cc.diag_nVars[𝓂.timings.past_not_future_and_mixed_idx,:]
+    # Direct cache access instead of model access
+    A = @views sol[:, 1:T.nPast_not_future_and_mixed] * cc.diag_nVars[T.past_not_future_and_mixed_idx,:]
 
-    C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
+    C = @views sol[:, T.nPast_not_future_and_mixed+1:end]
     
     CC = C * C'
 
@@ -49,16 +53,20 @@ function calculate_mean(parameters::Vector{T},
     # Theoretical mean identical for 2nd and 3rd order pruned solution.
     @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Theoretical mean available only for first order, pruned second and pruned third order perturbation solutions."
 
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+    T_timings = cache.timings
+    
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
     if algorithm == :first_order
-        mean_of_variables = SS_and_pars[1:𝓂.timings.nVars]
+        mean_of_variables = SS_and_pars[1:T_timings.nVars]
 
         solved = solution_error < opts.tol.NSSS_acceptance_tol
     else
         ensure_moments_cache!(𝓂)
-        cc = 𝓂.caches.computational_constants
-        mc = 𝓂.caches.moments_cache
+        cc = cache.computational_constants
+        mc = cache.moments_cache
         ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
         
         𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
@@ -67,7 +75,7 @@ function calculate_mean(parameters::Vector{T},
                                                             opts = opts)
         
         if !solved 
-            mean_of_variables = SS_and_pars[1:𝓂.timings.nVars]
+            mean_of_variables = SS_and_pars[1:T_timings.nVars]
         else
             𝓂.solution.perturbation.qme_solution = qme_sol
 
@@ -75,12 +83,11 @@ function calculate_mean(parameters::Vector{T},
             
             𝐒₂, solved = calculate_second_order_solution(∇₁, ∇₂, 𝐒₁, 
                                                         𝓂.solution.perturbation.second_order_auxiliary_matrices,
-                                                        𝓂.caches; 
-                                                        T = 𝓂.timings, 
+                                                        cache; 
                                                         opts = opts)
 
             if !solved 
-                mean_of_variables = SS_and_pars[1:𝓂.timings.nVars]
+                mean_of_variables = SS_and_pars[1:T_timings.nVars]
             else
                 if eltype(𝐒₂) == Float64 𝓂.solution.perturbation.second_order_solution = 𝐒₂ end
 
@@ -90,32 +97,32 @@ function calculate_mean(parameters::Vector{T},
                     𝐒₂ = sparse(𝐒₂) # * 𝓂.solution.perturbation.second_order_auxiliary_matrices.𝐔₂)
                 end
 
-                nᵉ = 𝓂.timings.nExo
-                nˢ = 𝓂.timings.nPast_not_future_and_mixed
+                nᵉ = T_timings.nExo
+                nˢ = T_timings.nPast_not_future_and_mixed
 
                 kron_states = mc.kron_states
                 kron_shocks = cc.kron_e_e
                 kron_volatility = cc.kron_v_v
 
                 # first order
-                states_to_variables¹ = sparse(𝐒₁[:,1:𝓂.timings.nPast_not_future_and_mixed])
+                states_to_variables¹ = sparse(𝐒₁[:,1:T_timings.nPast_not_future_and_mixed])
 
-                states_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, 1:𝓂.timings.nPast_not_future_and_mixed]
-                shocks_to_states¹ = 𝐒₁[𝓂.timings.past_not_future_and_mixed_idx, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+                states_to_states¹ = 𝐒₁[T_timings.past_not_future_and_mixed_idx, 1:T_timings.nPast_not_future_and_mixed]
+                shocks_to_states¹ = 𝐒₁[T_timings.past_not_future_and_mixed_idx, (T_timings.nPast_not_future_and_mixed + 1):end]
 
                 # second order
                 states_to_variables²        = 𝐒₂[:, kron_states]
                 shocks_to_variables²        = 𝐒₂[:, kron_shocks]
                 volatility_to_variables²    = 𝐒₂[:, kron_volatility]
 
-                states_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_states] |> collect
-                shocks_to_states²       = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_shocks]
-                volatility_to_states²   = 𝐒₂[𝓂.timings.past_not_future_and_mixed_idx, kron_volatility]
+                states_to_states²       = 𝐒₂[T_timings.past_not_future_and_mixed_idx, kron_states] |> collect
+                shocks_to_states²       = 𝐒₂[T_timings.past_not_future_and_mixed_idx, kron_shocks]
+                volatility_to_states²   = 𝐒₂[T_timings.past_not_future_and_mixed_idx, kron_volatility]
 
                 kron_states_to_states¹ = ℒ.kron(states_to_states¹, states_to_states¹) |> collect
                 kron_shocks_to_states¹ = ℒ.kron(shocks_to_states¹, shocks_to_states¹)
 
-                n_sts = 𝓂.timings.nPast_not_future_and_mixed
+                n_sts = T_timings.nPast_not_future_and_mixed
 
                 # Set up in pruned state transition matrices
                 pruned_states_to_pruned_states = [  states_to_states¹       zeros(T,n_sts, n_sts)   zeros(T,n_sts, n_sts^2)
@@ -125,14 +132,14 @@ function calculate_mean(parameters::Vector{T},
                 pruned_states_to_variables = [states_to_variables¹  states_to_variables¹  states_to_variables² / 2]
 
                 pruned_states_vol_and_shock_effect = [  zeros(T,n_sts) 
-                                                        vec(volatility_to_states²) / 2 + shocks_to_states² / 2 * vec(ℒ.I(𝓂.timings.nExo))
-                                                        kron_shocks_to_states¹ * vec(ℒ.I(𝓂.timings.nExo))]
+                                                        vec(volatility_to_states²) / 2 + shocks_to_states² / 2 * vec(ℒ.I(T_timings.nExo))
+                                                        kron_shocks_to_states¹ * vec(ℒ.I(T_timings.nExo))]
 
-                variables_vol_and_shock_effect = (vec(volatility_to_variables²) + shocks_to_variables² * vec(ℒ.I(𝓂.timings.nExo))) / 2
+                variables_vol_and_shock_effect = (vec(volatility_to_variables²) + shocks_to_variables² * vec(ℒ.I(T_timings.nExo))) / 2
 
                 ## First-order moments, ie mean of variables
                 mean_of_pruned_states   = (ℒ.I(size(pruned_states_to_pruned_states, 1)) - pruned_states_to_pruned_states) \ pruned_states_vol_and_shock_effect
-                mean_of_variables   = SS_and_pars[1:𝓂.timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
+                mean_of_variables   = SS_and_pars[1:T_timings.nVars] + pruned_states_to_variables * mean_of_pruned_states + variables_vol_and_shock_effect
             end
         end
     end
@@ -149,12 +156,15 @@ function calculate_second_order_moments(parameters::Vector{R},
     Σʸ₁, 𝐒₁, ∇₁, SS_and_pars, solved = calculate_covariance(parameters, 𝓂, opts = opts)
 
     if solved
+        # Initialize caches at entry point
+        cache = initialize_caches!(𝓂)
         ensure_moments_cache!(𝓂)
-        cc = 𝓂.caches.computational_constants
-        mc = 𝓂.caches.moments_cache
-        nᵉ = 𝓂.timings.nExo
+        cc = cache.computational_constants
+        mc = cache.moments_cache
+        T = cache.timings
+        nᵉ = T.nExo
 
-        nˢ = 𝓂.timings.nPast_not_future_and_mixed
+        nˢ = T.nPast_not_future_and_mixed
 
         iˢ = 𝓂.timings.past_not_future_and_mixed_idx
 

@@ -149,6 +149,10 @@ struct first_order_index_cache{I, M}
 end
 
 mutable struct caches#{F <: Real, G <: AbstractFloat}
+    # Timings information (model structure - constant for a given model)
+    timings::Union{Nothing, timings}
+    
+    # Cache structures
     second_order_caches::higher_order_caches#{F, G}
     third_order_caches::higher_order_caches#{F, G}
     name_display_cache::name_display_cache
@@ -222,7 +226,8 @@ function Higher_order_caches(;T::Type = Float64, S::Type = Float64)
 end
 
 function Caches(;T::Type = Float64, S::Type = Float64)
-    caches( Higher_order_caches(T = T, S = S),
+    caches( nothing,  # timings will be set later from model
+            Higher_order_caches(T = T, S = S),
             Higher_order_caches(T = T, S = S),
             name_display_cache([], [], [], false, false),
             model_structure_cache(Symbol[], Symbol[], Symbol[], Int[], Symbol[],
@@ -237,28 +242,47 @@ function Caches(;T::Type = Float64, S::Type = Float64)
             Float64[])
 end
 
+# Initialize timings in the cache (should be called once after model creation)
+function set_timings!(cache::caches, T::timings)
+    cache.timings = T
+    return cache
+end
+
+# Initialize all commonly used caches at once (call at entry points)
+# This reduces repeated ensure_*_cache! calls throughout the codebase
+function initialize_caches!(𝓂::ℳ)
+    ensure_computational_constants_cache!(𝓂)
+    ensure_name_display_cache!(𝓂)
+    ensure_first_order_index_cache!(𝓂)
+    return 𝓂.caches
+end
+
 function ensure_name_display_cache!(𝓂)
-    cache = 𝓂.caches.name_display_cache
-    if isempty(cache.var_axis)
-        var_has_curly = any(x -> contains(string(x), "◖"), 𝓂.timings.var)
+    cache = 𝓂.caches
+    ndc = cache.name_display_cache
+    # Use timings from cache if available, otherwise from model
+    T = isnothing(cache.timings) ? 𝓂.timings : cache.timings
+    
+    if isempty(ndc.var_axis)
+        var_has_curly = any(x -> contains(string(x), "◖"), T.var)
         if var_has_curly
-            var_decomposed = decompose_name.(𝓂.timings.var)
+            var_decomposed = decompose_name.(T.var)
             var_axis = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in var_decomposed]
         else
-            var_axis = 𝓂.timings.var
+            var_axis = T.var
         end
 
-        exo_has_curly = any(x -> contains(string(x), "◖"), 𝓂.timings.exo)
+        exo_has_curly = any(x -> contains(string(x), "◖"), T.exo)
         if exo_has_curly
-            exo_decomposed = decompose_name.(𝓂.timings.exo)
+            exo_decomposed = decompose_name.(T.exo)
             exo_axis_plain = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in exo_decomposed]
             exo_axis_with_subscript = exo_axis_plain .* "₍ₓ₎"
         else
-            exo_axis_plain = 𝓂.timings.exo
-            exo_axis_with_subscript = map(x -> Symbol(string(x) * "₍ₓ₎"), 𝓂.timings.exo)
+            exo_axis_plain = T.exo
+            exo_axis_with_subscript = map(x -> Symbol(string(x) * "₍ₓ₎"), T.exo)
         end
 
-        𝓂.caches.name_display_cache = name_display_cache(
+        cache.name_display_cache = name_display_cache(
             var_axis,
             exo_axis_plain,
             exo_axis_with_subscript,
@@ -267,14 +291,17 @@ function ensure_name_display_cache!(𝓂)
         )
     end
 
-    return 𝓂.caches.name_display_cache
+    return cache.name_display_cache
 end
 
 function ensure_computational_constants_cache!(𝓂)
-    cache = 𝓂.caches.computational_constants
-    if isempty(cache.s_in_s⁺)
-        nᵉ = 𝓂.timings.nExo
-        nˢ = 𝓂.timings.nPast_not_future_and_mixed
+    cache = 𝓂.caches
+    cc = cache.computational_constants
+    if isempty(cc.s_in_s⁺)
+        # Use timings from cache if available, otherwise from model
+        T = isnothing(cache.timings) ? 𝓂.timings : cache.timings
+        nᵉ = T.nExo
+        nˢ = T.nPast_not_future_and_mixed
 
         s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ + 1), zeros(Bool, nᵉ)))
         s_in_s = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
@@ -285,7 +312,7 @@ function ensure_computational_constants_cache!(𝓂)
         e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
         v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
 
-        diag_nVars = ℒ.diagm(ones(𝓂.timings.nVars))
+        diag_nVars = ℒ.diagm(ones(T.nVars))
 
         kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
         kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
@@ -300,7 +327,7 @@ function ensure_computational_constants_cache!(𝓂)
         shock²_idxs = sparse(ℒ.kron(e_in_s⁺, e_in_s⁺)).nzind
         var_vol²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
 
-        𝓂.caches.computational_constants = computational_constants_cache(
+        cache.computational_constants = computational_constants_cache(
             s_in_s⁺,
             s_in_s,
             kron_s⁺_s⁺,
@@ -322,7 +349,7 @@ function ensure_computational_constants_cache!(𝓂)
         )
     end
 
-    return 𝓂.caches.computational_constants
+    return cache.computational_constants
 end
 
 function build_first_order_index_cache(T, I_nVars)
@@ -360,11 +387,14 @@ function build_first_order_index_cache(T, I_nVars)
 end
 
 function ensure_first_order_index_cache!(𝓂)
-    if !𝓂.caches.first_order_index_cache.initialized
+    cache = 𝓂.caches
+    if !cache.first_order_index_cache.initialized
         cc = ensure_computational_constants_cache!(𝓂)
-        𝓂.caches.first_order_index_cache = build_first_order_index_cache(𝓂.timings, cc.diag_nVars)
+        # Use timings from cache if available, otherwise from model
+        T = isnothing(cache.timings) ? 𝓂.timings : cache.timings
+        cache.first_order_index_cache = build_first_order_index_cache(T, cc.diag_nVars)
     end
-    return 𝓂.caches.first_order_index_cache
+    return cache.first_order_index_cache
 end
 
 function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
@@ -379,8 +409,9 @@ function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
 end
 
 function ensure_model_structure_cache!(𝓂)
-    cache = 𝓂.caches.model_structure_cache
-    if isempty(cache.SS_and_pars_names)
+    cache = 𝓂.caches
+    msc = cache.model_structure_cache
+    if isempty(msc.SS_and_pars_names)
         SS_and_pars_names = vcat(
             Symbol.(replace.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))),
                     r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")),
@@ -416,7 +447,7 @@ function ensure_model_structure_cache!(𝓂)
         vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(𝓂.aux, 𝓂.exo_present)), all_variables))
         vars_idx_excluding_obc = Int.(indexin(vars_non_obc, all_variables))
 
-        𝓂.caches.model_structure_cache = model_structure_cache(
+        cache.model_structure_cache = model_structure_cache(
             SS_and_pars_names,
             all_variables,
             NSSS_labels,
@@ -434,7 +465,7 @@ function ensure_model_structure_cache!(𝓂)
         )
     end
 
-    return 𝓂.caches.model_structure_cache
+    return cache.model_structure_cache
 end
 
 function compute_e4(nᵉ::Int)
@@ -466,56 +497,64 @@ function compute_e6(nᵉ::Int)
 end
 
 function ensure_moments_cache!(𝓂)
-    cache = 𝓂.caches.moments_cache
+    cache = 𝓂.caches
+    mc = cache.moments_cache
     cc = ensure_computational_constants_cache!(𝓂)
-    if isempty(cache.kron_states)
-        cache.kron_states = ℒ.kron(cc.s_in_s, cc.s_in_s)
+    # Use timings from cache if available, otherwise from model
+    T = isnothing(cache.timings) ? 𝓂.timings : cache.timings
+    
+    if isempty(mc.kron_states)
+        mc.kron_states = ℒ.kron(cc.s_in_s, cc.s_in_s)
     end
-    if isempty(cache.kron_s_e)
-        cache.kron_s_e = ℒ.kron(cc.s_in_s, cc.e_in_s⁺)
+    if isempty(mc.kron_s_e)
+        mc.kron_s_e = ℒ.kron(cc.s_in_s, cc.e_in_s⁺)
     end
-    if size(cache.I_plus_s_s, 1) == 0
-        nˢ = 𝓂.timings.nPast_not_future_and_mixed
-        cache.I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
+    if size(mc.I_plus_s_s, 1) == 0
+        nˢ = T.nPast_not_future_and_mixed
+        mc.I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
     end
-    if isempty(cache.e4)
-        cache.e4 = compute_e4(𝓂.timings.nExo)
+    if isempty(mc.e4)
+        mc.e4 = compute_e4(T.nExo)
     end
-    if isempty(cache.e6)
-        cache.e6 = compute_e6(𝓂.timings.nExo)
+    if isempty(mc.e6)
+        mc.e6 = compute_e6(T.nExo)
     end
-    if isempty(cache.kron_e_v)
-        cache.kron_e_v = ℒ.kron(cc.e_in_s⁺, cc.v_in_s⁺)
+    if isempty(mc.kron_e_v)
+        mc.kron_e_v = ℒ.kron(cc.e_in_s⁺, cc.v_in_s⁺)
     end
-    return cache
+    return mc
 end
 
 function ensure_moments_substate_cache!(𝓂, nˢ::Int)
-    cache = 𝓂.caches.moments_cache
-    if !haskey(cache.substate_cache, nˢ)
-        nᵉ = 𝓂.timings.nExo
+    cache = 𝓂.caches
+    mc = cache.moments_cache
+    if !haskey(mc.substate_cache, nˢ)
+        # Use timings from cache if available, otherwise from model
+        T = isnothing(cache.timings) ? 𝓂.timings : cache.timings
+        nᵉ = T.nExo
         I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
         e_es = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nᵉ * nˢ)), nˢ * nᵉ^2, nˢ * nᵉ^2))
         e_ss = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nˢ^2)), nᵉ * nˢ^2, nᵉ * nˢ^2))
         ss_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ^2)), ℒ.I(nˢ)), nˢ^3, nˢ^3))
         s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2))
-        cache.substate_cache[nˢ] = moments_substate_cache(I_plus_s_s, e_es, e_ss, ss_s, s_s)
+        mc.substate_cache[nˢ] = moments_substate_cache(I_plus_s_s, e_es, e_ss, ss_s, s_s)
     end
-    return cache.substate_cache[nˢ]
+    return mc.substate_cache[nˢ]
 end
 
 function ensure_moments_dependency_kron_cache!(𝓂, dependencies::Vector{Symbol}, s_in_s⁺::BitVector)
-    cache = 𝓂.caches.moments_cache
+    cache = 𝓂.caches
+    mc = cache.moments_cache
     key = Tuple(dependencies)
-    if !haskey(cache.dependency_kron_cache, key)
+    if !haskey(mc.dependency_kron_cache, key)
         cc = ensure_computational_constants_cache!(𝓂)
-        cache.dependency_kron_cache[key] = moments_dependency_kron_cache(
+        mc.dependency_kron_cache[key] = moments_dependency_kron_cache(
             ℒ.kron(s_in_s⁺, s_in_s⁺),
             ℒ.kron(s_in_s⁺, cc.e_in_s⁺),
             ℒ.kron(s_in_s⁺, cc.v_in_s⁺),
         )
     end
-    return cache.dependency_kron_cache[key]
+    return mc.dependency_kron_cache[key]
 end
 
 
