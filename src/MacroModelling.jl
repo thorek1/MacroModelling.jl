@@ -160,7 +160,6 @@ using DispatchDoctor
 # Imports
 include("default_options.jl")
 include("common_docstrings.jl")
-include("timings.jl")
 include("options_and_caches.jl")
 include("structures.jl")
 include("macros.jl")
