@@ -137,10 +137,10 @@ function Caches(;T::Type = Float64, S::Type = Float64)
             Float64[])
 end
 
-# Initialize timings in the cache (should be called once after model creation)
-function set_timings!(cache::caches, T::timings)
-    cache.timings = T
-    return cache
+# Initialize timings in the caches (should be called once after model creation)
+function set_timings!(caches::caches, T::timings)
+    caches.timings = T
+    return caches
 end
 
 # Initialize all commonly used caches at once (call at entry points)
@@ -153,10 +153,10 @@ function initialize_caches!(𝓂)
 end
 
 function ensure_name_display_cache!(𝓂)
-    cache = 𝓂.caches
-    ndc = cache.name_display_cache
-    # Use timings from cache if available, otherwise from model
-    T = cache.timings
+    caches = 𝓂.caches
+    ndc = caches.name_display_cache
+    # Use timings from caches if available, otherwise from model
+    T = caches.timings
     
     if isempty(ndc.var_axis)
         var_has_curly = any(x -> contains(string(x), "◖"), T.var)
@@ -183,7 +183,7 @@ function ensure_name_display_cache!(𝓂)
             exo_axis_with_subscript = map(x -> Symbol(string(x) * "₍ₓ₎"), T.exo)
         end
 
-        cache.name_display_cache = name_display_cache(
+        caches.name_display_cache = name_display_cache(
             var_axis,
             calib_axis,
             exo_axis_plain,
@@ -193,15 +193,15 @@ function ensure_name_display_cache!(𝓂)
         )
     end
 
-    return cache.name_display_cache
+    return caches.name_display_cache
 end
 
 function ensure_computational_constants_cache!(𝓂)
-    cache = 𝓂.caches
-    cc = cache.computational_constants
+    caches = 𝓂.caches
+    cc = caches.computational_constants
     if isempty(cc.s_in_s⁺)
-        # Use timings from cache if available, otherwise from model
-        T = cache.timings
+        # Use timings from caches if available, otherwise from model
+        T = caches.timings
         nᵉ = T.nExo
         nˢ = T.nPast_not_future_and_mixed
 
@@ -229,7 +229,7 @@ function ensure_computational_constants_cache!(𝓂)
         shock²_idxs = sparse(ℒ.kron(e_in_s⁺, e_in_s⁺)).nzind
         var_vol²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
 
-        cache.computational_constants = computational_constants_cache(
+        caches.computational_constants = computational_constants_cache(
             s_in_s⁺,
             s_in_s,
             kron_s⁺_s⁺,
@@ -251,7 +251,7 @@ function ensure_computational_constants_cache!(𝓂)
         )
     end
 
-    return cache.computational_constants
+    return caches.computational_constants
 end
 
 function build_first_order_index_cache(T, I_nVars)
@@ -289,14 +289,14 @@ function build_first_order_index_cache(T, I_nVars)
 end
 
 function ensure_first_order_index_cache!(𝓂)
-    cache = 𝓂.caches
-    if !cache.first_order_index_cache.initialized
+    caches = 𝓂.caches
+    if !caches.first_order_index_cache.initialized
         cc = ensure_computational_constants_cache!(𝓂)
-        # Use timings from cache if available, otherwise from model
-        T = cache.timings
-        cache.first_order_index_cache = build_first_order_index_cache(T, cc.diag_nVars)
+        # Use timings from caches if available, otherwise from model
+        T = caches.timings
+        caches.first_order_index_cache = build_first_order_index_cache(T, cc.diag_nVars)
     end
-    return cache.first_order_index_cache
+    return caches.first_order_index_cache
 end
 
 function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
@@ -311,8 +311,8 @@ function create_selector_matrix(target::Vector{Symbol}, source::Vector{Symbol})
 end
 
 function ensure_model_structure_cache!(𝓂)
-    cache = 𝓂.caches
-    msc = cache.model_structure_cache
+    caches = 𝓂.caches
+    msc = caches.model_structure_cache
     if isempty(msc.SS_and_pars_names)
         SS_and_pars_names = vcat(
             Symbol.(replace.(string.(sort(union(𝓂.var, 𝓂.exo_past, 𝓂.exo_future))),
@@ -350,7 +350,7 @@ function ensure_model_structure_cache!(𝓂)
         vars_idx_excluding_aux_obc = Int.(indexin(setdiff(vars_non_obc, union(𝓂.aux, 𝓂.exo_present)), all_variables))
         vars_idx_excluding_obc = Int.(indexin(vars_non_obc, all_variables))
 
-        cache.model_structure_cache = model_structure_cache(
+        caches.model_structure_cache = model_structure_cache(
             SS_and_pars_names,
             all_variables,
             NSSS_labels,
@@ -368,7 +368,7 @@ function ensure_model_structure_cache!(𝓂)
         )
     end
 
-    return cache.model_structure_cache
+    return caches.model_structure_cache
 end
 
 function compute_e4(nᵉ::Int)
@@ -400,11 +400,11 @@ function compute_e6(nᵉ::Int)
 end
 
 function ensure_moments_cache!(𝓂)
-    cache = 𝓂.caches
-    mc = cache.moments_cache
+    caches = 𝓂.caches
+    mc = caches.moments_cache
     cc = ensure_computational_constants_cache!(𝓂)
-    # Use timings from cache if available, otherwise from model
-    T = cache.timings
+    # Use timings from caches if available, otherwise from model
+    T = caches.timings
     
     if isempty(mc.kron_states)
         mc.kron_states = ℒ.kron(cc.s_in_s, cc.s_in_s)
@@ -429,11 +429,11 @@ function ensure_moments_cache!(𝓂)
 end
 
 function ensure_moments_substate_cache!(𝓂, nˢ::Int)
-    cache = 𝓂.caches
-    mc = cache.moments_cache
+    caches = 𝓂.caches
+    mc = caches.moments_cache
     if !haskey(mc.substate_cache, nˢ)
-        # Use timings from cache if available, otherwise from model
-        T = cache.timings
+        # Use timings from caches if available, otherwise from model
+        T = caches.timings
         nᵉ = T.nExo
         I_plus_s_s = sparse(reshape(ℒ.kron(vec(ℒ.I(nˢ)), ℒ.I(nˢ)), nˢ^2, nˢ^2) + ℒ.I)
         e_es = sparse(reshape(ℒ.kron(vec(ℒ.I(nᵉ)), ℒ.I(nᵉ * nˢ)), nˢ * nᵉ^2, nˢ * nᵉ^2))
@@ -446,8 +446,8 @@ function ensure_moments_substate_cache!(𝓂, nˢ::Int)
 end
 
 function ensure_moments_dependency_kron_cache!(𝓂, dependencies::Vector{Symbol}, s_in_s⁺::BitVector)
-    cache = 𝓂.caches
-    mc = cache.moments_cache
+    caches = 𝓂.caches
+    mc = caches.moments_cache
     key = Tuple(dependencies)
     if !haskey(mc.dependency_kron_cache, key)
         cc = ensure_computational_constants_cache!(𝓂)

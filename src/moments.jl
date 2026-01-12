@@ -4,9 +4,9 @@ function calculate_covariance(parameters::Vector{R},
                                 𝓂::ℳ; 
                                 opts::CalculationOptions = merge_calculation_options())::Tuple{Matrix{R}, Matrix{R}, Matrix{R}, Vector{R}, Bool} where R <: Real
     # Initialize caches at entry point
-    cache = initialize_caches!(𝓂)
-    cc = cache.computational_constants
-    T = cache.timings
+    caches = initialize_caches!(𝓂)
+    cc = caches.computational_constants
+    T = caches.timings
     
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
@@ -17,13 +17,13 @@ function calculate_covariance(parameters::Vector{R},
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂) 
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            cache;
+                                                            caches;
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution,
                                                             opts = opts)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
-    # Direct cache access instead of model access
+    # Direct caches access instead of model access
     A = @views sol[:, 1:T.nPast_not_future_and_mixed] * cc.diag_nVars[T.past_not_future_and_mixed_idx,:]
 
     C = @views sol[:, T.nPast_not_future_and_mixed+1:end]
@@ -54,8 +54,8 @@ function calculate_mean(parameters::Vector{R},
     @assert algorithm ∈ [:first_order, :pruned_second_order, :pruned_third_order] "Theoretical mean available only for first order, pruned second and pruned third order perturbation solutions."
 
     # Initialize caches at entry point
-    cache = initialize_caches!(𝓂)
-    T = cache.timings
+    caches = initialize_caches!(𝓂)
+    T = caches.timings
     
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameters, opts = opts)
     
@@ -65,12 +65,12 @@ function calculate_mean(parameters::Vector{R},
         solved = solution_error < opts.tol.NSSS_acceptance_tol
     else
         ensure_moments_cache!(𝓂)
-        cc = cache.computational_constants
-        mc = cache.moments_cache
+        cc = caches.computational_constants
+        mc = caches.moments_cache
         ∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
         
         𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            cache;
+                                                            caches;
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution,
                                                             opts = opts)
         
@@ -155,16 +155,16 @@ function calculate_second_order_moments(parameters::Vector{R},
 
     if solved
         # Initialize caches at entry point
-        cache = initialize_caches!(𝓂)
+        caches = initialize_caches!(𝓂)
         ensure_moments_cache!(𝓂)
-        cc = cache.computational_constants
-        mc = cache.moments_cache
-        T = cache.timings
+        cc = caches.computational_constants
+        mc = caches.moments_cache
+        T = caches.timings
         nᵉ = T.nExo
 
         nˢ = T.nPast_not_future_and_mixed
 
-        iˢ = 𝓂.timings.past_not_future_and_mixed_idx
+        iˢ = 𝓂.caches.timings.past_not_future_and_mixed_idx
 
         Σᶻ₁ = Σʸ₁[iˢ, iˢ]
 
@@ -240,7 +240,7 @@ function calculate_second_order_moments(parameters::Vector{R},
             ## Mean
             μˢ⁺₂ = (ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
             Δμˢ₂ = vec((ℒ.I(size(s_to_s₁, 1)) - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec(ℒ.I(nᵉ))) / 2))
-            μʸ₂  = SS_and_pars[1:𝓂.timings.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+            μʸ₂  = SS_and_pars[1:𝓂.caches.timings.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
             slvd = solved && solved2
         else
@@ -282,11 +282,11 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
         ensure_moments_cache!(𝓂)
         cc = 𝓂.caches.computational_constants
         mc = 𝓂.caches.moments_cache
-        nᵉ = 𝓂.timings.nExo
+        nᵉ = 𝓂.caches.timings.nExo
 
-        nˢ = 𝓂.timings.nPast_not_future_and_mixed
+        nˢ = 𝓂.caches.timings.nPast_not_future_and_mixed
 
-        iˢ = 𝓂.timings.past_not_future_and_mixed_idx
+        iˢ = 𝓂.caches.timings.past_not_future_and_mixed_idx
 
         Σᶻ₁ = Σʸ₁[iˢ, iˢ]
 
@@ -362,7 +362,7 @@ function calculate_second_order_moments_with_covariance(parameters::Vector{R}, �
             ## Mean
             μˢ⁺₂ = (ℒ.I(size(ŝ_to_ŝ₂, 1)) - ŝ_to_ŝ₂) \ ŝv₂
             Δμˢ₂ = vec((ℒ.I(size(s_to_s₁, 1)) - s_to_s₁) \ (s_s_to_s₂ * vec(Σᶻ₁) / 2 + (v_v_to_s₂ + e_e_to_s₂ * vec(ℒ.I(nᵉ))) / 2))
-            μʸ₂  = SS_and_pars[1:𝓂.timings.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
+            μʸ₂  = SS_and_pars[1:𝓂.caches.timings.nVars] + ŝ_to_y₂ * μˢ⁺₂ + yv₂
 
             # Covariance
             Γ₂ = [ ℒ.I(nᵉ)             zeros(nᵉ, nᵉ^2 + nᵉ * nˢ)
@@ -486,7 +486,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
     
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.caches, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
 
-    nᵉ = 𝓂.timings.nExo
+    nᵉ = 𝓂.caches.timings.nExo
 
     kron_e_e = cc.kron_e_e
     kron_v_v = cc.kron_v_v
@@ -515,13 +515,13 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
         sort!(dependencies_all_vars)
 
-        dependencies = intersect(𝓂.timings.past_not_future_and_mixed, dependencies_all_vars)
+        dependencies = intersect(𝓂.caches.timings.past_not_future_and_mixed, dependencies_all_vars)
 
-        obs_in_y = indexin(variance_observable, 𝓂.timings.var)
+        obs_in_y = indexin(variance_observable, 𝓂.caches.timings.var)
 
-        dependencies_in_states_idx = indexin(dependencies, 𝓂.timings.past_not_future_and_mixed)
+        dependencies_in_states_idx = indexin(dependencies, 𝓂.caches.timings.past_not_future_and_mixed)
 
-        dependencies_in_var_idx = Int.(indexin(dependencies, 𝓂.timings.var))
+        dependencies_in_var_idx = Int.(indexin(dependencies, 𝓂.caches.timings.var))
 
         nˢ = length(dependencies)
 
@@ -530,14 +530,14 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
 
         dependencies_extended_idx = vcat(dependencies_in_states_idx, 
-                dependencies_in_states_idx .+ 𝓂.timings.nPast_not_future_and_mixed, 
-                findall(ℒ.kron(𝓂.timings.past_not_future_and_mixed .∈ (intersect(𝓂.timings.past_not_future_and_mixed,dependencies),), 𝓂.timings.past_not_future_and_mixed .∈ (intersect(𝓂.timings.past_not_future_and_mixed,dependencies),))) .+ 2*𝓂.timings.nPast_not_future_and_mixed)
+                dependencies_in_states_idx .+ 𝓂.caches.timings.nPast_not_future_and_mixed, 
+                findall(ℒ.kron(𝓂.caches.timings.past_not_future_and_mixed .∈ (intersect(𝓂.caches.timings.past_not_future_and_mixed,dependencies),), 𝓂.caches.timings.past_not_future_and_mixed .∈ (intersect(𝓂.caches.timings.past_not_future_and_mixed,dependencies),))) .+ 2*𝓂.caches.timings.nPast_not_future_and_mixed)
         
         Σ̂ᶻ₂ = Σᶻ₂[dependencies_extended_idx, dependencies_extended_idx]
         
         Δ̂μˢ₂ = Δμˢ₂[dependencies_in_states_idx]
 
-        s_in_s⁺ = BitVector(vcat(𝓂.timings.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
+        s_in_s⁺ = BitVector(vcat(𝓂.caches.timings.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
 
         substate_cache = ensure_moments_substate_cache!(𝓂, nˢ)
         I_plus_s_s = substate_cache.I_plus_s_s
@@ -548,10 +548,10 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
 
         # first order
         s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
-        e_to_y₁ = 𝐒₁[obs_in_y,:][:, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+        e_to_y₁ = 𝐒₁[obs_in_y,:][:, (𝓂.caches.timings.nPast_not_future_and_mixed + 1):end]
         
         s_to_s₁ = 𝐒₁[iˢ, dependencies_in_states_idx]
-        e_to_s₁ = 𝐒₁[iˢ, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+        e_to_s₁ = 𝐒₁[iˢ, (𝓂.caches.timings.nPast_not_future_and_mixed + 1):end]
 
         # second order
         dep_kron = ensure_moments_dependency_kron_cache!(𝓂, dependencies, s_in_s⁺)
@@ -657,7 +657,7 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
         for obs in variance_observable
-            Σʸ₃[indexin([obs], 𝓂.timings.var), indexin(variance_observable, 𝓂.timings.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
+            Σʸ₃[indexin([obs], 𝓂.caches.timings.var), indexin(variance_observable, 𝓂.caches.timings.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
         end
 
         autocorr_tmp = ŝ_to_ŝ₃ * Eᴸᶻ' * ê_to_y₃' + ê_to_ŝ₃ * Γ₃ * ê_to_y₃'
@@ -679,9 +679,9 @@ function calculate_third_order_moments_with_autocorrelation(parameters::Vector{T
             spzeros(nᵉ^3, 3*nˢ + 2*nˢ^2 +nˢ^3)]
 
             for obs in variance_observable
-                autocorr[indexin([obs], 𝓂.timings.var), i] .= ℒ.diag(ŝ_to_y₃ * Σᶻ₃ⁱ * ŝ_to_y₃' + ŝ_to_y₃ * ŝ_to_ŝ₃ⁱ * autocorr_tmp + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃')[indexin([obs], variance_observable)] ./ max.(ℒ.diag(Σʸ₃tmp), eps(Float64))[indexin([obs], variance_observable)]
+                autocorr[indexin([obs], 𝓂.caches.timings.var), i] .= ℒ.diag(ŝ_to_y₃ * Σᶻ₃ⁱ * ŝ_to_y₃' + ŝ_to_y₃ * ŝ_to_ŝ₃ⁱ * autocorr_tmp + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃')[indexin([obs], variance_observable)] ./ max.(ℒ.diag(Σʸ₃tmp), eps(Float64))[indexin([obs], variance_observable)]
 
-                autocorr[indexin([obs], 𝓂.timings.var), i][ℒ.diag(Σʸ₃tmp)[indexin([obs], variance_observable)] .< opts.tol.lyapunov_acceptance_tol] .= 0
+                autocorr[indexin([obs], 𝓂.caches.timings.var), i][ℒ.diag(Σʸ₃tmp)[indexin([obs], variance_observable)] .< opts.tol.lyapunov_acceptance_tol] .= 0
             end
 
             ŝ_to_ŝ₃ⁱ *= ŝ_to_ŝ₃
@@ -730,7 +730,7 @@ function calculate_third_order_moments(parameters::Vector{T},
     
     orders = determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, 𝓂.caches, observables, covariance = covariance, tol = opts.tol.dependencies_tol)
 
-    nᵉ = 𝓂.timings.nExo
+    nᵉ = 𝓂.caches.timings.nExo
 
     kron_e_e = cc.kron_e_e
     kron_v_v = cc.kron_v_v
@@ -757,13 +757,13 @@ function calculate_third_order_moments(parameters::Vector{T},
 
         sort!(dependencies_all_vars)
 
-        dependencies = intersect(𝓂.timings.past_not_future_and_mixed, dependencies_all_vars)
+        dependencies = intersect(𝓂.caches.timings.past_not_future_and_mixed, dependencies_all_vars)
 
-        obs_in_y = indexin(variance_observable, 𝓂.timings.var)
+        obs_in_y = indexin(variance_observable, 𝓂.caches.timings.var)
 
-        dependencies_in_states_idx = indexin(dependencies, 𝓂.timings.past_not_future_and_mixed)
+        dependencies_in_states_idx = indexin(dependencies, 𝓂.caches.timings.past_not_future_and_mixed)
 
-        dependencies_in_var_idx = Int.(indexin(dependencies, 𝓂.timings.var))
+        dependencies_in_var_idx = Int.(indexin(dependencies, 𝓂.caches.timings.var))
 
         nˢ = length(dependencies)
 
@@ -772,14 +772,14 @@ function calculate_third_order_moments(parameters::Vector{T},
         Σ̂ᶻ₁ = Σʸ₁[iˢ, iˢ]
 
         dependencies_extended_idx = vcat(dependencies_in_states_idx, 
-                dependencies_in_states_idx .+ 𝓂.timings.nPast_not_future_and_mixed, 
-                findall(ℒ.kron(𝓂.timings.past_not_future_and_mixed .∈ (intersect(𝓂.timings.past_not_future_and_mixed,dependencies),), 𝓂.timings.past_not_future_and_mixed .∈ (intersect(𝓂.timings.past_not_future_and_mixed,dependencies),))) .+ 2*𝓂.timings.nPast_not_future_and_mixed)
+                dependencies_in_states_idx .+ 𝓂.caches.timings.nPast_not_future_and_mixed, 
+                findall(ℒ.kron(𝓂.caches.timings.past_not_future_and_mixed .∈ (intersect(𝓂.caches.timings.past_not_future_and_mixed,dependencies),), 𝓂.caches.timings.past_not_future_and_mixed .∈ (intersect(𝓂.caches.timings.past_not_future_and_mixed,dependencies),))) .+ 2*𝓂.caches.timings.nPast_not_future_and_mixed)
         
         Σ̂ᶻ₂ = Σᶻ₂[dependencies_extended_idx, dependencies_extended_idx]
         
         Δ̂μˢ₂ = Δμˢ₂[dependencies_in_states_idx]
 
-        s_in_s⁺ = BitVector(vcat(𝓂.timings.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
+        s_in_s⁺ = BitVector(vcat(𝓂.caches.timings.past_not_future_and_mixed .∈ (dependencies,), zeros(Bool, nᵉ + 1)))
 
         substate_cache = ensure_moments_substate_cache!(𝓂, nˢ)
         I_plus_s_s = substate_cache.I_plus_s_s
@@ -790,10 +790,10 @@ function calculate_third_order_moments(parameters::Vector{T},
 
         # first order
         s_to_y₁ = 𝐒₁[obs_in_y,:][:,dependencies_in_states_idx]
-        e_to_y₁ = 𝐒₁[obs_in_y,:][:, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+        e_to_y₁ = 𝐒₁[obs_in_y,:][:, (𝓂.caches.timings.nPast_not_future_and_mixed + 1):end]
         
         s_to_s₁ = 𝐒₁[iˢ, dependencies_in_states_idx]
-        e_to_s₁ = 𝐒₁[iˢ, (𝓂.timings.nPast_not_future_and_mixed + 1):end]
+        e_to_s₁ = 𝐒₁[iˢ, (𝓂.caches.timings.nPast_not_future_and_mixed + 1):end]
 
         # second order
         dep_kron = ensure_moments_dependency_kron_cache!(𝓂, dependencies, s_in_s⁺)
@@ -899,7 +899,7 @@ function calculate_third_order_moments(parameters::Vector{T},
         Σʸ₃tmp = ŝ_to_y₃ * Σᶻ₃ * ŝ_to_y₃' + ê_to_y₃ * Γ₃ * ê_to_y₃' + ê_to_y₃ * Eᴸᶻ * ŝ_to_y₃' + ŝ_to_y₃ * Eᴸᶻ' * ê_to_y₃'
 
         for obs in variance_observable
-            Σʸ₃[indexin([obs], 𝓂.timings.var), indexin(variance_observable, 𝓂.timings.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
+            Σʸ₃[indexin([obs], 𝓂.caches.timings.var), indexin(variance_observable, 𝓂.caches.timings.var)] = Σʸ₃tmp[indexin([obs], variance_observable), :]
         end
     end
 

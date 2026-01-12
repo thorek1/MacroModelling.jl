@@ -594,15 +594,15 @@ function filter_and_smooth(𝓂::ℳ,
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
 
     @assert length(observables) == size(data_in_deviations)[1] "Data columns and number of observables are not identical. Make sure the data contains only the selected observables."
-    @assert length(observables) <= 𝓂.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
+    @assert length(observables) <= 𝓂.caches.timings.nExo "Cannot estimate model with more observables than exogenous shocks. Have at least as many shocks as observable variables."
 
     sort!(observables)
 
     solve!(𝓂, opts = opts)
     # Initialize caches at entry point
-    cache = initialize_caches!(𝓂)
-    cc = cache.computational_constants
-    T = cache.timings
+    caches = initialize_caches!(𝓂)
+    cc = caches.computational_constants
+    T = caches.timings
 
     parameters = 𝓂.parameter_values
 
@@ -613,12 +613,12 @@ function filter_and_smooth(𝓂::ℳ,
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            cache; 
+                                                            caches; 
                                                             opts = opts)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
-    # Direct cache access
+    # Direct caches access
     A = @views sol[:,1:T.nPast_not_future_and_mixed] * cc.diag_nVars[T.past_not_future_and_mixed_idx,:]
 
     B = @views sol[:,T.nPast_not_future_and_mixed+1:end]

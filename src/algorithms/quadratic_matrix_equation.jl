@@ -11,13 +11,13 @@
 function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         B::AbstractMatrix{R},
                                         C::AbstractMatrix{R},
-                                        cache::caches;
+                                        caches::caches;
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         quadratic_matrix_equation_algorithm::Symbol = :schur,
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
                                         verbose::Bool = false) where R <: Real
-    T = cache.timings
+    T = caches.timings
     
 
     if length(initial_guess) > 0
@@ -88,8 +88,8 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         tol::AbstractFloat = 1e-14,
                                         acceptance_tol::AbstractFloat = 1e-8,
                                         verbose::Bool = false) where R <: Real
-    cache = set_timings!(Caches(), T)
-    return solve_quadratic_matrix_equation(A, B, C, cache;
+    caches = set_timings!(Caches(), T)
+    return solve_quadratic_matrix_equation(A, B, C, caches;
                                             initial_guess = initial_guess,
                                             quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                             tol = tol,

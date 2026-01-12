@@ -608,8 +608,6 @@ mutable struct ℳ
     # model_third_order_derivatives::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
     # model_third_order_derivatives_SS_and_pars_vars::Tuple{Vector{Function}, SparseMatrixCSC{<: Real}}
 
-    timings::timings
-
     caches::caches
     workspaces::workspaces
 

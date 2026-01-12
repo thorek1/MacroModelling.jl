@@ -3474,8 +3474,8 @@ function filter_data_with_model(𝓂::ℳ,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize caches at entry point
-    cache = initialize_caches!(𝓂)
-    T = cache.timings
+    caches = initialize_caches!(𝓂)
+    T = caches.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3496,7 +3496,7 @@ function filter_data_with_model(𝓂::ℳ,
     ∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        cache;
+                                                        caches;
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution,
                                                         opts = opts)
     
@@ -3609,8 +3609,8 @@ function filter_data_with_model(𝓂::ℳ,
                                 opts::CalculationOptions = merge_calculation_options())
 
     # Initialize caches at entry point
-    cache = initialize_caches!(𝓂)
-    T = cache.timings
+    caches = initialize_caches!(𝓂)
+    T = caches.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3825,8 +3825,8 @@ function filter_data_with_model(𝓂::ℳ,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize caches at entry point
-    cache = initialize_caches!(𝓂)
-    T = cache.timings
+    caches = initialize_caches!(𝓂)
+    T = caches.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3845,7 +3845,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS]
+    state = [zeros(𝓂.caches.timings.nVars), collect(sss) - all_SS]
      
     precision_factor = 1.0
 
@@ -4039,12 +4039,12 @@ function filter_data_with_model(𝓂::ℳ,
         shocks[:,i] .= x
     end
 
-    states = [initial_state for _ in 1:𝓂.timings.nExo + 1]
+    states = [initial_state for _ in 1:𝓂.caches.timings.nExo + 1]
 
     decomposition[:, end, :] .= variables
 
-    for i in 1:𝓂.timings.nExo
-        sck = zeros(𝓂.timings.nExo)
+    for i in 1:𝓂.caches.timings.nExo
+        sck = zeros(𝓂.caches.timings.nExo)
         sck[i] = shocks[i, 1]
 
         aug_state₁ = [initial_state[1][T.past_not_future_and_mixed_idx]; 1; sck]
@@ -4063,8 +4063,8 @@ function filter_data_with_model(𝓂::ℳ,
     decomposition[:, end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:, 1:end - 2, 1], dims = 2)
 
     for i in 2:size(data_in_deviations, 2)
-        for ii in 1:𝓂.timings.nExo
-            sck = zeros(𝓂.timings.nExo)
+        for ii in 1:𝓂.caches.timings.nExo
+            sck = zeros(𝓂.caches.timings.nExo)
             sck[ii] = shocks[ii, i]
             
             aug_state₁ = [states[ii][1][T.past_not_future_and_mixed_idx]; 1; sck]
@@ -4095,8 +4095,8 @@ function filter_data_with_model(𝓂::ℳ,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize caches at entry point
-    cache = initialize_caches!(𝓂)
-    T = cache.timings
+    caches = initialize_caches!(𝓂)
+    T = caches.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -4407,8 +4407,8 @@ function filter_data_with_model(𝓂::ℳ,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
     # Initialize caches at entry point
-    cache = initialize_caches!(𝓂)
-    T = cache.timings
+    caches = initialize_caches!(𝓂)
+    T = caches.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -4427,7 +4427,7 @@ function filter_data_with_model(𝓂::ℳ,
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
-    state = [zeros(𝓂.timings.nVars), collect(sss) - all_SS, zeros(𝓂.timings.nVars)]
+    state = [zeros(𝓂.caches.timings.nVars), collect(sss) - all_SS, zeros(𝓂.caches.timings.nVars)]
 
     precision_factor = 1.0
 
@@ -4745,12 +4745,12 @@ function filter_data_with_model(𝓂::ℳ,
         shocks[:,i] .= x
     end
 
-    states = [initial_state for _ in 1:𝓂.timings.nExo + 1]
+    states = [initial_state for _ in 1:𝓂.caches.timings.nExo + 1]
 
     decomposition[:, end, :] .= variables
 
-    for i in 1:𝓂.timings.nExo
-        sck = zeros(𝓂.timings.nExo)
+    for i in 1:𝓂.caches.timings.nExo
+        sck = zeros(𝓂.caches.timings.nExo)
         sck[i] = shocks[i, 1]
 
         aug_state₁ = [initial_state[1][T.past_not_future_and_mixed_idx]; 1; sck]
@@ -4778,8 +4778,8 @@ function filter_data_with_model(𝓂::ℳ,
     decomposition[:,end - 1, 1] .= decomposition[:, end, 1] - sum(decomposition[:,1:end - 2, 1], dims = 2)
 
     for i in 2:size(data_in_deviations, 2)
-        for ii in 1:𝓂.timings.nExo
-            sck = zeros(𝓂.timings.nExo)
+        for ii in 1:𝓂.caches.timings.nExo
+            sck = zeros(𝓂.caches.timings.nExo)
             sck[ii] = shocks[ii, i]
 
             aug_state₁ = [states[ii][1][T.past_not_future_and_mixed_idx]; 1; sck]

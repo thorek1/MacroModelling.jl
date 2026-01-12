@@ -771,7 +771,7 @@ macro model(𝓂,ex...)
                 reorder,
                 dynamic_order)
 
-    # Set timings in the cache for unified access
+    # Set timings in the caches for unified access
     set_timings!(ℂ, T)
 
 
@@ -928,7 +928,7 @@ macro model(𝓂,ex...)
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives
                         # ([], SparseMatrixCSC{Float64, Int64}(ℒ.I, 0, 0)),#x->x, # model_third_order_derivatives_SS_and_pars_vars
 
-                        $T,
+                        # $T,
 
                         $ℂ,
                         $𝓦,
