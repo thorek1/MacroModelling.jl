@@ -1,45 +1,42 @@
+using Revise
 using MacroModelling
+import StatsPlots
 
 include("models/RBC_baseline.jl")
 
-reference_ss, nsss, sss_delta = MacroModelling.get_relevant_steady_states(RBC_baseline, :first_order)
-SS_and_pars, _ = MacroModelling.get_NSSS_and_parameters(RBC_baseline, RBC_baseline.parameter_values)
-all_ss = MacroModelling.expand_steady_state(SS_and_pars, RBC_baseline)
+algos = [:first_order, :second_order, :pruned_second_order, :third_order, :pruned_third_order]
 
-idx_excluding_obc = MacroModelling.parse_variables_input_to_index(:all_excluding_obc, RBC_baseline)
-idx_excluding_aux_obc = MacroModelling.parse_variables_input_to_index(:all_excluding_auxiliary_and_obc, RBC_baseline)
+# c is conditioned to deviate by 0.01 in period 1 and y is conditioned to deviate by 0.02 in period 2
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = [:c,:y], Periods = 1:2)
+conditions[1,1] = .01
+conditions[2,2] = .02
 
-@model RBC_switch begin
-    1 / c[0] = (beta / c[1]) * (alpha * exp(z[1]) * k[0]^(alpha - 1) + (1 - delta))
-    c[0] + k[0] = (1 - delta) * k[-1] + q[0]
-    q[0] = exp(z[0]) * k[-1]^alpha
-    z[0] = rho * z[-1] + std_z * eps_z[x]
+# in period 2 second shock (eps_z) is conditioned to take a value of 0.05
+shocks = Matrix{Union{Nothing,Float64}}(undef,2,1)
+shocks[1,1] = .05
+
+model = RBC_baseline
+
+
+
+include("models/Backus_Kehoe_Kydland_1992.jl")
+
+model = Backus_Kehoe_Kydland_1992
+
+algos = [:first_order, :second_order, :pruned_second_order]
+
+conditions = KeyedArray(Matrix{Union{Nothing,Float64}}(undef,2,2),Variables = ["C{H}","Y{F}"], Periods = 1:2)
+conditions[1,1] = .01
+conditions[2,2] = .02
+
+for algo in algos
+    get_steady_state(model, algorithm = algo)
+
+    get_conditional_forecast(model, conditions,  conditions_in_levels = false, algorithm = algo)
+
+    if algo in [:first_order, :pruned_second_order, :pruned_third_order]
+        get_mean(model, algorithm = algo)
+        get_std(model, algorithm = algo)
+    end
 end
 
-@parameters RBC_switch begin
-    std_z = 0.01
-    rho = 0.2
-    delta = 0.02
-    alpha = 0.5
-    beta = 0.95
-end
-
-function rbc_steady_state(params)
-    std_z, rho, delta, alpha, beta = params
-
-    k_ss = ((1 / beta - 1 + delta) / alpha)^(1 / (alpha - 1))
-    q_ss = k_ss^alpha
-    c_ss = q_ss - delta * k_ss
-    z_ss = 0.0
-
-    return [c_ss, k_ss, q_ss, z_ss]
-end
-
-ss = get_steady_state(RBC_switch, steady_state_function = rbc_steady_state, derivatives = false)
-
-println(reference_ss[1])
-println(nsss[1])
-println(ss)
-println(length(all_ss))
-println(length(idx_excluding_obc))
-println(length(idx_excluding_aux_obc))
