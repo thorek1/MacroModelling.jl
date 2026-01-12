@@ -100,6 +100,12 @@ struct computational_constants_cache
     kron_v_v::BitVector  # kron(v_in_s⁺, v_in_s⁺)
     kron_s_e::BitVector  # kron(s_in_s⁺, e_in_s⁺)
     kron_e_s::BitVector  # kron(e_in_s⁺, s_in_s⁺)
+    # Sparse index patterns for filter operations (from kron().nzind)
+    shockvar_idxs::Vector{Int}  # kron(e_in_s⁺, s_in_s⁺) |> sparse |> .nzind
+    shock_idxs::Vector{Int}     # kron(e_in_s⁺, ones) |> sparse |> .nzind
+    shock_idxs2::Vector{Int}    # kron(ones, e_in_s⁺) |> sparse |> .nzind
+    shock²_idxs::Vector{Int}    # kron(e_in_s⁺, e_in_s⁺) |> sparse |> .nzind
+    var_vol²_idxs::Vector{Int}  # kron(s_in_s⁺, s_in_s⁺) |> sparse |> .nzind
 end
 
 struct moments_substate_cache
@@ -224,7 +230,8 @@ function Caches(;T::Type = Float64, S::Type = Float64)
                                 Symbol[], Symbol[], Symbol[], Int[], Int[], Int[]),
             computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, 
                                          BitVector(), BitVector(), ℒ.Diagonal(Float64[]),
-                                         BitVector(), BitVector(), BitVector(), BitVector(), BitVector()),
+                                         BitVector(), BitVector(), BitVector(), BitVector(), BitVector(),
+                                         Int[], Int[], Int[], Int[], Int[]),
             Moments_cache(),
             First_order_index_cache(),
             Float64[])
@@ -286,6 +293,13 @@ function ensure_computational_constants_cache!(𝓂)
         kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
         kron_e_s = ℒ.kron(e_in_s⁺, s_in_s⁺)
 
+        # Compute sparse index patterns for filter operations
+        shockvar_idxs = sparse(ℒ.kron(e_in_s⁺, s_in_s⁺)).nzind
+        shock_idxs = sparse(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)).nzind
+        shock_idxs2 = sparse(ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)).nzind
+        shock²_idxs = sparse(ℒ.kron(e_in_s⁺, e_in_s⁺)).nzind
+        var_vol²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
+
         𝓂.caches.computational_constants = computational_constants_cache(
             s_in_s⁺,
             s_in_s,
@@ -300,6 +314,11 @@ function ensure_computational_constants_cache!(𝓂)
             kron_v_v,
             kron_s_e,
             kron_e_s,
+            shockvar_idxs,
+            shock_idxs,
+            shock_idxs2,
+            shock²_idxs,
+            var_vol²_idxs,
         )
     end
 

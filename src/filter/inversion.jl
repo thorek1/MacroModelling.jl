@@ -1731,23 +1731,14 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     s_in_s⁺ = @ignore_derivatives get_computational_constants(𝓂).s_in_s
     sv_in_s⁺ = @ignore_derivatives get_computational_constants(𝓂).s_in_s⁺
     e_in_s⁺ = @ignore_derivatives get_computational_constants(𝓂).e_in_s⁺
+    cc = @ignore_derivatives get_computational_constants(𝓂)
 
-    tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
-    shockvar_idxs = tmp.nzind
-    
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-
-    tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺) |> sparse
-    shock_idxs2 = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-
+    shockvar_idxs = cc.shockvar_idxs
+    shock_idxs = cc.shock_idxs
+    shock_idxs2 = cc.shock_idxs2
+    shock²_idxs = cc.shock²_idxs
     shockvar²_idxs = setdiff(union(shock_idxs), shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
+    var_vol²_idxs = cc.var_vol²_idxs
 
     tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
     var²_idxs = tmp.nzind
