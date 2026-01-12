@@ -346,7 +346,7 @@ struct computational_constants_cache
     e_in_s⁺::BitVector  # [zeros(nPast+1), ones(nExo)]
     v_in_s⁺::BitVector  # [zeros(nPast), 1, zeros(nExo)]
     # Diagonal matrix for state selection
-    diag_nVars::ℒ.Diagonal{Float64, Vector{Float64}}
+    diag_nVars::ℒ.Diagonal{Bool, Vector{Bool}}
     # Additional kron products for moments and filter calculations
     kron_s_s::BitVector  # kron(s_in_s⁺, s_in_s⁺) - same as kron_s⁺_s⁺ but used with s_in_s naming
     kron_e_e::BitVector  # kron(e_in_s⁺, e_in_s⁺)

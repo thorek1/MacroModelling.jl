@@ -70,7 +70,7 @@ function Caches(;T::Type = Float64, S::Type = Float64)
                                 Union{Symbol,String}[], spzeros(Float64, 0, 0), spzeros(Float64, 0, 0),
                                 Symbol[], Symbol[], Symbol[], Int[], Int[], Int[]),
             computational_constants_cache(BitVector(), BitVector(), BitVector(), BitVector(), 0, 
-                                         BitVector(), BitVector(), ℒ.Diagonal(Float64[]),
+                                         BitVector(), BitVector(), ℒ.I(0),
                                          BitVector(), BitVector(), BitVector(), BitVector(), BitVector(),
                                          Int[], Int[], Int[], Int[], Int[]),
             Moments_cache(),
@@ -148,7 +148,7 @@ function ensure_computational_constants_cache!(𝓂)
         e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
         v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
 
-        diag_nVars = ℒ.diagm(ones(T.nVars))
+        diag_nVars = ℒ.I(T.nVars)
 
         kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
         kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
