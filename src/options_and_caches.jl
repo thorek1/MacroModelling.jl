@@ -103,7 +103,7 @@ function ensure_name_display_cache!(𝓂)
         var_has_curly = any(x -> contains(string(x), "◖"), T.var)
         if var_has_curly
             var_decomposed = decompose_name.(T.var)
-            var_axis = Symbol.([length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in var_decomposed])
+            var_axis = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in var_decomposed]
         else
             var_axis = T.var
         end
@@ -111,7 +111,7 @@ function ensure_name_display_cache!(𝓂)
         exo_has_curly = any(x -> contains(string(x), "◖"), T.exo)
         if exo_has_curly
             exo_decomposed = decompose_name.(T.exo)
-            exo_axis_plain = Symbol.([length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in exo_decomposed])
+            exo_axis_plain = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in exo_decomposed]
             exo_axis_with_subscript = map(x -> Symbol(string(x) * "₍ₓ₎"), exo_axis_plain)
         else
             exo_axis_plain = T.exo
@@ -267,7 +267,8 @@ function ensure_model_structure_cache!(𝓂)
             full_NSSS_decomposed = decompose_name.(full_NSSS)
             full_NSSS = [length(a) > 1 ? string(a[1]) * "{" * join(a[2],"}{") * "}" * (a[end] isa Symbol ? string(a[end]) : "") : string(a[1]) for a in full_NSSS_decomposed]
         end
-        full_NSSS_display = Vector{Union{Symbol, String}}(full_NSSS)
+        # full_NSSS_display = Vector{Union{Symbol, String}}(full_NSSS)
+        full_NSSS_display = copy(full_NSSS)
 
         steady_state_expand_matrix = create_selector_matrix(processed_all_variables, NSSS_labels)
 

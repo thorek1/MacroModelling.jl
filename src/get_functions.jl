@@ -1527,7 +1527,7 @@ function get_steady_state(𝓂::ℳ;
     var_axis = get_var_axis(𝓂)
     calib_axis = 𝓂.calibration_equations_parameters
     if any(x -> contains(string(x), "◖"), calib_axis)
-        calib_axis = Symbol.(replace.(string.(calib_axis), "◖" => "{", "◗" => "}"))
+        calib_axis = replace.(string.(calib_axis), "◖" => "{", "◗" => "}")
     end
     axis1 = return_variables_only ? var_axis[var_idx] : vcat(var_axis[var_idx], calib_axis)
 

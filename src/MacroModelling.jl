@@ -3367,11 +3367,53 @@ replace_indices(x::String) = Symbol(replace(x, "{" => "◖", "}" => "◗"))
 
 replace_indices_in_symbol(x::Symbol) = replace(string(x), "◖" => "{", "◗" => "}")
 
-apply_custom_name(name::Symbol, rename_dictionary::AbstractDict{Symbol, <:AbstractString}) =
-    haskey(rename_dictionary, name) ? Symbol(rename_dictionary[name]) : name
 
-apply_custom_name(name::AbstractString, rename_dictionary::AbstractDict{Symbol, <:AbstractString}) =
-    haskey(rename_dictionary, Symbol(name)) ? rename_dictionary[Symbol(name)] : name
+"""
+    apply_custom_name(symbol::Symbol, custom_names::Dict{Symbol, String})
+
+Apply custom name from dictionary if available, otherwise use default name.
+"""
+function apply_custom_name(symbol::R, custom_names::AbstractDict{S, T})::R where {R <: Union{Symbol, String}, S, T}
+    # First, check for an exact match with the original symbol
+    if haskey(custom_names, symbol)
+        return R(custom_names[symbol])
+    end
+    
+    # Handle cross-type check for exact match (String vs Symbol)
+    if symbol isa Symbol && haskey(custom_names, String(replace_indices_in_symbol(symbol)))
+        return R(custom_names[String(replace_indices_in_symbol(symbol))])
+    elseif symbol isa String && haskey(custom_names, Symbol(symbol))
+        return R(custom_names[Symbol(symbol)])
+    end
+
+    # If no exact match, strip lag operators and compare base names.
+    s_str = string(symbol)
+    lag_regex = r"^(.*)(ᴸ⁽.*⁾)$"
+    m = match(lag_regex, s_str)
+
+    base_symbol_str, lag_part = if m !== nothing
+        (m.captures[1], m.captures[2])
+    else
+        (s_str, "")
+    end
+
+    for (key, value) in custom_names
+        key_str = string(key)
+        key_m = match(lag_regex, key_str)
+        
+        base_key_str = if key_m !== nothing
+            key_m.captures[1]
+        else
+            key_str
+        end
+
+        if base_key_str == base_symbol_str
+            return R(string(value) * lag_part)
+        end
+    end
+
+    return symbol
+end
 
 function normalize_superscript(x::Symbol)
     return normalize_superscript(string(x))

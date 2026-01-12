@@ -285,11 +285,11 @@ end
 # Stores precomputed variable and shock names that depend only on model structure
 struct name_display_cache
     # Processed variable names (with curly brackets formatted)
-    var_axis::Vector{Symbol}
+    var_axis::Vector{R} where R <: Union{Symbol, String}
     # Processed shock names (with curly brackets formatted, WITHOUT ₍ₓ₎ suffix)
-    exo_axis_plain::Vector{Symbol}
+    exo_axis_plain::Vector{R} where R <: Union{Symbol, String}
     # Processed shock names (with curly brackets formatted and WITH ₍ₓ₎ suffix)
-    exo_axis_with_subscript::Vector{Symbol}
+    exo_axis_with_subscript::Vector{R} where R <: Union{Symbol, String}
     # Flag indicating if variables contain curly brackets
     var_has_curly::Bool
     # Flag indicating if shocks contain curly brackets
