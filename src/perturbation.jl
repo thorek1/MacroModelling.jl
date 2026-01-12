@@ -527,15 +527,15 @@ function rrule(::typeof(calculate_second_order_solution),
                     ∇₁::AbstractMatrix{S}, #first order derivatives
                     ∇₂::SparseMatrixCSC{S}, #second order derivatives
                     𝑺₁::AbstractMatrix{S},#first order solution
+                    cache::caches,
                     M₂::second_order_auxiliary_matrices,   # aux matrices
-                    ℂC::caches;
-                    T::timings,
                     initial_guess::AbstractMatrix{R} = zeros(0,0),
                     opts::CalculationOptions = merge_calculation_options()) where {S <: Real, R <: Real}
-    if !(eltype(ℂC.second_order_caches.Ŝ) == S)
-        ℂC.second_order_caches = Higher_order_caches(T = S)
+    if !(eltype(cache.second_order_caches.Ŝ) == S)
+        cache.second_order_caches = Higher_order_caches(T = S)
     end
-    ℂ = ℂC.second_order_caches
+    ℂ = cache.second_order_caches
+    T = cache.timings
     # @timeit_debug timer "Second order solution - forward" begin
     # inspired by Levintal
 
@@ -800,15 +800,15 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
                                             𝐒₂::SparseMatrixCSC{S}, #second order solution
                                             M₂::second_order_auxiliary_matrices,  # aux matrices second order
                                             M₃::third_order_auxiliary_matrices,   # aux matrices third order
-                                            ℂC::caches;
-                                            T::timings,
+                                            cache::caches;
                                             initial_guess::AbstractMatrix{R} = zeros(0,0),
                                             opts::CalculationOptions = merge_calculation_options())::Union{Tuple{Matrix{S}, Bool}, Tuple{SparseMatrixCSC{S, Int}, Bool}}  where {S <: Real,R <: Real}
     if !(eltype(ℂC.third_order_caches.Ŝ) == S)
-        ℂC.third_order_caches = Higher_order_caches(T = S)
+        cache.third_order_caches = Higher_order_caches(T = S)
     end
-    ℂ = ℂC.third_order_caches
+    ℂ = cache.third_order_caches
 
+    T = cache.timings
     # @timeit_debug timer "Calculate third order solution" begin
     # inspired by Levintal
 
@@ -1047,14 +1047,14 @@ function rrule(::typeof(calculate_third_order_solution),
                 𝐒₂::SparseMatrixCSC{S}, #second order solution
                 M₂::second_order_auxiliary_matrices,  # aux matrices second order
                 M₃::third_order_auxiliary_matrices,   # aux matrices third order
-                ℂC::caches;
-                T::timings,
+                cache::caches;
                 initial_guess::AbstractMatrix{Float64} = zeros(0,0),
                 opts::CalculationOptions = merge_calculation_options()) where S <: AbstractFloat 
-    if !(eltype(ℂC.third_order_caches.Ŝ) == S)
-        ℂC.third_order_caches = Higher_order_caches(T = S)
+    if !(eltype(cache.third_order_caches.Ŝ) == S)
+        cache.third_order_caches = Higher_order_caches(T = S)
     end
-    ℂ = ℂC.third_order_caches
+    ℂ = cache.third_order_caches
+    T = cache.timings
 
     # @timeit_debug timer "Third order solution - forward" begin
     # inspired by Levintal
