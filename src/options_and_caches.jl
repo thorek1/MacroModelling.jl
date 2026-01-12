@@ -248,6 +248,15 @@ function set_timings!(cache::caches, T::timings)
     return cache
 end
 
+# Initialize all commonly used caches at once (call at entry points)
+# This reduces repeated ensure_*_cache! calls throughout the codebase
+function initialize_caches!(𝓂::ℳ)
+    ensure_computational_constants_cache!(𝓂)
+    ensure_name_display_cache!(𝓂)
+    ensure_first_order_index_cache!(𝓂)
+    return 𝓂.caches
+end
+
 function ensure_name_display_cache!(𝓂)
     cache = 𝓂.caches
     ndc = cache.name_display_cache

@@ -117,10 +117,11 @@ function calculate_first_order_solution(∇₁::Matrix{R},
                                         𝓂::ℳ;
                                         opts::CalculationOptions = merge_calculation_options(),
                                         initial_guess::AbstractMatrix{R} = zeros(0,0)) where R
-    @ignore_derivatives ensure_first_order_index_cache!(𝓂)
-    idx_cache = 𝓂.caches.first_order_index_cache
+    # Initialize caches at entry point - use direct cache access
+    cache = initialize_caches!(𝓂)
+    @ignore_derivatives idx_cache = cache.first_order_index_cache
     return calculate_first_order_solution(∇₁;
-                                            T = 𝓂.timings,
+                                            T = cache.timings,
                                             opts = opts,
                                             initial_guess = initial_guess,
                                             idx_cache = idx_cache)

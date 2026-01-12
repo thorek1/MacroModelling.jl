@@ -3462,8 +3462,9 @@ function filter_data_with_model(𝓂::ℳ,
                                 warmup_iterations::Int = 0,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
-    T = 𝓂.timings
-    ensure_computational_constants_cache!(𝓂)
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+    T = cache.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3596,8 +3597,9 @@ function filter_data_with_model(𝓂::ℳ,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
 
-    T = 𝓂.timings
-    ensure_computational_constants_cache!(𝓂)
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+    T = cache.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -3811,12 +3813,13 @@ function filter_data_with_model(𝓂::ℳ,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
-    T = 𝓂.timings
-    ensure_computational_constants_cache!(𝓂)
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+    T = cache.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
-    decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 3, size(data_in_deviations, 2))
+    decomposition = zeros(T.nVars, T.nExo + 3, size(data_in_deviations, 2))
 
     observables = get_and_check_observables(𝓂, data_in_deviations)
     
@@ -4080,8 +4083,9 @@ function filter_data_with_model(𝓂::ℳ,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
-    T = 𝓂.timings
-    ensure_computational_constants_cache!(𝓂)
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+    T = cache.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
@@ -4391,12 +4395,13 @@ function filter_data_with_model(𝓂::ℳ,
                                 filter_algorithm::Symbol = :LagrangeNewton,
                                 smooth::Bool = true,
                                 opts::CalculationOptions = merge_calculation_options())
-    T = 𝓂.timings
-    ensure_computational_constants_cache!(𝓂)
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+    T = cache.timings
 
     variables = zeros(T.nVars, size(data_in_deviations,2))
     shocks = zeros(T.nExo, size(data_in_deviations,2))
-    decomposition = zeros(𝓂.timings.nVars, 𝓂.timings.nExo + 3, size(data_in_deviations, 2))
+    decomposition = zeros(T.nVars, T.nExo + 3, size(data_in_deviations, 2))
     
     observables = get_and_check_observables(𝓂, data_in_deviations)
 
