@@ -1063,6 +1063,9 @@ function get_irf(𝓂::ℳ,
     opts = merge_calculation_options(tol = tol, verbose = verbose,
         quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm)
 
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+
     @ignore_derivatives solve!(𝓂, 
                                 steady_state_function = steady_state_function,
                                 opts = opts)
@@ -1083,8 +1086,8 @@ function get_irf(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, reference_steady_state, 𝓂)# |> Matrix
 								
-    sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                            𝓂;
+    sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                            cache = cache,
                                                             opts = opts,
                                                             initial_guess = 𝓂.solution.perturbation.qme_solution)
     
@@ -1912,6 +1915,9 @@ function get_solution(𝓂::ℳ,
                                     sylvester_algorithm² = isa(sylvester_algorithm, Symbol) ? sylvester_algorithm : sylvester_algorithm[1],
                                     sylvester_algorithm³ = (isa(sylvester_algorithm, Symbol) || length(sylvester_algorithm) < 2) ? :bicgstab : sylvester_algorithm[2])
 
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+
     @ignore_derivatives solve!(𝓂, 
                                 opts = opts, 
                                 steady_state_function = steady_state_function,
@@ -1942,8 +1948,8 @@ function get_solution(𝓂::ℳ,
 
 	∇₁ = calculate_jacobian(parameters, SS_and_pars, 𝓂)# |> Matrix
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        𝓂;
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                        cache = cache,
                                                         opts = opts,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
@@ -2118,6 +2124,9 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
                                                 quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                                 lyapunov_algorithm = lyapunov_algorithm)
 
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+
     solve!(𝓂, 
             opts = opts,
             steady_state_function = steady_state_function,  
@@ -2129,8 +2138,8 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        𝓂;
+    𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                        cache = cache,
                                                         opts = opts,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
@@ -2276,6 +2285,9 @@ function get_variance_decomposition(𝓂::ℳ;
                                     quadratic_matrix_equation_algorithm = quadratic_matrix_equation_algorithm,
                                     lyapunov_algorithm = lyapunov_algorithm)
     
+    # Initialize caches at entry point
+    cache = initialize_caches!(𝓂)
+
     solve!(𝓂, 
             opts = opts, 
             steady_state_function = steady_state_function, 
@@ -2285,8 +2297,8 @@ function get_variance_decomposition(𝓂::ℳ;
     
 	∇₁ = calculate_jacobian(𝓂.parameter_values, SS_and_pars, 𝓂)# |> Matrix
 
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        𝓂;
+    sol, qme_sol, solved = calculate_first_order_solution(∇₁;
+                                                        cache = cache,
                                                         opts = opts,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution)
     
