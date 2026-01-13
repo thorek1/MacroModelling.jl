@@ -43,19 +43,34 @@ function run_benchmarks!(𝓂::ℳ, SUITE::BenchmarkGroup)
     
     SUITE[𝓂.model_name]["qme"] = BenchmarkGroup()
     
-    sol, qme_sol, solved = calculate_first_order_solution(∇₁, 𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
+    if hasproperty(𝓂, :caches)
+        sol, qme_sol, solved = calculate_first_order_solution(∇₁, 𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
     
-    clear_solution_caches!(𝓂, :first_order)
-    
-    SUITE[𝓂.model_name]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁, $𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($𝓂, :first_order)
-    
-    SUITE[𝓂.model_name]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁, $𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
-    
-    
-    A = @views sol[:, 1:𝓂.caches.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.caches.timings.nVars))[𝓂.caches.timings.past_not_future_and_mixed_idx,:]
-    
-    C = @views sol[:, 𝓂.caches.timings.nPast_not_future_and_mixed+1:end]
-    
+        clear_solution_caches!(𝓂, :first_order)
+        
+        SUITE[𝓂.model_name]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁, $𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($𝓂, :first_order)
+        
+        SUITE[𝓂.model_name]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁, $𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
+        
+
+        A = @views sol[:, 1:𝓂.caches.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.caches.timings.nVars))[𝓂.caches.timings.past_not_future_and_mixed_idx,:]
+        
+        C = @views sol[:, 𝓂.caches.timings.nPast_not_future_and_mixed+1:end]
+    else
+        sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
+        
+        clear_solution_caches!(𝓂, :first_order)
+        
+        SUITE[𝓂.model_name]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($𝓂, :first_order)
+        
+        SUITE[𝓂.model_name]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
+        
+        
+        A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
+        
+        C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
+    end
+
     CC = C * C'
     
     solve_lyapunov_equation(A, CC)
