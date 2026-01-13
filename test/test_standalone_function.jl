@@ -74,7 +74,7 @@ T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :
 
 first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁, RBC_CME.caches)# |> Matrix{Float32}
 
-second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, RBC_CME.caches)
+second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, RBC_CME.caches, RBC_CME.workspaces)
 
 
 # second_order_solution *= RBC_CME.caches.second_order_auxiliary_matrices.𝐔₂

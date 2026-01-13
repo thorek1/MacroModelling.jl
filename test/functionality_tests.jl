@@ -456,7 +456,7 @@ function functionality_test(m, m2; algorithm = :first_order, plots = true)
 
         @testset "plot_solution" begin
             states  = vcat(get_state_variables(m), m.caches.timings.past_not_future_and_mixed)
-            states2 = vcat(get_state_variables(m2), m2.timings.past_not_future_and_mixed)
+            states2 = vcat(get_state_variables(m2), m2.caches.timings.past_not_future_and_mixed)
 
             if algorithm == :first_order
                 algos = [:first_order]
