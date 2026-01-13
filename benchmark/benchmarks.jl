@@ -16,6 +16,20 @@ import LinearAlgebra as ℒ
 using MacroModelling
 import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculate_jacobian, merge_calculation_options, solve_lyapunov_equation, ℳ
 
+function timings_for_bench(𝓂::ℳ)
+    if hasproperty(𝓂, :caches)
+        return 𝓂.caches.timings
+    end
+    return 𝓂.timings
+end
+
+function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts = merge_calculation_options())
+    if hasproperty(𝓂, :caches)
+        return calculate_first_order_solution(∇₁, 𝓂.caches; opts = opts)
+    end
+    return calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = opts)
+end
+
 
 function run_benchmarks!(𝓂::ℳ, SUITE::BenchmarkGroup)
     SUITE[𝓂.model_name] = BenchmarkGroup()
@@ -42,34 +56,22 @@ function run_benchmarks!(𝓂::ℳ, SUITE::BenchmarkGroup)
     
     
     SUITE[𝓂.model_name]["qme"] = BenchmarkGroup()
-    
-    @static if hasproperty(𝓂, :timings)
-        sol, qme_sol, solved = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
-        
-        clear_solution_caches!(𝓂, :first_order)
-        
-        SUITE[𝓂.model_name]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($𝓂, :first_order)
-        
-        SUITE[𝓂.model_name]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁; T = $𝓂.timings, opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
-        
-        
-        A = @views sol[:, 1:𝓂.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.timings.nVars))[𝓂.timings.past_not_future_and_mixed_idx,:]
-        
-        C = @views sol[:, 𝓂.timings.nPast_not_future_and_mixed+1:end]
-    else
-        sol, qme_sol, solved = calculate_first_order_solution(∇₁, 𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur))
-    
-        clear_solution_caches!(𝓂, :first_order)
-        
-        SUITE[𝓂.model_name]["qme"]["schur"] = @benchmarkable calculate_first_order_solution($∇₁, $𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)) setup = clear_solution_caches!($𝓂, :first_order)
-        
-        SUITE[𝓂.model_name]["qme"]["doubling"] = @benchmarkable calculate_first_order_solution($∇₁, $𝓂.caches; opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)) setup = clear_solution_caches!($𝓂, :first_order)
-        
 
-        A = @views sol[:, 1:𝓂.caches.timings.nPast_not_future_and_mixed] * ℒ.diagm(ones(𝓂.caches.timings.nVars))[𝓂.caches.timings.past_not_future_and_mixed_idx,:]
-        
-        C = @views sol[:, 𝓂.caches.timings.nPast_not_future_and_mixed+1:end]
-    end
+    qme_schur_opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :schur)
+    qme_doubling_opts = merge_calculation_options(quadratic_matrix_equation_algorithm = :doubling)
+
+    sol, qme_sol, solved = first_order_solution_for_bench(∇₁, 𝓂; opts = qme_schur_opts)
+
+    clear_solution_caches!(𝓂, :first_order)
+
+    SUITE[𝓂.model_name]["qme"]["schur"] = @benchmarkable first_order_solution_for_bench($∇₁, $𝓂; opts = $qme_schur_opts) setup = clear_solution_caches!($𝓂, :first_order)
+    SUITE[𝓂.model_name]["qme"]["doubling"] = @benchmarkable first_order_solution_for_bench($∇₁, $𝓂; opts = $qme_doubling_opts) setup = clear_solution_caches!($𝓂, :first_order)
+
+    T = timings_for_bench(𝓂)
+
+    A = @views sol[:, 1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(T.nVars))[T.past_not_future_and_mixed_idx,:]
+
+    C = @views sol[:, T.nPast_not_future_and_mixed+1:end]
 
     CC = C * C'
     
