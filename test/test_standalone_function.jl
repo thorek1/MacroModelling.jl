@@ -84,8 +84,6 @@ third_order_solution, solved3 = calculate_third_order_solution(∇₁,
                                                             ∇₃,
                                                             first_order_solution, 
                                                             second_order_solution, 
-                                                            RBC_CME.caches.second_order_auxiliary_matrices, 
-                                                            RBC_CME.caches.third_order_auxiliary_matrices, 
                                                             RBC_CME.caches)
 
 # third_order_solution *= RBC_CME.caches.third_order_auxiliary_matrices.𝐔₃
