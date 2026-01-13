@@ -278,9 +278,103 @@ mutable struct higher_order_caches{F <: Real, G <: AbstractFloat}
     sylvester_caches::sylvester_caches{G}
 end
 
+mutable struct quadratic_matrix_equation_workspace{T <: AbstractFloat}
+    AXX::Matrix{T}
+    E::Matrix{T}
+    F::Matrix{T}
+    Bbar::Matrix{T}
+    X::Matrix{T}
+    Y::Matrix{T}
+    Y_new::Matrix{T}
+    E_new::Matrix{T}
+    F_new::Matrix{T}
+    temp1::Matrix{T}
+    temp2::Matrix{T}
+    temp3::Matrix{T}
+    I_n::Matrix{T}
+end
+
+mutable struct nonlinear_solver_workspace{T <: AbstractFloat}
+    u_bounds::Vector{T}
+    l_bounds::Vector{T}
+    current_guess::Vector{T}
+    current_guess_untransformed::Vector{T}
+    previous_guess::Vector{T}
+    previous_guess_untransformed::Vector{T}
+    guess_update::Vector{T}
+    factor::Vector{T}
+    best_previous_guess::Vector{T}
+    best_current_guess::Vector{T}
+end
+
+mutable struct kalman_workspace
+    u::Vector{Float64}
+    z::Vector{Float64}
+    ztmp::Vector{Float64}
+    utmp::Vector{Float64}
+    Ctmp::Matrix{Float64}
+    F::Matrix{Float64}
+    K::Matrix{Float64}
+    tmp::Matrix{Float64}
+    Ptmp::Matrix{Float64}
+end
+
+mutable struct kalman_rrule_workspace
+    z::Vector{Float64}
+    ubar::Vector{Float64}
+    Pbar::Matrix{Float64}
+    temp_N_N::Matrix{Float64}
+    PCtmp::Matrix{Float64}
+    F::Matrix{Float64}
+    u_hist::Vector{Vector{Float64}}
+    P_hist::Vector{Matrix{Float64}}
+    CP_hist::Vector{Matrix{Float64}}
+    K_hist::Vector{Matrix{Float64}}
+    invF_hist::Vector{Matrix{Float64}}
+    v_hist::Vector{Vector{Float64}}
+    dA::Matrix{Float64}
+    dF::Matrix{Float64}
+    dFaccum::Matrix{Float64}
+    dP::Matrix{Float64}
+    dubar::Vector{Float64}
+    dv::Vector{Float64}
+    dB::Matrix{Float64}
+    ddata::Matrix{Float64}
+    vtmp::Vector{Float64}
+    Ptmp::Matrix{Float64}
+end
+
+mutable struct kalman_smoother_workspace
+    v::Matrix{Float64}
+    μ::Matrix{Float64}
+    P::Array{Float64, 3}
+    iF::Array{Float64, 3}
+    L::Array{Float64, 3}
+    r::Vector{Float64}
+    N::Matrix{Float64}
+    PCiF::Matrix{Float64}
+    tmp_state_obs::Matrix{Float64}
+    tmp_state_state::Matrix{Float64}
+    tmp_state_state2::Matrix{Float64}
+    tmp_state::Vector{Float64}
+    tmp_state2::Vector{Float64}
+    tmp_obs::Vector{Float64}
+    tmp_obs_state::Matrix{Float64}
+    tmp_obs_obs::Matrix{Float64}
+end
+
+mutable struct kalman_workspaces
+    forward::kalman_workspace
+    rrule::kalman_rrule_workspace
+    smoother::kalman_smoother_workspace
+end
+
 mutable struct workspaces
     second_order::higher_order_caches
     third_order::higher_order_caches
+    quadratic_matrix_equation::quadratic_matrix_equation_workspace
+    nonlinear_solver::nonlinear_solver_workspace
+    kalman::kalman_workspaces
 end
 
 # Cache for model-constant display names

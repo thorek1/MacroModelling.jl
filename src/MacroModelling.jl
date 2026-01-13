@@ -4337,7 +4337,8 @@ function write_block_solution!(𝓂,
                                                             solver_parameters,
                                                             fail_fast_solvers_only,
                                                             cold_start,
-                                                            verbose)))
+                                                            verbose;
+                                                            workspace = 𝓂.workspaces.nonlinear_solver)))
                                                             
     push!(SS_solve_func,:(iters += solution[2][2])) 
     push!(SS_solve_func,:(solution_error += solution[2][1])) 
@@ -5824,7 +5825,8 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                                                                 solver_parameters,
                                                                 fail_fast_solvers_only,
                                                                 cold_start,
-                                                                verbose)))
+                                                                verbose;
+                                                                workspace = 𝓂.workspaces.nonlinear_solver)))
         
         # push!(SS_solve_func,:(solution = block_solver_RD(length([$(calib_pars_input...),$(other_vars_input...)]) == 0 ? [0.0] : [$(calib_pars_input...),$(other_vars_input...)])))#, 
         
@@ -6189,7 +6191,8 @@ function solve_ss(SS_optimizer::Function,
                     guess::Vector{T},
                     solver_params::solver_parameters,
                     extended_problem::Bool,
-                    separate_starting_value::Union{Bool,T})::Tuple{Vector{T}, Vector{Int}, T, T} where T <: AbstractFloat
+                    separate_starting_value::Union{Bool,T};
+                    workspace::Union{nonlinear_solver_workspace, Nothing} = nothing)::Tuple{Vector{T}, Vector{Int}, T, T} where T <: AbstractFloat
     xtol = tol.NSSS_xtol
     ftol = tol.NSSS_ftol
     rel_xtol = tol.NSSS_rel_xtol
@@ -6222,7 +6225,8 @@ function solve_ss(SS_optimizer::Function,
                                         extended_problem ? lbs : lbs[1:length(guess)],
                                         extended_problem ? ubs : ubs[1:length(guess)],
                                         solver_params,
-                                        tol = tol   )
+                                        tol = tol,
+                                        workspace = workspace)
 
     sol_new = isnothing(sol_new_tmp) ? sol_new_tmp : sol_new_tmp[1:length(guess)]
 
@@ -6279,6 +6283,7 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                         cold_start::Bool,
                         verbose::Bool ;
                         tol::Tolerances = Tolerances(),
+                        workspace::Union{nonlinear_solver_workspace, Nothing} = nothing,
                         # rtol::AbstractFloat = sqrt(eps()),
                         # timeout = 120,
                         # starting_points::Vector{Float64} = [1.205996189998029, 0.7688, 0.897, 1.2],#, 0.9, 0.75, 1.5, -0.5, 2.0, .25]
@@ -6360,7 +6365,8 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                                                                 g, 
                                                                 p,
                                                                 ext,
-                                                                s)
+                                                                s;
+                                                                workspace = workspace)
                                                                 
                             if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol
                                 solved_yet = true
@@ -6392,7 +6398,8 @@ function block_solver(parameters_and_solved_vars::Vector{T},
                                                                             # parameters[1],
                                                                             false, # ext
                                                                             # false)
-                                                                            s) 
+                                                                            s;
+                                                                            workspace = workspace) 
                         if isfinite(sol_minimum) && sol_minimum < tol.NSSS_acceptance_tol # || rel_sol_minimum > rtol)
                             solved_yet = true
 
@@ -6486,7 +6493,8 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        workspace = 𝓂.workspaces)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -6823,7 +6831,8 @@ function calculate_third_order_stochastic_steady_state( parameters::Vector{M},
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        workspace = 𝓂.workspaces)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -7280,7 +7289,8 @@ function solve!(𝓂::ℳ;
             S₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                                 caches;
                                                                 opts = opts,
-                                                                initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                                initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                                workspace = 𝓂.workspaces)
     
             if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -7302,7 +7312,8 @@ function solve!(𝓂::ℳ;
                 Ŝ₁, qme_sol, solved = calculate_first_order_solution(∇̂₁,
                                                                     caches;
                                                                     opts = opts,
-                                                                    initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                                    initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                                    workspace = 𝓂.workspaces)
 
                 if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -10538,7 +10549,8 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
                                                         caches;
                                                         # timer = timer,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution,
-                                                        opts = opts)
+                                                        opts = opts,
+                                                        workspace = 𝓂.workspaces)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 

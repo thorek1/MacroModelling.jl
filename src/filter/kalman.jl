@@ -13,7 +13,8 @@ function calculate_loglikelihood(::Val{:kalman},
                                 warmup_iterations, 
                                 filter_algorithm, 
                                 opts,
-                                on_failure_loglikelihood) #; 
+                                on_failure_loglikelihood;
+                                workspaces::Union{workspaces, Nothing} = nothing) #; 
                                 # timer::TimerOutput = TimerOutput())
     return calculate_kalman_filter_loglikelihood(observables, 
                                                 𝐒, 
@@ -23,7 +24,8 @@ function calculate_loglikelihood(::Val{:kalman},
                                                 initial_covariance = initial_covariance, 
                                                 # timer = timer, 
                                                 opts = opts,
-                                                on_failure_loglikelihood = on_failure_loglikelihood)
+                                                on_failure_loglikelihood = on_failure_loglikelihood,
+                                                workspace = isnothing(workspaces) ? nothing : workspaces.kalman)
 end
 
 function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
@@ -34,10 +36,16 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
                                                 on_failure_loglikelihood::U = -Inf,
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical,
-                                                opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+                                                opts::CalculationOptions = merge_calculation_options(),
+                                                workspace::Union{kalman_workspaces, Nothing} = nothing)::S where {S <: Real, U <: AbstractFloat}
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T,
+                                        presample_periods = presample_periods,
+                                        initial_covariance = initial_covariance,
+                                        opts = opts,
+                                        on_failure_loglikelihood = on_failure_loglikelihood,
+                                        workspace = workspace)
     # timer = timer, 
 end
 
@@ -49,10 +57,16 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{String},
                                                 presample_periods::Int = 0, 
                                                 on_failure_loglikelihood::U = -Inf,
                                                 initial_covariance::Symbol = :theoretical,
-                                                opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+                                                opts::CalculationOptions = merge_calculation_options(),
+                                                workspace::Union{kalman_workspaces, Nothing} = nothing)::S where {S <: Real, U <: AbstractFloat}
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T,
+                                        presample_periods = presample_periods,
+                                        initial_covariance = initial_covariance,
+                                        opts = opts,
+                                        on_failure_loglikelihood = on_failure_loglikelihood,
+                                        workspace = workspace)
     # timer = timer, 
 end
 
@@ -65,7 +79,8 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
                                                 initial_covariance::Symbol = :theoretical,
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
-                                                opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+                                                opts::CalculationOptions = merge_calculation_options(),
+                                                workspace::Union{kalman_workspaces, Nothing} = nothing)::S where {S <: Real, U <: AbstractFloat}
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
     A = 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]
@@ -79,7 +94,11 @@ function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int},
     P = get_initial_covariance(Val(initial_covariance), A, 𝐁, opts = opts)
     # timer = timer, 
 
-    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations, presample_periods = presample_periods, verbose = opts.verbose, on_failure_loglikelihood = on_failure_loglikelihood)
+    return run_kalman_iterations(A, 𝐁, C, P, data_in_deviations,
+                                presample_periods = presample_periods,
+                                verbose = opts.verbose,
+                                on_failure_loglikelihood = on_failure_loglikelihood,
+                                workspace = workspace)
     # timer = timer, 
 end
 
@@ -109,6 +128,44 @@ function get_initial_covariance(::Val{:diagonal},
     return P
 end
 
+function ensure_kalman_workspace!(workspace::kalman_workspace,
+                                C::AbstractMatrix{Float64},
+                                P::AbstractMatrix{Float64})
+    nobs, nstate = size(C)
+
+    if length(workspace.u) != nstate
+        workspace.u = zeros(Float64, nstate)
+        workspace.utmp = zeros(Float64, nstate)
+    end
+
+    if length(workspace.z) != nobs
+        workspace.z = zeros(Float64, nobs)
+        workspace.ztmp = zeros(Float64, nobs)
+    end
+
+    if size(workspace.Ctmp) != (nobs, nstate)
+        workspace.Ctmp = zeros(Float64, nobs, nstate)
+    end
+
+    if size(workspace.F) != (nobs, nobs)
+        workspace.F = zeros(Float64, nobs, nobs)
+    end
+
+    if size(workspace.K) != (nstate, nobs)
+        workspace.K = zeros(Float64, nstate, nobs)
+    end
+
+    if size(workspace.tmp) != size(P)
+        workspace.tmp = zeros(Float64, size(P)...)
+    end
+
+    if size(workspace.Ptmp) != size(P)
+        workspace.Ptmp = zeros(Float64, size(P)...)
+    end
+
+    return workspace
+end
+
 
 function run_kalman_iterations(A::Matrix{S}, 
                                 𝐁::Matrix{S},
@@ -118,28 +175,27 @@ function run_kalman_iterations(A::Matrix{S},
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
-                                verbose::Bool = false)::S where {S <: Float64, U <: AbstractFloat}
+                                verbose::Bool = false,
+                                workspace::Union{kalman_workspaces, Nothing} = nothing)::S where {S <: Float64, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter" begin
 
-    u = zeros(S, size(C,2))
+    local_workspace = isnothing(workspace) ? Kalman_workspace() : workspace.forward
+    ensure_kalman_workspace!(local_workspace, C, P)
 
-    z = C * u
+    u = local_workspace.u
+    z = local_workspace.z
+    ztmp = local_workspace.ztmp
+    utmp = local_workspace.utmp
+    Ctmp = local_workspace.Ctmp
+    F = local_workspace.F
+    K = local_workspace.K
+    tmp = local_workspace.tmp
+    Ptmp = local_workspace.Ptmp
 
-    ztmp = similar(z)
+    fill!(u, 0)
+    fill!(z, 0)
 
     loglik = S(0.0)
-
-    utmp = similar(u)
-
-    Ctmp = similar(C)
-
-    F = similar(C * C')
-
-    K = similar(C')
-    # Ktmp = similar(C')
-
-    tmp = similar(P)
-    Ptmp = similar(P)
 
     # @timeit_debug timer "Loop" begin
     for t in 1:size(data_in_deviations, 2)
@@ -228,7 +284,8 @@ function run_kalman_iterations(A::Matrix{S},
                                 presample_periods::Int = 0,
                                 on_failure_loglikelihood::U = -Inf,
                                 # timer::TimerOutput = TimerOutput(),
-                                verbose::Bool = false)::S where {S <: ℱ.Dual, U <: AbstractFloat}
+                                verbose::Bool = false,
+                                workspace::Union{kalman_workspaces, Nothing} = nothing)::S where {S <: ℱ.Dual, U <: AbstractFloat}
     # @timeit_debug timer "Calculate Kalman filter - forward mode AD" begin
     u = zeros(S, size(C,2))
 
@@ -287,6 +344,192 @@ end
 
 end # dispatch_doctor
 
+function ensure_vecvec!(storage::Vector{Vector{Float64}}, len::Int, width::Int)
+    if length(storage) != len
+        storage = [zeros(Float64, width) for _ in 1:len]
+    else
+        for i in 1:len
+            if length(storage[i]) != width
+                storage[i] = zeros(Float64, width)
+            end
+        end
+    end
+    return storage
+end
+
+function ensure_vecmat!(storage::Vector{Matrix{Float64}}, len::Int, dims::Tuple{Int, Int})
+    if length(storage) != len
+        storage = [zeros(Float64, dims...) for _ in 1:len]
+    else
+        for i in 1:len
+            if size(storage[i]) != dims
+                storage[i] = zeros(Float64, dims...)
+            end
+        end
+    end
+    return storage
+end
+
+function ensure_kalman_rrule_workspace!(workspace::kalman_rrule_workspace,
+                                        A::AbstractMatrix{Float64},
+                                        C::AbstractMatrix{Float64},
+                                        P::AbstractMatrix{Float64},
+                                        data_in_deviations::AbstractMatrix{Float64})
+    nobs = size(data_in_deviations, 1)
+    nstate = size(C, 2)
+    T = size(data_in_deviations, 2) + 1
+
+    if length(workspace.z) != nobs
+        workspace.z = zeros(Float64, nobs)
+    end
+
+    if length(workspace.ubar) != nstate
+        workspace.ubar = zeros(Float64, nstate)
+    end
+
+    if size(workspace.Pbar) != size(P)
+        workspace.Pbar = zeros(Float64, size(P)...)
+    end
+
+    if size(workspace.temp_N_N) != size(P)
+        workspace.temp_N_N = zeros(Float64, size(P)...)
+    end
+
+    if size(workspace.PCtmp) != (nstate, nobs)
+        workspace.PCtmp = zeros(Float64, nstate, nobs)
+    end
+
+    if size(workspace.F) != (nobs, nobs)
+        workspace.F = zeros(Float64, nobs, nobs)
+    end
+
+    workspace.u_hist = ensure_vecvec!(workspace.u_hist, T, nstate)
+    workspace.v_hist = ensure_vecvec!(workspace.v_hist, T, nobs)
+    workspace.P_hist = ensure_vecmat!(workspace.P_hist, T, size(P))
+    workspace.CP_hist = ensure_vecmat!(workspace.CP_hist, T, size(C))
+    workspace.K_hist = ensure_vecmat!(workspace.K_hist, T, (nstate, nobs))
+    workspace.invF_hist = ensure_vecmat!(workspace.invF_hist, T, (nobs, nobs))
+
+    if size(workspace.dA) != size(A)
+        workspace.dA = zeros(Float64, size(A)...)
+    end
+
+    if size(workspace.dF) != (nobs, nobs)
+        workspace.dF = zeros(Float64, nobs, nobs)
+    end
+
+    if size(workspace.dFaccum) != (nobs, nobs)
+        workspace.dFaccum = zeros(Float64, nobs, nobs)
+    end
+
+    if size(workspace.dP) != size(P)
+        workspace.dP = zeros(Float64, size(P)...)
+    end
+
+    if length(workspace.dubar) != nstate
+        workspace.dubar = zeros(Float64, nstate)
+    end
+
+    if length(workspace.dv) != nobs
+        workspace.dv = zeros(Float64, nobs)
+    end
+
+    if size(workspace.dB) != size(P)
+        workspace.dB = zeros(Float64, size(P)...)
+    end
+
+    if size(workspace.ddata) != size(data_in_deviations)
+        workspace.ddata = zeros(Float64, size(data_in_deviations)...)
+    end
+
+    if length(workspace.vtmp) != nobs
+        workspace.vtmp = zeros(Float64, nobs)
+    end
+
+    if size(workspace.Ptmp) != size(P)
+        workspace.Ptmp = zeros(Float64, size(P)...)
+    end
+
+    return workspace
+end
+
+function ensure_kalman_smoother_workspace!(workspace::kalman_smoother_workspace,
+                                            A::AbstractMatrix{Float64},
+                                            B::AbstractMatrix{Float64},
+                                            C::AbstractMatrix{Float64},
+                                            data_in_deviations::AbstractMatrix{Float64})
+    nstate = size(A, 1)
+    nobs = size(C, 1)
+    n_exo = size(B, 2)
+    n_obs = size(data_in_deviations, 2)
+
+    if size(workspace.v) != (nobs, n_obs)
+        workspace.v = zeros(Float64, nobs, n_obs)
+    end
+
+    if size(workspace.μ) != (nstate, n_obs + 1)
+        workspace.μ = zeros(Float64, nstate, n_obs + 1)
+    end
+
+    if size(workspace.P) != (nstate, nstate, n_obs + 1)
+        workspace.P = zeros(Float64, nstate, nstate, n_obs + 1)
+    end
+
+    if size(workspace.iF) != (nobs, nobs, n_obs)
+        workspace.iF = zeros(Float64, nobs, nobs, n_obs)
+    end
+
+    if size(workspace.L) != (nstate, nstate, n_obs)
+        workspace.L = zeros(Float64, nstate, nstate, n_obs)
+    end
+
+    if length(workspace.r) != nstate
+        workspace.r = zeros(Float64, nstate)
+    end
+
+    if size(workspace.N) != (nstate, nstate)
+        workspace.N = zeros(Float64, nstate, nstate)
+    end
+
+    if size(workspace.PCiF) != (nstate, nobs)
+        workspace.PCiF = zeros(Float64, nstate, nobs)
+    end
+
+    if size(workspace.tmp_state_obs) != (nstate, nobs)
+        workspace.tmp_state_obs = zeros(Float64, nstate, nobs)
+    end
+
+    if size(workspace.tmp_state_state) != (nstate, nstate)
+        workspace.tmp_state_state = zeros(Float64, nstate, nstate)
+    end
+
+    if size(workspace.tmp_state_state2) != (nstate, nstate)
+        workspace.tmp_state_state2 = zeros(Float64, nstate, nstate)
+    end
+
+    if length(workspace.tmp_state) != nstate
+        workspace.tmp_state = zeros(Float64, nstate)
+    end
+
+    if length(workspace.tmp_state2) != nstate
+        workspace.tmp_state2 = zeros(Float64, nstate)
+    end
+
+    if length(workspace.tmp_obs) != nobs
+        workspace.tmp_obs = zeros(Float64, nobs)
+    end
+
+    if size(workspace.tmp_obs_state) != (nobs, nstate)
+        workspace.tmp_obs_state = zeros(Float64, nobs, nstate)
+    end
+
+    if size(workspace.tmp_obs_obs) != (nobs, nobs)
+        workspace.tmp_obs_obs = zeros(Float64, nobs, nobs)
+    end
+
+    return workspace
+end
+
 function rrule(::typeof(run_kalman_iterations), 
                     A, 
                     𝐁, 
@@ -296,33 +539,35 @@ function rrule(::typeof(run_kalman_iterations),
                     presample_periods = 0,
                     on_failure_loglikelihood = -Inf,
                     # timer::TimerOutput = TimerOutput(),
-                    verbose::Bool = false)
+                    verbose::Bool = false,
+                    workspace::Union{kalman_workspaces, Nothing} = nothing)
     # @timeit_debug timer "Calculate Kalman filter - forward" begin
     T = size(data_in_deviations, 2) + 1
 
-    z = zeros(size(data_in_deviations, 1))
+    local_workspace = isnothing(workspace) ? Kalman_rrule_workspace() : workspace.rrule
+    ensure_kalman_rrule_workspace!(local_workspace, A, C, P, data_in_deviations)
 
-    ū = zeros(size(C,2))
+    P0 = P
+    z = local_workspace.z
+    ū = local_workspace.ubar
+    P̄ = local_workspace.Pbar
+    temp_N_N = local_workspace.temp_N_N
+    PCtmp = local_workspace.PCtmp
+    F = local_workspace.F
+    u = local_workspace.u_hist
+    P = local_workspace.P_hist
+    CP = local_workspace.CP_hist
+    K = local_workspace.K_hist
+    invF = local_workspace.invF_hist
+    v = local_workspace.v_hist
 
-    P̄ = deepcopy(P) 
+    fill!(z, 0)
+    fill!(ū, 0)
+    copyto!(P̄, P0)
 
-    temp_N_N = similar(P)
-
-    PCtmp = similar(C')
-
-    F = similar(C * C')
-
-    u = [similar(ū) for _ in 1:T] # used in backward pass
-
-    P = [copy(P̄) for _ in 1:T] # used in backward pass
-
-    CP = [zero(C) for _ in 1:T] # used in backward pass
-
-    K = [similar(C') for _ in 1:T] # used in backward pass
-
-    invF = [similar(F) for _ in 1:T] # used in backward pass
-
-    v = [zeros(size(data_in_deviations, 1)) for _ in 1:T] # used in backward pass
+    for t in 1:T
+        copyto!(P[t], P̄)
+    end
 
     loglik = 0.0
 
@@ -391,16 +636,16 @@ function rrule(::typeof(run_kalman_iterations),
     llh = -(loglik + ((size(data_in_deviations, 2) - presample_periods) * size(data_in_deviations, 1)) * log(2 * 3.141592653589793)) / 2 
 
     # initialise derivative variables
-    ∂A = zero(A)
-    ∂F = zero(F)
-    ∂Faccum = zero(F)
-    ∂P = zero(P̄)
-    ∂ū = zero(ū)
-    ∂v = zero(v[1])
-    ∂𝐁 = zero(𝐁)
-    ∂data_in_deviations = zero(data_in_deviations)
-    vtmp = zero(v[1])
-    Ptmp = zero(P[1])
+    ∂A = local_workspace.dA
+    ∂F = local_workspace.dF
+    ∂Faccum = local_workspace.dFaccum
+    ∂P = local_workspace.dP
+    ∂ū = local_workspace.dubar
+    ∂v = local_workspace.dv
+    ∂𝐁 = local_workspace.dB
+    ∂data_in_deviations = local_workspace.ddata
+    vtmp = local_workspace.vtmp
+    Ptmp = local_workspace.Ptmp
 
     # end # timeit_debug
     # end # timeit_debug
@@ -574,7 +819,9 @@ function filter_data_with_model(𝓂::ℳ,
 
     obs_symbols = obs_axis isa String_input ? obs_axis .|> Meta.parse .|> replace_indices : obs_axis
 
-    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols; opts = opts)
+    filtered_and_smoothed = filter_and_smooth(𝓂, data_in_deviations, obs_symbols;
+                                            opts = opts,
+                                            workspace = 𝓂.workspaces.kalman.smoother)
 
     variables           = filtered_and_smoothed[smooth ? 1 : 5]
     standard_deviations = filtered_and_smoothed[smooth ? 2 : 6]
@@ -589,7 +836,8 @@ end
 function filter_and_smooth(𝓂::ℳ, 
                             data_in_deviations::AbstractArray{Float64}, 
                             observables::Vector{Symbol};
-                            opts::CalculationOptions = merge_calculation_options())
+                            opts::CalculationOptions = merge_calculation_options(),
+                            workspace::Union{kalman_smoother_workspace, Nothing} = nothing)
     # Based on Durbin and Koopman (2012)
     # https://jrnold.github.io/ssmodels-in-stan/filtering-and-smoothing.html#smoothing
 
@@ -614,7 +862,8 @@ function filter_and_smooth(𝓂::ℳ,
 
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             caches; 
-                                                            opts = opts)
+                                                            opts = opts,
+                                                            workspace = 𝓂.workspaces)
 
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -631,34 +880,67 @@ function filter_and_smooth(𝓂::ℳ,
 
     n_obs = size(data_in_deviations,2)
 
-    v = zeros(size(C,1), n_obs)
-    μ = zeros(size(A,1), n_obs+1) # filtered_states
-    P = zeros(size(A,1), size(A,1), n_obs+1) # filtered_covariances
-    σ = zeros(size(A,1), n_obs) # filtered_standard_deviations
-    iF= zeros(size(C,1), size(C,1), n_obs)
-    L = zeros(size(A,1), size(A,1), n_obs)
-    ϵ = zeros(size(B,2), n_obs) # filtered_shocks
+    local_workspace = isnothing(workspace) ? Kalman_smoother_workspace() : workspace
+    ensure_kalman_smoother_workspace!(local_workspace, A, B, C, data_in_deviations)
 
-    P[:, :, 1] = P̄
+    v = local_workspace.v
+    μ = local_workspace.μ
+    P = local_workspace.P
+    iF = local_workspace.iF
+    L = local_workspace.L
+    r = local_workspace.r
+    N = local_workspace.N
+    PCiF = local_workspace.PCiF
+    tmp_state_obs = local_workspace.tmp_state_obs
+    tmp_state_state = local_workspace.tmp_state_state
+    tmp_state_state2 = local_workspace.tmp_state_state2
+    tmp_state = local_workspace.tmp_state
+    tmp_state2 = local_workspace.tmp_state2
+    tmp_obs = local_workspace.tmp_obs
+    tmp_obs_state = local_workspace.tmp_obs_state
+    tmp_obs_obs = local_workspace.tmp_obs_obs
+
+    fill!(v, 0)
+    fill!(μ, 0)
+    fill!(P, 0)
+    fill!(iF, 0)
+    fill!(L, 0)
+
+    @views P[:, :, 1] .= P̄
+
+    σ = zeros(size(A,1), n_obs) # filtered_standard_deviations
+    ϵ = zeros(size(B,2), n_obs) # filtered_shocks
 
     # Kalman Filter
     for t in axes(data_in_deviations,2)
-        v[:, t]     .= data_in_deviations[:, t] - C * μ[:, t]
+        @views ℒ.mul!(tmp_obs, C, μ[:, t])
+        @views v[:, t] .= data_in_deviations[:, t] .- tmp_obs
 
-        F̄ = ℒ.lu(C * P[:, :, t] * C', check = false)
+        @views ℒ.mul!(tmp_obs_state, C, P[:, :, t])
+        ℒ.mul!(tmp_obs_obs, tmp_obs_state, C')
+        F̄ = RF.lu!(tmp_obs_obs, check = false)
 
         if !ℒ.issuccess(F̄) 
             @warn "Kalman filter stopped in period $t due to numerical stabiltiy issues."
             break
         end
 
-        iF[:, :, t] .= inv(F̄)
-        PCiF         = P[:, :, t] * C' * iF[:, :, t]
-        L[:, :, t]  .= A - A * PCiF * C
-        P[:, :, t+1].= A * P[:, :, t] * L[:, :, t]' + 𝐁
-        σ[:, t]     .= sqrt.(abs.(ℒ.diag(P[:, :, t+1]))) # small numerical errors in this computation
-        μ[:, t+1]   .= A * (μ[:, t] + PCiF * v[:, t])
-        ϵ[:, t]     .= B' * C' * iF[:, :, t] * v[:, t]
+        @views iF[:, :, t] .= inv(F̄)
+        @views ℒ.mul!(tmp_state_obs, P[:, :, t], C')
+        @views ℒ.mul!(PCiF, tmp_state_obs, iF[:, :, t])
+        ℒ.mul!(tmp_state_obs, A, PCiF)
+        ℒ.mul!(tmp_state_state, tmp_state_obs, C)
+        @views L[:, :, t] .= A .- tmp_state_state
+        @views ℒ.mul!(tmp_state_state, A, P[:, :, t])
+        @views ℒ.mul!(tmp_state_state2, tmp_state_state, L[:, :, t]')
+        @views P[:, :, t+1] .= tmp_state_state2 .+ 𝐁
+        @views σ[:, t] .= sqrt.(abs.(ℒ.diag(P[:, :, t+1]))) # small numerical errors in this computation
+        @views ℒ.mul!(tmp_state, PCiF, v[:, t])
+        @views tmp_state .+= μ[:, t]
+        @views ℒ.mul!(μ[:, t+1], A, tmp_state)
+        @views ℒ.mul!(tmp_obs, iF[:, :, t], v[:, t])
+        ℒ.mul!(tmp_state, C', tmp_obs)
+        @views ℒ.mul!(ϵ[:, t], B', tmp_state)
     end
 
 
@@ -679,16 +961,27 @@ function filter_and_smooth(𝓂::ℳ,
     σ̄ = zeros(size(A,1), n_obs) # smoothed_standard_deviations
     ϵ̄ = zeros(size(B,2), n_obs) # smoothed_shocks
 
-    r = zeros(size(A,1))
-    N = zeros(size(A,1), size(A,1))
+    fill!(r, 0)
+    fill!(N, 0)
 
     # Kalman Smoother
     for t in n_obs:-1:1
-        r       .= C' * iF[:, :, t] * v[:, t] + L[:, :, t]' * r
-        μ̄[:, t] .= μ[:, t] + P[:, :, t] * r
-        N       .= C' * iF[:, :, t] * C + L[:, :, t]' * N * L[:, :, t]
-        σ̄[:, t] .= sqrt.(abs.(ℒ.diag(P[:, :, t] - P[:, :, t] * N * P[:, :, t]'))) # can go negative
-        ϵ̄[:, t] .= B' * r
+        @views ℒ.mul!(tmp_obs, iF[:, :, t], v[:, t])
+        ℒ.mul!(tmp_state, C', tmp_obs)
+        @views ℒ.mul!(tmp_state2, L[:, :, t]', r)
+        r .= tmp_state .+ tmp_state2
+        @views ℒ.mul!(tmp_state, P[:, :, t], r)
+        @views μ̄[:, t] .= μ[:, t] .+ tmp_state
+        @views ℒ.mul!(tmp_obs_state, iF[:, :, t], C)
+        ℒ.mul!(tmp_state_state, C', tmp_obs_state)
+        @views ℒ.mul!(tmp_state_state2, N, L[:, :, t])
+        @views ℒ.mul!(N, L[:, :, t]', tmp_state_state2)
+        N .+= tmp_state_state
+        @views ℒ.mul!(tmp_state_state2, N, P[:, :, t]')
+        @views ℒ.mul!(tmp_state_state, P[:, :, t], tmp_state_state2)
+        @views tmp_state_state .= P[:, :, t] .- tmp_state_state
+        @views σ̄[:, t] .= sqrt.(abs.(ℒ.diag(tmp_state_state))) # can go negative
+        @views ℒ.mul!(ϵ̄[:, t], B', r)
     end
 
     # Historical shock decompositionm (smoother)

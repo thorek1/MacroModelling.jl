@@ -1089,7 +1089,8 @@ function get_irf(𝓂::ℳ,
     sol_mat, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                             caches;
                                                             opts = opts,
-                                                            initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                            initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                            workspace = 𝓂.workspaces)
     
     if solved 
         𝓂.solution.perturbation.qme_solution = qme_sol
@@ -1948,7 +1949,8 @@ function get_solution(𝓂::ℳ,
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        workspace = 𝓂.workspaces)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -2133,7 +2135,8 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
     𝑺₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        workspace = 𝓂.workspaces)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -2292,7 +2295,8 @@ function get_variance_decomposition(𝓂::ℳ;
     sol, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         caches;
                                                         opts = opts,
-                                                        initial_guess = 𝓂.solution.perturbation.qme_solution)
+                                                        initial_guess = 𝓂.solution.perturbation.qme_solution,
+                                                        workspace = 𝓂.workspaces)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 
@@ -3600,7 +3604,8 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Filter" begin
 
-    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood) # timer = timer
+    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood;
+                                workspaces = 𝓂.workspaces) # timer = timer
 
     # end # timeit_debug
 

@@ -3,7 +3,8 @@
 function calculate_first_order_solution(∇₁::Matrix{R},
                                         caches::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{R} = zeros(0,0))::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
+                                        initial_guess::AbstractMatrix{R} = zeros(0,0),
+                                        workspace::Union{workspaces, Nothing} = nothing)::Tuple{Matrix{R}, Matrix{R}, Bool} where R <: AbstractFloat
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
 
@@ -42,12 +43,21 @@ function calculate_first_order_solution(∇₁::Matrix{R},
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
+    qme_workspace = nothing
+    if !isnothing(workspace)
+        if eltype(workspace.quadratic_matrix_equation.AXX) != R
+            workspace.quadratic_matrix_equation = Quadratic_matrix_equation_workspace(T = R)
+        end
+        qme_workspace = workspace.quadratic_matrix_equation
+    end
+
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, caches, 
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
                                                     acceptance_tol = opts.tol.qme_acceptance_tol,
-                                                    verbose = opts.verbose)
+                                                    verbose = opts.verbose,
+                                                    workspace = qme_workspace)
 
     if !solved
         if opts.verbose println("Quadratic matrix equation solution failed.") end
@@ -120,7 +130,8 @@ function rrule(::typeof(calculate_first_order_solution),
                 ∇₁::Matrix{R},
                 caches::caches;
                 opts::CalculationOptions = merge_calculation_options(),
-                initial_guess::AbstractMatrix{R} = zeros(0,0)) where R <: AbstractFloat
+                initial_guess::AbstractMatrix{R} = zeros(0,0),
+                workspace::Union{workspaces, Nothing} = nothing) where R <: AbstractFloat
     # Forward pass to compute the output and intermediate values needed for the backward pass
     # @timeit_debug timer "Calculate 1st order solution" begin
     # @timeit_debug timer "Preprocessing" begin
@@ -160,12 +171,21 @@ function rrule(::typeof(calculate_first_order_solution),
     # end # timeit_debug
     # @timeit_debug timer "Quadratic matrix equation solve" begin
 
+    qme_workspace = nothing
+    if !isnothing(workspace)
+        if eltype(workspace.quadratic_matrix_equation.AXX) != R
+            workspace.quadratic_matrix_equation = Quadratic_matrix_equation_workspace(T = R)
+        end
+        qme_workspace = workspace.quadratic_matrix_equation
+    end
+
     sol, solved = solve_quadratic_matrix_equation(Ã₊, Ã₀, Ã₋, caches, 
                                                     initial_guess = initial_guess,
                                                     quadratic_matrix_equation_algorithm = opts.quadratic_matrix_equation_algorithm,
                                                     tol = opts.tol.qme_tol,
                                                     acceptance_tol = opts.tol.qme_acceptance_tol,
-                                                    verbose = opts.verbose)
+                                                    verbose = opts.verbose,
+                                                    workspace = qme_workspace)
 
     if !solved
         return (zeros(T.nVars,T.nPast_not_future_and_mixed + T.nExo), sol, false), x -> NoTangent(), NoTangent(), NoTangent()
@@ -277,7 +297,8 @@ end
 function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
                                         caches::caches;
                                         opts::CalculationOptions = merge_calculation_options(),
-                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0))::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
+                                        initial_guess::AbstractMatrix{<:AbstractFloat} = zeros(0,0),
+                                        workspace::Union{workspaces, Nothing} = nothing)::Tuple{Matrix{ℱ.Dual{Z,S,N}}, Matrix{Float64}, Bool} where {Z,S,N}
     ∇̂₁ = ℱ.value.(∇₁)
     T = caches.timings
     idx_cache = caches.first_order_index_cache
@@ -289,7 +310,7 @@ function calculate_first_order_solution(∇₁::Matrix{ℱ.Dual{Z,S,N}},
     A = ∇̂₁[:,1:T.nFuture_not_past_and_mixed] * expand_future
     B = ∇̂₁[:,idx_cache_built.nabla_zero_cols]
 
-    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, caches; opts = opts, initial_guess = initial_guess)
+    𝐒₁, qme_sol, solved = calculate_first_order_solution(∇̂₁, caches; opts = opts, initial_guess = initial_guess, workspace = workspace)
 
     if !solved 
         return ∇₁, qme_sol, false

@@ -1,5 +1,34 @@
 @stable default_mode = "disable" begin
 
+function ensure_nonlinear_solver_workspace!(workspace::nonlinear_solver_workspace{T},
+                                            initial_guess::AbstractVector{T}) where T <: AbstractFloat
+    n = length(initial_guess)
+
+    if length(workspace.current_guess) != n
+        workspace.u_bounds = zeros(T, n)
+        workspace.l_bounds = zeros(T, n)
+        workspace.current_guess = zeros(T, n)
+        workspace.current_guess_untransformed = zeros(T, n)
+        workspace.previous_guess = zeros(T, n)
+        workspace.previous_guess_untransformed = zeros(T, n)
+        workspace.guess_update = zeros(T, n)
+        workspace.factor = zeros(T, n)
+        workspace.best_previous_guess = zeros(T, n)
+        workspace.best_current_guess = zeros(T, n)
+    end
+
+    return workspace
+end
+
+function prepare_nonlinear_solver_workspace(workspace::Union{nonlinear_solver_workspace, Nothing},
+                                            initial_guess::AbstractVector{T}) where T <: AbstractFloat
+    if isnothing(workspace) || eltype(workspace.current_guess) != T
+        workspace = Nonlinear_solver_workspace(T = T)
+    end
+
+    return ensure_nonlinear_solver_workspace!(workspace, initial_guess)
+end
+
 function levenberg_marquardt(
     fnj::function_and_jacobian,
     # f::Function, 
@@ -8,7 +37,8 @@ function levenberg_marquardt(
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1},
     parameters::solver_parameters;
-    tol::Tolerances = Tolerances()
+    tol::Tolerances = Tolerances(),
+    workspace::Union{nonlinear_solver_workspace, Nothing} = nothing
     )::Tuple{Vector{T}, Tuple{Int, Int, T, T}} where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 
@@ -51,9 +81,21 @@ function levenberg_marquardt(
     #     f(undo_transform(x,transformation_level))  
     # #     # f(undo_transform(x,transformation_level,shift))  
     # end
-    u_bounds = copy(upper_bounds)
-    l_bounds = copy(lower_bounds)
-    current_guess = copy(initial_guess)
+    local_workspace = prepare_nonlinear_solver_workspace(workspace, initial_guess)
+    u_bounds = local_workspace.u_bounds
+    l_bounds = local_workspace.l_bounds
+    current_guess = local_workspace.current_guess
+    current_guess_untransformed = local_workspace.current_guess_untransformed
+    previous_guess = local_workspace.previous_guess
+    previous_guess_untransformed = local_workspace.previous_guess_untransformed
+    guess_update = local_workspace.guess_update
+    factor = local_workspace.factor
+    best_previous_guess = local_workspace.best_previous_guess
+    best_current_guess = local_workspace.best_current_guess
+
+    copyto!(u_bounds, upper_bounds)
+    copyto!(l_bounds, lower_bounds)
+    copyto!(current_guess, initial_guess)
 
     for _ in 1:transformation_level
         u_bounds .= asinh.(u_bounds)
@@ -63,13 +105,7 @@ function levenberg_marquardt(
 
     sol_cache = fnj.chol_buffer
 
-    current_guess_untransformed = copy(current_guess)
-    previous_guess = similar(current_guess)
-    previous_guess_untransformed = similar(current_guess)
-    guess_update = similar(current_guess)
-    factor = similar(current_guess)
-    best_previous_guess = similar(current_guess)
-    best_current_guess = similar(current_guess)
+    copyto!(current_guess_untransformed, current_guess)
     ∇ = fnj.jac_buffer
     ∇̂ = sol_cache.A
     # ∇̄ = similar(fnj.jac_buffer)
@@ -305,9 +341,14 @@ function levenberg_marquardt(
             p² = min(p² / λ̂², p̄²)
         end
 
-        for _ in 1:transformation_level
-            best_previous_guess .= sinh.(previous_guess)
-            best_current_guess .= sinh.(current_guess)
+        if transformation_level == 0
+            copy!(best_previous_guess, previous_guess)
+            copy!(best_current_guess, current_guess)
+        else
+            for _ in 1:transformation_level
+                best_previous_guess .= sinh.(previous_guess)
+                best_current_guess .= sinh.(current_guess)
+            end
         end
 
         # best_previous_guess = undo_transform(previous_guess, transformation_level)
@@ -339,8 +380,12 @@ function levenberg_marquardt(
         end
     end
     
-    for _ in 1:transformation_level
-        best_current_guess .= sinh.(current_guess)
+    if transformation_level == 0
+        copy!(best_current_guess, current_guess)
+    else
+        for _ in 1:transformation_level
+            best_current_guess .= sinh.(current_guess)
+        end
     end
 
     return best_current_guess, (grad_iter, func_iter, largest_relative_step, largest_residual)#, f(best_guess))
@@ -412,7 +457,8 @@ function newton(
     lower_bounds::Array{T,1}, 
     upper_bounds::Array{T,1},
     parameters::solver_parameters;
-    tol::Tolerances = Tolerances()
+    tol::Tolerances = Tolerances(),
+    workspace::Union{nonlinear_solver_workspace, Nothing} = nothing
     )::Tuple{Vector{T}, Tuple{Int, Int, T, T}} where {T <: AbstractFloat}
     # issues with optimization: https://www.gurobi.com/documentation/8.1/refman/numerics_gurobi_guidelines.html
 

@@ -97,9 +97,98 @@ function Higher_order_caches(;T::Type = Float64, S::Type = Float64)
                         Sylvester_caches(S = S))
 end
 
+function Quadratic_matrix_equation_workspace(;T::Type = Float64)
+    quadratic_matrix_equation_workspace(zeros(T, 0, 0),
+                                        zeros(T, 0, 0),
+                                        zeros(T, 0, 0),
+                                        zeros(T, 0, 0),
+                                        zeros(T, 0, 0),
+                                        zeros(T, 0, 0),
+                                        zeros(T, 0, 0),
+                                        zeros(T, 0, 0),
+                                        zeros(T, 0, 0),
+                                        zeros(T, 0, 0),
+                                        zeros(T, 0, 0),
+                                        zeros(T, 0, 0),
+                                        zeros(T, 0, 0))
+end
+
+function Nonlinear_solver_workspace(;T::Type = Float64)
+    nonlinear_solver_workspace(zeros(T, 0),
+                                zeros(T, 0),
+                                zeros(T, 0),
+                                zeros(T, 0),
+                                zeros(T, 0),
+                                zeros(T, 0),
+                                zeros(T, 0),
+                                zeros(T, 0),
+                                zeros(T, 0),
+                                zeros(T, 0))
+end
+
+function Kalman_workspace()
+    return kalman_workspace(Float64[], Float64[], Float64[], Float64[],
+                            zeros(Float64, 0, 0),
+                            zeros(Float64, 0, 0),
+                            zeros(Float64, 0, 0),
+                            zeros(Float64, 0, 0),
+                            zeros(Float64, 0, 0))
+end
+
+function Kalman_rrule_workspace()
+    return kalman_rrule_workspace(Float64[],
+                                    Float64[],
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    Vector{Vector{Float64}}(),
+                                    Vector{Matrix{Float64}}(),
+                                    Vector{Matrix{Float64}}(),
+                                    Vector{Matrix{Float64}}(),
+                                    Vector{Matrix{Float64}}(),
+                                    Vector{Vector{Float64}}(),
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    Float64[],
+                                    Float64[],
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    Float64[],
+                                    zeros(Float64, 0, 0))
+end
+
+function Kalman_smoother_workspace()
+    return kalman_smoother_workspace(zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0, 0),
+                                    zeros(Float64, 0, 0, 0),
+                                    zeros(Float64, 0, 0, 0),
+                                    Float64[],
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0),
+                                    Float64[],
+                                    Float64[],
+                                    Float64[],
+                                    zeros(Float64, 0, 0),
+                                    zeros(Float64, 0, 0))
+end
+
+function Kalman_workspaces()
+    kalman_workspaces(Kalman_workspace(), Kalman_rrule_workspace(), Kalman_smoother_workspace())
+end
+
 function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_caches(T = T, S = S),
-                Higher_order_caches(T = T, S = S))
+                Higher_order_caches(T = T, S = S),
+                Quadratic_matrix_equation_workspace(T = T),
+                Nonlinear_solver_workspace(T = T),
+                Kalman_workspaces())
 end
 
 function Second_order_auxiliary_matrices_cache()

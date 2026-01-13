@@ -20,7 +20,8 @@ function calculate_loglikelihood(::Val{:inversion},
                                 warmup_iterations, 
                                 filter_algorithm, 
                                 opts,
-                                on_failure_loglikelihood) #; 
+                                on_failure_loglikelihood;
+                                workspaces::Union{workspaces, Nothing} = nothing) #; 
                                 # timer::TimerOutput = TimerOutput())
     return calculate_inversion_filter_loglikelihood(Val(algorithm), 
                                                     state, 
@@ -3498,7 +3499,8 @@ function filter_data_with_model(𝓂::ℳ,
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
                                                         caches;
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution,
-                                                        opts = opts)
+                                                        opts = opts,
+                                                        workspace = 𝓂.workspaces)
     
     if solved 𝓂.solution.perturbation.qme_solution = qme_sol end
 

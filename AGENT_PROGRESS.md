@@ -28,6 +28,12 @@
 - Fixed `ensure_name_display_cache!` to initialize `calib_axis` correctly when curly-brace formatting is used.
 - Moved auxiliary indices into `caches`, added a dedicated `workspaces` field on `ℳ`, and updated higher-order solution calls to pass workspaces explicitly.
 - Updated `run_cache_steady_state_checks.jl` to only call mean/std for supported algorithms.
+- Added kalman forward/rrule workspaces and wired them through the kalman loglikelihood path and `run_kalman_iterations`.
+- Added a kalman workspace smoke script to validate reuse of cached buffers.
+- Added a quadratic-matrix-equation workspace, threaded it through first-order solution calls, and updated the QME solver to reuse cached buffers.
+- Added a QME workspace smoke script that reuses the cached workspace across calls.
+- Fixed kalman smoother workspace BLAS aliasing and ensured local `ℒ.mul!` usage during filtering/smoothing.
+- Added a nonlinear-solver workspace for Levenberg-Marquardt and threaded it through steady-state block solving.
 
 ## Tests
 - `TEST_SET=basic julia --project -e 'using Pkg; Pkg.test()'` failed: unsatisfiable requirements during Pkg resolve (DynamicPPL/Pigeons/Turing/JET constraints).
@@ -66,6 +72,11 @@
 - `julia --project scripts/test_zygote_loglikelihood_third_pruned_third.jl` succeeded (Zygote gradients for `:third_order` and `:pruned_third_order`).
 - `julia --project run_cache_steady_state_checks.jl` succeeded.
 - `julia --project run_cache_steady_state_checks.jl` succeeded after updating the script’s mean/std algorithm list.
+- `julia --project scripts/test_kalman_workspace.jl` succeeded (prints identical loglikelihood twice).
+- `julia --project scripts/test_qme_workspace.jl` succeeded (prints `true`, `true`, and `0.0`).
+- `julia --project scripts/test_kalman_smoother_workspace.jl` succeeded (prints `(9, 5)` and `0.0`).
+- `julia --project scripts/test_nonlinear_solver_workspace.jl` succeeded (prints `0.0`).
 
 ## Remaining
+- Extend workspace refactors to moments, perturbation, inversion, find_shocks, algorithms, and remaining rrules.
 - Resolve test environment dependencies and rerun tests.
