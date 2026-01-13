@@ -319,9 +319,9 @@ function ensure_model_structure_cache!(𝓂)
             𝓂.calibration_equations_parameters,
         )
 
-        all_variables = sort(union(𝓂.var, 𝓂.aux, 𝓂.exo_present))
+        all_variables = Symbol.(sort(union(𝓂.var, 𝓂.aux, 𝓂.exo_present)))
 
-        NSSS_labels = [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
+        NSSS_labels = Symbol.(vcat(sort(union(𝓂.exo_present, 𝓂.var)), 𝓂.calibration_equations_parameters))
 
         aux_indices = Int.(indexin(𝓂.aux, all_variables))
         processed_all_variables = copy(all_variables)

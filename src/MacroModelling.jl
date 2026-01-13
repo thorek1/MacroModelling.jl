@@ -443,7 +443,7 @@ function rrule( ::typeof(mul_reverse_AD!),
         Ȳ = unthunk(ȳ)
         dA = @thunk(project_A(Ȳ * B'))
         dB = @thunk(project_B(A' * Ȳ))
-        return NoTangent(), NoTangent(), dA, dB
+        return (NoTangent(), NoTangent(), dA, dB)
     end
 
     return ℒ.mul!(C,A,B), times_pullback
