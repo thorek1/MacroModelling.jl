@@ -796,6 +796,11 @@ if test_set == "basic"
     plots = false
     # test_higher_order = false
 
+    @testset verbose = true "Standalone functions" begin
+        include("test_standalone_function.jl")
+    end
+    GC.gc()
+
     function rbc_steady_state(params)
         std_z, rho, delta, alpha, beta = params
 
@@ -2040,11 +2045,6 @@ if test_set == "basic"
 
         @test isapprox(std2(common_keys1, common_keys2), std1(common_keys1, common_keys2), rtol = 1e-10)
     end
-
-    @testset verbose = true "Standalone functions" begin
-        include("test_standalone_function.jl")
-    end
-    GC.gc()
 
     @testset verbose = true "FS2000 precompile = true" begin
         @model FS2000_pre precompile = true begin

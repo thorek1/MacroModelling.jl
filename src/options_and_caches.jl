@@ -1,21 +1,41 @@
 
 function First_order_index_cache()
     empty_range = 1:0
-    empty_union_vec = Vector{Union{Nothing, Int}}()
     empty_int_vec = Int[]
-    empty_matrix = zeros(0,0)
+    empty_matrix = zeros(Bool, 0, 0)
     return first_order_index_cache(false,
                                     empty_range,
-                                    empty_union_vec,
                                     empty_int_vec,
-                                    empty_union_vec,
-                                    empty_union_vec,
+                                    empty_int_vec,
+                                    empty_int_vec,
+                                    empty_int_vec,
                                     ℒ.I(0),
                                     empty_range,
                                     empty_range,
                                     1,
                                     empty_matrix,
                                     empty_matrix)
+end
+
+function Conditional_forecast_index_cache()
+    empty_int_vec = Int[]
+    return conditional_forecast_index_cache(false,
+                                            false,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec)
 end
 
 function Empty_timings()
@@ -221,6 +241,7 @@ function Caches(;T::Type = Float64, S::Type = Float64)
                                          BitVector(), BitVector(), ℒ.I(0),
                                          BitVector(), BitVector(), BitVector(), BitVector(), BitVector(),
                                          Int[], Int[], Int[], Int[], Int[]),
+            Conditional_forecast_index_cache(),
             Moments_cache(),
             First_order_index_cache(),
             Float64[])
@@ -343,16 +364,108 @@ function ensure_computational_constants_cache!(𝓂)
     return caches.computational_constants
 end
 
+function ensure_conditional_forecast_index_cache!(𝓂; third_order::Bool = false)
+    caches = 𝓂.caches
+    cf = caches.conditional_forecast_index_cache
+    cc = ensure_computational_constants_cache!(𝓂)
+
+    if !cf.initialized
+        s_in_s⁺ = cc.s_in_s
+        e_in_s⁺ = cc.e_in_s⁺
+
+        shock_idxs = cc.shock_idxs
+        shock²_idxs = cc.shock²_idxs
+        shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
+        var_vol²_idxs = cc.var_vol²_idxs
+        var²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
+        shockvar_idxs = sparse(ℒ.kron(e_in_s⁺, s_in_s⁺)).nzind
+
+        cf = conditional_forecast_index_cache(true,
+                                                false,
+                                                shock_idxs,
+                                                shock²_idxs,
+                                                shockvar²_idxs,
+                                                var_vol²_idxs,
+                                                var²_idxs,
+                                                shockvar_idxs,
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[])
+    end
+
+    if third_order && !cf.third_order_initialized
+        sv_in_s⁺ = cc.s_in_s⁺
+        e_in_s⁺ = cc.e_in_s⁺
+        ones_e = zero(e_in_s⁺) .+ 1
+
+        var_vol³_idxs = sparse(ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺))).nzind
+        shock_idxs2 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, ones_e), ones_e)).nzind
+        shock_idxs3 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), ones_e)).nzind
+        shock³_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
+        shockvar1_idxs = sparse(ℒ.kron(ones_e, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
+        shockvar2_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(ones_e, e_in_s⁺))).nzind
+        shockvar3_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, ones_e))).nzind
+        shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+        shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)
+
+        cf = conditional_forecast_index_cache(true,
+                                                true,
+                                                cf.shock_idxs,
+                                                cf.shock²_idxs,
+                                                cf.shockvar²_idxs,
+                                                cf.var_vol²_idxs,
+                                                cf.var²_idxs,
+                                                cf.shockvar_idxs,
+                                                var_vol³_idxs,
+                                                shock_idxs2,
+                                                shock_idxs3,
+                                                shock³_idxs,
+                                                shockvar1_idxs,
+                                                shockvar2_idxs,
+                                                shockvar3_idxs,
+                                                shockvar³2_idxs,
+                                                shockvar³_idxs)
+    end
+
+    caches.conditional_forecast_index_cache = cf
+    return cf
+end
+
 function build_first_order_index_cache(T, I_nVars)
     dyn_index = T.nPresent_only + 1:T.nVars
 
-    reverse_dynamic_order = indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx)
+    reverse_dynamic_order_tmp = indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx)
 
+    if any(isnothing.(reverse_dynamic_order_tmp))
+        reverse_dynamic_order = Int[]
+    else
+        reverse_dynamic_order = Int.(reverse_dynamic_order_tmp)
+    end
+    
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
     sort!(comb)
 
-    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
-    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
+    future_not_past_and_mixed_in_comb_tmp = indexin(T.future_not_past_and_mixed_idx, comb)
+    
+    if any(isnothing.(future_not_past_and_mixed_in_comb_tmp))
+        future_not_past_and_mixed_in_comb = Int[]
+    else
+        future_not_past_and_mixed_in_comb = Int.(future_not_past_and_mixed_in_comb_tmp)
+    end
+
+    past_not_future_and_mixed_in_comb_tmp = indexin(T.past_not_future_and_mixed_idx, comb)
+    
+    if any(isnothing.(past_not_future_and_mixed_in_comb_tmp))
+        past_not_future_and_mixed_in_comb = Int[]
+    else
+        past_not_future_and_mixed_in_comb = Int.(past_not_future_and_mixed_in_comb_tmp)
+    end
 
     Ir = ℒ.I(length(comb))
 
@@ -409,9 +522,9 @@ function ensure_model_structure_cache!(𝓂)
             𝓂.calibration_equations_parameters,
         )
 
-        all_variables = sort(union(𝓂.var, 𝓂.aux, 𝓂.exo_present))
+        all_variables = Symbol.(sort(union(𝓂.var, 𝓂.aux, 𝓂.exo_present)))
 
-        NSSS_labels = [sort(union(𝓂.exo_present, 𝓂.var))..., 𝓂.calibration_equations_parameters...]
+        NSSS_labels = Symbol.(vcat(sort(union(𝓂.exo_present, 𝓂.var)), 𝓂.calibration_equations_parameters))
 
         aux_indices = Int.(indexin(𝓂.aux, all_variables))
         processed_all_variables = copy(all_variables)

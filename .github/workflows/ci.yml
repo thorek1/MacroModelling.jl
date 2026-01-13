@@ -148,6 +148,14 @@ jobs:
             test_set: "jet"
             allow_failure: true
           - version: '1'
+            os: macOS-latest
+            arch: x64
+            test_set: "jet"
+          - version: '1'
+            os: windows-latest
+            arch: x64
+            test_set: "jet"
+          - version: '1'
             os: ubuntu-latest
             arch: x64
             test_set: "jet"
@@ -186,9 +194,9 @@ jobs:
       - name: Set Custom Test Environment Variable (non-Windows)
         if: matrix.os != 'windows-latest'
         run: echo "TEST_SET=${{ matrix.test_set }}" >> $GITHUB_ENV
-      - name: Set JULIA_NUM_THREADS for estimation tests
-        if: (matrix.version == '1' && (matrix.test_set == 'estimation' || matrix.test_set == 'estimate_sw07' || matrix.test_set == '1st_order_inversion_estimation' || matrix.test_set == 'estimation_pigeons' || matrix.test_set == '1st_order_inversion_estimation_pigeons'))
-        run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
+      # - name: Set JULIA_NUM_THREADS for estimation tests
+      #   if: (matrix.version == '1' && (matrix.test_set == 'estimation' || matrix.test_set == 'estimate_sw07' || matrix.test_set == '1st_order_inversion_estimation' || matrix.test_set == 'estimation_pigeons' || matrix.test_set == '1st_order_inversion_estimation_pigeons'))
+      #   run: echo "JULIA_NUM_THREADS=auto" >> $GITHUB_ENV
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1

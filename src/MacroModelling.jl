@@ -443,7 +443,7 @@ function rrule( ::typeof(mul_reverse_AD!),
         Ȳ = unthunk(ȳ)
         dA = @thunk(project_A(Ȳ * B'))
         dB = @thunk(project_B(A' * Ȳ))
-        return NoTangent(), NoTangent(), dA, dB
+        return (NoTangent(), NoTangent(), dA, dB)
     end
 
     return ℒ.mul!(C,A,B), times_pullback
@@ -1719,6 +1719,12 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
 
     n_rowC = size(C,1)
     n_colC = size(C,2)
+
+    estimated_nnz = 0
+    I = Vector{Int}()
+    J = Vector{Int}()
+    V = Vector{T}()
+    X = zeros(T, 0, 0)
 
     if sparse
         nnzA = nnz(A)
@@ -3645,17 +3651,6 @@ function decompose_name(name::Symbol)
     end
 
     return result
-end
-
-"""
-    get_exo_axis(𝓂::ℳ; with_subscript::Bool = true)
-
-Return cached shock axis names with curly bracket formatting.
-By default includes ₍ₓ₎ suffix; set with_subscript=false to exclude it.
-"""
-function get_exo_axis(𝓂::ℳ; with_subscript::Bool = true)
-    caches = 𝓂.caches.name_display_cache
-    return with_subscript ? caches.exo_axis_with_subscript : caches.exo_axis_plain
 end
 
 """
@@ -9884,6 +9879,33 @@ end
 parse_covariance_groups(variables, T::timings) =
     parse_covariance_groups(variables, set_timings!(Caches(), T))
 
+
+function parse_shocks_input_to_index(shocks::Expr, caches::caches)
+    parsed = replace_indices(shocks)
+    if parsed isa Symbol
+        return parse_shocks_input_to_index(parsed, caches)
+    end
+    @warn "Invalid `shocks` argument. Provide a Symbol, Tuple, Vector, Matrix, or one of the documented selectors such as `:all`."
+    return Int[]
+end
+
+function parse_shocks_input_to_index(shocks::BitVector, caches::caches)
+    T = caches.timings
+    if length(shocks) != T.nExo
+        @warn "Invalid `shocks` argument. BitVector length does not match number of shocks."
+        return Int[]
+    end
+    return getindex(1:T.nExo, shocks)
+end
+
+function parse_shocks_input_to_index(shocks::BitMatrix, caches::caches)
+    T = caches.timings
+    if size(shocks, 1) != T.nExo
+        @warn "Invalid `shocks` argument. BitMatrix row count does not match number of shocks."
+        return Int[]
+    end
+    return getindex(1:T.nExo, vec(sum(shocks, dims = 2) .> 0))
+end
 
 function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, caches::caches)
     T = caches.timings

@@ -62,7 +62,8 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
 
     shocks² = 0.0
     logabsdets = 0.0
-    
+    jac = zeros(0,0)
+
     if warmup_iterations > 0
         if warmup_iterations >= 1
             jac = 𝐒[cond_var_idx,end-T.nExo+1:end]
@@ -3516,6 +3517,8 @@ function filter_data_with_model(𝓂::ℳ,
     observables = get_and_check_observables(𝓂, data_in_deviations)
 
     cond_var_idx = indexin(observables, sort(union(T.aux,T.var,T.exo_present)))
+
+    jac = zeros(0, 0)
 
     if warmup_iterations > 0
         if warmup_iterations >= 1

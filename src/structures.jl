@@ -459,6 +459,26 @@ struct computational_constants_cache
     var_vol²_idxs::Vector{Int}  # kron(s_in_s⁺, s_in_s⁺) |> sparse |> .nzind
 end
 
+struct conditional_forecast_index_cache
+    initialized::Bool
+    third_order_initialized::Bool
+    shock_idxs::Vector{Int}
+    shock²_idxs::Vector{Int}
+    shockvar²_idxs::Vector{Int}
+    var_vol²_idxs::Vector{Int}
+    var²_idxs::Vector{Int}
+    shockvar_idxs::Vector{Int}
+    var_vol³_idxs::Vector{Int}
+    shock_idxs2::Vector{Int}
+    shock_idxs3::Vector{Int}
+    shock³_idxs::Vector{Int}
+    shockvar1_idxs::Vector{Int}
+    shockvar2_idxs::Vector{Int}
+    shockvar3_idxs::Vector{Int}
+    shockvar³2_idxs::Vector{Int}
+    shockvar³_idxs::Vector{Int}
+end
+
 struct moments_substate_cache
     I_plus_s_s::SparseMatrixCSC{Float64, Int}
     e_es::SparseMatrixCSC{Float64, Int}
@@ -484,19 +504,19 @@ mutable struct moments_cache
     dependency_kron_cache::Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_cache}
 end
 
-struct first_order_index_cache{I, M}
+struct first_order_index_cache
     initialized::Bool
     dyn_index::UnitRange{Int}
-    reverse_dynamic_order::Vector{Union{Nothing, Int}}
+    reverse_dynamic_order::Vector{Int}
     comb::Vector{Int}
-    future_not_past_and_mixed_in_comb::Vector{Union{Nothing, Int}}
-    past_not_future_and_mixed_in_comb::Vector{Union{Nothing, Int}}
-    Ir::I
+    future_not_past_and_mixed_in_comb::Vector{Int}
+    past_not_future_and_mixed_in_comb::Vector{Int}
+    Ir::ℒ.Diagonal{Bool, Vector{Bool}}
     nabla_zero_cols::UnitRange{Int}
     nabla_minus_cols::UnitRange{Int}
     nabla_e_start::Int
-    expand_future::M
-    expand_past::M
+    expand_future::Matrix{Bool}
+    expand_past::Matrix{Bool}
 end
 
 mutable struct caches#{F <: Real, G <: AbstractFloat}
@@ -510,6 +530,7 @@ mutable struct caches#{F <: Real, G <: AbstractFloat}
     name_display_cache::name_display_cache
     model_structure_cache::model_structure_cache
     computational_constants::computational_constants_cache
+    conditional_forecast_index_cache::conditional_forecast_index_cache
     moments_cache::moments_cache
     first_order_index_cache::first_order_index_cache
     custom_steady_state_buffer::Vector{Float64}
