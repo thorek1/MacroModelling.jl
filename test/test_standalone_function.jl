@@ -70,8 +70,6 @@ get_irf(RBC_CME, algorithm = :pruned_second_order)
 #SS = get_steady_state(RBC_CME, derivatives = false)
 
 
-T = timings([:R, :y], [:Pi, :c], [:k, :z_delta], [:A], [:A, :Pi, :c], [:A, :k, :z_delta], [:A, :Pi, :c, :k, :z_delta], [:A], [:k, :z_delta], [:A], [:delta_eps, :eps_z], [:A, :Pi, :R, :c, :k, :y, :z_delta], Symbol[], Symbol[], 2, 1, 3, 3, 5, 7, 2, [3, 6], [1, 2, 4, 5, 7], [1, 2, 4], [2, 3], [1, 5, 7], [1], [1], [5, 7], [5, 6, 1, 7, 3, 2, 4], [3, 4, 5, 1, 2])
-
 first_order_solution, qme_sol, solved = calculate_first_order_solution(∇₁, RBC_CME.caches)# |> Matrix{Float32}
 
 second_order_solution, solved2 = calculate_second_order_solution(∇₁, ∇₂, first_order_solution, RBC_CME.caches, RBC_CME.workspaces)
@@ -88,8 +86,7 @@ third_order_solution, solved3 = calculate_third_order_solution(∇₁,
                                                             second_order_solution, 
                                                             RBC_CME.caches.second_order_auxiliary_matrices, 
                                                             RBC_CME.caches.third_order_auxiliary_matrices, 
-                                                            RBC_CME.caches; 
-                                                            T = T)
+                                                            RBC_CME.caches)
 
 # third_order_solution *= RBC_CME.caches.third_order_auxiliary_matrices.𝐔₃
 
