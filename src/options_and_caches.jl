@@ -1,15 +1,14 @@
 
 function First_order_index_cache()
     empty_range = 1:0
-    empty_union_vec = Vector{Union{Nothing, Int}}()
     empty_int_vec = Int[]
-    empty_matrix = zeros(0,0)
+    empty_matrix = zeros(Bool, 0, 0)
     return first_order_index_cache(false,
                                     empty_range,
-                                    empty_union_vec,
                                     empty_int_vec,
-                                    empty_union_vec,
-                                    empty_union_vec,
+                                    empty_int_vec,
+                                    empty_int_vec,
+                                    empty_int_vec,
                                     ℒ.I(0),
                                     empty_range,
                                     empty_range,
@@ -257,13 +256,13 @@ end
 function build_first_order_index_cache(T, I_nVars)
     dyn_index = T.nPresent_only + 1:T.nVars
 
-    reverse_dynamic_order = indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx)
+    reverse_dynamic_order = map(x -> x::Int, indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx))
 
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
     sort!(comb)
 
-    future_not_past_and_mixed_in_comb = indexin(T.future_not_past_and_mixed_idx, comb)
-    past_not_future_and_mixed_in_comb = indexin(T.past_not_future_and_mixed_idx, comb)
+    future_not_past_and_mixed_in_comb = map(x -> x::Int, indexin(T.future_not_past_and_mixed_idx, comb))
+    past_not_future_and_mixed_in_comb = map(x -> x::Int, indexin(T.past_not_future_and_mixed_idx, comb))
 
     Ir = ℒ.I(length(comb))
 

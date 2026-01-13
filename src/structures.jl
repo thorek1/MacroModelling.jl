@@ -390,19 +390,19 @@ mutable struct moments_cache
     dependency_kron_cache::Dict{Tuple{Vararg{Symbol}}, moments_dependency_kron_cache}
 end
 
-struct first_order_index_cache{I, M}
+struct first_order_index_cache
     initialized::Bool
     dyn_index::UnitRange{Int}
-    reverse_dynamic_order::Vector{Union{Nothing, Int}}
+    reverse_dynamic_order::Vector{Int}
     comb::Vector{Int}
-    future_not_past_and_mixed_in_comb::Vector{Union{Nothing, Int}}
-    past_not_future_and_mixed_in_comb::Vector{Union{Nothing, Int}}
-    Ir::I
+    future_not_past_and_mixed_in_comb::Vector{Int}
+    past_not_future_and_mixed_in_comb::Vector{Int}
+    Ir::ℒ.Diagonal{Bool, Vector{Bool}}
     nabla_zero_cols::UnitRange{Int}
     nabla_minus_cols::UnitRange{Int}
     nabla_e_start::Int
-    expand_future::M
-    expand_past::M
+    expand_future::Matrix{Bool}
+    expand_past::Matrix{Bool}
 end
 
 mutable struct caches#{F <: Real, G <: AbstractFloat}
