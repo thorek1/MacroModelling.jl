@@ -6,7 +6,7 @@
 
 using Documenter
 using MacroModelling
-import Turing, StatsPlots
+import Optim, StatsPlots, Turing
 using DocumenterCitations
 
 bib = CitationBibliography(
@@ -23,7 +23,12 @@ makedocs(
     # doctest = false,
     # draft = true,
     format = Documenter.HTML(size_threshold = 204800*10),
-    modules = [MacroModelling],
+    modules = [
+        MacroModelling,
+        Base.get_extension(MacroModelling, :OptimExt),
+        Base.get_extension(MacroModelling, :StatsPlotsExt),
+        Base.get_extension(MacroModelling, :TuringExt),
+    ],
     pages = [
         "Introduction" => "index.md",
         "Tutorials" => [
