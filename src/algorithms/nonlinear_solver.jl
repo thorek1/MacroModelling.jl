@@ -218,6 +218,7 @@ function levenberg_marquardt(
 
         α = 1.0
         ᾱ = 1.0
+        α̂ = 1.0
 
         ν̂ = ν
 

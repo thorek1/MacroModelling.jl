@@ -24,7 +24,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
                                          𝐒₁::AbstractMatrix{Float64},
                                          𝐒₂::Union{AbstractMatrix{Float64}, Nothing},
                                          𝐒₃::Union{AbstractMatrix{Float64}, Nothing},
-                                         T::timings;
+                                         caches::caches;
                                          max_iter::Int = 1000,
                                          tol::Float64 = 1e-13,
                                          verbose::Bool = false)
@@ -34,55 +34,28 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
     # directly using perturbation matrices.
     pruning = initial_state isa Vector{Vector{Float64}}
 
-    n_past = T.nPast_not_future_and_mixed
+    T = caches.timings
+    cf_cache = caches.conditional_forecast_index_cache
     n_exo = T.nExo
     third_order = !isnothing(𝐒₃)
 
-    s_in_s⁺ = BitVector(vcat(ones(Bool, n_past), zeros(Bool, n_exo + 1)))
-    sv_in_s⁺ = BitVector(vcat(ones(Bool, n_past + 1), zeros(Bool, n_exo)))
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, n_past + 1), ones(Bool, n_exo)))
-
-    tmp = ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1) |> sparse
-    shock_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, e_in_s⁺) |> sparse
-    shock²_idxs = tmp.nzind
-
-    shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
-
-    tmp = ℒ.kron(sv_in_s⁺, sv_in_s⁺) |> sparse
-    var_vol²_idxs = tmp.nzind
-
-    tmp = ℒ.kron(s_in_s⁺, s_in_s⁺) |> sparse
-    var²_idxs = tmp.nzind
-
-    tmp = ℒ.kron(e_in_s⁺, s_in_s⁺) |> sparse
-    shockvar_idxs = tmp.nzind
+    shock_idxs = cf_cache.shock_idxs
+    shock²_idxs = cf_cache.shock²_idxs
+    shockvar²_idxs = cf_cache.shockvar²_idxs
+    var_vol²_idxs = cf_cache.var_vol²_idxs
+    var²_idxs = cf_cache.var²_idxs
+    shockvar_idxs = cf_cache.shockvar_idxs
 
     if third_order
-        tmp = ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺)) |> sparse
-        var_vol³_idxs = tmp.nzind
-
-        tmp = ℒ.kron(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1), zero(e_in_s⁺) .+ 1) |> sparse
-        shock_idxs2 = tmp.nzind
-
-        tmp = ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), zero(e_in_s⁺) .+ 1) |> sparse
-        shock_idxs3 = tmp.nzind
-
-        tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-        shock³_idxs = tmp.nzind
-
-        tmp = ℒ.kron(zero(e_in_s⁺) .+ 1, ℒ.kron(e_in_s⁺, e_in_s⁺)) |> sparse
-        shockvar1_idxs = tmp.nzind
-
-        tmp = ℒ.kron(e_in_s⁺, ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)) |> sparse
-        shockvar2_idxs = tmp.nzind
-
-        tmp = ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)) |> sparse
-        shockvar3_idxs = tmp.nzind
-
-        shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
-        shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)
+        var_vol³_idxs = cf_cache.var_vol³_idxs
+        shock_idxs2 = cf_cache.shock_idxs2
+        shock_idxs3 = cf_cache.shock_idxs3
+        shock³_idxs = cf_cache.shock³_idxs
+        shockvar1_idxs = cf_cache.shockvar1_idxs
+        shockvar2_idxs = cf_cache.shockvar2_idxs
+        shockvar3_idxs = cf_cache.shockvar3_idxs
+        shockvar³2_idxs = cf_cache.shockvar³2_idxs
+        shockvar³_idxs = cf_cache.shockvar³_idxs
     end
 
     fixed_shock_idx = setdiff(1:n_exo, free_shock_idx)
@@ -151,7 +124,7 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
         end
 
         𝐒ⁱ³ᵉ = nothing
-    else
+    elseif third_order
         # Third order (pruned or non-pruned)
         II = sparse(ℒ.I(n_exo^2))
 

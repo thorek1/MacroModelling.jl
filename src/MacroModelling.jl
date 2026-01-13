@@ -1720,6 +1720,12 @@ function mat_mult_kron(A::AbstractSparseMatrix{R},
     n_rowC = size(C,1)
     n_colC = size(C,2)
 
+    estimated_nnz = 0
+    I = Vector{Int}()
+    J = Vector{Int}()
+    V = Vector{T}()
+    X = zeros(T, 0, 0)
+
     if sparse
         nnzA = nnz(A)
         nnzB = sum(abs.(B) .> eps())

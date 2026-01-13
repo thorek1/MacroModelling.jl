@@ -17,6 +17,27 @@ function First_order_index_cache()
                                     empty_matrix)
 end
 
+function Conditional_forecast_index_cache()
+    empty_int_vec = Int[]
+    return conditional_forecast_index_cache(false,
+                                            false,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec,
+                                            empty_int_vec)
+end
+
 function Empty_timings()
     empty_symbols = Symbol[]
     empty_ints = Int[]
@@ -131,6 +152,7 @@ function Caches(;T::Type = Float64, S::Type = Float64)
                                          BitVector(), BitVector(), ℒ.I(0),
                                          BitVector(), BitVector(), BitVector(), BitVector(), BitVector(),
                                          Int[], Int[], Int[], Int[], Int[]),
+            Conditional_forecast_index_cache(),
             Moments_cache(),
             First_order_index_cache(),
             Float64[])
@@ -251,6 +273,79 @@ function ensure_computational_constants_cache!(𝓂)
     end
 
     return caches.computational_constants
+end
+
+function ensure_conditional_forecast_index_cache!(𝓂; third_order::Bool = false)
+    caches = 𝓂.caches
+    cf = caches.conditional_forecast_index_cache
+    cc = ensure_computational_constants_cache!(𝓂)
+
+    if !cf.initialized
+        s_in_s⁺ = cc.s_in_s
+        e_in_s⁺ = cc.e_in_s⁺
+
+        shock_idxs = cc.shock_idxs
+        shock²_idxs = cc.shock²_idxs
+        shockvar²_idxs = setdiff(shock_idxs, shock²_idxs)
+        var_vol²_idxs = cc.var_vol²_idxs
+        var²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
+        shockvar_idxs = sparse(ℒ.kron(e_in_s⁺, s_in_s⁺)).nzind
+
+        cf = conditional_forecast_index_cache(true,
+                                                false,
+                                                shock_idxs,
+                                                shock²_idxs,
+                                                shockvar²_idxs,
+                                                var_vol²_idxs,
+                                                var²_idxs,
+                                                shockvar_idxs,
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[],
+                                                Int[])
+    end
+
+    if third_order && !cf.third_order_initialized
+        sv_in_s⁺ = cc.s_in_s⁺
+        e_in_s⁺ = cc.e_in_s⁺
+        ones_e = zero(e_in_s⁺) .+ 1
+
+        var_vol³_idxs = sparse(ℒ.kron(sv_in_s⁺, ℒ.kron(sv_in_s⁺, sv_in_s⁺))).nzind
+        shock_idxs2 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, ones_e), ones_e)).nzind
+        shock_idxs3 = sparse(ℒ.kron(ℒ.kron(e_in_s⁺, e_in_s⁺), ones_e)).nzind
+        shock³_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
+        shockvar1_idxs = sparse(ℒ.kron(ones_e, ℒ.kron(e_in_s⁺, e_in_s⁺))).nzind
+        shockvar2_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(ones_e, e_in_s⁺))).nzind
+        shockvar3_idxs = sparse(ℒ.kron(e_in_s⁺, ℒ.kron(e_in_s⁺, ones_e))).nzind
+        shockvar³2_idxs = setdiff(shock_idxs2, shock³_idxs, shockvar1_idxs, shockvar2_idxs, shockvar3_idxs)
+        shockvar³_idxs = setdiff(shock_idxs3, shock³_idxs)
+
+        cf = conditional_forecast_index_cache(true,
+                                                true,
+                                                cf.shock_idxs,
+                                                cf.shock²_idxs,
+                                                cf.shockvar²_idxs,
+                                                cf.var_vol²_idxs,
+                                                cf.var²_idxs,
+                                                cf.shockvar_idxs,
+                                                var_vol³_idxs,
+                                                shock_idxs2,
+                                                shock_idxs3,
+                                                shock³_idxs,
+                                                shockvar1_idxs,
+                                                shockvar2_idxs,
+                                                shockvar3_idxs,
+                                                shockvar³2_idxs,
+                                                shockvar³_idxs)
+    end
+
+    caches.conditional_forecast_index_cache = cf
+    return cf
 end
 
 function build_first_order_index_cache(T, I_nVars)

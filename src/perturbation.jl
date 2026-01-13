@@ -823,7 +823,7 @@ function calculate_third_order_solution(∇₁::AbstractMatrix{S}, #first order 
 
     if !ℒ.issuccess(∇₁₊𝐒₁➕∇₁₀lu)
         if opts.verbose println("Second order solution: inversion failed") end
-        return (∇₁₊𝐒₁➕∇₁₀, solved)#, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
+        return (∇₁₊𝐒₁➕∇₁₀, false)#, x -> NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent(), NoTangent()
     end
         
     # spinv = inv(∇₁₊𝐒₁➕∇₁₀)

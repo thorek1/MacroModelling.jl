@@ -867,6 +867,8 @@ function get_conditional_forecast(𝓂::ℳ,
             S₃ = 𝓂.solution.perturbation.third_order_solution * 𝓂.caches.third_order_auxiliary_matrices.𝐔₃
         end
 
+        ensure_conditional_forecast_index_cache!(𝓂; third_order = !isnothing(S₃))
+
         # Use Lagrange-Newton algorithm to find shocks
         x, matched = find_shocks_conditional_forecast(Val(conditional_forecast_solver),
                                                       initial_state,
@@ -878,7 +880,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                                       S₁,
                                                       S₂,
                                                       S₃,
-                                                      𝓂.caches.timings;
+                                                      𝓂.caches;
                                                       verbose = verbose)
 
         @assert matched "Numerical stabiltiy issues for restrictions in period 1."
@@ -919,7 +921,7 @@ function get_conditional_forecast(𝓂::ℳ,
                                                               S₁,
                                                               S₂,
                                                               S₃,
-                                                              𝓂.caches.timings;
+                                                              𝓂.caches;
                                                               verbose = verbose)
 
                 @assert matched "Numerical stabiltiy issues for restrictions in period $i."
@@ -2714,7 +2716,10 @@ function get_moments(𝓂::ℳ;
     var_idx = parse_variables_input_to_index(variables, 𝓂) |> sort
 
     parameter_derivatives = parameter_derivatives isa String_input ? parameter_derivatives .|> Meta.parse .|> replace_indices : parameter_derivatives
+    length_par = 0
 
+    param_idx = 0:0
+    
     if parameter_derivatives == :all
         length_par = length(𝓂.parameters)
         param_idx = 1:length_par
