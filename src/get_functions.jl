@@ -130,11 +130,12 @@ function get_shock_decomposition(𝓂::ℳ,
     
     ensure_name_display_cache!(𝓂)
     axis1 = 𝓂.caches.name_display_cache.var_axis
+    exo_axis = 𝓂.caches.name_display_cache.exo_axis_with_subscript
 
     if pruning
-        axis2 = vcat(get_exo_axis(𝓂), :Nonlinearities, :Initial_values)
+        axis2 = vcat(exo_axis, :Nonlinearities, :Initial_values)
     else
-        axis2 = vcat(get_exo_axis(𝓂), :Initial_values)
+        axis2 = vcat(exo_axis, :Initial_values)
     end
 
     if pruning
@@ -257,7 +258,7 @@ function get_estimated_shocks(𝓂::ℳ,
                                                                                     smooth = smooth)
     
     ensure_name_display_cache!(𝓂)
-    axis1 = get_exo_axis(𝓂)
+    axis1 = 𝓂.caches.name_display_cache.exo_axis_with_subscript
 
     return KeyedArray(shocks;  Shocks = axis1, Periods = 1:size(data,2))
 end
@@ -2178,8 +2179,7 @@ function get_conditional_variance_decomposition(𝓂::ℳ;
 
     ensure_name_display_cache!(𝓂)
     axis1 = 𝓂.caches.name_display_cache.var_axis
-
-    axis2 = get_exo_axis(𝓂, with_subscript = false)
+    axis2 = 𝓂.caches.name_display_cache.exo_axis_plain
 
     KeyedArray(cond_var_decomp; Variables = axis1, Shocks = axis2, Periods = periods)
 end
@@ -2326,8 +2326,7 @@ function get_variance_decomposition(𝓂::ℳ;
 
     ensure_name_display_cache!(𝓂)
     axis1 = 𝓂.caches.name_display_cache.var_axis
-
-    axis2 = get_exo_axis(𝓂, with_subscript = false)
+    axis2 = 𝓂.caches.name_display_cache.exo_axis_plain
 
     KeyedArray(var_decomp; Variables = axis1, Shocks = axis2)
 end
@@ -2755,9 +2754,9 @@ function get_moments(𝓂::ℳ;
 
     axis1 = 𝓂.var
 
+    ensure_name_display_cache!(𝓂)
     axis1 = 𝓂.caches.name_display_cache.var_axis
-
-    axis2 = get_exo_axis(𝓂, with_subscript = false)
+    axis2 = 𝓂.caches.name_display_cache.exo_axis_plain
 
 
     if derivatives

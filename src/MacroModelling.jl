@@ -3654,17 +3654,6 @@ function decompose_name(name::Symbol)
 end
 
 """
-    get_exo_axis(𝓂::ℳ; with_subscript::Bool = true)
-
-Return cached shock axis names with curly bracket formatting.
-By default includes ₍ₓ₎ suffix; set with_subscript=false to exclude it.
-"""
-function get_exo_axis(𝓂::ℳ; with_subscript::Bool = true)
-    caches = 𝓂.caches.name_display_cache
-    return with_subscript ? caches.exo_axis_with_subscript : caches.exo_axis_plain
-end
-
-"""
     get_computational_constants(𝓂::ℳ)
 
 Return cached computational constants (BitVectors and identity matrices).
