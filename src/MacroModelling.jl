@@ -9869,6 +9869,33 @@ parse_covariance_groups(variables, T::timings) =
     parse_covariance_groups(variables, set_timings!(Caches(), T))
 
 
+function parse_shocks_input_to_index(shocks::Expr, caches::caches)
+    parsed = replace_indices(shocks)
+    if parsed isa Symbol
+        return parse_shocks_input_to_index(parsed, caches)
+    end
+    @warn "Invalid `shocks` argument. Provide a Symbol, Tuple, Vector, Matrix, or one of the documented selectors such as `:all`."
+    return Int[]
+end
+
+function parse_shocks_input_to_index(shocks::BitVector, caches::caches)
+    T = caches.timings
+    if length(shocks) != T.nExo
+        @warn "Invalid `shocks` argument. BitVector length does not match number of shocks."
+        return Int[]
+    end
+    return getindex(1:T.nExo, shocks)
+end
+
+function parse_shocks_input_to_index(shocks::BitMatrix, caches::caches)
+    T = caches.timings
+    if size(shocks, 1) != T.nExo
+        @warn "Invalid `shocks` argument. BitMatrix row count does not match number of shocks."
+        return Int[]
+    end
+    return getindex(1:T.nExo, vec(sum(shocks, dims = 2) .> 0))
+end
+
 function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, caches::caches)
     T = caches.timings
     

@@ -351,13 +351,32 @@ end
 function build_first_order_index_cache(T, I_nVars)
     dyn_index = T.nPresent_only + 1:T.nVars
 
-    reverse_dynamic_order = map(x -> x::Int, indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx))
+    reverse_dynamic_order_tmp = indexin([T.past_not_future_idx; T.future_not_past_and_mixed_idx], T.present_but_not_only_idx)
 
+    if any(isnothing.(reverse_dynamic_order_tmp))
+        reverse_dynamic_order = Int[]
+    else
+        reverse_dynamic_order = Int.(reverse_dynamic_order_tmp)
+    end
+    
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
     sort!(comb)
 
-    future_not_past_and_mixed_in_comb = map(x -> x::Int, indexin(T.future_not_past_and_mixed_idx, comb))
-    past_not_future_and_mixed_in_comb = map(x -> x::Int, indexin(T.past_not_future_and_mixed_idx, comb))
+    future_not_past_and_mixed_in_comb_tmp = indexin(T.future_not_past_and_mixed_idx, comb)
+    
+    if any(isnothing.(future_not_past_and_mixed_in_comb_tmp))
+        future_not_past_and_mixed_in_comb = Int[]
+    else
+        future_not_past_and_mixed_in_comb = Int.(future_not_past_and_mixed_in_comb_tmp)
+    end
+
+    past_not_future_and_mixed_in_comb_tmp = indexin(T.past_not_future_and_mixed_idx, comb)
+    
+    if any(isnothing.(past_not_future_and_mixed_in_comb_tmp))
+        past_not_future_and_mixed_in_comb = Int[]
+    else
+        past_not_future_and_mixed_in_comb = Int.(past_not_future_and_mixed_in_comb_tmp)
+    end
 
     Ir = ℒ.I(length(comb))
 
