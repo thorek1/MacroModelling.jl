@@ -168,9 +168,9 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             kron_I_state_state = ℒ.kron(J, kron_state_vol)
 
             𝐒ⁱ = 𝐒¹ᵉ +
-                 𝐒²⁻ᵉ * kron_I_state +
-                 𝐒²⁻ᵛᵉ * kron_I_state₂ +
-                 𝐒³⁻ᵉ² * kron_I_state_state / 2
+            𝐒²⁻ᵉ * kron_I_state +
+            𝐒²⁻ᵛᵉ * kron_I_state₂ +
+            𝐒³⁻ᵉ² * kron_I_state_state / 2
 
             𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state_vol) / 2
             𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
@@ -203,8 +203,8 @@ function find_shocks_conditional_forecast(::Val{:LagrangeNewton},
             kron_I_state_state = ℒ.kron(J, kron_state_vol)
 
             𝐒ⁱ = 𝐒¹ᵉ +
-                 𝐒²⁻ᵉ * kron_I_state +
-                 𝐒³⁻ᵉ² * kron_I_state_state / 2
+            𝐒²⁻ᵉ * kron_I_state +
+            𝐒³⁻ᵉ² * kron_I_state_state / 2
 
             𝐒ⁱ²ᵉ = 𝐒²ᵉ / 2 + 𝐒³⁻ᵉ * ℒ.kron(II, state_vol) / 2
             𝐒ⁱ³ᵉ = 𝐒³ᵉ / 6
