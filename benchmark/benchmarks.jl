@@ -18,16 +18,20 @@ import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculat
 
 function timings_for_bench(𝓂::ℳ)
     if hasproperty(𝓂, :caches)
-        return 𝓂.caches.timings
+        out = 𝓂.caches.timings
+    else
+        out = 𝓂.timings
     end
-    return 𝓂.timings
+    return out
 end
 
 function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts = merge_calculation_options())
     if hasproperty(𝓂, :caches)
-        return calculate_first_order_solution(∇₁, 𝓂.caches; opts = opts)
+        out = calculate_first_order_solution(∇₁, 𝓂.caches; opts = opts)
+    else
+        out = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = opts)
     end
-    return calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = opts)
+    return out
 end
 
 
