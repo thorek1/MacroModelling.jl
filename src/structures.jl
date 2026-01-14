@@ -374,7 +374,7 @@ end
 mutable struct inversion_filter_workspace
     kron_buffer::Vector{Float64}      # n_exo^2 buffer for kron(x,x)
     kron_buffer2::Vector{Float64}     # n_exo^2 buffer for kron(J, x)
-    kron_buffer3::Vector{Float64}     # (n_past+1)^2 or n_exo*(n_past+1) buffer
+    kron_buffer3::Vector{Float64}     # n_exo*(n_past+1) buffer for kron(J, state_vol)
     kron_buffer_third::Vector{Float64} # n_exo^3 buffer for third order kron(x,kron(x,x))
     kron_buffer4::Vector{Float64}     # n_exo^3 buffer for kron(kron(J,J), x)
     shock_independent::Vector{Float64} # n_obs buffer for shock-independent terms
