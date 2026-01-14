@@ -17,22 +17,20 @@ using MacroModelling
 import MacroModelling: clear_solution_caches!, get_NSSS_and_parameters, calculate_jacobian, merge_calculation_options, solve_lyapunov_equation, ℳ
 
 function timings_for_bench(𝓂::ℳ)
-    if hasproperty(𝓂, :caches)
-        out = 𝓂.caches.timings
-    else
+    if hasproperty(𝓂, :timings)
         out = 𝓂.timings
+    else
+        out = 𝓂.caches.timings
     end
     return out
 end
 
 function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts = merge_calculation_options())
-    if hasproperty(𝓂, :caches)
-        if hasmethod(calculate_first_order_solution, Tuple{typeof(∇₁), typeof(𝓂.caches)})
-            out = calculate_first_order_solution(∇₁, 𝓂.caches; opts = opts)
-            return out
-        end
+    if hasproperty(𝓂, :timings)
+        out = calculate_first_order_solution(∇₁; T = timings_for_bench(𝓂), opts = opts)
+    else
+        out = calculate_first_order_solution(∇₁, 𝓂.caches; opts = opts)
     end
-    out = calculate_first_order_solution(∇₁; T = timings_for_bench(𝓂), opts = opts)
     return out
 end
 
