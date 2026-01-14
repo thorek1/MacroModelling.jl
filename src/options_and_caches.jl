@@ -203,12 +203,98 @@ function Kalman_workspaces()
     kalman_workspaces(Kalman_workspace(), Kalman_rrule_workspace(), Kalman_smoother_workspace())
 end
 
+function Inversion_filter_workspace()
+    return inversion_filter_workspace(
+        Float64[],   # kron_buffer
+        Float64[],   # kron_buffer2
+        Float64[],   # kron_buffer3
+        Float64[],   # kron_buffer_third
+        Float64[],   # kron_buffer4
+        Float64[],   # shock_independent
+        Float64[],   # init_guess
+        Float64[],   # state_vol
+        Float64[],   # kronstate_vol
+        Float64[],   # aug_state1
+        Float64[],   # aug_state2
+        Float64[],   # kronaug_state
+        zeros(Float64, 0, 0)  # jacc
+    )
+end
+
+function ensure_inversion_filter_workspace!(workspace::inversion_filter_workspace,
+                                           n_exo::Int,
+                                           n_past::Int,
+                                           n_obs::Int;
+                                           third_order::Bool = false)
+    n_exo_sq = n_exo^2
+    n_past_vol = n_past + 1
+    n_past_vol_sq = n_past_vol^2
+    n_aug = n_past + 1 + n_exo
+    
+    if length(workspace.kron_buffer) != n_exo_sq
+        workspace.kron_buffer = zeros(Float64, n_exo_sq)
+    end
+    
+    if length(workspace.kron_buffer2) != n_exo_sq
+        workspace.kron_buffer2 = zeros(Float64, n_exo_sq)
+    end
+    
+    if length(workspace.kron_buffer3) != n_exo * n_past_vol
+        workspace.kron_buffer3 = zeros(Float64, n_exo * n_past_vol)
+    end
+    
+    if third_order
+        n_exo_cubed = n_exo^3
+        if length(workspace.kron_buffer_third) != n_exo_cubed
+            workspace.kron_buffer_third = zeros(Float64, n_exo_cubed)
+        end
+        if length(workspace.kron_buffer4) != n_exo_cubed
+            workspace.kron_buffer4 = zeros(Float64, n_exo_cubed)
+        end
+    end
+    
+    if length(workspace.shock_independent) != n_obs
+        workspace.shock_independent = zeros(Float64, n_obs)
+    end
+    
+    if length(workspace.init_guess) != n_exo
+        workspace.init_guess = zeros(Float64, n_exo)
+    end
+    
+    if length(workspace.state_vol) != n_past_vol
+        workspace.state_vol = zeros(Float64, n_past_vol)
+    end
+    
+    if length(workspace.kronstate_vol) != n_past_vol_sq
+        workspace.kronstate_vol = zeros(Float64, n_past_vol_sq)
+    end
+    
+    if length(workspace.aug_state1) != n_aug
+        workspace.aug_state1 = zeros(Float64, n_aug)
+    end
+    
+    if length(workspace.aug_state2) != n_aug
+        workspace.aug_state2 = zeros(Float64, n_aug)
+    end
+    
+    if length(workspace.kronaug_state) != n_aug^2
+        workspace.kronaug_state = zeros(Float64, n_aug^2)
+    end
+    
+    if size(workspace.jacc) != (n_obs, n_exo)
+        workspace.jacc = zeros(Float64, n_obs, n_exo)
+    end
+    
+    return workspace
+end
+
 function Workspaces(;T::Type = Float64, S::Type = Float64)
     workspaces(Higher_order_caches(T = T, S = S),
                 Higher_order_caches(T = T, S = S),
                 Quadratic_matrix_equation_workspace(T = T),
                 Nonlinear_solver_workspace(T = T),
-                Kalman_workspaces())
+                Kalman_workspaces(),
+                Inversion_filter_workspace())
 end
 
 function Second_order_auxiliary_matrices_cache()

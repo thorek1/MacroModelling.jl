@@ -369,12 +369,31 @@ mutable struct kalman_workspaces
     smoother::kalman_smoother_workspace
 end
 
+# Workspace for inversion filter preallocated arrays
+# Used to avoid repeated allocations in filter loops
+mutable struct inversion_filter_workspace
+    kron_buffer::Vector{Float64}      # n_exo^2 buffer for kron(x,x)
+    kron_buffer2::Vector{Float64}     # n_exo^2 buffer for kron(J, x)
+    kron_buffer3::Vector{Float64}     # (n_past+1)^2 or n_exo*(n_past+1) buffer
+    kron_buffer_third::Vector{Float64} # n_exo^3 buffer for third order kron(x,kron(x,x))
+    kron_buffer4::Vector{Float64}     # n_exo^3 buffer for kron(kron(J,J), x)
+    shock_independent::Vector{Float64} # n_obs buffer for shock-independent terms
+    init_guess::Vector{Float64}        # n_exo buffer for initial shock guess
+    state_vol::Vector{Float64}         # (n_past+1) buffer for state with volatility
+    kronstate_vol::Vector{Float64}     # (n_past+1)^2 buffer for kron(state_vol, state_vol)
+    aug_state1::Vector{Float64}        # augmented state buffer
+    aug_state2::Vector{Float64}        # second augmented state buffer (pruning)
+    kronaug_state::Vector{Float64}     # kron(aug_state, aug_state) buffer
+    jacc::Matrix{Float64}              # jacobian matrix buffer
+end
+
 mutable struct workspaces
     second_order::higher_order_caches
     third_order::higher_order_caches
     quadratic_matrix_equation::quadratic_matrix_equation_workspace
     nonlinear_solver::nonlinear_solver_workspace
     kalman::kalman_workspaces
+    inversion::inversion_filter_workspace
 end
 
 # Cache for model-constant display names
