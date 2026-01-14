@@ -27,10 +27,12 @@ end
 
 function first_order_solution_for_bench(∇₁::AbstractMatrix, 𝓂::ℳ; opts = merge_calculation_options())
     if hasproperty(𝓂, :caches)
-        out = calculate_first_order_solution(∇₁, 𝓂.caches; opts = opts)
-    else
-        out = calculate_first_order_solution(∇₁; T = 𝓂.timings, opts = opts)
+        if hasmethod(calculate_first_order_solution, Tuple{typeof(∇₁), typeof(𝓂.caches)})
+            out = calculate_first_order_solution(∇₁, 𝓂.caches; opts = opts)
+            return out
+        end
     end
+    out = calculate_first_order_solution(∇₁; T = timings_for_bench(𝓂), opts = opts)
     return out
 end
 
