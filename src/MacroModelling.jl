@@ -148,7 +148,8 @@ const ParameterType = Union{Nothing,
                             Matrix{Float64},
                             Tuple{Real, Vararg{Real}},
                             Matrix{Real},
-                            Vector{Float64} } where S <: AbstractString
+                            Vector{Float64},
+                            KeyedArray{Float64} } where S <: AbstractString
 
 # Type for steady state function argument
 # Accepts a function, `nothing` (explicitly clear)
@@ -8709,6 +8710,126 @@ function separate_values_and_partials_from_sparsevec_dual(V::SparseVector{ℱ.Du
 end
 
 
+"""
+Parse parameter breakpoints from a KeyedArray.
+
+Returns a tuple of:
+- is_breakpoint: Boolean indicating if parameters contain breakpoints
+- breakpoint_dict: Dict mapping period => Dict(parameter => value)
+- initial_parameters: Dict of initial parameter values (if any)
+"""
+function parse_parameter_breakpoints(parameters::KeyedArray{Float64})
+    # Check if this is a breakpoint specification
+    # Expected format: KeyedArray with named dimensions including Time or Periods
+    parent_data = parent(parameters)
+    
+    # Extract dimension names from the NamedDimsArray type parameter
+    dim_names = typeof(parent_data).parameters[1]
+    
+    if :Time ∉ dim_names && :Periods ∉ dim_names
+        # Not a breakpoint specification, treat as regular parameters
+        return (false, Dict{Int, Dict{Symbol, Float64}}(), nothing)
+    end
+    
+    # Determine which dimension is time and which is variables
+    time_dim_idx = findfirst(name -> name ∈ (:Time, :Periods), dim_names)
+    var_dim_idx = findfirst(name -> name ∈ (:Variable, :Variables), dim_names)
+    
+    # Default to standard layout if not found
+    if isnothing(time_dim_idx)
+        time_dim_idx = 2
+    end
+    if isnothing(var_dim_idx)
+        var_dim_idx = 1
+    end
+    
+    # Extract the axes
+    var_axis = axiskeys(parameters, var_dim_idx)
+    time_axis = axiskeys(parameters, time_dim_idx)
+    
+    # Convert variable names to symbols if they're strings
+    if eltype(var_axis) <: AbstractString
+        var_axis = Symbol.(var_axis)
+    end
+    
+    # Build breakpoint dictionary: period => Dict(parameter => value)
+    breakpoint_dict = Dict{Int, Dict{Symbol, Float64}}()
+    
+    # We need to iterate correctly based on which dimension is which
+    if var_dim_idx == 1 && time_dim_idx == 2
+        for (i, t) in enumerate(time_axis)
+            period = Int(t)
+            breakpoint_dict[period] = Dict{Symbol, Float64}()
+            for (j, var) in enumerate(var_axis)
+                val = parameters[j, i]
+                breakpoint_dict[period][var] = val
+            end
+        end
+    else
+        # Handle transposed case
+        for (i, t) in enumerate(time_axis)
+            period = Int(t)
+            breakpoint_dict[period] = Dict{Symbol, Float64}()
+            for (j, var) in enumerate(var_axis)
+                val = parameters[i, j]
+                breakpoint_dict[period][var] = val
+            end
+        end
+    end
+    
+    return (true, breakpoint_dict, nothing)
+end
+
+
+"""
+Helper function to handle parameter breakpoints during IRF computation.
+Updates model parameters, re-solves, and returns updated state_update function and level.
+"""
+function apply_parameter_breakpoint!(model::ℳ,
+                                     period::Int,
+                                     breakpoint_dict::Dict{Int, Dict{Symbol, Float64}},
+                                     steady_state_function::SteadyStateFunctionType,
+                                     opts::CalculationOptions,
+                                     algorithm::Symbol,
+                                     enforce_obc::Bool,
+                                     levels_flag::Bool)::Tuple{Function, Vector{Float64}}
+    # Update parameters for this period
+    param_updates = breakpoint_dict[period]
+    
+    # Write parameters to model
+    write_parameters_input!(model, param_updates, verbose = false)
+    
+    # Re-solve the model with new parameters
+    solve!(model, 
+           parameters = nothing,  # Already written
+           steady_state_function = steady_state_function,
+           opts = opts,
+           dynamics = true,
+           algorithm = algorithm,
+           obc = enforce_obc,
+           silent = true)
+    
+    # Get updated steady state and solution
+    updated_reference_steady_state, updated_NSSS, updated_SSS_delta = get_relevant_steady_states(model, algorithm, opts = opts)
+    
+    # Update level for output
+    updated_level = if levels_flag
+        updated_reference_steady_state + updated_SSS_delta
+    else
+        updated_SSS_delta
+    end
+    
+    # Get new state update function
+    updated_state_update, _ = if enforce_obc
+        parse_algorithm_to_state_update(algorithm, model, true)
+    else
+        parse_algorithm_to_state_update(algorithm, model, false)
+    end
+    
+    return (updated_state_update, updated_level)
+end
+
+
 function compute_irf_responses(𝓂::ℳ,
                                 state_update::Function,
                                 initial_state::Union{Vector{Vector{Float64}},Vector{Float64}},
@@ -8722,7 +8843,14 @@ function compute_irf_responses(𝓂::ℳ,
                                 generalised_irf_warmup_iterations::Int,
                                 generalised_irf_draws::Int,
                                 enforce_obc::Bool,
-                                algorithm::Symbol)
+                                algorithm::Symbol,
+                                has_breakpoints::Bool = false,
+                                breakpoint_dict::Dict{Int, Dict{Symbol, Float64}} = Dict{Int, Dict{Symbol, Float64}}(),
+                                opts::CalculationOptions = merge_calculation_options(),
+                                steady_state_function::SteadyStateFunctionType = missing,
+                                levels_flag::Bool = false,
+                                reference_steady_state::Vector{Float64} = Float64[],
+                                SSS_delta::Vector{Float64} = Float64[])
 
     if enforce_obc
         function obc_state_update(present_states, present_shocks::Vector{R}, state_update::Function) where R <: Float64
@@ -8792,7 +8920,17 @@ function compute_irf_responses(𝓂::ℳ,
                         shocks = shocks,
                         shock_size = shock_size,
                         variables = variables,
-                        negative_shock = negative_shock)
+                        negative_shock = negative_shock,
+                        has_breakpoints = has_breakpoints,
+                        breakpoint_dict = breakpoint_dict,
+                        model = has_breakpoints ? 𝓂 : nothing,
+                        opts = has_breakpoints ? opts : nothing,
+                        steady_state_function = has_breakpoints ? steady_state_function : missing,
+                        algorithm = has_breakpoints ? algorithm : :first_order,
+                        levels_flag = has_breakpoints ? levels_flag : false,
+                        reference_steady_state = has_breakpoints ? reference_steady_state : Float64[],
+                        SSS_delta = has_breakpoints ? SSS_delta : Float64[],
+                        enforce_obc = has_breakpoints ? enforce_obc : false)
         end
     else
         if generalised_irf
@@ -8816,7 +8954,17 @@ function compute_irf_responses(𝓂::ℳ,
                         shocks = shocks,
                         shock_size = shock_size,
                         variables = variables,
-                        negative_shock = negative_shock)
+                        negative_shock = negative_shock,
+                        has_breakpoints = has_breakpoints,
+                        breakpoint_dict = breakpoint_dict,
+                        model = has_breakpoints ? 𝓂 : nothing,
+                        opts = has_breakpoints ? opts : nothing,
+                        steady_state_function = has_breakpoints ? steady_state_function : missing,
+                        algorithm = has_breakpoints ? algorithm : :first_order,
+                        levels_flag = has_breakpoints ? levels_flag : false,
+                        reference_steady_state = has_breakpoints ? reference_steady_state : Float64[],
+                        SSS_delta = has_breakpoints ? SSS_delta : Float64[],
+                        enforce_obc = has_breakpoints ? enforce_obc : false)
         end
     end
 end
@@ -8831,7 +8979,17 @@ function irf(state_update::Function,
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
-    negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    negative_shock::Bool = false,
+    has_breakpoints::Bool = false,
+    breakpoint_dict::Dict{Int, Dict{Symbol, Float64}} = Dict{Int, Dict{Symbol, Float64}}(),
+    model::Union{ℳ, Nothing} = nothing,
+    opts::Union{CalculationOptions, Nothing} = nothing,
+    steady_state_function::SteadyStateFunctionType = missing,
+    algorithm::Symbol = :first_order,
+    levels_flag::Bool = false,
+    reference_steady_state::Vector{Float64} = Float64[],
+    SSS_delta::Vector{Float64} = Float64[],
+    enforce_obc::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -8885,8 +9043,19 @@ function irf(state_update::Function,
 
         past_states = initial_state
         
+        # Track current state update function and level for breakpoints
+        current_state_update = state_update
+        current_level = level
+        
         for t in 1:periods
-            past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], state_update)
+            # Handle parameter breakpoints
+            if has_breakpoints && haskey(breakpoint_dict, t)
+                current_state_update, current_level = apply_parameter_breakpoint!(
+                    model, t, breakpoint_dict, steady_state_function,
+                    opts, algorithm, enforce_obc, levels_flag)
+            end
+            
+            past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], current_state_update)
 
             if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
@@ -8907,8 +9076,19 @@ function irf(state_update::Function,
         
         past_states = initial_state
         
+        # Track current state update function and level for breakpoints
+        current_state_update = state_update
+        current_level = level
+        
         for t in 1:periods
-            past_states, _, solved  = obc_state_update(past_states, shck, state_update)
+            # Handle parameter breakpoints
+            if has_breakpoints && haskey(breakpoint_dict, t)
+                current_state_update, current_level = apply_parameter_breakpoint!(
+                    model, t, breakpoint_dict, steady_state_function,
+                    opts, algorithm, enforce_obc, levels_flag)
+            end
+            
+            past_states, _, solved  = obc_state_update(past_states, shck, current_state_update)
 
             if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
@@ -8931,8 +9111,19 @@ function irf(state_update::Function,
 
             past_states = initial_state
             
+            # Track current state update function and level for breakpoints
+            current_state_update = state_update
+            current_level = level
+            
             for t in 1:periods
-                past_states, past_shocks, solved = obc_state_update(past_states, shock_history[:,t], state_update)
+                # Handle parameter breakpoints
+                if has_breakpoints && haskey(breakpoint_dict, t)
+                    current_state_update, current_level = apply_parameter_breakpoint!(
+                        model, t, breakpoint_dict, steady_state_function,
+                        opts, algorithm, enforce_obc, levels_flag)
+                end
+                
+                past_states, past_shocks, solved = obc_state_update(past_states, shock_history[:,t], current_state_update)
 
                 if !solved @warn "No solution in period: $t" end#. Possible reasons: 1. infeasability 2. too long spell of binding constraint. To address the latter try setting max_obc_horizon to a larger value (default: 40): @model <name> max_obc_horizon=40 begin ... end" end
 
@@ -8972,7 +9163,17 @@ function irf(state_update::Function,
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
-    negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    negative_shock::Bool = false,
+    has_breakpoints::Bool = false,
+    breakpoint_dict::Dict{Int, Dict{Symbol, Float64}} = Dict{Int, Dict{Symbol, Float64}}(),
+    model::Union{ℳ, Nothing} = nothing,
+    opts::Union{CalculationOptions, Nothing} = nothing,
+    steady_state_function::SteadyStateFunctionType = missing,
+    algorithm::Symbol = :first_order,
+    levels_flag::Bool = false,
+    reference_steady_state::Vector{Float64} = Float64[],
+    SSS_delta::Vector{Float64} = Float64[],
+    enforce_obc::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9022,12 +9223,53 @@ function irf(state_update::Function,
 
         Y = zeros(T.nVars,periods,1)
 
-        initial_state = state_update(initial_state,shock_history[:,1])
+        # Track current state update function for breakpoints
+        current_state_update = state_update
+        
+        # Handle breakpoint at period 1
+        if has_breakpoints && haskey(breakpoint_dict, 1)
+            param_updates = breakpoint_dict[1]
+            write_parameters_input!(model, param_updates, verbose = false)
+            solve!(model, parameters = nothing, steady_state_function = steady_state_function,
+                   opts = opts, dynamics = true, algorithm = algorithm, obc = enforce_obc, silent = true)
+            updated_reference_steady_state, updated_NSSS, updated_SSS_delta = get_relevant_steady_states(model, algorithm, opts = opts)
+            if levels_flag
+                level = updated_reference_steady_state + updated_SSS_delta
+            else
+                level = updated_SSS_delta
+            end
+            if enforce_obc
+                current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, true)
+            else
+                current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, false)
+            end
+        end
+
+        initial_state = current_state_update(initial_state,shock_history[:,1])
 
         Y[:,1,1] = pruning ? sum(initial_state) : initial_state
 
         for t in 1:periods-1
-            initial_state = state_update(initial_state,shock_history[:,t+1])
+            # Handle parameter breakpoints
+            if has_breakpoints && haskey(breakpoint_dict, t+1)
+                param_updates = breakpoint_dict[t+1]
+                write_parameters_input!(model, param_updates, verbose = false)
+                solve!(model, parameters = nothing, steady_state_function = steady_state_function,
+                       opts = opts, dynamics = true, algorithm = algorithm, obc = enforce_obc, silent = true)
+                updated_reference_steady_state, updated_NSSS, updated_SSS_delta = get_relevant_steady_states(model, algorithm, opts = opts)
+                if levels_flag
+                    level = updated_reference_steady_state + updated_SSS_delta
+                else
+                    level = updated_SSS_delta
+                end
+                if enforce_obc
+                    current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, true)
+                else
+                    current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, false)
+                end
+            end
+            
+            initial_state = current_state_update(initial_state,shock_history[:,t+1])
 
             Y[:,t+1,1] = pruning ? sum(initial_state) : initial_state
         end
@@ -9038,12 +9280,53 @@ function irf(state_update::Function,
 
         shck = T.nExo == 0 ? Vector{Float64}(undef, 0) : zeros(T.nExo)
 
-        initial_state = state_update(initial_state, shck)
+        # Track current state update function for breakpoints
+        current_state_update = state_update
+        
+        # Handle breakpoint at period 1
+        if has_breakpoints && haskey(breakpoint_dict, 1)
+            param_updates = breakpoint_dict[1]
+            write_parameters_input!(model, param_updates, verbose = false)
+            solve!(model, parameters = nothing, steady_state_function = steady_state_function,
+                   opts = opts, dynamics = true, algorithm = algorithm, obc = enforce_obc, silent = true)
+            updated_reference_steady_state, updated_NSSS, updated_SSS_delta = get_relevant_steady_states(model, algorithm, opts = opts)
+            if levels_flag
+                level = updated_reference_steady_state + updated_SSS_delta
+            else
+                level = updated_SSS_delta
+            end
+            if enforce_obc
+                current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, true)
+            else
+                current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, false)
+            end
+        end
+
+        initial_state = current_state_update(initial_state, shck)
 
         Y[:,1,1] = pruning ? sum(initial_state) : initial_state
 
         for t in 1:periods-1
-            initial_state = state_update(initial_state, shck)
+            # Handle parameter breakpoints
+            if has_breakpoints && haskey(breakpoint_dict, t+1)
+                param_updates = breakpoint_dict[t+1]
+                write_parameters_input!(model, param_updates, verbose = false)
+                solve!(model, parameters = nothing, steady_state_function = steady_state_function,
+                       opts = opts, dynamics = true, algorithm = algorithm, obc = enforce_obc, silent = true)
+                updated_reference_steady_state, updated_NSSS, updated_SSS_delta = get_relevant_steady_states(model, algorithm, opts = opts)
+                if levels_flag
+                    level = updated_reference_steady_state + updated_SSS_delta
+                else
+                    level = updated_SSS_delta
+                end
+                if enforce_obc
+                    current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, true)
+                else
+                    current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, false)
+                end
+            end
+            
+            initial_state = current_state_update(initial_state, shck)
 
             Y[:,t+1,1] = pruning ? sum(initial_state) : initial_state
         end
@@ -9055,17 +9338,58 @@ function irf(state_update::Function,
         for (i,ii) in enumerate(shock_idx)
             initial_state_copy = deepcopy(initial_state)
             
+            # Track current state update function for breakpoints
+            current_state_update = state_update
+            
             if shocks ∉ [:simulate, :none] && shocks isa Union{Symbol_input,String_input}
                 shock_history = zeros(T.nExo,periods)
                 shock_history[ii,1] = negative_shock ? -shock_size : shock_size
             end
 
-            initial_state_copy = state_update(initial_state_copy, shock_history[:,1])
+            # Handle breakpoint at period 1
+            if has_breakpoints && haskey(breakpoint_dict, 1)
+                param_updates = breakpoint_dict[1]
+                write_parameters_input!(model, param_updates, verbose = false)
+                solve!(model, parameters = nothing, steady_state_function = steady_state_function,
+                       opts = opts, dynamics = true, algorithm = algorithm, obc = enforce_obc, silent = true)
+                updated_reference_steady_state, updated_NSSS, updated_SSS_delta = get_relevant_steady_states(model, algorithm, opts = opts)
+                if levels_flag
+                    level = updated_reference_steady_state + updated_SSS_delta
+                else
+                    level = updated_SSS_delta
+                end
+                if enforce_obc
+                    current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, true)
+                else
+                    current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, false)
+                end
+            end
+
+            initial_state_copy = current_state_update(initial_state_copy, shock_history[:,1])
 
             Y[:,1,i] = pruning ? sum(initial_state_copy) : initial_state_copy
 
             for t in 1:periods-1
-                initial_state_copy = state_update(initial_state_copy, shock_history[:,t+1])
+                # Handle parameter breakpoints
+                if has_breakpoints && haskey(breakpoint_dict, t+1)
+                    param_updates = breakpoint_dict[t+1]
+                    write_parameters_input!(model, param_updates, verbose = false)
+                    solve!(model, parameters = nothing, steady_state_function = steady_state_function,
+                           opts = opts, dynamics = true, algorithm = algorithm, obc = enforce_obc, silent = true)
+                    updated_reference_steady_state, updated_NSSS, updated_SSS_delta = get_relevant_steady_states(model, algorithm, opts = opts)
+                    if levels_flag
+                        level = updated_reference_steady_state + updated_SSS_delta
+                    else
+                        level = updated_SSS_delta
+                    end
+                    if enforce_obc
+                        current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, true)
+                    else
+                        current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, false)
+                    end
+                end
+                
+                initial_state_copy = current_state_update(initial_state_copy, shock_history[:,t+1])
 
                 Y[:,t+1,i] = pruning ? sum(initial_state_copy) : initial_state_copy
             end

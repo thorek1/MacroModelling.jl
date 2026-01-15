@@ -1268,6 +1268,19 @@ function get_irf(𝓂::ℳ;
 
     generalised_irf = adjust_generalised_irf_flag(generalised_irf, generalised_irf_warmup_iterations, generalised_irf_draws, algorithm, occasionally_binding_constraints, shocks)
 
+    # Handle parameter breakpoints
+    has_breakpoints = false
+    breakpoint_dict = Dict{Int, Dict{Symbol, Float64}}()
+    initial_params = nothing
+    
+    if parameters isa KeyedArray{Float64}
+        has_breakpoints, breakpoint_dict, initial_params = parse_parameter_breakpoints(parameters)
+        if has_breakpoints
+            # Use initial parameters if specified, otherwise use current model parameters
+            parameters = initial_params
+        end
+    end
+
     # end # timeit_debug
     
     # @timeit_debug timer "Solve model" begin
@@ -1340,7 +1353,14 @@ function get_irf(𝓂::ℳ;
                                         generalised_irf_warmup_iterations = generalised_irf_warmup_iterations,
                                         generalised_irf_draws = generalised_irf_draws,
                                         enforce_obc = occasionally_binding_constraints,
-                                        algorithm = algorithm)
+                                        algorithm = algorithm,
+                                        has_breakpoints = has_breakpoints,
+                                        breakpoint_dict = breakpoint_dict,
+                                        opts = opts,
+                                        steady_state_function = steady_state_function,
+                                        levels_flag = levels,
+                                        reference_steady_state = reference_steady_state,
+                                        SSS_delta = SSS_delta)
 
     return responses
 
