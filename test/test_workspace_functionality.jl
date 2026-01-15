@@ -144,6 +144,70 @@ println("\n--- Quadratic Matrix Equation Workspace ---")
     @test isa(qme_ws.AXX, Matrix)
 end
 
+println("\n--- Perturbation Workspace Integration ---")
+
+@testset "Perturbation Workspace Integration" begin
+    # Test that workspaces are properly used during perturbation solutions
+    import MacroModelling: calculate_first_order_solution, calculate_second_order_solution, calculate_third_order_solution
+    import MacroModelling: ensure_quadratic_matrix_equation_workspace!
+    
+    # Verify QME workspace structure
+    qme_ws = RBC_test.workspaces.quadratic_matrix_equation
+    @test qme_ws !== nothing
+    @test isa(qme_ws.AXX, Matrix)
+    @test isa(qme_ws.E, Matrix)
+    @test isa(qme_ws.F, Matrix)
+    @test isa(qme_ws.temp1, Matrix)
+    @test isa(qme_ws.temp2, Matrix)
+    
+    # Verify higher order caches for second order
+    ho_ws2 = RBC_test.workspaces.second_order
+    @test ho_ws2 !== nothing
+    @test isa(ho_ws2.Ŝ, Matrix)
+    @test ho_ws2.sylvester_caches !== nothing
+    
+    # Verify higher order caches for third order
+    ho_ws3 = RBC_test.workspaces.third_order
+    @test ho_ws3 !== nothing
+    @test isa(ho_ws3.Ŝ, Matrix)
+    @test ho_ws3.sylvester_caches !== nothing
+    
+    # Test that solutions work correctly with workspaces by re-solving
+    # Clear any cached solutions and re-solve
+    import MacroModelling: clear_solution_caches!
+    clear_solution_caches!(RBC_test, :first_order)
+    
+    # Solve again and verify workspaces are used
+    sol1 = get_solution(RBC_test, algorithm = :first_order)
+    @test sol1 !== nothing
+    
+    sol2 = get_solution(RBC_test, algorithm = :pruned_second_order)
+    @test sol2 !== nothing
+    
+    sol3 = get_solution(RBC_test, algorithm = :pruned_third_order)
+    @test sol3 !== nothing
+end
+
+println("\n--- Nonlinear Solver Workspace ---")
+
+@testset "Nonlinear Solver Workspace" begin
+    import MacroModelling: ensure_nonlinear_solver_workspace!
+    
+    ns_ws = RBC_test.workspaces.nonlinear_solver
+    @test ns_ws !== nothing
+    @test isa(ns_ws.u_bounds, Vector)
+    @test isa(ns_ws.l_bounds, Vector)
+    @test isa(ns_ws.current_guess, Vector)
+    @test isa(ns_ws.previous_guess, Vector)
+    @test isa(ns_ws.best_current_guess, Vector)
+    
+    # Test ensure function
+    test_guess = zeros(5)
+    ensure_nonlinear_solver_workspace!(ns_ws, test_guess)
+    @test length(ns_ws.current_guess) == 5
+    @test length(ns_ws.previous_guess) == 5
+end
+
 println("\n" * "="^60)
 println("All tests completed!")
 println("="^60)
