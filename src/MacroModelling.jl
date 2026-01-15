@@ -8720,18 +8720,24 @@ Returns a tuple of:
 """
 function parse_parameter_breakpoints(parameters::KeyedArray{Float64})
     # Check if this is a breakpoint specification
-    # Expected format: KeyedArray with axes (Variable, Time) or (Variable = [...], Time = [...])
-    axes_names = keys(axiskeys(parameters))
+    # Expected format: KeyedArray with named dimensions including Time or Periods
+    parent_data = parent(parameters)
     
-    if :Time ∉ axes_names && :Periods ∉ axes_names
+    # Extract dimension names from the NamedDimsArray type parameter
+    dim_names = typeof(parent_data).parameters[1]
+    
+    if :Time ∉ dim_names && :Periods ∉ dim_names
         # Not a breakpoint specification, treat as regular parameters
         return (false, Dict{Int, Dict{Symbol, Float64}}(), nothing)
     end
     
+    # Determine which dimension is time
+    time_dim = :Time ∈ dim_names ? 2 : (:Periods ∈ dim_names ? 2 : 0)
+    var_dim = :Variable ∈ dim_names ? 1 : 1  # Assume first dimension is variables
+    
     # Extract the axes
-    time_axis_name = :Time ∈ axes_names ? :Time : :Periods
-    var_axis = axiskeys(parameters, 1)
-    time_axis = axiskeys(parameters, time_axis_name)
+    var_axis = axiskeys(parameters, var_dim)
+    time_axis = axiskeys(parameters, time_dim)
     
     # Convert variable names to symbols if they're strings
     if eltype(var_axis) <: AbstractString
