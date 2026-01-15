@@ -8731,13 +8731,21 @@ function parse_parameter_breakpoints(parameters::KeyedArray{Float64})
         return (false, Dict{Int, Dict{Symbol, Float64}}(), nothing)
     end
     
-    # Determine which dimension is time
-    time_dim = :Time ∈ dim_names ? 2 : (:Periods ∈ dim_names ? 2 : 0)
-    var_dim = :Variable ∈ dim_names ? 1 : 1  # Assume first dimension is variables
+    # Determine which dimension is time and which is variables
+    time_dim_idx = findfirst(name -> name ∈ (:Time, :Periods), dim_names)
+    var_dim_idx = findfirst(name -> name ∈ (:Variable, :Variables), dim_names)
+    
+    # Default to standard layout if not found
+    if isnothing(time_dim_idx)
+        time_dim_idx = 2
+    end
+    if isnothing(var_dim_idx)
+        var_dim_idx = 1
+    end
     
     # Extract the axes
-    var_axis = axiskeys(parameters, var_dim)
-    time_axis = axiskeys(parameters, time_dim)
+    var_axis = axiskeys(parameters, var_dim_idx)
+    time_axis = axiskeys(parameters, time_dim_idx)
     
     # Convert variable names to symbols if they're strings
     if eltype(var_axis) <: AbstractString
@@ -8747,16 +8755,78 @@ function parse_parameter_breakpoints(parameters::KeyedArray{Float64})
     # Build breakpoint dictionary: period => Dict(parameter => value)
     breakpoint_dict = Dict{Int, Dict{Symbol, Float64}}()
     
-    for (i, t) in enumerate(time_axis)
-        period = Int(t)
-        breakpoint_dict[period] = Dict{Symbol, Float64}()
-        for (j, var) in enumerate(var_axis)
-            val = parameters[j, i]
-            breakpoint_dict[period][var] = val
+    # We need to iterate correctly based on which dimension is which
+    if var_dim_idx == 1 && time_dim_idx == 2
+        for (i, t) in enumerate(time_axis)
+            period = Int(t)
+            breakpoint_dict[period] = Dict{Symbol, Float64}()
+            for (j, var) in enumerate(var_axis)
+                val = parameters[j, i]
+                breakpoint_dict[period][var] = val
+            end
+        end
+    else
+        # Handle transposed case
+        for (i, t) in enumerate(time_axis)
+            period = Int(t)
+            breakpoint_dict[period] = Dict{Symbol, Float64}()
+            for (j, var) in enumerate(var_axis)
+                val = parameters[i, j]
+                breakpoint_dict[period][var] = val
+            end
         end
     end
     
     return (true, breakpoint_dict, nothing)
+end
+
+
+"""
+Helper function to handle parameter breakpoints during IRF computation.
+Updates model parameters, re-solves, and returns updated state_update function and level.
+"""
+function apply_parameter_breakpoint!(model::ℳ,
+                                     period::Int,
+                                     breakpoint_dict::Dict{Int, Dict{Symbol, Float64}},
+                                     steady_state_function::SteadyStateFunctionType,
+                                     opts::CalculationOptions,
+                                     algorithm::Symbol,
+                                     enforce_obc::Bool,
+                                     levels_flag::Bool)::Tuple{Function, Vector{Float64}}
+    # Update parameters for this period
+    param_updates = breakpoint_dict[period]
+    
+    # Write parameters to model
+    write_parameters_input!(model, param_updates, verbose = false)
+    
+    # Re-solve the model with new parameters
+    solve!(model, 
+           parameters = nothing,  # Already written
+           steady_state_function = steady_state_function,
+           opts = opts,
+           dynamics = true,
+           algorithm = algorithm,
+           obc = enforce_obc,
+           silent = true)
+    
+    # Get updated steady state and solution
+    updated_reference_steady_state, updated_NSSS, updated_SSS_delta = get_relevant_steady_states(model, algorithm, opts = opts)
+    
+    # Update level for output
+    updated_level = if levels_flag
+        updated_reference_steady_state + updated_SSS_delta
+    else
+        updated_SSS_delta
+    end
+    
+    # Get new state update function
+    updated_state_update, _ = if enforce_obc
+        parse_algorithm_to_state_update(algorithm, model, true)
+    else
+        parse_algorithm_to_state_update(algorithm, model, false)
+    end
+    
+    return (updated_state_update, updated_level)
 end
 
 
@@ -8973,44 +9043,16 @@ function irf(state_update::Function,
 
         past_states = initial_state
         
-        # Track current state update function for breakpoints
+        # Track current state update function and level for breakpoints
         current_state_update = state_update
+        current_level = level
         
         for t in 1:periods
             # Handle parameter breakpoints
             if has_breakpoints && haskey(breakpoint_dict, t)
-                # Update parameters for this period
-                param_updates = breakpoint_dict[t]
-                
-                # Convert to vector format for write_parameters_input!
-                write_parameters_input!(model, param_updates, verbose = false)
-                
-                # Re-solve the model with new parameters
-                solve!(model, 
-                       parameters = nothing,  # Already written
-                       steady_state_function = steady_state_function,
-                       opts = opts,
-                       dynamics = true,
-                       algorithm = algorithm,
-                       obc = enforce_obc,
-                       silent = true)
-                
-                # Get updated steady state and solution
-                updated_reference_steady_state, updated_NSSS, updated_SSS_delta = get_relevant_steady_states(model, algorithm, opts = opts)
-                
-                # Update level for output
-                if levels_flag
-                    level = updated_reference_steady_state + updated_SSS_delta
-                else
-                    level = updated_SSS_delta
-                end
-                
-                # Get new state update function
-                if enforce_obc
-                    current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, true)
-                else
-                    current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, false)
-                end
+                current_state_update, current_level = apply_parameter_breakpoint!(
+                    model, t, breakpoint_dict, steady_state_function,
+                    opts, algorithm, enforce_obc, levels_flag)
             end
             
             past_states, past_shocks, solved  = obc_state_update(past_states, shock_history[:,t], current_state_update)
@@ -9034,44 +9076,16 @@ function irf(state_update::Function,
         
         past_states = initial_state
         
-        # Track current state update function for breakpoints
+        # Track current state update function and level for breakpoints
         current_state_update = state_update
+        current_level = level
         
         for t in 1:periods
             # Handle parameter breakpoints
             if has_breakpoints && haskey(breakpoint_dict, t)
-                # Update parameters for this period
-                param_updates = breakpoint_dict[t]
-                
-                # Convert to vector format for write_parameters_input!
-                write_parameters_input!(model, param_updates, verbose = false)
-                
-                # Re-solve the model with new parameters
-                solve!(model, 
-                       parameters = nothing,  # Already written
-                       steady_state_function = steady_state_function,
-                       opts = opts,
-                       dynamics = true,
-                       algorithm = algorithm,
-                       obc = enforce_obc,
-                       silent = true)
-                
-                # Get updated steady state and solution
-                updated_reference_steady_state, updated_NSSS, updated_SSS_delta = get_relevant_steady_states(model, algorithm, opts = opts)
-                
-                # Update level for output
-                if levels_flag
-                    level = updated_reference_steady_state + updated_SSS_delta
-                else
-                    level = updated_SSS_delta
-                end
-                
-                # Get new state update function
-                if enforce_obc
-                    current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, true)
-                else
-                    current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, false)
-                end
+                current_state_update, current_level = apply_parameter_breakpoint!(
+                    model, t, breakpoint_dict, steady_state_function,
+                    opts, algorithm, enforce_obc, levels_flag)
             end
             
             past_states, _, solved  = obc_state_update(past_states, shck, current_state_update)
@@ -9097,44 +9111,16 @@ function irf(state_update::Function,
 
             past_states = initial_state
             
-            # Track current state update function for breakpoints
+            # Track current state update function and level for breakpoints
             current_state_update = state_update
+            current_level = level
             
             for t in 1:periods
                 # Handle parameter breakpoints
                 if has_breakpoints && haskey(breakpoint_dict, t)
-                    # Update parameters for this period
-                    param_updates = breakpoint_dict[t]
-                    
-                    # Convert to vector format for write_parameters_input!
-                    write_parameters_input!(model, param_updates, verbose = false)
-                    
-                    # Re-solve the model with new parameters
-                    solve!(model, 
-                           parameters = nothing,  # Already written
-                           steady_state_function = steady_state_function,
-                           opts = opts,
-                           dynamics = true,
-                           algorithm = algorithm,
-                           obc = enforce_obc,
-                           silent = true)
-                    
-                    # Get updated steady state and solution
-                    updated_reference_steady_state, updated_NSSS, updated_SSS_delta = get_relevant_steady_states(model, algorithm, opts = opts)
-                    
-                    # Update level for output
-                    if levels_flag
-                        level = updated_reference_steady_state + updated_SSS_delta
-                    else
-                        level = updated_SSS_delta
-                    end
-                    
-                    # Get new state update function
-                    if enforce_obc
-                        current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, true)
-                    else
-                        current_state_update, _ = parse_algorithm_to_state_update(algorithm, model, false)
-                    end
+                    current_state_update, current_level = apply_parameter_breakpoint!(
+                        model, t, breakpoint_dict, steady_state_function,
+                        opts, algorithm, enforce_obc, levels_flag)
                 end
                 
                 past_states, past_shocks, solved = obc_state_update(past_states, shock_history[:,t], current_state_update)
