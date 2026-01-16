@@ -29,6 +29,198 @@ end
 
 
 """
+    parse_filter_term(term::Union{Symbol, String})
+
+Parse a filter term and return a tuple of (base_symbol, timing).
+- `:a` or `"a"` returns `(:a, :any)` - matches variable `a` at any time
+- `"a[0]"` returns `(:a, :present)` - matches variable `a` in the present only
+- `"a[1]"` or `"a[+1]"` returns `(:a, :future)` - matches variable `a` in the future only
+- `"a[-1]"` returns `(:a, :past)` - matches variable `a` in the past only
+- `"a[ss]"` returns `(:a, :ss)` - matches variable `a` at steady state
+- `"eps[x]"` returns `(:eps, :shock)` - matches shock `eps` in the present only
+- `"eps[x-1]"` returns `(:eps, :shock_past)` - matches shock `eps` in the past
+- `"eps[x+1]"` returns `(:eps, :shock_future)` - matches shock `eps` in the future
+"""
+function parse_filter_term(term::Union{Symbol, String})
+    term_str = string(term)
+    
+    # Handle curly braces: convert {X} to ◖X◗ (internal representation)
+    term_str = replace(term_str, "{" => "◖", "}" => "◗")
+    
+    # Check for time subscript patterns
+    # Pattern for variables with time subscript: var[timing]
+    m = match(r"^(.+)\[(.+)\]$", term_str)
+    
+    if m === nothing
+        # No brackets - matches any time
+        return (Symbol(term_str), :any)
+    end
+    
+    base = m.captures[1]
+    timing_str = strip(m.captures[2])
+    
+    # Handle steady state
+    if occursin(r"^(ss|stst|steady|steadystate|steady_state)$"i, timing_str)
+        return (Symbol(base), :ss)
+    end
+    
+    # Handle shocks: x, ex, exo, exogenous (with optional +/- offset)
+    if occursin(r"^(x|ex|exo|exogenous)$"i, timing_str)
+        return (Symbol(base), :shock)
+    end
+    
+    # Handle shock with lag: x-1, ex-1, etc.
+    if occursin(r"^(x|ex|exo|exogenous)\s*-\s*\d+$"i, timing_str)
+        return (Symbol(base), :shock_past)
+    end
+    
+    # Handle shock with lead: x+1, ex+1, etc.
+    if occursin(r"^(x|ex|exo|exogenous)\s*\+\s*\d+$"i, timing_str)
+        return (Symbol(base), :shock_future)
+    end
+    
+    # Handle numeric time subscripts
+    timing_str_clean = replace(timing_str, " " => "")
+    if timing_str_clean == "0"
+        return (Symbol(base), :present)
+    elseif timing_str_clean == "1" || timing_str_clean == "+1"
+        return (Symbol(base), :future)
+    elseif occursin(r"^-?\d+$", timing_str_clean)
+        val = parse(Int, timing_str_clean)
+        if val < 0
+            return (Symbol(base), :past)
+        elseif val > 0
+            return (Symbol(base), :future)
+        else
+            return (Symbol(base), :present)
+        end
+    end
+    
+    # Default: treat as any
+    return (Symbol(base), :any)
+end
+
+
+"""
+    symbol_in_set_with_subscript(sym::Symbol, set::Set{Symbol}, subscript::String)
+
+Check if symbol is in set, accounting for the possibility that the set contains 
+symbols with subscripts (e.g., :eps_z₍ₓ₎ for :eps_z).
+"""
+function symbol_in_set_with_subscript(sym::Symbol, set::Set{Symbol}, subscript::String)
+    # Direct match
+    if sym ∈ set
+        return true
+    end
+    # Check with subscript
+    sym_with_subscript = Symbol(string(sym) * subscript)
+    return sym_with_subscript ∈ set
+end
+
+"""
+    symbol_in_exo_set(sym::Symbol, set::Set{Symbol}, timing::Symbol)
+
+Check if symbol is in the exo set, accounting for timing subscripts.
+Shocks in dyn_exo_list are stored as :eps_z₍ₓ₎ format.
+"""
+function symbol_in_exo_set(sym::Symbol, set::Set{Symbol})
+    # Direct match
+    if sym ∈ set
+        return true
+    end
+    # Check with subscript for shocks (₍ₓ₎)
+    sym_with_x = Symbol(string(sym) * "₍ₓ₎")
+    return sym_with_x ∈ set
+end
+
+
+"""
+    parameter_in_original_equation(eq_idx::Int, 𝓂::ℳ, filter_symbol::Symbol)
+
+Check if the filter symbol is a parameter that appears in the original equation.
+This handles cases where parameters are multiplied by shocks and thus not in par_list_aux_SS.
+"""
+function parameter_in_original_equation(eq_idx::Int, 𝓂::ℳ, filter_symbol::Symbol)
+    # Only check parameters
+    if filter_symbol ∉ 𝓂.parameters_in_equations
+        return false
+    end
+    # Check if symbol appears in the original equation string
+    eq_str = string(𝓂.original_equations[eq_idx])
+    # Convert ◖ and ◗ to { and } for comparison
+    filter_str = replace(string(filter_symbol), "◖" => "{", "◗" => "}")
+    # Use word boundary matching to avoid partial matches
+    # For symbols that might contain special characters, escape them in regex
+    escaped_filter = replace(filter_str, r"([{}()\[\].*+?^$|\\])" => s"\\\1")
+    return occursin(Regex("\\b" * escaped_filter * "\\b"), eq_str)
+end
+
+
+"""
+    equation_contains_filter(eq_idx::Int, 𝓂::ℳ, filter_symbol::Symbol, timing::Symbol)
+
+Check if equation at index `eq_idx` contains the filter symbol with the specified timing.
+"""
+function equation_contains_filter(eq_idx::Int, 𝓂::ℳ, filter_symbol::Symbol, timing::Symbol)
+    if timing == :any
+        # Check all: future, present, past variables, shocks, and parameters
+        in_future = filter_symbol ∈ 𝓂.dyn_var_future_list[eq_idx]
+        in_present = filter_symbol ∈ 𝓂.dyn_var_present_list[eq_idx]
+        in_past = filter_symbol ∈ 𝓂.dyn_var_past_list[eq_idx]
+        in_shock = symbol_in_exo_set(filter_symbol, 𝓂.dyn_exo_list[eq_idx])
+        in_params = filter_symbol ∈ 𝓂.par_list_aux_SS[eq_idx]
+        in_ss = filter_symbol ∈ 𝓂.ss_list_aux_SS[eq_idx]
+        # Also check parameters in original equation (for params multiplied by shocks)
+        in_original_params = parameter_in_original_equation(eq_idx, 𝓂, filter_symbol)
+        return in_future || in_present || in_past || in_shock || in_params || in_ss || in_original_params
+    elseif timing == :future
+        return filter_symbol ∈ 𝓂.dyn_var_future_list[eq_idx]
+    elseif timing == :present
+        return filter_symbol ∈ 𝓂.dyn_var_present_list[eq_idx]
+    elseif timing == :past
+        return filter_symbol ∈ 𝓂.dyn_var_past_list[eq_idx]
+    elseif timing == :shock
+        return symbol_in_exo_set(filter_symbol, 𝓂.dyn_exo_list[eq_idx])
+    elseif timing == :shock_past
+        # Check if shock appears in past - need to check auxiliary equations
+        # Shocks with lags create auxiliary variables
+        return filter_symbol ∈ 𝓂.dyn_var_past_list[eq_idx] && filter_symbol ∈ 𝓂.exo
+    elseif timing == :shock_future
+        # Check if shock appears in future
+        return filter_symbol ∈ 𝓂.dyn_var_future_list[eq_idx] && filter_symbol ∈ 𝓂.exo
+    elseif timing == :ss
+        return filter_symbol ∈ 𝓂.ss_list_aux_SS[eq_idx]
+    else
+        return false
+    end
+end
+
+
+"""
+    calibration_equation_contains_filter(eq_idx::Int, 𝓂::ℳ, filter_symbol::Symbol, timing::Symbol)
+
+Check if calibration equation at index `eq_idx` contains the filter symbol.
+For calibration equations, timing is mostly ignored since they are steady-state equations,
+but we still support filtering by symbol.
+"""
+function calibration_equation_contains_filter(eq_idx::Int, 𝓂::ℳ, filter_symbol::Symbol, timing::Symbol)
+    # Calibration equations use ss_calib_list (variables at steady state) and par_calib_list (parameters)
+    in_ss_vars = filter_symbol ∈ 𝓂.ss_calib_list[eq_idx]
+    in_params = filter_symbol ∈ 𝓂.par_calib_list[eq_idx]
+    
+    # For :ss or :any timing, check both ss variables and parameters
+    # For other timings, only match if the timing is :ss (since calibration equations are SS equations)
+    if timing == :any || timing == :ss
+        return in_ss_vars || in_params
+    else
+        # For non-ss timings (like :present, :future, :past), don't match calibration equations
+        # since calibration equations are inherently at steady state
+        return false
+    end
+end
+
+
+"""
 $(SIGNATURES)
 Return the equations of the model. In case programmatic model writing was used this function returns the parsed equations (see loop over shocks in `Examples`).
 
@@ -75,8 +267,25 @@ get_equations(RBC)
  "Δk_4q[0] = log(k[0]) - log(k[-4])"
 ```
 """
-function get_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.original_equations), "◖" => "{", "◗" => "}")
+function get_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
+    equations = replace.(string.(𝓂.original_equations), "◖" => "{", "◗" => "}")
+    
+    if filter === nothing
+        return equations
+    end
+    
+    # Parse the filter term to get base symbol and timing
+    filter_symbol, timing = parse_filter_term(filter)
+    
+    # Filter equations based on whether they contain the filter term
+    filtered_indices = Int[]
+    for (idx, _) in enumerate(equations)
+        if equation_contains_filter(idx, 𝓂, filter_symbol, timing)
+            push!(filtered_indices, idx)
+        end
+    end
+    
+    return equations[filtered_indices]
 end
 
 
@@ -244,8 +453,25 @@ get_calibration_equations(RBC)
  "k / (q * 4) - capital_to_output"
 ```
 """
-function get_calibration_equations(𝓂::ℳ)::Vector{String}
-    replace.(string.(𝓂.calibration_equations), "◖" => "{", "◗" => "}")
+function get_calibration_equations(𝓂::ℳ; filter::Union{Symbol, String, Nothing} = nothing)::Vector{String}
+    equations = replace.(string.(𝓂.calibration_equations), "◖" => "{", "◗" => "}")
+    
+    if filter === nothing
+        return equations
+    end
+    
+    # Parse the filter term to get base symbol and timing
+    filter_symbol, timing = parse_filter_term(filter)
+    
+    # Filter equations based on whether they contain the filter term
+    filtered_indices = Int[]
+    for (idx, _) in enumerate(equations)
+        if calibration_equation_contains_filter(idx, 𝓂, filter_symbol, timing)
+            push!(filtered_indices, idx)
+        end
+    end
+    
+    return equations[filtered_indices]
 end
 
 
