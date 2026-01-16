@@ -102,23 +102,7 @@ end
 
 
 """
-    symbol_in_set_with_subscript(sym::Symbol, set::Set{Symbol}, subscript::String)
-
-Check if symbol is in set, accounting for the possibility that the set contains 
-symbols with subscripts (e.g., :eps_z₍ₓ₎ for :eps_z).
-"""
-function symbol_in_set_with_subscript(sym::Symbol, set::Set{Symbol}, subscript::String)
-    # Direct match
-    if sym ∈ set
-        return true
-    end
-    # Check with subscript
-    sym_with_subscript = Symbol(string(sym) * subscript)
-    return sym_with_subscript ∈ set
-end
-
-"""
-    symbol_in_exo_set(sym::Symbol, set::Set{Symbol}, timing::Symbol)
+    symbol_in_exo_set(sym::Symbol, set::Set{Symbol})
 
 Check if symbol is in the exo set, accounting for timing subscripts.
 Shocks in dyn_exo_list are stored as :eps_z₍ₓ₎ format.
