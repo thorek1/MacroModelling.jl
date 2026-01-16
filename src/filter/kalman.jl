@@ -6,7 +6,7 @@ function calculate_loglikelihood(::Val{:kalman},
                                 observables, 
                                 𝐒, 
                                 data_in_deviations, 
-                                TT, 
+                                caches_obj::caches, 
                                 presample_periods, 
                                 initial_covariance, 
                                 state, 
@@ -18,7 +18,7 @@ function calculate_loglikelihood(::Val{:kalman},
     return calculate_kalman_filter_loglikelihood(observables, 
                                                 𝐒, 
                                                 data_in_deviations, 
-                                                TT, 
+                                                caches_obj, 
                                                 presample_periods = presample_periods, 
                                                 initial_covariance = initial_covariance, 
                                                 # timer = timer, 
@@ -29,12 +29,13 @@ end
 function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
-                                                T::timings; 
+                                                caches::caches; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 on_failure_loglikelihood::U = -Inf,
                                                 presample_periods::Int = 0, 
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+    T = caches.timings
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
     calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
@@ -44,28 +45,30 @@ end
 function calculate_kalman_filter_loglikelihood(observables::Vector{String}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
-                                                T::timings; 
+                                                caches::caches; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0, 
                                                 on_failure_loglikelihood::U = -Inf,
                                                 initial_covariance::Symbol = :theoretical,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+    T = caches.timings
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, caches, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
 function calculate_kalman_filter_loglikelihood(observables_index::Vector{Int}, 
                                                 𝐒::Union{Matrix{S},Vector{AbstractMatrix{S}}}, 
                                                 data_in_deviations::Matrix{S},
-                                                T::timings; 
+                                                caches::caches; 
                                                 # timer::TimerOutput = TimerOutput(), 
                                                 presample_periods::Int = 0,
                                                 initial_covariance::Symbol = :theoretical,
                                                 lyapunov_algorithm::Symbol = :doubling,
                                                 on_failure_loglikelihood::U = -Inf,
                                                 opts::CalculationOptions = merge_calculation_options())::S where {S <: Real, U <: AbstractFloat}
+    T = caches.timings
     observables_and_states = @ignore_derivatives sort(union(T.past_not_future_and_mixed_idx,observables_index))
 
     A = 𝐒[observables_and_states,1:T.nPast_not_future_and_mixed] * ℒ.diagm(ones(S, length(observables_and_states)))[@ignore_derivatives(indexin(T.past_not_future_and_mixed_idx,observables_and_states)),:]

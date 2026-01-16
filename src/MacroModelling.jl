@@ -3663,53 +3663,9 @@ function get_computational_constants(𝓂::ℳ)
     return 𝓂.caches.computational_constants
 end
 
-function get_computational_constants(T::timings)
-    nᵉ = T.nExo
-    nˢ = T.nPast_not_future_and_mixed
-
-    s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ + 1), zeros(Bool, nᵉ)))
-    s_in_s = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
-
-    kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
-
-    e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
-    v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
-
-    diag_nVars = ℒ.diagm(ones(T.nVars))
-
-    kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
-    kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
-    kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
-    kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
-    kron_e_s = ℒ.kron(e_in_s⁺, s_in_s⁺)
-
-    shockvar_idxs = sparse(ℒ.kron(e_in_s⁺, s_in_s⁺)).nzind
-    shock_idxs = sparse(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)).nzind
-    shock_idxs2 = sparse(ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)).nzind
-    shock²_idxs = sparse(ℒ.kron(e_in_s⁺, e_in_s⁺)).nzind
-    var_vol²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
-
-    return computational_constants_cache(
-        s_in_s⁺,
-        s_in_s,
-        kron_s⁺_s⁺,
-        kron_s⁺_s,
-        nˢ,
-        e_in_s⁺,
-        v_in_s⁺,
-        diag_nVars,
-        kron_s_s,
-        kron_e_e,
-        kron_v_v,
-        kron_s_e,
-        kron_e_s,
-        shockvar_idxs,
-        shock_idxs,
-        shock_idxs2,
-        shock²_idxs,
-        var_vol²_idxs,
-    )
+function get_computational_constants(caches::caches)
+    ensure_computational_constants_cache!(caches)
+    return caches.computational_constants
 end
 
 """
@@ -9053,7 +9009,7 @@ function compute_irf_responses(𝓂::ℳ,
                         obc_state_update,
                         initial_state,
                         level,
-                        𝓂.caches.timings;
+                        𝓂.caches;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -9066,7 +9022,7 @@ function compute_irf_responses(𝓂::ℳ,
                         obc_state_update,
                         initial_state,
                         level,
-                        𝓂.caches.timings;
+                        𝓂.caches;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -9078,7 +9034,7 @@ function compute_irf_responses(𝓂::ℳ,
             return girf(state_update,
                         initial_state,
                         level,
-                        𝓂.caches.timings;
+                        𝓂.caches;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -9090,7 +9046,7 @@ function compute_irf_responses(𝓂::ℳ,
             return irf(state_update,
                         initial_state,
                         level,
-                        𝓂.caches.timings;
+                        𝓂.caches;
                         periods = periods,
                         shocks = shocks,
                         shock_size = shock_size,
@@ -9105,12 +9061,13 @@ function irf(state_update::Function,
     obc_state_update::Function,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64},
-    T::timings; 
+    caches::caches; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
     negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    T = caches.timings
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9141,10 +9098,10 @@ function irf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,T)
+        shock_idx = parse_shocks_input_to_index(shocks,caches)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T) |> sort
+    var_idx = parse_variables_input_to_index(variables, caches) |> sort
 
     axis1 = T.var[var_idx]
         
@@ -9246,12 +9203,13 @@ end
 function irf(state_update::Function, 
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64},
-    T::timings; 
+    caches::caches; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
     shock_size::Real = 1,
     negative_shock::Bool = false)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    T = caches.timings
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9282,10 +9240,10 @@ function irf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,T)
+        shock_idx = parse_shocks_input_to_index(shocks,caches)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T) |> sort
+    var_idx = parse_variables_input_to_index(variables, caches) |> sort
 
     axis1 = T.var[var_idx]
         
@@ -9370,7 +9328,7 @@ end
 function girf(state_update::Function,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64}, 
-    T::timings; 
+    caches::caches; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
@@ -9378,6 +9336,7 @@ function girf(state_update::Function,
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    T = caches.timings
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9412,10 +9371,10 @@ function girf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,T)
+        shock_idx = parse_shocks_input_to_index(shocks,caches)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T) |> sort
+    var_idx = parse_variables_input_to_index(variables, caches) |> sort
 
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
 
@@ -9551,7 +9510,7 @@ function girf(state_update::Function,
     obc_state_update::Function,
     initial_state::Union{Vector{Vector{Float64}},Vector{Float64}}, 
     level::Vector{Float64}, 
-    T::timings; 
+    caches::caches; 
     periods::Int = 40, 
     shocks::Union{Symbol_input,String_input,Matrix{Float64},KeyedArray{Float64}} = :all, 
     variables::Union{Symbol_input,String_input} = :all, 
@@ -9559,6 +9518,7 @@ function girf(state_update::Function,
     negative_shock::Bool = false, 
     warmup_periods::Int = 100, 
     draws::Int = 50)::Union{KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{String}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{String},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{Symbol}}},   KeyedArray{Float64, 3, NamedDimsArray{(:Variables, :Periods, :Shocks), Float64, 3, Array{Float64, 3}}, Tuple{Vector{Symbol},UnitRange{Int},Vector{String}}}}
+    T = caches.timings
 
     pruning = initial_state isa Vector{Vector{Float64}}
 
@@ -9595,10 +9555,10 @@ function girf(state_update::Function,
 
         shock_idx = 1
     else
-        shock_idx = parse_shocks_input_to_index(shocks,T)
+        shock_idx = parse_shocks_input_to_index(shocks,caches)
     end
 
-    var_idx = parse_variables_input_to_index(variables, T) |> sort
+    var_idx = parse_variables_input_to_index(variables, caches) |> sort
 
     Y = zeros(T.nVars, periods + 1, length(shock_idx))
 
@@ -9818,8 +9778,7 @@ function parse_variables_input_to_index(variables::Union{Symbol_input, String_in
     end
 end
 
-parse_variables_input_to_index(variables, T::timings) =
-    parse_variables_input_to_index(variables, set_timings!(Caches(), T))
+
 
 # Helper function to check if input is grouped covariance format
 function is_grouped_covariance_input(variables::Union{Symbol_input,String_input, Vector{Vector{Symbol}},Vector{Tuple{Symbol,Vararg{Symbol}}},Vector{Vector{Symbol}},Tuple{Tuple{Symbol,Vararg{Symbol}},Vararg{Tuple{Symbol,Vararg{Symbol}}}}, Vector{Vector{String}},Vector{Tuple{String,Vararg{String}}},Vector{Vector{String}},Tuple{Tuple{String,Vararg{String}},Vararg{Tuple{String,Vararg{String}}}}})::Bool
@@ -9846,7 +9805,7 @@ function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vec
     
     if !is_grouped_covariance_input(variables)
         # Not grouped, return single group
-        idx = parse_variables_input_to_index(variables, T)
+        idx = parse_variables_input_to_index(variables, caches)
         return [collect(idx)]
     end
     
@@ -9865,8 +9824,7 @@ function parse_covariance_groups(variables::Union{Symbol_input,String_input, Vec
     return groups
 end
 
-parse_covariance_groups(variables, T::timings) =
-    parse_covariance_groups(variables, set_timings!(Caches(), T))
+
 
 
 function parse_shocks_input_to_index(shocks::Expr, caches::caches)
@@ -9946,8 +9904,7 @@ function parse_shocks_input_to_index(shocks::Union{Symbol_input, String_input}, 
     return shock_idx
 end
 
-parse_shocks_input_to_index(shocks, T::timings) =
-    parse_shocks_input_to_index(shocks, set_timings!(Caches(), T))
+
 
 end # dispatch_doctor
 
@@ -10451,18 +10408,16 @@ function get_relevant_steady_state_and_state_update(::Val{:second_order},
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, opts = opts) # timer = timer, 
     
-    TT = 𝓂.caches.timings
-
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 2nd order stochastic steady state") end
-        return TT, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
+        return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂], collect(sss), converged
     end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     state = collect(sss) - all_SS
 
-    return TT, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
+    return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
 end
 
 
@@ -10470,22 +10425,20 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:pruned_second_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{caches, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, 𝐒₁, 𝐒₂ = calculate_second_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, opts = opts) # timer = timer, 
 
-    TT = 𝓂.caches.timings
-
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 2nd order stochastic steady state") end
-        return TT, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars)], converged
+        return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂], [zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars)], converged
     end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     state = [zeros(𝓂.caches.timings.nVars), collect(sss) - all_SS]
 
-    return TT, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
+    return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂], state, converged
 end
 
 
@@ -10493,22 +10446,20 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{S}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{caches, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{S}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, opts = opts) # timer = timer,  
 
-    TT = 𝓂.caches.timings
-
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 3rd order stochastic steady state") end
-        return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
+        return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], collect(sss), converged
     end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     state = collect(sss) - all_SS
 
-    return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
+    return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
 end
 
 
@@ -10516,48 +10467,44 @@ end
 function get_relevant_steady_state_and_state_update(::Val{:pruned_third_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{caches, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{S}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     sss, converged, SS_and_pars, solution_error, ∇₁, ∇₂, ∇₃, 𝐒₁, 𝐒₂, 𝐒₃ = calculate_third_order_stochastic_steady_state(parameter_values, 𝓂, pruning = true, opts = opts) # timer = timer, 
 
-    TT = 𝓂.caches.timings
-
     if !converged || solution_error > opts.tol.NSSS_acceptance_tol
         if opts.verbose println("Could not find 3rd order stochastic steady state") end
-        return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars)], converged
+        return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], [zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars), zeros(𝓂.caches.timings.nVars)], converged
     end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
 
     state = [zeros(𝓂.caches.timings.nVars), collect(sss) - all_SS, zeros(𝓂.caches.timings.nVars)]
 
-    return TT, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
+    return 𝓂.caches, SS_and_pars, [𝐒₁, 𝐒₂, 𝐒₃], state, converged
 end
 
 
 function get_relevant_steady_state_and_state_update(::Val{:first_order}, 
                                                     parameter_values::Vector{S}, 
                                                     𝓂::ℳ; 
-                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{timings, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
+                                                    opts::CalculationOptions = merge_calculation_options())::Tuple{caches, Vector{S}, Union{Matrix{S},Vector{AbstractMatrix{S}}}, Vector{Vector{Float64}}, Bool} where S <: Real
                                                     # timer::TimerOutput = TimerOutput(), 
     # Initialize caches at entry point
-    caches = initialize_caches!(𝓂)
+    caches_obj = initialize_caches!(𝓂)
 
     SS_and_pars, (solution_error, iters) = get_NSSS_and_parameters(𝓂, parameter_values, opts = opts) # timer = timer, 
 
     state = zeros(𝓂.caches.timings.nVars)
 
-    TT = 𝓂.caches.timings
-
     if solution_error > opts.tol.NSSS_acceptance_tol # || isnan(solution_error) if it's NaN the first condition is false anyway
         # println("NSSS not found")
-        return TT, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
+        return 𝓂.caches, SS_and_pars, zeros(S, 0, 0), [state], solution_error < opts.tol.NSSS_acceptance_tol
     end
 
     ∇₁ = calculate_jacobian(parameter_values, SS_and_pars, 𝓂) # , timer = timer)# |> Matrix
 
     𝐒₁, qme_sol, solved = calculate_first_order_solution(∇₁,
-                                                        caches;
+                                                        caches_obj;
                                                         # timer = timer,
                                                         initial_guess = 𝓂.solution.perturbation.qme_solution,
                                                         opts = opts)
@@ -10566,10 +10513,10 @@ function get_relevant_steady_state_and_state_update(::Val{:first_order},
 
     if !solved
         # println("NSSS not found")
-        return TT, SS_and_pars, zeros(S, 0, 0), [state], solved
+        return 𝓂.caches, SS_and_pars, zeros(S, 0, 0), [state], solved
     end
 
-    return TT, SS_and_pars, 𝐒₁, [state], solved
+    return 𝓂.caches, SS_and_pars, 𝐒₁, [state], solved
 end
 
 end # dispatch_doctor

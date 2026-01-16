@@ -275,6 +275,63 @@ function ensure_computational_constants_cache!(𝓂)
     return caches.computational_constants
 end
 
+function ensure_computational_constants_cache!(caches::caches)
+    cc = caches.computational_constants
+    if isempty(cc.s_in_s⁺)
+        # Use timings from caches
+        T = caches.timings
+        nᵉ = T.nExo
+        nˢ = T.nPast_not_future_and_mixed
+
+        s_in_s⁺ = BitVector(vcat(ones(Bool, nˢ + 1), zeros(Bool, nᵉ)))
+        s_in_s = BitVector(vcat(ones(Bool, nˢ), zeros(Bool, nᵉ + 1)))
+
+        kron_s⁺_s⁺ = ℒ.kron(s_in_s⁺, s_in_s⁺)
+        kron_s⁺_s = ℒ.kron(s_in_s⁺, s_in_s)
+
+        e_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ + 1), ones(Bool, nᵉ)))
+        v_in_s⁺ = BitVector(vcat(zeros(Bool, nˢ), 1, zeros(Bool, nᵉ)))
+
+        diag_nVars = ℒ.I(T.nVars)
+
+        kron_s_s = ℒ.kron(s_in_s⁺, s_in_s⁺)
+        kron_e_e = ℒ.kron(e_in_s⁺, e_in_s⁺)
+        kron_v_v = ℒ.kron(v_in_s⁺, v_in_s⁺)
+        kron_s_e = ℒ.kron(s_in_s⁺, e_in_s⁺)
+        kron_e_s = ℒ.kron(e_in_s⁺, s_in_s⁺)
+
+        # Compute sparse index patterns for filter operations
+        shockvar_idxs = sparse(ℒ.kron(e_in_s⁺, s_in_s⁺)).nzind
+        shock_idxs = sparse(ℒ.kron(e_in_s⁺, zero(e_in_s⁺) .+ 1)).nzind
+        shock_idxs2 = sparse(ℒ.kron(zero(e_in_s⁺) .+ 1, e_in_s⁺)).nzind
+        shock²_idxs = sparse(ℒ.kron(e_in_s⁺, e_in_s⁺)).nzind
+        var_vol²_idxs = sparse(ℒ.kron(s_in_s⁺, s_in_s⁺)).nzind
+
+        caches.computational_constants = computational_constants_cache(
+            s_in_s⁺,
+            s_in_s,
+            kron_s⁺_s⁺,
+            kron_s⁺_s,
+            nˢ,
+            e_in_s⁺,
+            v_in_s⁺,
+            diag_nVars,
+            kron_s_s,
+            kron_e_e,
+            kron_v_v,
+            kron_s_e,
+            kron_e_s,
+            shockvar_idxs,
+            shock_idxs,
+            shock_idxs2,
+            shock²_idxs,
+            var_vol²_idxs,
+        )
+    end
+
+    return caches.computational_constants
+end
+
 function ensure_conditional_forecast_index_cache!(𝓂; third_order::Bool = false)
     caches = 𝓂.caches
     cf = caches.conditional_forecast_index_cache

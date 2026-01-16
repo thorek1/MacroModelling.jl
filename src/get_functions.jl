@@ -3583,7 +3583,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Get relevant steady state and solution" begin
 
-    TT, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, opts = opts)
+    caches_obj, SS_and_pars, 𝐒, state, solved = get_relevant_steady_state_and_state_update(Val(algorithm), parameter_values, 𝓂, opts = opts)
                                                                                     # timer = timer,
 
     # end # timeit_debug
@@ -3604,7 +3604,7 @@ function get_loglikelihood(𝓂::ℳ,
 
     # @timeit_debug timer "Filter" begin
 
-    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, TT, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood) # timer = timer
+    llh = calculate_loglikelihood(Val(filter), algorithm, observables, 𝐒, data_in_deviations, caches_obj, presample_periods, initial_covariance, state, warmup_iterations, filter_algorithm, opts, on_failure_loglikelihood) # timer = timer
 
     # end # timeit_debug
 

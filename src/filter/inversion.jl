@@ -13,7 +13,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                 algorithm, observables, 
                                 𝐒, 
                                 data_in_deviations, 
-                                TT, 
+                                caches_obj::caches, 
                                 presample_periods, 
                                 initial_covariance, 
                                 state, 
@@ -27,7 +27,7 @@ function calculate_loglikelihood(::Val{:inversion},
                                                     𝐒, 
                                                     data_in_deviations, 
                                                     observables, 
-                                                    TT, 
+                                                    caches_obj, 
                                                     warmup_iterations = warmup_iterations, 
                                                     presample_periods = presample_periods, 
                                                     filter_algorithm = filter_algorithm, 
@@ -42,13 +42,14 @@ function calculate_inversion_filter_loglikelihood(::Val{:first_order},
                                                     𝐒::Matrix{R}, 
                                                     data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
-                                                    T::timings; 
+                                                    caches::caches; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     on_failure_loglikelihood::U = -Inf,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
+    T = caches.timings
     # @timeit_debug timer "Inversion filter" begin    
     # first order
     state = copy(state[1])
@@ -167,13 +168,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 𝐒::Matrix{Float64}, 
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}}, 
-                T::timings; 
+                caches::caches; 
                 # timer::TimerOutput = TimerOutput(),
                 warmup_iterations::Int = 0, 
                 on_failure_loglikelihood = -Inf,
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
+    T = caches.timings
     # @timeit_debug timer "Inversion filter - forward" begin    
             
     # first order
@@ -339,13 +341,14 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
-                                                    T::timings; 
+                                                    caches::caches; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     warmup_iterations::Int = 0,
                                                     on_failure_loglikelihood::U = -Inf,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
+    T = caches.timings
     # @timeit_debug timer "Pruned 2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
              
@@ -358,7 +361,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_second_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = @ignore_derivatives get_computational_constants(T)
+    cc = @ignore_derivatives ensure_computational_constants_cache!(caches)
     s_in_s⁺  = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺  = cc.e_in_s⁺
@@ -575,13 +578,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
-                T::timings; 
+                caches::caches; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
+    T = caches.timings
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
                     
@@ -594,7 +598,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = get_computational_constants(T)
+    cc = ensure_computational_constants_cache!(caches)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -1046,13 +1050,14 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
-                                                    T::timings; 
+                                                    caches::caches; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
+    T = caches.timings
     # @timeit_debug timer "2nd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -1066,7 +1071,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:second_order},
     logabsdets = 0.0
 
     # s_in_s⁺ = get_computational_constants(𝓂).s_in_s
-    cc = get_computational_constants(T)
+    cc = ensure_computational_constants_cache!(caches)
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
     
@@ -1274,13 +1279,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
-                T::timings; 
+                caches::caches; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)# where S <: Real
+    T = caches.timings
     # @timeit_debug timer "Inversion filter 2nd - forward" begin
         
     # @timeit_debug timer "Preallocation" begin
@@ -1294,7 +1300,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = get_computational_constants(T)
+    cc = ensure_computational_constants_cache!(caches)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -1715,13 +1721,14 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
-                                                    T::timings;
+                                                    caches::caches;
                                                     # timer::TimerOutput = TimerOutput(), 
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat, U <: AbstractFloat}
+    T = caches.timings
     # @timeit_debug timer "Inversion filter" begin
 
     precision_factor = 1.0
@@ -1733,7 +1740,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:pruned_third_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = @ignore_derivatives get_computational_constants(T)
+    cc = @ignore_derivatives ensure_computational_constants_cache!(caches)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -2139,13 +2146,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
-                T::timings; 
+                caches::caches; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
+    T = caches.timings
     # @timeit_debug timer "Inversion filter - forward" begin
     precision_factor = 1.0
 
@@ -2156,7 +2164,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = get_computational_constants(T)
+    cc = ensure_computational_constants_cache!(caches)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -2691,13 +2699,14 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
                                                     𝐒::Vector{AbstractMatrix{R}}, 
                                                     data_in_deviations::Matrix{R}, 
                                                     observables::Union{Vector{String}, Vector{Symbol}},
-                                                    T::timings; 
+                                                    caches::caches; 
                                                     # timer::TimerOutput = TimerOutput(),
                                                     on_failure_loglikelihood::U = -Inf,
                                                     warmup_iterations::Int = 0,
                                                     presample_periods::Int = 0,
                                                     opts::CalculationOptions = merge_calculation_options(),
                                                     filter_algorithm::Symbol = :LagrangeNewton)::R where {R <: AbstractFloat,U <: AbstractFloat}
+    T = caches.timings
     # @timeit_debug timer "3rd - Inversion filter" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -2710,7 +2719,7 @@ function calculate_inversion_filter_loglikelihood(::Val{:third_order},
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = get_computational_constants(T)
+    cc = ensure_computational_constants_cache!(caches)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺
@@ -3015,13 +3024,14 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
                 𝐒::Vector{AbstractMatrix{Float64}}, 
                 data_in_deviations::Matrix{Float64}, 
                 observables::Union{Vector{String}, Vector{Symbol}},
-                T::timings; 
+                caches::caches; 
                 # timer::TimerOutput = TimerOutput(),
                 on_failure_loglikelihood = -Inf,
                 warmup_iterations::Int = 0,
                 presample_periods::Int = 0,
                 opts::CalculationOptions = merge_calculation_options(),
                 filter_algorithm::Symbol = :LagrangeNewton)
+    T = caches.timings
     # @timeit_debug timer "Inversion filter pruned 2nd - forward" begin
     # @timeit_debug timer "Preallocation" begin
 
@@ -3034,7 +3044,7 @@ function rrule(::typeof(calculate_inversion_filter_loglikelihood),
     shocks² = 0.0
     logabsdets = 0.0
 
-    cc = get_computational_constants(T)
+    cc = ensure_computational_constants_cache!(caches)
     s_in_s⁺ = cc.s_in_s
     sv_in_s⁺ = cc.s_in_s⁺
     e_in_s⁺ = cc.e_in_s⁺

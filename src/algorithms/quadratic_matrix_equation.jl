@@ -42,7 +42,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
 
     sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                         Val(quadratic_matrix_equation_algorithm), 
-                                                        T; 
+                                                        caches; 
                                                         initial_guess = initial_guess,
                                                         tol = tol,
                                                         # timer = timer,
@@ -83,11 +83,12 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         B::AbstractMatrix{R}, 
                                         C::AbstractMatrix{R}, 
                                         ::Val{:schur}, 
-                                        T::timings; 
+                                        caches::caches; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
+    T = caches.timings
     # @timeit_debug timer "Prepare indice" begin
    
     comb = union(T.future_not_past_and_mixed_idx, T.past_not_future_idx)
@@ -212,12 +213,13 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
                                         B::AbstractMatrix{R}, 
                                         C::AbstractMatrix{R}, 
                                         ::Val{:doubling}, 
-                                        T::timings; 
+                                        caches::caches; 
                                         initial_guess::AbstractMatrix{R} = zeros(0,0),
                                         tol::AbstractFloat = 1e-14,
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false,
                                         max_iter::Int = 100)::Tuple{Matrix{R}, Int64, R} where R <: AbstractFloat
+    T = caches.timings
     # Johannes Huber, Alexander Meyer-Gohde, Johanna Saecker (2024). Solving Linear DSGE Models with Structure Preserving Doubling Methods.
     # https://www.imfs-frankfurt.de/forschung/imfs-working-papers/details.html?tx_mmpublications_publicationsdetail%5Bcontroller%5D=Publication&tx_mmpublications_publicationsdetail%5Bpublication%5D=461&cHash=f53244e0345a27419a9d40a3af98c02f
     # https://arxiv.org/abs/2212.09491
@@ -511,12 +513,13 @@ end
 function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         B::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
                                         C::AbstractMatrix{ℱ.Dual{Z,S,N}}, 
-                                        T::timings; 
+                                        caches::caches; 
                                         initial_guess::AbstractMatrix{<:Real} = zeros(0,0),
                                         tol::AbstractFloat = 1e-8, 
                                         quadratic_matrix_equation_algorithm::Symbol = :schur, 
                                         # timer::TimerOutput = TimerOutput(),
                                         verbose::Bool = false) where {Z,S,N}
+    T = caches.timings
     # unpack: AoS -> SoA
     Â = ℱ.value.(A)
     B̂ = ℱ.value.(B)
