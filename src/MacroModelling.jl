@@ -6421,7 +6421,7 @@ function calculate_second_order_stochastic_steady_state(parameters::Vector{M},
     
     if solution_error > opts.tol.NSSS_acceptance_tol || isnan(solution_error)
         # if verbose println("NSSS not found") end # handled within solve function
-        return zeros(T.nVars), false, SS_and_pars, solution_error, zeros(0,0), spzeros(0,0), zeros(0,0), spzeros(0,0)
+        return zeros(M, T.nVars), false, SS_and_pars, solution_error, zeros(M,0,0), spzeros(M,0,0), zeros(M,0,0), spzeros(M,0,0)
     end
 
     all_SS = expand_steady_state(SS_and_pars,𝓂)
