@@ -54,7 +54,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         if quadratic_matrix_equation_algorithm ≠ :schur # try schur if previous one didn't solve it
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:schur), 
-                                                                T; 
+                                                                caches; 
                                                                 initial_guess = initial_guess,
                                                                 tol = tol,
                                                                 # timer = timer,
@@ -64,7 +64,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{R},
         else quadratic_matrix_equation_algorithm ≠ :doubling
             sol, iterations, reached_tol = solve_quadratic_matrix_equation(A, B, C, 
                                                                 Val(:doubling), 
-                                                                T; 
+                                                                caches; 
                                                                 initial_guess = initial_guess,
                                                                 tol = tol,
                                                                 # timer = timer,
@@ -527,7 +527,7 @@ function solve_quadratic_matrix_equation(A::AbstractMatrix{ℱ.Dual{Z,S,N}},
 
     X, solved = solve_quadratic_matrix_equation(Â, B̂, Ĉ, 
                                                 Val(quadratic_matrix_equation_algorithm), 
-                                                T; 
+                                                caches; 
                                                 tol = tol,
                                                 initial_guess = initial_guess,
                                                 # timer = timer,
