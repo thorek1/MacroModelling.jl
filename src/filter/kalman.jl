@@ -38,7 +38,7 @@ function calculate_kalman_filter_loglikelihood(observables::Vector{Symbol},
     T = caches.timings
     obs_idx = @ignore_derivatives convert(Vector{Int},indexin(observables,sort(union(T.aux,T.var,T.exo_present))))
 
-    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, T, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
+    calculate_kalman_filter_loglikelihood(obs_idx, 𝐒, data_in_deviations, caches, presample_periods = presample_periods, initial_covariance = initial_covariance, opts = opts, on_failure_loglikelihood = on_failure_loglikelihood)
     # timer = timer, 
 end
 
