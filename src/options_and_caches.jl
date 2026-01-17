@@ -158,12 +158,6 @@ function Caches(;T::Type = Float64, S::Type = Float64)
             Float64[])
 end
 
-# Initialize timings in the caches (should be called once after model creation)
-function set_timings!(caches::caches, T::timings)
-    caches.timings = T
-    return caches
-end
-
 # Initialize all commonly used caches at once (call at entry points)
 # This reduces repeated ensure_*_cache! calls throughout the codebase
 function initialize_caches!(𝓂)

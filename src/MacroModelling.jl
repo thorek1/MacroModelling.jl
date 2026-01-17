@@ -2365,30 +2365,6 @@ function combine_pairs(v::Vector{Pair{Vector{Symbol}, Vector{Symbol}}})
     return v
 end
 
-determine_efficient_order(𝐒₁::Matrix{<: Real},
-                            T::timings,
-                            variables::Union{Symbol_input,String_input};
-                            covariance::Union{Symbol_input,String_input} = Symbol[],
-                            tol::AbstractFloat = eps()) =
-    determine_efficient_order(𝐒₁, set_timings!(Caches(), T), variables; covariance = covariance, tol = tol)
-
-determine_efficient_order(𝐒₁::Matrix{<: Real},
-                            𝐒₂::AbstractMatrix{<: Real},
-                            T::timings,
-                            variables::Union{Symbol_input,String_input};
-                            covariance::Union{Symbol_input,String_input} = Symbol[],
-                            tol::AbstractFloat = eps()) =
-    determine_efficient_order(𝐒₁, 𝐒₂, set_timings!(Caches(), T), variables; covariance = covariance, tol = tol)
-
-determine_efficient_order(𝐒₁::Matrix{<: Real},
-                            𝐒₂::AbstractMatrix{<: Real},
-                            𝐒₃::AbstractMatrix{<: Real},
-                            T::timings,
-                            variables::Union{Symbol_input,String_input};
-                            covariance::Union{Symbol_input,String_input} = Symbol[],
-                            tol::AbstractFloat = eps()) =
-    determine_efficient_order(𝐒₁, 𝐒₂, 𝐒₃, set_timings!(Caches(), T), variables; covariance = covariance, tol = tol)
-
 function determine_efficient_order(𝐒₁::Matrix{<: Real}, 
                                     caches::caches,
                                     variables::Union{Symbol_input,String_input};
