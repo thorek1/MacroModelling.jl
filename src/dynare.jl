@@ -150,7 +150,7 @@ function write_mod_file(m::ℳ)
 
     open(m.model_name * ".mod", "w") do io
         println(io, "var ")
-        [print(io, translate_symbol_to_ascii(v) * " ") for v in setdiff(m.vars_in_ss_equations, m.➕_vars)]
+        [print(io, translate_symbol_to_ascii(v) * " ") for v in setdiff(m.constants.post_model_macro.vars_in_ss_equations, m.➕_vars)]
 
         println(io, ";\n\nvarexo ")
         [print(io, translate_symbol_to_ascii(e) * " ") for e in m.exo]
@@ -206,7 +206,7 @@ function write_mod_file(m::ℳ)
         [println(io, "var\t" * translate_symbol_to_ascii(e) * "\t=\t1;") for e in m.exo]
 
         println(io, "end;\n\ninitval;")
-        for v in setdiff(m.vars_in_ss_equations, m.➕_vars)
+        for v in setdiff(m.constants.post_model_macro.vars_in_ss_equations, m.➕_vars)
             print(io, "\t" * translate_symbol_to_ascii(v) * "\t=\t" * string(NSSS(index_in_name ? replace(string(v), "◖" => "{", "◗" => "}") : v)) * ";\n") 
         end
 

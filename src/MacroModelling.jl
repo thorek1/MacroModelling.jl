@@ -3820,19 +3820,19 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
 
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_shift2_var_past_list),
 
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_present_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_past_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_var_future_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_present_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_past_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_var_future_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_ss_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_exo_list),
 
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_future_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_present_list),
                 # map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_exo_past_list),
 
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_future_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_present_list),
-                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.dyn_past_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_future_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_present_list),
+                map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.constants.post_model_macro.dyn_past_list),
 
                 map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_present_list_aux_SS),
                 map(x->Set(Core.eval(SymPyWorkspace, :([$(x...)]))),𝓂.var_past_list_aux_SS),
@@ -3851,7 +3851,7 @@ function create_symbols_eqs!(𝓂::ℳ)::symbolics
                 # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_present...)]))),
                 # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_past...)]))),
                 # Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var_future...)]))),
-                Set(Core.eval(SymPyWorkspace, :([$(𝓂.vars_in_ss_equations...)]))),
+                Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.vars_in_ss_equations...)]))),
                 Set(Core.eval(SymPyWorkspace, :([$(𝓂.constants.post_model_macro.var...)]))),
                 Set(Core.eval(SymPyWorkspace, :([$(𝓂.➕_vars...)]))),
 
@@ -4716,7 +4716,7 @@ function write_ss_check_function!(𝓂::ℳ;
                                     density_threshold::Float64 = .1,
                                     nnz_parallel_threshold::Int = 1000000,
                                     min_length::Int = 10000)
-    unknowns = union(setdiff(𝓂.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
+    unknowns = union(setdiff(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.➕_vars), 𝓂.calibration_equations_parameters)
 
     ss_equations = vcat(𝓂.ss_equations, 𝓂.calibration_equations)
 
@@ -5375,7 +5375,7 @@ function write_steady_state_solver_function!(𝓂::ℳ;
                             nnz_parallel_threshold::Int = 1000000,
                             min_length::Int = 1000,
                             verbose::Bool = false)
-    unknowns = union(𝓂.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
+    unknowns = union(𝓂.constants.post_model_macro.vars_in_ss_equations, 𝓂.calibration_equations_parameters)
 
     @assert length(unknowns) <= length(𝓂.ss_aux_equations) + length(𝓂.calibration_equations) "Unable to solve steady state. More unknowns than equations."
 
@@ -7899,11 +7899,11 @@ function write_functions_mapping!(𝓂::ℳ, max_perturbation_order::Int;
     sort!(shock_varss   ,by = x->replace(string(x),r"₍ₓ₎$"=>""))
     sort!(ss_varss      ,by = x->replace(string(x),r"₍ₛₛ₎$"=>""))
 
-    dyn_future_list = collect(reduce(union, 𝓂.dyn_future_list))
-    dyn_present_list = collect(reduce(union, 𝓂.dyn_present_list))
-    dyn_past_list = collect(reduce(union, 𝓂.dyn_past_list))
-    dyn_exo_list = collect(reduce(union,𝓂.dyn_exo_list))
-    dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.dyn_ss_list))) .* "₍ₛₛ₎")
+    dyn_future_list = collect(reduce(union, 𝓂.constants.post_model_macro.dyn_future_list))
+    dyn_present_list = collect(reduce(union, 𝓂.constants.post_model_macro.dyn_present_list))
+    dyn_past_list = collect(reduce(union, 𝓂.constants.post_model_macro.dyn_past_list))
+    dyn_exo_list = collect(reduce(union,𝓂.constants.post_model_macro.dyn_exo_list))
+    dyn_ss_list = Symbol.(string.(collect(reduce(union,𝓂.constants.post_model_macro.dyn_ss_list))) .* "₍ₛₛ₎")
 
     future = map(x -> Symbol(replace(string(x), r"₍₁₎" => "")),string.(dyn_future_list))
     present = map(x -> Symbol(replace(string(x), r"₍₀₎" => "")),string.(dyn_present_list))
@@ -10051,7 +10051,7 @@ function find_variables_to_exclude(𝓂::ℳ, observables::Vector{Symbol})
     # Mapping variables to their equation index
     variable_to_equation = Dict{Symbol, Vector{Int}}()
     for var in vars_to_exclude
-        for (eq_idx, vars_set) in enumerate(𝓂.dyn_var_present_list)
+        for (eq_idx, vars_set) in enumerate(𝓂.constants.post_model_macro.dyn_var_present_list)
         # for var in vars_set
             if var in vars_set
                 if haskey(variable_to_equation, var)

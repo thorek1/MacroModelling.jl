@@ -503,7 +503,7 @@ function ensure_model_structure_cache!(𝓂)
 
         steady_state_expand_matrix = create_selector_matrix(processed_all_variables, NSSS_labels)
 
-        vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(𝓂.ss_aux_equations)), union(𝓂.parameters_in_equations, 𝓂.➕_vars))))
+        vars_in_ss_equations = 𝓂.constants.post_model_macro.vars_in_ss_equations
         extended_SS_and_pars = vcat(map(x -> Symbol(replace(string(x), r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")), 𝓂.constants.post_model_macro.var), 𝓂.calibration_equations_parameters)
         custom_ss_expand_matrix = create_selector_matrix(extended_SS_and_pars, vcat(vars_in_ss_equations, 𝓂.calibration_equations_parameters))
 

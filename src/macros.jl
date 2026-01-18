@@ -742,6 +742,13 @@ macro model(𝓂,ex...)
     aux_present_tmp = sort(filter(x->occursin(r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾",string(x)), dyn_var_present))
     aux_present     = aux_present_tmp[map(x->Symbol(replace(string(x),r"ᴸ⁽⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]+⁾" => "")) ∉ exo, aux_present_tmp)]
 
+    vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(ss_aux_equations)), parameters_in_equations)))
+
+    dyn_future_list =   match_pattern.(get_symbols.(dyn_equations),r"₍₁₎")
+    dyn_present_list =  match_pattern.(get_symbols.(dyn_equations),r"₍₀₎")
+    dyn_past_list =     match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")
+    dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
+
     T = post_model_macro(present_only,
                 future_not_past,
                 past_not_future,
@@ -783,20 +790,23 @@ macro model(𝓂,ex...)
                 past_not_future_idx,
 
                 reorder,
-                dynamic_order)
+                dynamic_order,
+                vars_in_ss_equations,
 
-    # vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(ss_aux_equations)), union(parameters_in_equations, ➕_vars))))
-    vars_in_ss_equations = sort(collect(setdiff(reduce(union, get_symbols.(ss_aux_equations)), parameters_in_equations)))
+                dyn_var_future_list,
+                dyn_var_present_list,
+                dyn_var_past_list,
+                dyn_ss_list,
+                dyn_exo_list,
+
+                dyn_future_list,
+                dyn_present_list,
+                dyn_past_list)
 
     ℂ = Constants(T)
 
     𝓦 = Workspaces()
 
-
-    dyn_future_list =   match_pattern.(get_symbols.(dyn_equations),r"₍₁₎")
-    dyn_present_list =  match_pattern.(get_symbols.(dyn_equations),r"₍₀₎")
-    dyn_past_list =     match_pattern.(get_symbols.(dyn_equations),r"₍₋₁₎")
-    dyn_exo_list =      match_pattern.(get_symbols.(dyn_equations),r"₍ₓ₎")
 
     # write down original equations as written down in model block
     for (i,arg) in enumerate(model_ex.args)
@@ -850,8 +860,6 @@ macro model(𝓂,ex...)
 
                         Dict{Symbol, Float64}(), # guess
 
-                        sort(collect($vars_in_ss_equations)),
-
                         $ss_calib_list,
                         $par_calib_list,
 
@@ -865,16 +873,6 @@ macro model(𝓂,ex...)
                         $var_future_list_aux_SS,
                         $var_present_list_aux_SS,
                         $var_past_list_aux_SS,
-
-                        $dyn_var_future_list,
-                        $dyn_var_present_list,
-                        $dyn_var_past_list, 
-                        $dyn_ss_list,
-                        $dyn_exo_list,
-
-                        $dyn_future_list,
-                        $dyn_present_list,
-                        $dyn_past_list, 
 
                         $solved_vars, 
                         $solved_vals, 

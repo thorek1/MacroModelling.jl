@@ -100,6 +100,17 @@ struct post_model_macro
     past_not_future_idx::Vector{Int}
     reorder::Vector{Int}
     dynamic_order::Vector{Int}
+    vars_in_ss_equations::Vector{Symbol}
+
+    dyn_var_future_list::Vector{Set{Symbol}}
+    dyn_var_present_list::Vector{Set{Symbol}}
+    dyn_var_past_list::Vector{Set{Symbol}}
+    dyn_ss_list::Vector{Set{Symbol}}
+    dyn_exo_list::Vector{Set{Symbol}}
+
+    dyn_future_list::Vector{Set{Symbol}}
+    dyn_present_list::Vector{Set{Symbol}}
+    dyn_past_list::Vector{Set{Symbol}}
 end
 
 struct symbolics
@@ -501,7 +512,6 @@ mutable struct ℳ
     # dyn_ss_present::Vector{Symbol}
     # dyn_ss_future::Vector{Symbol}
 
-    vars_in_ss_equations::Vector{Symbol}
     # var_present::Vector{Symbol}
     # var_future::Vector{Symbol}
     # var_past::Vector{Symbol}
@@ -543,19 +553,10 @@ mutable struct ℳ
 
     # dyn_shift2_var_past_list::Vector{Set{Symbol}}
 
-    dyn_var_future_list::Vector{Set{Symbol}}
-    dyn_var_present_list::Vector{Set{Symbol}}
-    dyn_var_past_list::Vector{Set{Symbol}}
-    dyn_ss_list::Vector{Set{Symbol}}
-    dyn_exo_list::Vector{Set{Symbol}}
 
     # dyn_exo_future_list::Vector{Set{Symbol}}
     # dyn_exo_present_list::Vector{Set{Symbol}}
     # dyn_exo_past_list::Vector{Set{Symbol}} 
-
-    dyn_future_list::Vector{Set{Symbol}}
-    dyn_present_list::Vector{Set{Symbol}}
-    dyn_past_list::Vector{Set{Symbol}}
 
     solved_vars::Vector#{Union{Symbol,Vector{Symbol}}}
     solved_vals::Vector#{Union{Float64,Expr,Int,Vector{Union{Float64,Expr,Int}}}}
